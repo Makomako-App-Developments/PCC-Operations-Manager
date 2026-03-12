@@ -40,7 +40,7 @@ function Sidebar({ active }: { active: string }) {
           <div className="w-8 h-8 rounded-full bg-[#00AECD] flex items-center justify-center text-white text-xs font-bold">DB</div>
           <div>
             <p className="text-white text-xs font-medium">Daniela Biaggio</p>
-            <p className="text-white/40 text-[10px]">Parks Manager</p>
+            <p className="text-white/40 text-[10px]">Urban Ecology Manager</p>
           </div>
         </div>
       </div>
