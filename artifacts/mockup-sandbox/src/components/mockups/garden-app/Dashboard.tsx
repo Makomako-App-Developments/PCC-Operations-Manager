@@ -1,9 +1,11 @@
 import { useState } from "react";
+import { MapContainer, TileLayer, CircleMarker, Tooltip } from "react-leaflet";
+import "leaflet/dist/leaflet.css";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import {
   Leaf, ClipboardList, LayoutDashboard, CalendarDays, List,
-  Users, TrendingUp, AlertCircle, CheckCircle, MapPin, Clock
+  Users, TrendingUp, AlertCircle, CheckCircle, Clock
 } from "lucide-react";
 
 const BRAND = "#00AECD";
@@ -55,86 +57,70 @@ const TYPE_COLORS: Record<string, string> = {
   "Bush": "#16a34a",
 };
 
+// Real Porirua City coordinates
 const MAP_PINS = [
-  { id: "GRD-0847", site: "Aotea Lagoon Reserve", type: "Shrub Bed", los: 2, x: 38, y: 45 },
-  { id: "GRD-0212", site: "Cobham Court", type: "Rose", los: 1, x: 55, y: 30 },
-  { id: "GRD-0391", site: "Titahi Bay Esplanade", type: "Annual Bedding", los: 2, x: 20, y: 22 },
-  { id: "GRD-0558", site: "Kenepuru Landing", type: "Revegetation", los: 4, x: 65, y: 55 },
-  { id: "GRD-0629", site: "Paremata Station", type: "Bush", los: 5, x: 72, y: 35 },
-  { id: "GRD-0714", site: "Elsdon Reserve", type: "Shrub Bed", los: 3, x: 45, y: 62 },
-  { id: "GRD-0801", site: "Mungavin Ave", type: "Annual Bedding", los: 2, x: 50, y: 48 },
-  { id: "GRD-0022", site: "Waitangirua Mall", type: "Rose", los: 1, x: 30, y: 38 },
+  { id: "GRD-0847", site: "Aotea Lagoon Reserve", type: "Shrub Bed", los: 2, area: 142, lat: -41.0987, lng: 174.8756 },
+  { id: "GRD-0212", site: "Cobham Court", type: "Rose", los: 1, area: 68, lat: -41.1281, lng: 174.8523 },
+  { id: "GRD-0391", site: "Titahi Bay Esplanade", type: "Annual Bedding", los: 2, area: 95, lat: -41.0956, lng: 174.8293 },
+  { id: "GRD-0558", site: "Kenepuru Landing", type: "Revegetation", los: 4, area: 520, lat: -41.1378, lng: 174.8697 },
+  { id: "GRD-0629", site: "Paremata Station", type: "Bush", los: 5, area: 1240, lat: -41.1089, lng: 174.8634 },
+  { id: "GRD-0714", site: "Elsdon Reserve", type: "Shrub Bed", los: 3, area: 203, lat: -41.1456, lng: 174.8467 },
+  { id: "GRD-0801", site: "Mungavin Ave Berm", type: "Annual Bedding", los: 2, area: 48, lat: -41.1367, lng: 174.8512 },
+  { id: "GRD-0022", site: "Waitangirua Mall Entry", type: "Rose", los: 1, area: 32, lat: -41.1523, lng: 174.8389 },
 ];
 
-function MapMockup() {
-  const [hovered, setHovered] = useState<string | null>(null);
-  const pin = hovered ? MAP_PINS.find(p => p.id === hovered) : null;
-
+function PoriruaMap() {
   return (
-    <div className="relative w-full h-full overflow-hidden rounded-xl" style={{ background: "#e8f0e8" }}>
-      {/* Map background grid */}
-      <svg className="absolute inset-0 w-full h-full opacity-20" xmlns="http://www.w3.org/2000/svg">
-        <defs>
-          <pattern id="grid" width="30" height="30" patternUnits="userSpaceOnUse">
-            <path d="M 30 0 L 0 0 0 30" fill="none" stroke="#888" strokeWidth="0.5"/>
-          </pattern>
-        </defs>
-        <rect width="100%" height="100%" fill="url(#grid)" />
-      </svg>
-
-      {/* Simulated roads */}
-      <svg className="absolute inset-0 w-full h-full" xmlns="http://www.w3.org/2000/svg">
-        <path d="M 0 40% Q 40% 35% 100% 45%" fill="none" stroke="white" strokeWidth="6" opacity="0.7"/>
-        <path d="M 30% 0 Q 45% 50% 35% 100%" fill="none" stroke="white" strokeWidth="5" opacity="0.7"/>
-        <path d="M 0 65% Q 55% 60% 100% 70%" fill="none" stroke="white" strokeWidth="4" opacity="0.6"/>
-        <path d="M 60% 0 Q 65% 40% 70% 100%" fill="none" stroke="white" strokeWidth="4" opacity="0.6"/>
-        <rect x="10%" y="20%" width="18%" height="12%" rx="4" fill="#c8d8c8" opacity="0.5"/>
-        <rect x="50%" y="55%" width="22%" height="14%" rx="4" fill="#c8d8c8" opacity="0.5"/>
-        <rect x="35%" y="25%" width="15%" height="10%" rx="4" fill="#d0dcd0" opacity="0.4"/>
-        <path d="M 5% 80% Q 50% 75% 95% 82%" fill="none" stroke="#4a90a4" strokeWidth="8" opacity="0.3"/>
-      </svg>
-
-      {/* Map pins */}
-      {MAP_PINS.map(pin => (
-        <div
-          key={pin.id}
-          className="absolute cursor-pointer transition-transform hover:scale-125 z-10"
-          style={{ left: `${pin.x}%`, top: `${pin.y}%`, transform: "translate(-50%, -100%)" }}
-          onMouseEnter={() => setHovered(pin.id)}
-          onMouseLeave={() => setHovered(null)}
-        >
-          <div
-            className="w-7 h-7 rounded-full border-2 border-white shadow-lg flex items-center justify-center"
-            style={{ background: TYPE_COLORS[pin.type] }}
+    <div className="relative w-full h-full rounded-xl overflow-hidden">
+      <MapContainer
+        center={[-41.1280, 174.8520]}
+        zoom={13}
+        style={{ height: "100%", width: "100%" }}
+        scrollWheelZoom={false}
+        zoomControl={true}
+      >
+        <TileLayer
+          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+        />
+        {MAP_PINS.map(pin => (
+          <CircleMarker
+            key={pin.id}
+            center={[pin.lat, pin.lng]}
+            radius={12}
+            pathOptions={{
+              fillColor: TYPE_COLORS[pin.type],
+              fillOpacity: 0.9,
+              color: "#fff",
+              weight: 2,
+            }}
           >
-            <span className="text-white text-[9px] font-bold">{pin.los}</span>
-          </div>
-          <div className="w-0.5 h-2 mx-auto" style={{ background: TYPE_COLORS[pin.type] }} />
-        </div>
-      ))}
+            <Tooltip permanent={false} direction="top" offset={[0, -12]}>
+              <div style={{ minWidth: 160 }}>
+                <p style={{ fontWeight: 700, fontSize: 12, margin: "0 0 2px" }}>{pin.site}</p>
+                <p style={{ fontSize: 10, color: "#666", margin: "0 0 4px", fontFamily: "monospace" }}>{pin.id}</p>
+                <div style={{ display: "flex", gap: 4 }}>
+                  <span style={{ fontSize: 10, background: TYPE_COLORS[pin.type] + "22", color: TYPE_COLORS[pin.type], padding: "1px 6px", borderRadius: 99, fontWeight: 600 }}>{pin.type}</span>
+                  <span style={{ fontSize: 10, background: "#f0f0f0", color: "#555", padding: "1px 6px", borderRadius: 99 }}>LOS {pin.los}</span>
+                </div>
+                <p style={{ fontSize: 10, color: "#888", margin: "4px 0 0" }}>{pin.area} m²</p>
+              </div>
+            </Tooltip>
+          </CircleMarker>
+        ))}
+      </MapContainer>
 
-      {/* Hover tooltip */}
-      {hovered && pin && (
-        <div
-          className="absolute z-20 bg-white rounded-xl shadow-xl p-3 w-48 pointer-events-none"
-          style={{ left: `${MAP_PINS.find(p => p.id === hovered)!.x}%`, top: `${MAP_PINS.find(p => p.id === hovered)!.y - 12}%`, transform: "translate(-50%, -100%)" }}
-        >
-          <p className="font-semibold text-xs text-gray-900">{pin.site}</p>
-          <p className="text-[10px] text-gray-400 font-mono mb-2">{pin.id}</p>
-          <div className="flex gap-1.5">
-            <Badge className="text-[9px] border-0" style={{ background: TYPE_COLORS[pin.type] + "20", color: TYPE_COLORS[pin.type] }}>{pin.type}</Badge>
-            <Badge className="text-[9px] bg-gray-100 text-gray-600 border-0">LOS {pin.los}</Badge>
-          </div>
-        </div>
-      )}
-
-      {/* Map legend */}
-      <div className="absolute bottom-3 left-3 bg-white/90 backdrop-blur rounded-xl p-3 shadow">
-        <p className="text-[9px] font-semibold text-gray-600 mb-2 uppercase tracking-wide">Garden Type</p>
+      {/* Legend overlay */}
+      <div style={{
+        position: "absolute", bottom: 12, left: 12, zIndex: 1000,
+        background: "rgba(255,255,255,0.95)", borderRadius: 12, padding: "10px 12px",
+        boxShadow: "0 2px 8px rgba(0,0,0,0.12)"
+      }}>
+        <p style={{ fontSize: 9, fontWeight: 700, color: "#555", textTransform: "uppercase", letterSpacing: 1, marginBottom: 6 }}>Garden Type</p>
         {Object.entries(TYPE_COLORS).map(([type, color]) => (
-          <div key={type} className="flex items-center gap-1.5 mb-1">
-            <div className="w-3 h-3 rounded-full border border-white shadow-sm" style={{ background: color }} />
-            <span className="text-[9px] text-gray-600">{type}</span>
+          <div key={type} style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 3 }}>
+            <div style={{ width: 10, height: 10, borderRadius: "50%", background: color, border: "1.5px solid white", boxShadow: "0 1px 3px rgba(0,0,0,0.2)" }} />
+            <span style={{ fontSize: 10, color: "#555" }}>{type}</span>
           </div>
         ))}
       </div>
@@ -169,11 +155,11 @@ const TYPE_COUNTS = [
 ];
 
 const LOS_COUNTS = [
-  { grade: 1, count: 2, label: "Premium", color: "#8b5cf6" },
-  { grade: 2, count: 3, label: "High", color: BRAND },
-  { grade: 3, count: 1, label: "Standard", color: "#10b981" },
-  { grade: 4, count: 1, label: "Basic", color: "#f59e0b" },
-  { grade: 5, count: 1, label: "Minimum", color: "#ef4444" },
+  { grade: 1, count: 2, color: "#8b5cf6" },
+  { grade: 2, count: 3, color: BRAND },
+  { grade: 3, count: 1, color: "#10b981" },
+  { grade: 4, count: 1, color: "#f59e0b" },
+  { grade: 5, count: 1, color: "#ef4444" },
 ];
 
 const RECENT = [
@@ -215,16 +201,12 @@ export function Dashboard() {
 
           {/* Map + side panels */}
           <div className="grid grid-cols-3 gap-5">
-            {/* Map */}
             <div className="col-span-2">
-              <Card className="rounded-2xl border-0 shadow-sm h-72">
-                <CardContent className="p-3 h-full">
-                  <MapMockup />
-                </CardContent>
+              <Card className="rounded-2xl border-0 shadow-sm overflow-hidden" style={{ height: 300 }}>
+                <PoriruaMap />
               </Card>
             </div>
 
-            {/* Right side */}
             <div className="space-y-4">
               {/* By Type */}
               <Card className="rounded-2xl border-0 shadow-sm">
@@ -266,7 +248,6 @@ export function Dashboard() {
 
           {/* Bottom panels */}
           <div className="grid grid-cols-2 gap-5">
-            {/* Due this week */}
             <Card className="rounded-2xl border-0 shadow-sm">
               <CardContent className="p-4">
                 <p className="text-xs font-semibold text-gray-700 mb-3 flex items-center gap-2">
@@ -289,7 +270,6 @@ export function Dashboard() {
               </CardContent>
             </Card>
 
-            {/* Recent services */}
             <Card className="rounded-2xl border-0 shadow-sm">
               <CardContent className="p-4">
                 <p className="text-xs font-semibold text-gray-700 mb-3 flex items-center gap-2">
