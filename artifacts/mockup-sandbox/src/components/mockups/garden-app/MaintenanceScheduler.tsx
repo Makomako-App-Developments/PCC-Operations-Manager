@@ -37,9 +37,9 @@ function Sidebar({ active }: { active: string }) {
       </nav>
       <div className="px-4 py-4 border-t border-white/10">
         <div className="flex items-center gap-2">
-          <div className="w-8 h-8 rounded-full bg-[#00AECD] flex items-center justify-center text-white text-xs font-bold">SR</div>
+          <div className="w-8 h-8 rounded-full bg-[#00AECD] flex items-center justify-center text-white text-xs font-bold">DB</div>
           <div>
-            <p className="text-white text-xs font-medium">Sarah Rowe</p>
+            <p className="text-white text-xs font-medium">Daniela Biaggio</p>
             <p className="text-white/40 text-[10px]">Parks Manager</p>
           </div>
         </div>
