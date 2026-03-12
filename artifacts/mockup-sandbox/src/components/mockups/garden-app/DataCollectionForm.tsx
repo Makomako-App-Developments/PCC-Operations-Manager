@@ -19,7 +19,7 @@ function Sidebar({ active }: { active: string }) {
     { icon: ClipboardList, label: "Data Collection", id: "form" },
     { icon: List, label: "Asset List" },
     { icon: CalendarDays, label: "Maintenance" },
-    { icon: ClipboardCheck, label: "Internal Audits", id: "audits" },
+    { icon: ClipboardCheck, label: "Audits", id: "audits" },
     { icon: Sprout, label: "Infill Planting", id: "planting" },
   ];
   return (

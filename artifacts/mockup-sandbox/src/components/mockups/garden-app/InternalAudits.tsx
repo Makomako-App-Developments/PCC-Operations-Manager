@@ -13,7 +13,7 @@ function Sidebar({ active }: { active: string }) {
     { icon: ClipboardList, label: "Data Collection" },
     { icon: List, label: "Asset List" },
     { icon: CalendarDays, label: "Maintenance" },
-    { icon: ClipboardCheck, label: "Internal Audits", id: "audits" },
+    { icon: ClipboardCheck, label: "Audits", id: "audits" },
     { icon: Sprout, label: "Infill Planting", id: "planting" },
   ];
   return (
@@ -55,7 +55,7 @@ export function InternalAudits() {
       <main className="flex-1 flex flex-col">
         <header className="bg-white border-b px-8 py-4 flex items-center justify-between">
           <div>
-            <h1 className="text-lg font-semibold text-gray-900">Internal Audits</h1>
+            <h1 className="text-lg font-semibold text-gray-900">Audits</h1>
             <p className="text-xs text-gray-400">Garden asset quality and compliance auditing</p>
           </div>
           <Badge className="text-white border-0 text-xs px-3" style={{ background: BRAND }}>Coming Soon</Badge>
@@ -69,7 +69,7 @@ export function InternalAudits() {
             >
               <ClipboardCheck className="w-10 h-10" style={{ color: BRAND }} />
             </div>
-            <h2 className="text-2xl font-bold text-gray-900 mb-3">Internal Audits</h2>
+            <h2 className="text-2xl font-bold text-gray-900 mb-3">Audits</h2>
             <p className="text-gray-500 text-sm leading-relaxed mb-8">
               This module will allow you to schedule and record internal quality audits across your garden asset base — tracking compliance against Level of Service standards and flagging assets that require remedial action.
             </p>
