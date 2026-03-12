@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import {
   MapPin, Camera, Navigation, Leaf, CheckCircle2, ClipboardList,
-  LayoutDashboard, CalendarDays, List, Menu, Upload, X
+  LayoutDashboard, CalendarDays, List, Menu, Upload, X, ClipboardCheck, Sprout
 } from "lucide-react";
 
 const BRAND = "#00AECD";
@@ -19,6 +19,8 @@ function Sidebar({ active }: { active: string }) {
     { icon: ClipboardList, label: "Data Collection", id: "form" },
     { icon: List, label: "Asset List" },
     { icon: CalendarDays, label: "Maintenance" },
+    { icon: ClipboardCheck, label: "Internal Audits", id: "audits" },
+    { icon: Sprout, label: "Infill Planting", id: "planting" },
   ];
   return (
     <aside className="w-56 flex-shrink-0 bg-[#0f2a36] flex flex-col min-h-screen">
