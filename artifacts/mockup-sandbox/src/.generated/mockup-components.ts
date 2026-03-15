@@ -6,5 +6,6 @@ export const modules: ModuleMap = {
   "./components/mockups/garden-app/DataCollectionForm.tsx": () => import("../components/mockups/garden-app/DataCollectionForm.tsx"),
   "./components/mockups/garden-app/InfillPlanting.tsx": () => import("../components/mockups/garden-app/InfillPlanting.tsx"),
   "./components/mockups/garden-app/InternalAudits.tsx": () => import("../components/mockups/garden-app/InternalAudits.tsx"),
-  "./components/mockups/garden-app/MaintenanceScheduler.tsx": () => import("../components/mockups/garden-app/MaintenanceScheduler.tsx")
+  "./components/mockups/garden-app/MaintenanceScheduler.tsx": () => import("../components/mockups/garden-app/MaintenanceScheduler.tsx"),
+  "./components/mockups/garden-app/Specification.tsx": () => import("../components/mockups/garden-app/Specification.tsx")
 };
