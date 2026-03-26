@@ -14,7 +14,6 @@ const BRAND = "#00AECD";
 function Sidebar({ active }: { active: string }) {
   const nav = [
     { icon: LayoutDashboard, label: "Dashboard" },
-    { icon: ClipboardList, label: "Data Collection" },
     { icon: List, label: "Asset Register", id: "list" },
     { icon: CalendarDays, label: "Schedule" },
     { icon: ClipboardCheck, label: "Audits", id: "audits" },
