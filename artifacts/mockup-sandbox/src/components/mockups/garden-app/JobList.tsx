@@ -80,7 +80,7 @@ function JobCard({ job, isNext, onSkip }: JobCardProps) {
   return (
     <div
       className={`mx-4 mb-3 rounded-2xl border bg-white shadow-sm overflow-hidden transition-all ${
-        isActive ? "border-[#00AECD40]" : isSkipped ? "border-orange-100 opacity-70" : "border-gray-100"
+        isActive ? "border-[#00AECD40]" : isSkipped ? "border-orange-100 opacity-70" : isComplete ? "border-gray-100 opacity-60" : "border-gray-100"
       } ${isNext ? "ring-2 ring-offset-1" : ""}`}
       style={isNext ? { ringColor: BRAND } : {}}
     >
@@ -118,14 +118,17 @@ function JobCard({ job, isNext, onSkip }: JobCardProps) {
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-1.5 mb-1 flex-wrap">
                 <StatusBadge status={job.status} />
-                <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full text-white" style={{ background: color }}>
+                <span
+                  className="text-[10px] font-medium px-1.5 py-0.5 rounded-full"
+                  style={isComplete ? { background: "#e5e7eb", color: "#9ca3af" } : { background: color, color: "#fff" }}
+                >
                   {job.type}
                 </span>
                 {job.los && (
                   <span className="text-[10px] text-gray-400 font-medium">LOS {job.los}</span>
                 )}
               </div>
-              <p className={`text-[13px] font-semibold truncate ${isSkipped ? "line-through text-gray-400" : "text-gray-900"}`}>
+              <p className={`text-[13px] font-semibold truncate ${isSkipped ? "line-through text-gray-400" : isComplete ? "text-gray-400" : "text-gray-900"}`}>
                 {job.site}
               </p>
               <div className="flex items-center gap-3 mt-1">
