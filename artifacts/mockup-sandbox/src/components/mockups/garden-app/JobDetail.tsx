@@ -1,6 +1,6 @@
 import {
   MapPin, Clock, ChevronLeft, WifiOff, Star,
-  Navigation, Layers, Camera, CheckSquare, Info, Play
+  Navigation, Layers, Camera, CheckSquare, Info, Play, ImagePlus
 } from "lucide-react";
 
 const BRAND = "#00AECD";
@@ -124,11 +124,42 @@ export function JobDetail() {
           ))}
         </div>
 
+        {/* Site Photos — required, not task-linked */}
+        <div className="mx-4 mt-3 bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+          <div className="px-4 py-3 border-b flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <ImagePlus className="w-4 h-4" style={{ color: BRAND }} />
+              <span className="text-sm font-semibold" style={{ color: NAVY }}>Site Photos</span>
+            </div>
+            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full text-white" style={{ background: BRAND }}>
+              2 required
+            </span>
+          </div>
+          <div className="px-4 py-3">
+            <p className="text-[11px] text-gray-500 mb-3 leading-relaxed">
+              Two photos of overall work completed are required at sign-off. These capture general site evidence and are not linked to any individual task.
+            </p>
+            <div className="flex gap-3">
+              {[{ label: "Photo 1", hint: "e.g. Overview of site" }, { label: "Photo 2", hint: "e.g. Key work area" }].map(({ label, hint }) => (
+                <div key={label} className="flex-1">
+                  <div className="aspect-square rounded-2xl border-2 border-dashed border-gray-200 bg-gray-50 flex flex-col items-center justify-center gap-1.5">
+                    <div className="w-9 h-9 rounded-full bg-gray-100 flex items-center justify-center">
+                      <Camera className="w-5 h-5 text-gray-300" />
+                    </div>
+                    <span className="text-[10px] font-semibold text-gray-400">{label}</span>
+                  </div>
+                  <p className="text-[9px] text-gray-400 text-center mt-1">{hint}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
         {/* Info note */}
         <div className="mx-4 mt-3 mb-3 flex items-start gap-2 bg-blue-50 rounded-xl px-3 py-2.5">
           <Info className="w-3.5 h-3.5 text-blue-400 flex-shrink-0 mt-0.5" />
           <p className="text-[11px] text-blue-600 leading-relaxed">
-            Each task requires a photo before it can be marked complete. Incomplete tasks require a written note at sign-off.
+            Each task requires a photo before it can be marked complete. 2 site-level photos are also required at sign-off. Incomplete tasks need a written note.
           </p>
         </div>
       </div>
