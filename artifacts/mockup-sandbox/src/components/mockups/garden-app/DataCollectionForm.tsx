@@ -18,7 +18,7 @@ function Sidebar({ active }: { active: string }) {
     { icon: LayoutDashboard, label: "Dashboard" },
     { icon: ClipboardList, label: "Data Collection", id: "form" },
     { icon: List, label: "Asset Register" },
-    { icon: CalendarDays, label: "Maintenance" },
+    { icon: CalendarDays, label: "Schedule" },
     { icon: ClipboardCheck, label: "Audits", id: "audits" },
     { icon: Sprout, label: "Infill Planting", id: "planting" },
     { icon: FileSpreadsheet, label: "Specification", id: "spec" },
