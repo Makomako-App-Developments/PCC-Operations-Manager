@@ -6,7 +6,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Card, CardContent } from "@/components/ui/card";
 import {
   Search, LayoutGrid, List, Filter, Leaf, ClipboardList, LayoutDashboard,
-  CalendarDays, ChevronUp, ChevronDown, Eye, Clock, MapPin, Pencil, ClipboardCheck, Sprout, FileSpreadsheet
+  CalendarDays, ChevronUp, ChevronDown, Eye, Clock, MapPin, Pencil, ClipboardCheck, Sprout, FileSpreadsheet, BarChart2
 } from "lucide-react";
 
 const BRAND = "#00AECD";
@@ -19,6 +19,7 @@ function Sidebar({ active }: { active: string }) {
     { icon: ClipboardCheck, label: "Audits", id: "audits" },
     { icon: Sprout, label: "Infill Planting", id: "planting" },
     { icon: FileSpreadsheet, label: "Specification", id: "spec" },
+    { icon: BarChart2, label: "Reports", id: "reports" },
   ];
   return (
     <aside className="w-56 flex-shrink-0 bg-[#0f2a36] flex flex-col min-h-screen">
