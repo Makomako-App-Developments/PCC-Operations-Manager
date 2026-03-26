@@ -62,14 +62,14 @@ const TYPE_COLORS: Record<string, string> = {
 
 // Real Porirua City coordinates
 const MAP_PINS = [
-  { id: "GRD-0847", site: "Aotea Lagoon Reserve", type: "Shrub Bed", los: 2, area: 142, lat: -41.0987, lng: 174.8756 },
-  { id: "GRD-0212", site: "Cobham Court", type: "Rose", los: 1, area: 68, lat: -41.1281, lng: 174.8523 },
-  { id: "GRD-0391", site: "Titahi Bay Esplanade", type: "Annual Bedding", los: 2, area: 95, lat: -41.0956, lng: 174.8293 },
-  { id: "GRD-0558", site: "Kenepuru Landing", type: "Revegetation", los: 4, area: 520, lat: -41.1378, lng: 174.8697 },
-  { id: "GRD-0629", site: "Paremata Station", type: "Bush", los: 5, area: 1240, lat: -41.1089, lng: 174.8634 },
-  { id: "GRD-0714", site: "Elsdon Reserve", type: "Shrub Bed", los: 3, area: 203, lat: -41.1456, lng: 174.8467 },
-  { id: "GRD-0801", site: "Mungavin Ave Berm", type: "Annual Bedding", los: 2, area: 48, lat: -41.1367, lng: 174.8512 },
-  { id: "GRD-0022", site: "Waitangirua Mall Entry", type: "Rose", los: 1, area: 32, lat: -41.1523, lng: 174.8389 },
+  { id: "GRD-0847", site: "Aotea Lagoon Reserve", type: "Shrub Bed", standard: "High", area: 142, lat: -41.0987, lng: 174.8756 },
+  { id: "GRD-0212", site: "Cobham Court", type: "Rose", standard: "High", area: 68, lat: -41.1281, lng: 174.8523 },
+  { id: "GRD-0391", site: "Titahi Bay Esplanade", type: "Annual Bedding", standard: "High", area: 95, lat: -41.0956, lng: 174.8293 },
+  { id: "GRD-0558", site: "Kenepuru Landing", type: "Revegetation", standard: "Medium", area: 520, lat: -41.1378, lng: 174.8697 },
+  { id: "GRD-0629", site: "Paremata Station", type: "Bush", standard: "Low", area: 1240, lat: -41.1089, lng: 174.8634 },
+  { id: "GRD-0714", site: "Elsdon Reserve", type: "Shrub Bed", standard: "High", area: 203, lat: -41.1456, lng: 174.8467 },
+  { id: "GRD-0801", site: "Mungavin Ave Berm", type: "Annual Bedding", standard: "High", area: 48, lat: -41.1367, lng: 174.8512 },
+  { id: "GRD-0022", site: "Waitangirua Mall Entry", type: "Rose", standard: "High", area: 32, lat: -41.1523, lng: 174.8389 },
 ];
 
 function PoriruaMap() {
@@ -104,7 +104,7 @@ function PoriruaMap() {
                 <p style={{ fontSize: 10, color: "#666", margin: "0 0 4px", fontFamily: "monospace" }}>{pin.id}</p>
                 <div style={{ display: "flex", gap: 4 }}>
                   <span style={{ fontSize: 10, background: TYPE_COLORS[pin.type] + "22", color: TYPE_COLORS[pin.type], padding: "1px 6px", borderRadius: 99, fontWeight: 600 }}>{pin.type}</span>
-                  <span style={{ fontSize: 10, background: "#f0f0f0", color: "#555", padding: "1px 6px", borderRadius: 99 }}>LOS {pin.los}</span>
+                  <span style={{ fontSize: 10, background: "#dcfce7", color: "#16a34a", padding: "1px 6px", borderRadius: 99, fontWeight: 600 }}>{pin.standard}</span>
                 </div>
                 <p style={{ fontSize: 10, color: "#888", margin: "4px 0 0" }}>{pin.area} m²</p>
               </div>
@@ -157,12 +157,10 @@ const TYPE_COUNTS = [
   { type: "Revegetation", count: 1, pct: 13 },
 ];
 
-const LOS_COUNTS = [
-  { grade: 1, count: 2, color: "#8b5cf6" },
-  { grade: 2, count: 3, color: BRAND },
-  { grade: 3, count: 1, color: "#10b981" },
-  { grade: 4, count: 1, color: "#f59e0b" },
-  { grade: 5, count: 1, color: "#ef4444" },
+const STANDARD_COUNTS = [
+  { grade: "High", count: 6, color: "#16a34a" },
+  { grade: "Medium", count: 1, color: "#d97706" },
+  { grade: "Low", count: 1, color: "#6b7280" },
 ];
 
 const RECENT = [
@@ -198,7 +196,7 @@ export function Dashboard() {
           <div className="grid grid-cols-4 gap-4">
             <MetricCard icon={Leaf} label="Total Garden Assets" value="8" sub="Across 7 reserves" color={BRAND} />
             <MetricCard icon={AlertCircle} label="Due This Week" value="3" sub="2 urgent today" color="#f59e0b" />
-            <MetricCard icon={Users} label="FTE Required" value="2.4" sub="Based on current LOS" color="#8b5cf6" />
+            <MetricCard icon={Users} label="FTE Required" value="2.4" sub="Based on current Standards" color="#8b5cf6" />
             <MetricCard icon={TrendingUp} label="Avg Cost / m²" value="$4.80" sub="Per service visit" color="#10b981" />
           </div>
 
@@ -231,16 +229,16 @@ export function Dashboard() {
                 </CardContent>
               </Card>
 
-              {/* By LOS */}
+              {/* By Standard */}
               <Card className="rounded-2xl border-0 shadow-sm">
                 <CardContent className="p-4">
-                  <p className="text-xs font-semibold text-gray-700 mb-3">Gardens by LOS</p>
-                  <div className="flex items-end gap-1 h-14">
-                    {LOS_COUNTS.map(({ grade, count, color }) => (
+                  <p className="text-xs font-semibold text-gray-700 mb-3">Gardens by Standard</p>
+                  <div className="flex items-end gap-2 h-14">
+                    {STANDARD_COUNTS.map(({ grade, count, color }) => (
                       <div key={grade} className="flex-1 flex flex-col items-center gap-1">
                         <span className="text-[9px] text-gray-500">{count}</span>
                         <div className="w-full rounded-t" style={{ height: `${count * 14}px`, background: color }} />
-                        <span className="text-[9px] text-gray-500">G{grade}</span>
+                        <span className="text-[9px] text-gray-500">{grade}</span>
                       </div>
                     ))}
                   </div>

@@ -61,12 +61,10 @@ const TYPE_COLORS: Record<string, string> = {
   "Bush": "bg-green-100 text-green-700",
 };
 
-const LOS_COLORS: Record<number, string> = {
-  1: "bg-purple-100 text-purple-700",
-  2: "bg-blue-100 text-blue-700",
-  3: "bg-teal-100 text-teal-700",
-  4: "bg-orange-100 text-orange-700",
-  5: "bg-red-100 text-red-700",
+const STANDARD_COLORS: Record<string, string> = {
+  High: "bg-green-100 text-green-700",
+  Medium: "bg-amber-100 text-amber-700",
+  Low: "bg-gray-100 text-gray-600",
 };
 
 const CONDITION_COLORS: Record<number, string> = {
@@ -78,14 +76,14 @@ const CONDITION_COLORS: Record<number, string> = {
 };
 
 const SAMPLE_DATA = [
-  { id: "GRD-2024-0847", site: "Aotea Lagoon Reserve", type: "Shrub Bed", los: 2, area: 142, serviceTime: 90, freq: "Fortnightly", nextDue: "18 Mar 2026", condition: 2, team: "Team A" },
-  { id: "GRD-2024-0212", site: "Cobham Court", type: "Rose", los: 1, area: 68, serviceTime: 120, freq: "Weekly", nextDue: "14 Mar 2026", condition: 1, team: "Team A" },
-  { id: "GRD-2024-0391", site: "Titahi Bay Esplanade", type: "Annual Bedding", los: 2, area: 95, serviceTime: 75, freq: "Fortnightly", nextDue: "20 Mar 2026", condition: 3, team: "Team B" },
-  { id: "GRD-2024-0558", site: "Kenepuru Landing", type: "Revegetation", los: 4, area: 520, serviceTime: 45, freq: "Monthly", nextDue: "01 Apr 2026", condition: 3, team: "Team C" },
-  { id: "GRD-2024-0629", site: "Paremata Station", type: "Bush", los: 5, area: 1240, serviceTime: 30, freq: "6-Monthly", nextDue: "Sep 2026", condition: 4, team: "Team C" },
-  { id: "GRD-2024-0714", site: "Elsdon Reserve", type: "Shrub Bed", los: 3, area: 203, serviceTime: 60, freq: "Monthly", nextDue: "5 Apr 2026", condition: 2, team: "Team B" },
-  { id: "GRD-2024-0801", site: "Mungavin Ave Berm", type: "Annual Bedding", los: 2, area: 48, serviceTime: 45, freq: "Fortnightly", nextDue: "18 Mar 2026", condition: 2, team: "Team A" },
-  { id: "GRD-2024-0022", site: "Waitangirua Mall Entry", type: "Rose", los: 1, area: 32, serviceTime: 120, freq: "Weekly", nextDue: "13 Mar 2026", condition: 1, team: "Team A" },
+  { id: "GRD-2024-0847", site: "Aotea Lagoon Reserve", type: "Shrub Bed", standard: "High", area: 142, serviceTime: 90, freq: "Fortnightly", nextDue: "18 Mar 2026", condition: 2, team: "Team A" },
+  { id: "GRD-2024-0212", site: "Cobham Court", type: "Rose", standard: "High", area: 68, serviceTime: 120, freq: "Weekly", nextDue: "14 Mar 2026", condition: 1, team: "Team A" },
+  { id: "GRD-2024-0391", site: "Titahi Bay Esplanade", type: "Annual Bedding", standard: "High", area: 95, serviceTime: 75, freq: "Fortnightly", nextDue: "20 Mar 2026", condition: 3, team: "Team B" },
+  { id: "GRD-2024-0558", site: "Kenepuru Landing", type: "Revegetation", standard: "Medium", area: 520, serviceTime: 45, freq: "Monthly", nextDue: "01 Apr 2026", condition: 3, team: "Team C" },
+  { id: "GRD-2024-0629", site: "Paremata Station", type: "Bush", standard: "Low", area: 1240, serviceTime: 30, freq: "6-Monthly", nextDue: "Sep 2026", condition: 4, team: "Team C" },
+  { id: "GRD-2024-0714", site: "Elsdon Reserve", type: "Shrub Bed", standard: "High", area: 203, serviceTime: 60, freq: "Monthly", nextDue: "5 Apr 2026", condition: 2, team: "Team B" },
+  { id: "GRD-2024-0801", site: "Mungavin Ave Berm", type: "Annual Bedding", standard: "High", area: 48, serviceTime: 45, freq: "Fortnightly", nextDue: "18 Mar 2026", condition: 2, team: "Team A" },
+  { id: "GRD-2024-0022", site: "Waitangirua Mall Entry", type: "Rose", standard: "High", area: 32, serviceTime: 120, freq: "Weekly", nextDue: "13 Mar 2026", condition: 1, team: "Team A" },
 ];
 
 function TileCard({ row }: { row: typeof SAMPLE_DATA[0] }) {
@@ -101,7 +99,7 @@ function TileCard({ row }: { row: typeof SAMPLE_DATA[0] }) {
         </div>
         <div className="flex flex-wrap gap-1.5 mb-3">
           <Badge className={`text-[10px] ${TYPE_COLORS[row.type]} border-0`}>{row.type}</Badge>
-          <Badge className={`text-[10px] ${LOS_COLORS[row.los]} border-0`}>LOS {row.los}</Badge>
+          <Badge className={`text-[10px] ${STANDARD_COLORS[row.standard]} border-0`}>{row.standard}</Badge>
         </div>
         <div className="space-y-1.5">
           <div className="flex justify-between text-xs">
@@ -160,13 +158,13 @@ export function AssetList() {
                 ))}
               </SelectContent>
             </Select>
-            <Select defaultValue="all-los">
+            <Select defaultValue="all-standards">
               <SelectTrigger className="w-36 rounded-xl text-sm">
-                <SelectValue placeholder="LOS Grade" />
+                <SelectValue placeholder="Standard" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all-los">All LOS</SelectItem>
-                {[1,2,3,4,5].map(g => <SelectItem key={g} value={String(g)}>Grade {g}</SelectItem>)}
+                <SelectItem value="all-standards">All Standards</SelectItem>
+                {["High", "Medium", "Low"].map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
               </SelectContent>
             </Select>
             <Select defaultValue="all-teams">
@@ -204,7 +202,7 @@ export function AssetList() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b bg-gray-50">
-                    {["ID", "Site Name", "Type", "LOS", "Area", "Service Time", "Frequency", "Next Due", "Condition", "Team", ""].map(h => (
+                    {["ID", "Site Name", "Type", "Standard", "Area", "Service Time", "Frequency", "Next Due", "Condition", "Team", ""].map(h => (
                       <th key={h} className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">{h}</th>
                     ))}
                   </tr>
@@ -219,7 +217,7 @@ export function AssetList() {
                       <td className="px-4 py-3 font-mono text-[10px] text-gray-400">{row.id}</td>
                       <td className="px-4 py-3 font-medium text-gray-900">{row.site}</td>
                       <td className="px-4 py-3"><Badge className={`text-[10px] ${TYPE_COLORS[row.type]} border-0`}>{row.type}</Badge></td>
-                      <td className="px-4 py-3"><Badge className={`text-[10px] ${LOS_COLORS[row.los]} border-0`}>Grade {row.los}</Badge></td>
+                      <td className="px-4 py-3"><Badge className={`text-[10px] ${STANDARD_COLORS[row.standard]} border-0`}>{row.standard}</Badge></td>
                       <td className="px-4 py-3 text-gray-600">{row.area} m²</td>
                       <td className="px-4 py-3 text-gray-600">{row.serviceTime} min</td>
                       <td className="px-4 py-3 text-gray-600">{row.freq}</td>

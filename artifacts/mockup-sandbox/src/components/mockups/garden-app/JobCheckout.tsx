@@ -167,7 +167,7 @@ export function JobCheckout() {
         >
           <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full text-white" style={{ background: "#ec4899" }}>Rose</span>
           <span className="flex items-center gap-1 text-[11px] font-medium text-gray-500">
-            <Star className="w-3 h-3 text-gray-400" />LOS 2
+            <Star className="w-3 h-3 text-gray-400" />High
           </span>
           <span className="flex items-center gap-1 text-[11px] text-gray-400 min-w-0 flex-1 truncate">
             <MapPin className="w-3 h-3 flex-shrink-0" />Tui Park, Elsdon
@@ -187,7 +187,7 @@ export function JobCheckout() {
             <div className="grid grid-cols-3 gap-2">
               {[
                 { icon: Layers, label: "Type",      value: "Rose Garden" },
-                { icon: Star,   label: "LOS Grade", value: "Level 2" },
+                { icon: Star,   label: "Standard", value: "High" },
                 { icon: Clock,  label: "Allocated",  value: "45 min" },
               ].map(({ icon: Icon, label, value }) => (
                 <div key={label} className="bg-white rounded-xl p-2 shadow-sm border border-gray-100">

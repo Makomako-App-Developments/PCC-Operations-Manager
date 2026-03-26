@@ -61,7 +61,7 @@ interface ScheduleItem {
   id: string;
   site: string;
   type: string;
-  los: number;
+  standard: string;
   runNo: number;
   serviceTime: number;
   freq: string;
@@ -71,14 +71,14 @@ interface ScheduleItem {
 }
 
 const SCHEDULE: ScheduleItem[] = [
-  { id: "GRD-0022", site: "Waitangirua Mall Entry", type: "Rose", los: 1, runNo: 1, serviceTime: 120, freq: "Weekly", team: "Team A", dates: ["13 Mar", "20 Mar", "27 Mar", "3 Apr", "10 Apr", "17 Apr"], completed: [0] },
-  { id: "GRD-0212", site: "Cobham Court", type: "Rose", los: 1, runNo: 2, serviceTime: 120, freq: "Weekly", team: "Team A", dates: ["13 Mar", "20 Mar", "27 Mar", "3 Apr", "10 Apr", "17 Apr"], completed: [0] },
-  { id: "GRD-0801", site: "Mungavin Ave Berm", type: "Annual Bedding", los: 2, runNo: 3, serviceTime: 45, freq: "Fortnightly", team: "Team A", dates: ["18 Mar", "1 Apr", "15 Apr", "29 Apr"], completed: [] },
-  { id: "GRD-0847", site: "Aotea Lagoon Reserve", type: "Shrub Bed", los: 2, runNo: 4, serviceTime: 90, freq: "Fortnightly", team: "Team B", dates: ["18 Mar", "1 Apr", "15 Apr", "29 Apr"], completed: [] },
-  { id: "GRD-0391", site: "Titahi Bay Esplanade", type: "Annual Bedding", los: 2, runNo: 5, serviceTime: 75, freq: "Fortnightly", team: "Team B", dates: ["20 Mar", "3 Apr", "17 Apr", "1 May"], completed: [] },
-  { id: "GRD-0714", site: "Elsdon Reserve", type: "Shrub Bed", los: 3, runNo: 6, serviceTime: 60, freq: "Monthly", team: "Team B", dates: ["5 Apr", "5 May", "5 Jun"], completed: [] },
-  { id: "GRD-0558", site: "Kenepuru Landing", type: "Revegetation", los: 4, runNo: 7, serviceTime: 45, freq: "Monthly", team: "Team C", dates: ["1 Apr", "1 May", "1 Jun"], completed: [] },
-  { id: "GRD-0629", site: "Paremata Station", type: "Bush", los: 5, runNo: 8, serviceTime: 30, freq: "6-Monthly", team: "Team C", dates: ["Sep 2026"], completed: [] },
+  { id: "GRD-0022", site: "Waitangirua Mall Entry", type: "Rose", standard: "High", runNo: 1, serviceTime: 120, freq: "Weekly", team: "Team A", dates: ["13 Mar", "20 Mar", "27 Mar", "3 Apr", "10 Apr", "17 Apr"], completed: [0] },
+  { id: "GRD-0212", site: "Cobham Court", type: "Rose", standard: "High", runNo: 2, serviceTime: 120, freq: "Weekly", team: "Team A", dates: ["13 Mar", "20 Mar", "27 Mar", "3 Apr", "10 Apr", "17 Apr"], completed: [0] },
+  { id: "GRD-0801", site: "Mungavin Ave Berm", type: "Annual Bedding", standard: "High", runNo: 3, serviceTime: 45, freq: "Fortnightly", team: "Team A", dates: ["18 Mar", "1 Apr", "15 Apr", "29 Apr"], completed: [] },
+  { id: "GRD-0847", site: "Aotea Lagoon Reserve", type: "Shrub Bed", standard: "High", runNo: 4, serviceTime: 90, freq: "Fortnightly", team: "Team B", dates: ["18 Mar", "1 Apr", "15 Apr", "29 Apr"], completed: [] },
+  { id: "GRD-0391", site: "Titahi Bay Esplanade", type: "Annual Bedding", standard: "High", runNo: 5, serviceTime: 75, freq: "Fortnightly", team: "Team B", dates: ["20 Mar", "3 Apr", "17 Apr", "1 May"], completed: [] },
+  { id: "GRD-0714", site: "Elsdon Reserve", type: "Shrub Bed", standard: "High", runNo: 6, serviceTime: 60, freq: "Monthly", team: "Team B", dates: ["5 Apr", "5 May", "5 Jun"], completed: [] },
+  { id: "GRD-0558", site: "Kenepuru Landing", type: "Revegetation", standard: "Medium", runNo: 7, serviceTime: 45, freq: "Monthly", team: "Team C", dates: ["1 Apr", "1 May", "1 Jun"], completed: [] },
+  { id: "GRD-0629", site: "Paremata Station", type: "Bush", standard: "Low", runNo: 8, serviceTime: 30, freq: "6-Monthly", team: "Team C", dates: ["Sep 2026"], completed: [] },
 ];
 
 const MONTHS = ["Mar", "Apr", "May", "Jun", "Jul", "Aug"];
@@ -186,7 +186,7 @@ export function MaintenanceScheduler() {
                     <th className="text-left px-4 py-3 text-xs text-gray-500 uppercase tracking-wide w-8">Run</th>
                     <th className="text-left px-4 py-3 text-xs text-gray-500 uppercase tracking-wide">Site</th>
                     <th className="text-left px-4 py-3 text-xs text-gray-500 uppercase tracking-wide">Type</th>
-                    <th className="text-left px-4 py-3 text-xs text-gray-500 uppercase tracking-wide">LOS</th>
+                    <th className="text-left px-4 py-3 text-xs text-gray-500 uppercase tracking-wide">Standard</th>
                     <th className="text-left px-4 py-3 text-xs text-gray-500 uppercase tracking-wide">Freq</th>
                     <th className="text-left px-4 py-3 text-xs text-gray-500 uppercase tracking-wide">Time</th>
                     <th className="text-left px-4 py-3 text-xs text-gray-500 uppercase tracking-wide">Team</th>
@@ -208,7 +208,7 @@ export function MaintenanceScheduler() {
                         <p className="text-[10px] text-gray-400 font-mono">{row.id}</p>
                       </td>
                       <td className="px-4 py-3"><Badge className={`text-[9px] border-0 ${TYPE_COLORS[row.type]}`}>{row.type}</Badge></td>
-                      <td className="px-4 py-3 text-xs text-gray-600 font-semibold">LOS {row.los}</td>
+                      <td className="px-4 py-3"><span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${row.standard === "High" ? "bg-green-100 text-green-700" : row.standard === "Medium" ? "bg-amber-100 text-amber-700" : "bg-gray-100 text-gray-600"}`}>{row.standard}</span></td>
                       <td className="px-4 py-3 text-xs text-gray-600">{row.freq}</td>
                       <td className="px-4 py-3 text-xs text-gray-600">{row.serviceTime}m</td>
                       <td className="px-4 py-3">

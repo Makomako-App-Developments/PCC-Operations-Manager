@@ -261,7 +261,7 @@ export function Reports() {
                 <div className="px-5 py-4 border-b flex items-center justify-between">
                   <div>
                     <h3 className="text-sm font-bold" style={{ color: NAVY }}>Audit Fails</h3>
-                    <p className="text-[11px] text-gray-400">Sites that did not meet LOS standard</p>
+                    <p className="text-[11px] text-gray-400">Sites that did not meet their Standard</p>
                   </div>
                   <button className="flex items-center gap-1 text-[11px] font-medium text-gray-400 hover:text-gray-600">
                     All fails <ChevronDown className="w-3 h-3" />

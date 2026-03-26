@@ -76,7 +76,7 @@ function PhotoUpload() {
 }
 
 export function DataCollectionForm() {
-  const [los, setLos] = useState("2");
+  const [standard, setStandard] = useState("High");
   const [type, setType] = useState("shrub-bed");
   const [condition, setCondition] = useState("2");
   const autoId = "GRD-2024-0847";
@@ -175,14 +175,14 @@ export function DataCollectionForm() {
                     </Select>
                   </div>
                   <div>
-                    <Label className="text-xs text-gray-500 mb-1 block">Level of Service *</Label>
-                    <Select value={los} onValueChange={setLos}>
+                    <Label className="text-xs text-gray-500 mb-1 block">Standard *</Label>
+                    <Select value={standard} onValueChange={setStandard}>
                       <SelectTrigger className="rounded-lg text-sm">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        {[1,2,3,4,5].map(g => (
-                          <SelectItem key={g} value={String(g)}>Grade {g}</SelectItem>
+                        {["High", "Medium", "Low"].map(s => (
+                          <SelectItem key={s} value={s}>{s}</SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
@@ -246,21 +246,20 @@ export function DataCollectionForm() {
               </CardContent>
             </Card>
 
-            {/* LOS Summary */}
+            {/* Standard Summary */}
             <Card className="shadow-sm border-0 rounded-2xl overflow-hidden">
-              <div className="px-5 py-3 text-white text-xs font-semibold" style={{ background: BRAND }}>
-                LOS Grade {los} Summary
+              <div className="px-5 py-3 text-white text-xs font-semibold flex items-center justify-between" style={{ background: BRAND }}>
+                <span>{standard} Standard</span>
+                <span className="text-white/70 font-normal cursor-pointer hover:text-white">View Spec →</span>
               </div>
               <CardContent className="p-4">
-                {los === "1" && <p className="text-xs text-gray-600">Showcase standard. Daily inspection, weekly service. Premium plant species maintained at peak condition.</p>}
-                {los === "2" && <p className="text-xs text-gray-600">High presentation. Fortnightly service cycle. Proactive pest and weed management. Seasonal colour displays.</p>}
-                {los === "3" && <p className="text-xs text-gray-600">Standard civic presentation. Monthly service. Reactive maintenance with scheduled seasonal work.</p>}
-                {los === "4" && <p className="text-xs text-gray-600">Basic maintenance standard. 6-weekly service. Weed and safety management priority.</p>}
-                {los === "5" && <p className="text-xs text-gray-600">Minimum intervention. Quarterly visits. Safety mowing and litter control only.</p>}
+                {standard === "High" && <p className="text-xs text-gray-600">Showcase presentation. Annuals, Roses, and Ornamental gardens. Premium species maintained at peak condition with proactive pest and weed management.</p>}
+                {standard === "Medium" && <p className="text-xs text-gray-600">Good civic presentation. Amenity, Rain Garden, Reveg, Tree Planters, and Hedges. Regular maintenance with seasonal colour and structured weed management.</p>}
+                {standard === "Low" && <p className="text-xs text-gray-600">Ecological maintenance. Bush and naturalistic areas. Low intervention — safety, litter control, and plant health monitoring priority.</p>}
                 <div className="mt-3 space-y-1.5">
                   {[
-                    ["Service Time", los === "1" ? "120 min" : los === "2" ? "90 min" : los === "3" ? "60 min" : "45 min"],
-                    ["Frequency", los === "1" ? "Weekly" : los === "2" ? "Fortnightly" : los === "3" ? "Monthly" : "6-Weekly"],
+                    ["Weed Cover Max", standard === "High" ? "5%" : standard === "Medium" ? "10%" : "15%"],
+                    ["Mulch Depth", standard === "High" ? "75–100 mm" : standard === "Medium" ? "75 mm" : "As required"],
                   ].map(([k, v]) => (
                     <div key={k} className="flex justify-between text-xs">
                       <span className="text-gray-500">{k}</span>

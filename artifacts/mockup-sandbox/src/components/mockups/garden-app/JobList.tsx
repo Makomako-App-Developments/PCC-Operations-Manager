@@ -15,7 +15,7 @@ interface Job {
   runNo: number;
   site: string;
   type: string;
-  los: number | null;
+  standard: string | null;
   mins: number;
   suburb: string;
   status: JobStatus;
@@ -25,11 +25,11 @@ interface Job {
 }
 
 const INITIAL_JOBS: Job[] = [
-  { id: 1, runNo: 1, site: "Waitangirua Mall Entry",  type: "Rose",           los: 1, mins: 120, suburb: "Waitangirua",  status: "complete",   tasksTotal: 8, tasksDone: 8 },
-  { id: 2, runNo: 2, site: "Cobham Court",             type: "Rose",           los: 1, mins: 120, suburb: "Porirua CBD", status: "inprogress", tasksTotal: 8, tasksDone: 3 },
-  { id: 3, runNo: 3, site: "Mungavin Ave Berm",        type: "Annual Bedding", los: 2, mins: 45,  suburb: "Porirua",     status: "pending",    tasksTotal: 6, tasksDone: 0 },
-  { id: 4, runNo: 4, site: "Aotea Lagoon Reserve",     type: "Shrub Bed",      los: 2, mins: 90,  suburb: "Papakowhai",  status: "pending",    tasksTotal: 7, tasksDone: 0 },
-  { id: 5, runNo: 5, site: "Titahi Bay Esplanade",     type: "Annual Bedding", los: 2, mins: 75,  suburb: "Titahi Bay",  status: "pending",    tasksTotal: 6, tasksDone: 0 },
+  { id: 1, runNo: 1, site: "Waitangirua Mall Entry",  type: "Rose",           standard: "High",   mins: 120, suburb: "Waitangirua",  status: "complete",   tasksTotal: 8, tasksDone: 8 },
+  { id: 2, runNo: 2, site: "Cobham Court",             type: "Rose",           standard: "High",   mins: 120, suburb: "Porirua CBD", status: "inprogress", tasksTotal: 8, tasksDone: 3 },
+  { id: 3, runNo: 3, site: "Mungavin Ave Berm",        type: "Annual Bedding", standard: "High",   mins: 45,  suburb: "Porirua",     status: "pending",    tasksTotal: 6, tasksDone: 0 },
+  { id: 4, runNo: 4, site: "Aotea Lagoon Reserve",     type: "Shrub Bed",      standard: "High",   mins: 90,  suburb: "Papakowhai",  status: "pending",    tasksTotal: 7, tasksDone: 0 },
+  { id: 5, runNo: 5, site: "Titahi Bay Esplanade",     type: "Annual Bedding", standard: "High",   mins: 75,  suburb: "Titahi Bay",  status: "pending",    tasksTotal: 6, tasksDone: 0 },
 ];
 
 const TYPE_COLORS: Record<string, string> = {
@@ -124,8 +124,10 @@ function JobCard({ job, isNext, onSkip }: JobCardProps) {
                 >
                   {job.type}
                 </span>
-                {job.los && (
-                  <span className="text-[10px] text-gray-400 font-medium">LOS {job.los}</span>
+                {job.standard && (
+                  <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full ${isComplete ? "bg-gray-100 text-gray-400" : job.standard === "High" ? "bg-green-100 text-green-700" : job.standard === "Medium" ? "bg-amber-100 text-amber-700" : "bg-gray-100 text-gray-600"}`}>
+                    {job.standard}
+                  </span>
                 )}
               </div>
               <p className={`text-[13px] font-semibold truncate ${isSkipped ? "line-through text-gray-400" : isComplete ? "text-gray-400" : "text-gray-900"}`}>

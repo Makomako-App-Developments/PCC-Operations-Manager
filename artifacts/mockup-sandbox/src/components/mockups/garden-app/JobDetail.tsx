@@ -20,7 +20,7 @@ const TASKS = [
 const TILES = [
   { label: "Location", value: "Tui Park, Elsdon", icon: MapPin },
   { label: "Garden Type", value: "Rose Garden", icon: Layers },
-  { label: "LOS Grade", value: "Level 2", icon: Star },
+  { label: "Standard", value: "High", icon: Star },
   { label: "Time Allocated", value: "45 min", icon: Clock },
 ];
 

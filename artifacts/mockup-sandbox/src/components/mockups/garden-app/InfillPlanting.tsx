@@ -78,7 +78,7 @@ export function InfillPlanting() {
             <div className="grid grid-cols-2 gap-3 text-left mb-8">
               {[
                 { title: "Coverage Gap Tracking", desc: "Auto-pull gaps from field data (qty to 95%)" },
-                { title: "Species Selection", desc: "Match plants to garden type & LOS" },
+                { title: "Species Selection", desc: "Match plants to garden type & Standard" },
                 { title: "Order Management", desc: "Generate and track planting orders" },
                 { title: "Completion Records", desc: "Log planting dates and outcomes" },
               ].map(({ title, desc }) => (
