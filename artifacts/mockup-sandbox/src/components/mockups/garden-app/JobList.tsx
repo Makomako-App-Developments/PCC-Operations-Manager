@@ -310,10 +310,10 @@ export function JobList() {
           <div>
             <p className="text-[11px] text-gray-400 font-medium uppercase tracking-wide">Week of 27 Mar 2026</p>
             <h1 className="text-xl font-bold mt-0.5" style={{ color: NAVY }}>My Jobs</h1>
-            <p className="text-xs text-gray-400 mt-0.5">James Turner · Field Surveyor</p>
+            <p className="text-xs text-gray-400 mt-0.5">Barry Lavakula · Restoration Horticulturist</p>
           </div>
           <div className="flex flex-col items-end gap-1">
-            <div className="w-9 h-9 rounded-full flex items-center justify-center text-white text-sm font-bold" style={{ background: BRAND }}>JT</div>
+            <div className="w-9 h-9 rounded-full flex items-center justify-center text-white text-sm font-bold" style={{ background: BRAND }}>BL</div>
             <span className="flex items-center gap-1 text-[10px] text-gray-400">
               <RefreshCw className="w-2.5 h-2.5" />Synced 8:42am
             </span>
