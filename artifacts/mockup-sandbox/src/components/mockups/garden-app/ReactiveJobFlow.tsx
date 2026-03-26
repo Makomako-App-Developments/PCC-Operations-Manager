@@ -36,6 +36,26 @@ const REASON_TYPES = [
   "Councillor request", "Contractor damage", "Safety hazard", "Event prep",
 ];
 
+// Known garden assets with upcoming scheduled info (relative to reactive date 27 Mar)
+interface AssetScheduleInfo {
+  id: string; nextDate: string; workingDays: number;
+  scheduledMins: number; team: string; freq: string;
+  lastVisit: string; daysSinceLastVisit: number; minInterval: number;
+}
+
+const ASSET_SCHEDULE: Record<string, AssetScheduleInfo> = {
+  "Waitangirua Mall Entry": { id: "GRD-0022", nextDate: "27 Mar", workingDays: 0,   scheduledMins: 120, team: "Team A", freq: "Weekly",      lastVisit: "20 Mar", daysSinceLastVisit: 7,  minInterval: 5  },
+  "Cobham Court":            { id: "GRD-0212", nextDate: "27 Mar", workingDays: 0,   scheduledMins: 120, team: "Team A", freq: "Weekly",      lastVisit: "20 Mar", daysSinceLastVisit: 7,  minInterval: 5  },
+  "Mungavin Ave Berm":       { id: "GRD-0801", nextDate: "1 Apr",  workingDays: 3,   scheduledMins: 45,  team: "Team A", freq: "Fortnightly", lastVisit: "18 Mar", daysSinceLastVisit: 9,  minInterval: 10 },
+  "Aotea Lagoon Reserve":    { id: "GRD-0847", nextDate: "1 Apr",  workingDays: 3,   scheduledMins: 90,  team: "Team B", freq: "Fortnightly", lastVisit: "18 Mar", daysSinceLastVisit: 9,  minInterval: 10 },
+  "Titahi Bay Esplanade":    { id: "GRD-0391", nextDate: "3 Apr",  workingDays: 5,   scheduledMins: 75,  team: "Team B", freq: "Fortnightly", lastVisit: "20 Mar", daysSinceLastVisit: 7,  minInterval: 10 },
+  "Elsdon Reserve":          { id: "GRD-0714", nextDate: "5 Apr",  workingDays: 7,   scheduledMins: 60,  team: "Team B", freq: "Monthly",     lastVisit: "5 Mar",  daysSinceLastVisit: 22, minInterval: 20 },
+  "Kenepuru Landing":        { id: "GRD-0558", nextDate: "1 Apr",  workingDays: 3,   scheduledMins: 45,  team: "Team C", freq: "Monthly",     lastVisit: "1 Mar",  daysSinceLastVisit: 26, minInterval: 20 },
+  "Paremata Station":        { id: "GRD-0629", nextDate: "Sep 2026", workingDays: 130, scheduledMins: 30, team: "Team C", freq: "6-Monthly",  lastVisit: "Sep 2025", daysSinceLastVisit: 182, minInterval: 90 },
+};
+
+const COMBINE_THRESHOLD = 5; // working days
+
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 function capacityBand(mins: number): "green" | "amber" | "red" {
@@ -115,11 +135,26 @@ interface ReactiveJobFlowProps {
 export function ReactiveJobFlow({ onClose }: ReactiveJobFlowProps = {}) {
   const [step, setStep] = useState<1 | 2 | 3 | 4>(1);
 
-  // Step 1 form
-  const [location,   setLocation]   = useState("Parumoana St Roundabout");
-  const [reason,     setReason]     = useState("Storm / wind damage");
-  const [serviceMin, setServiceMin] = useState(90);
-  const [priority,   setPriority]   = useState<"urgent" | "normal">("urgent");
+  // Step 1 form — location
+  const [locationType,      setLocationType]      = useState<"asset" | "other">("other");
+  const [selectedAsset,     setSelectedAsset]     = useState<string>("");
+  const [freeTextLocation,  setFreeTextLocation]  = useState("Parumoana St Roundabout");
+  const [combineScheduled,  setCombineScheduled]  = useState(false);
+
+  // Step 1 form — job details
+  const [reason,    setReason]    = useState("Storm / wind damage");
+  const [reactiveMin, setReactiveMin] = useState(90);
+  const [priority,  setPriority]  = useState<"urgent" | "normal">("urgent");
+  const [assignTeam, setAssignTeam] = useState("Team A");
+
+  // Derived: asset info and combination logic
+  const assetInfo = selectedAsset ? ASSET_SCHEDULE[selectedAsset] : null;
+  const tooEarlyToMaintain = assetInfo ? assetInfo.daysSinceLastVisit < assetInfo.minInterval : false;
+  const withinCombineWindow = assetInfo ? assetInfo.workingDays <= COMBINE_THRESHOLD : false;
+  const canCombine = withinCombineWindow && !tooEarlyToMaintain;
+  const scheduledMins = combineScheduled && assetInfo ? assetInfo.scheduledMins : 0;
+  const serviceMin = reactiveMin + scheduledMins;
+  const location = locationType === "asset" && selectedAsset ? selectedAsset : freeTextLocation;
 
   // Step 3 resolutions
   const [actions, setActions] = useState<Record<string, JobAction>>({
@@ -194,16 +229,124 @@ export function ReactiveJobFlow({ onClose }: ReactiveJobFlowProps = {}) {
         {/* ── Step 1: Create job ──────────────────────────────────────────── */}
         {step === 1 && (
           <div className="space-y-5">
+
+            {/* ── Location block ── */}
             <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
-              <h2 className="text-sm font-bold text-gray-900 mb-5 flex items-center gap-2">
-                <Zap className="w-4 h-4" style={{ color: BRAND }} />Reactive Job Details
+              <h2 className="text-sm font-bold text-gray-900 mb-4 flex items-center gap-2">
+                <MapPin className="w-4 h-4" style={{ color: BRAND }} />Location
+              </h2>
+
+              {/* Toggle: known asset vs other public land */}
+              <div className="flex gap-2 mb-4">
+                {(["asset", "other"] as const).map(t => (
+                  <button key={t} onClick={() => { setLocationType(t); setSelectedAsset(""); setCombineScheduled(false); }}
+                    className={`flex-1 py-2 rounded-xl border-2 text-sm font-semibold transition-all ${locationType === t ? "text-white border-transparent" : "border-gray-200 text-gray-500 bg-white"}`}
+                    style={locationType === t ? { background: BRAND } : {}}>
+                    {t === "asset" ? "📋 Known garden asset" : "📍 Other public land"}
+                  </button>
+                ))}
+              </div>
+
+              {locationType === "asset" ? (
+                <div className="space-y-3">
+                  <div>
+                    <label className="text-xs text-gray-500 font-medium block mb-1.5">Select garden asset *</label>
+                    <select value={selectedAsset} onChange={e => { setSelectedAsset(e.target.value); setCombineScheduled(false); if (e.target.value) setAssignTeam(ASSET_SCHEDULE[e.target.value]?.team || "Team A"); }}
+                      className="w-full px-3 py-2 text-sm border border-gray-200 rounded-xl outline-none focus:border-[#00AECD] bg-white">
+                      <option value="">— Select an asset —</option>
+                      {Object.entries(ASSET_SCHEDULE).map(([name, info]) => (
+                        <option key={name} value={name}>{name} ({info.id})</option>
+                      ))}
+                    </select>
+                  </div>
+                  {selectedAsset && assetInfo && (
+                    <div className="text-[11px] text-gray-400 flex items-center gap-3 px-1">
+                      <span>Team: <span className="font-semibold text-gray-600">{assetInfo.team}</span></span>
+                      <span>·</span>
+                      <span>Freq: <span className="font-semibold text-gray-600">{assetInfo.freq}</span></span>
+                      <span>·</span>
+                      <span>Last visit: <span className="font-semibold text-gray-600">{assetInfo.lastVisit}</span></span>
+                    </div>
+                  )}
+                  <div>
+                    <label className="text-xs text-gray-500 font-medium block mb-1.5">Additional description (optional)</label>
+                    <input placeholder="e.g. NE corner near entrance gate…"
+                      className="w-full px-3 py-2 text-sm border border-gray-200 rounded-xl outline-none focus:border-[#00AECD]" />
+                  </div>
+                </div>
+              ) : (
+                <div>
+                  <label className="text-xs text-gray-500 font-medium block mb-1.5">Location / Description *</label>
+                  <input value={freeTextLocation} onChange={e => setFreeTextLocation(e.target.value)}
+                    placeholder="e.g. Parumoana St Roundabout, outside 42 Kenepuru Dr…"
+                    className="w-full px-3 py-2 text-sm border border-gray-200 rounded-xl outline-none focus:border-[#00AECD]" />
+                  <p className="text-[10px] text-gray-400 mt-1.5">Any publicly managed land — road berms, reserves, footpaths, parks not in the asset register.</p>
+                </div>
+              )}
+
+              {/* ── Combined visit recommendation ── */}
+              {locationType === "asset" && selectedAsset && assetInfo && (
+                <div className={`mt-4 p-4 rounded-xl border-2 ${canCombine ? "bg-green-50 border-green-200" : tooEarlyToMaintain ? "bg-blue-50 border-blue-200" : "bg-gray-50 border-gray-200"}`}>
+                  <div className="flex items-start gap-3">
+                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${canCombine ? "bg-green-100" : tooEarlyToMaintain ? "bg-blue-100" : "bg-gray-100"}`}>
+                      {canCombine ? <CheckCircle2 className="w-4 h-4 text-green-600" /> : tooEarlyToMaintain ? <Info className="w-4 h-4 text-blue-500" /> : <Clock className="w-4 h-4 text-gray-400" />}
+                    </div>
+                    <div className="flex-1">
+                      {canCombine && (
+                        <>
+                          <p className="text-sm font-bold text-green-800">
+                            {assetInfo.workingDays === 0 ? "Scheduled maintenance is due today" : `Scheduled maintenance due ${assetInfo.nextDate} — ${assetInfo.workingDays} working day${assetInfo.workingDays !== 1 ? "s" : ""} away`}
+                          </p>
+                          <p className="text-xs text-green-700 mt-0.5">
+                            Within the {COMBINE_THRESHOLD}-working-day window. Recommend combining into a single visit to avoid a separate trip.
+                          </p>
+                          <div className="mt-3 flex items-center gap-3">
+                            <button onClick={() => setCombineScheduled(v => !v)}
+                              className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border-2 text-xs font-bold transition-all ${combineScheduled ? "bg-green-600 border-green-600 text-white" : "border-green-400 text-green-700 bg-white"}`}>
+                              {combineScheduled ? <CheckCircle2 className="w-3.5 h-3.5" /> : <Plus className="w-3.5 h-3.5" />}
+                              {combineScheduled ? "Combined visit — scheduled included" : "Combine with scheduled maintenance"}
+                            </button>
+                            {combineScheduled && (
+                              <span className="text-[11px] text-green-700 font-semibold">
+                                +{fmtMins(assetInfo.scheduledMins)} scheduled → {fmtMins(reactiveMin + assetInfo.scheduledMins)} total
+                              </span>
+                            )}
+                          </div>
+                          {combineScheduled && (
+                            <p className="text-[10px] text-green-600 mt-2">
+                              ✓ Scheduled visit on {assetInfo.nextDate} will be marked complete · next recurrence calculated from today
+                            </p>
+                          )}
+                        </>
+                      )}
+                      {tooEarlyToMaintain && (
+                        <>
+                          <p className="text-sm font-bold text-blue-800">Scheduled next due {assetInfo.nextDate} — but last serviced {assetInfo.daysSinceLastVisit} days ago</p>
+                          <p className="text-xs text-blue-700 mt-0.5">
+                            Garden was recently maintained. Reactive visit only recommended — do not pull forward scheduled work (min interval: {assetInfo.minInterval} days).
+                          </p>
+                        </>
+                      )}
+                      {!canCombine && !tooEarlyToMaintain && (
+                        <>
+                          <p className="text-sm font-bold text-gray-700">Scheduled maintenance not due for {assetInfo.workingDays} working days ({assetInfo.nextDate})</p>
+                          <p className="text-xs text-gray-500 mt-0.5">
+                            Beyond the {COMBINE_THRESHOLD}-working-day window. Reactive visit only — do not pull forward scheduled work.
+                          </p>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* ── Job details block ── */}
+            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
+              <h2 className="text-sm font-bold text-gray-900 mb-4 flex items-center gap-2">
+                <Zap className="w-4 h-4" style={{ color: BRAND }} />Job Details
               </h2>
               <div className="grid grid-cols-2 gap-5">
-                <div className="col-span-2">
-                  <label className="text-xs text-gray-500 font-medium block mb-1.5">Location / Description *</label>
-                  <input value={location} onChange={e => setLocation(e.target.value)}
-                    className="w-full px-3 py-2 text-sm border border-gray-200 rounded-xl outline-none focus:border-[#00AECD]" />
-                </div>
                 <div>
                   <label className="text-xs text-gray-500 font-medium block mb-1.5">Reason / Job Type *</label>
                   <select value={reason} onChange={e => setReason(e.target.value)}
@@ -218,17 +361,30 @@ export function ReactiveJobFlow({ onClose }: ReactiveJobFlowProps = {}) {
                 </div>
                 <div>
                   <label className="text-xs text-gray-500 font-medium block mb-1.5">Assign to Team *</label>
-                  <select className="w-full px-3 py-2 text-sm border border-gray-200 rounded-xl outline-none focus:border-[#00AECD] bg-white">
+                  <select value={assignTeam} onChange={e => setAssignTeam(e.target.value)}
+                    className="w-full px-3 py-2 text-sm border border-gray-200 rounded-xl outline-none focus:border-[#00AECD] bg-white">
                     <option>Team A</option>
                     <option>Team B</option>
                     <option>Team C</option>
                   </select>
+                  {locationType === "asset" && selectedAsset && assetInfo && assignTeam !== assetInfo.team && (
+                    <p className="text-[10px] text-amber-600 mt-1">⚠ This asset is normally serviced by {assetInfo.team}</p>
+                  )}
                 </div>
                 <div>
-                  <label className="text-xs text-gray-500 font-medium block mb-1.5">Estimated time (min) *</label>
-                  <input type="number" value={serviceMin} onChange={e => setServiceMin(Number(e.target.value))}
+                  <label className="text-xs text-gray-500 font-medium block mb-1.5">Reactive time (min) *</label>
+                  <input type="number" value={reactiveMin} onChange={e => setReactiveMin(Number(e.target.value))}
                     className="w-full px-3 py-2 text-sm border border-gray-200 rounded-xl outline-none focus:border-[#00AECD]" />
                 </div>
+                {combineScheduled && assetInfo && (
+                  <div className="col-span-2 p-3 rounded-xl bg-green-50 border border-green-200 flex items-center justify-between">
+                    <div className="text-xs text-green-800">
+                      <span className="font-semibold">Total time on site:</span>{" "}
+                      {fmtMins(reactiveMin)} reactive + {fmtMins(assetInfo.scheduledMins)} scheduled maintenance
+                    </div>
+                    <span className="text-sm font-black text-green-700">{fmtMins(serviceMin)}</span>
+                  </div>
+                )}
                 <div className="col-span-2">
                   <label className="text-xs text-gray-500 font-medium block mb-1.5">Priority</label>
                   <div className="flex gap-3">
