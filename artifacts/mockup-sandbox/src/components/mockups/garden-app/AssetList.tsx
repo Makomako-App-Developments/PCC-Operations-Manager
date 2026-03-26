@@ -15,7 +15,7 @@ function Sidebar({ active }: { active: string }) {
   const nav = [
     { icon: LayoutDashboard, label: "Dashboard" },
     { icon: ClipboardList, label: "Data Collection" },
-    { icon: List, label: "Asset List", id: "list" },
+    { icon: List, label: "Asset Register", id: "list" },
     { icon: CalendarDays, label: "Maintenance" },
     { icon: ClipboardCheck, label: "Audits", id: "audits" },
     { icon: Sprout, label: "Infill Planting", id: "planting" },
