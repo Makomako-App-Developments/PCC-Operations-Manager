@@ -4,8 +4,9 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
-  CalendarDays, ClipboardList, LayoutDashboard, List, Users, ChevronLeft, ChevronRight, CheckCircle2, ClipboardCheck, Sprout, FileSpreadsheet, BarChart2
+  CalendarDays, ClipboardList, LayoutDashboard, List, Users, ChevronLeft, ChevronRight, CheckCircle2, ClipboardCheck, Sprout, FileSpreadsheet, BarChart2, Zap
 } from "lucide-react";
+import { ReactiveJobFlow } from "./ReactiveJobFlow";
 
 const BRAND = "#00AECD";
 
@@ -120,12 +121,18 @@ function TeamStats() {
 export function MaintenanceScheduler() {
   const [selectedTeam, setSelectedTeam] = useState("all");
   const [monthOffset, setMonthOffset] = useState(0);
+  const [showReactive, setShowReactive] = useState(false);
 
   const visibleMonths = MONTHS.slice(monthOffset, monthOffset + 4);
   const filteredSchedule = selectedTeam === "all" ? SCHEDULE : SCHEDULE.filter(s => s.team === selectedTeam);
 
   return (
-    <div className="flex min-h-screen bg-[#f5f7f9] font-sans">
+    <div className="flex min-h-screen bg-[#f5f7f9] font-sans relative">
+      {showReactive && (
+        <div className="absolute inset-0 z-50 bg-white overflow-auto">
+          <ReactiveJobFlow onClose={() => setShowReactive(false)} />
+        </div>
+      )}
       <Sidebar active="maintenance" />
       <main className="flex-1 overflow-auto">
         <header className="bg-white border-b px-8 py-4 flex items-center justify-between sticky top-0 z-10">
@@ -137,6 +144,14 @@ export function MaintenanceScheduler() {
             <Button variant="outline" size="sm">Export Schedule</Button>
             <Button size="sm" style={{ background: BRAND }} className="text-white hover:opacity-90">
               Regenerate Schedule
+            </Button>
+            <Button
+              size="sm"
+              onClick={() => setShowReactive(true)}
+              className="text-white hover:opacity-90 flex items-center gap-1.5"
+              style={{ background: "#dc2626" }}
+            >
+              <Zap className="w-3.5 h-3.5" /> New Reactive Job
             </Button>
           </div>
         </header>

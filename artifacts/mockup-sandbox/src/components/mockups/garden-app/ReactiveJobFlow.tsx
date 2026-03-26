@@ -108,7 +108,11 @@ type JobAction = "none" | "push" | "defer" | "delete" | "reassign";
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 
-export function ReactiveJobFlow() {
+interface ReactiveJobFlowProps {
+  onClose?: () => void;
+}
+
+export function ReactiveJobFlow({ onClose }: ReactiveJobFlowProps = {}) {
   const [step, setStep] = useState<1 | 2 | 3 | 4>(1);
 
   // Step 1 form
@@ -157,7 +161,7 @@ export function ReactiveJobFlow() {
           <h1 className="text-lg font-semibold" style={{ color: NAVY }}>New Reactive Job</h1>
           <p className="text-xs text-gray-400">Reactive / ad-hoc work insertion with schedule impact management</p>
         </div>
-        <button className="text-gray-300 hover:text-gray-500"><X className="w-5 h-5" /></button>
+        <button onClick={onClose} className="text-gray-300 hover:text-gray-500"><X className="w-5 h-5" /></button>
       </header>
 
       {/* Step progress */}
