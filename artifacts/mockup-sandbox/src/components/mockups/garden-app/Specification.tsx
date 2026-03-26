@@ -86,7 +86,7 @@ interface SpecRow {
 const SPEC_ROWS: SpecRow[] = [
   // ── Service Standards ────────────────────────────────────────────────────
   {
-    id: "grade", label: "Standard / Grade", type: "select", group: "Service Standards",
+    id: "grade", label: "Standard", type: "select", group: "Service Standards",
     options: ["High", "Medium", "Low"],
     values: {
       annuals: "High", roses: "High", ornamental: "High", amenity: "Medium",
