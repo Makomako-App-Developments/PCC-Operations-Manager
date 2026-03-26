@@ -29,7 +29,7 @@ const ROWS: Row[] = [
   { group: "Desktop", screen: "Infill Planting",           admin: "edit",   manager: "edit",   leader: "view",  worker: "none" },
   // Desktop — Specification
   { group: "Desktop", screen: "Specification — View",      admin: "edit",   manager: "edit",   leader: "view",  worker: "none" },
-  { group: "Desktop", screen: "Specification — Edit",      admin: "edit",   manager: "edit",   leader: "none",  worker: "none", note: "Maintenance standards table" },
+  { group: "Desktop", screen: "Specification — Edit",      admin: "edit",   manager: "edit",   leader: "none",  worker: "none", note: "Daniela Biaggio, Tim Broadwith & Administrator only" },
   // Mobile
   { group: "Mobile",  screen: "My Jobs",                   admin: "mobile", manager: "mobile", leader: "mobile", worker: "mobile" },
   { group: "Mobile",  screen: "Job Detail",                admin: "mobile", manager: "mobile", leader: "mobile", worker: "mobile" },

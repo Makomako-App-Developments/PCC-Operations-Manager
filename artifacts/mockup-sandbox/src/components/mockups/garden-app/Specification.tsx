@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   LayoutDashboard, ClipboardList, List, CalendarDays, ClipboardCheck,
-  Sprout, FileSpreadsheet, Pencil, Save, X, Info, BarChart2
+  Sprout, FileSpreadsheet, Pencil, Save, X, Info, BarChart2, Lock
 } from "lucide-react";
 
 const BRAND = "#00AECD";
@@ -392,7 +392,16 @@ function Cell({
 
 // ─── Main ────────────────────────────────────────────────────────────────────
 
+type SimRole = "manager" | "leader" | "worker";
+const SIM_ROLES: { key: SimRole; label: string; initials: string }[] = [
+  { key: "manager", label: "Daniela Biaggio (Manager)", initials: "DB" },
+  { key: "leader",  label: "Jude Morison (Team Leader)", initials: "JM" },
+  { key: "worker",  label: "Barry Lavakula (Worker)", initials: "BL" },
+];
+
 export function Specification() {
+  const [simRole, setSimRole]       = useState<SimRole>("manager");
+  const canEdit                     = simRole === "manager";
   const [editing, setEditing]       = useState(false);
   const [saved, setSaved]           = useState(false);
   const [activeFilter, setActiveFilter] = useState<string>("All");
@@ -427,8 +436,29 @@ export function Specification() {
             <p className="text-xs text-gray-400">PCC Horticulture Maintenance Spec — March 2026 · 9 garden types</p>
           </div>
           <div className="flex items-center gap-3">
+            {/* Role simulator — for mockup review only */}
+            <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-gray-50 border border-gray-200">
+              <span className="text-[10px] text-gray-400 font-medium uppercase tracking-wider">Viewing as</span>
+              <select
+                value={simRole}
+                onChange={e => { setSimRole(e.target.value as SimRole); setEditing(false); }}
+                className="text-xs font-semibold text-gray-700 bg-transparent outline-none cursor-pointer"
+              >
+                {SIM_ROLES.map(r => (
+                  <option key={r.key} value={r.key}>{r.label}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Permission indicator */}
+            {!canEdit && (
+              <span className="flex items-center gap-1.5 text-[11px] font-semibold px-3 py-1.5 rounded-xl bg-amber-50 text-amber-700 border border-amber-200">
+                <Lock className="w-3.5 h-3.5" />View only — Manager & Admin can edit
+              </span>
+            )}
+
             {saved && <span className="text-xs text-green-600 font-semibold">✓ Saved</span>}
-            {editing ? (
+            {canEdit && editing ? (
               <>
                 <Button variant="outline" size="sm" onClick={() => setEditing(false)}>
                   <X className="w-3.5 h-3.5 mr-1" />Cancel
@@ -437,11 +467,11 @@ export function Specification() {
                   <Save className="w-3.5 h-3.5 mr-1" />Save Changes
                 </Button>
               </>
-            ) : (
+            ) : canEdit ? (
               <Button size="sm" variant="outline" onClick={() => setEditing(true)}>
                 <Pencil className="w-3.5 h-3.5 mr-1" />Edit Specifications
               </Button>
-            )}
+            ) : null}
           </div>
         </header>
 
