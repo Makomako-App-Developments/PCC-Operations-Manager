@@ -9,6 +9,8 @@ export const modules: ModuleMap = {
   "./components/mockups/garden-app/JobCheckout.tsx": () => import("../components/mockups/garden-app/JobCheckout.tsx"),
   "./components/mockups/garden-app/JobDetail.tsx": () => import("../components/mockups/garden-app/JobDetail.tsx"),
   "./components/mockups/garden-app/JobList.tsx": () => import("../components/mockups/garden-app/JobList.tsx"),
+  "./components/mockups/garden-app/Login.tsx": () => import("../components/mockups/garden-app/Login.tsx"),
   "./components/mockups/garden-app/MaintenanceScheduler.tsx": () => import("../components/mockups/garden-app/MaintenanceScheduler.tsx"),
+  "./components/mockups/garden-app/RoleMatrix.tsx": () => import("../components/mockups/garden-app/RoleMatrix.tsx"),
   "./components/mockups/garden-app/Specification.tsx": () => import("../components/mockups/garden-app/Specification.tsx")
 };
