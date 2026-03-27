@@ -174,7 +174,7 @@ const SPEC_ROWS: SpecRow[] = [
       reveg:         "Mulched once at inception only",
       bush:          "n/a",
       tree_planters: "50–100mm if already present. No mulch on slopes >30°, flood-prone sites, or where vegetation has fully covered the site.",
-      hedges:        "None",
+      hedges:        "n/a",
     },
   },
   {
