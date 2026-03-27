@@ -382,13 +382,8 @@ export function AssetMap() {
 
       {/* ── Map ── */}
       <div className="flex-1 relative">
-        {/* Header bar over map */}
-        <div className="absolute top-0 left-0 right-0 z-[500] px-6 py-3 flex items-center justify-between pointer-events-none">
-          <div className="bg-white rounded-xl shadow-sm border border-gray-100 px-4 py-2 pointer-events-auto">
-            <h1 className="text-sm font-bold text-gray-900">Garden Asset Map</h1>
-            <p className="text-[10px] text-gray-400">Porirua City · {visible.length} assets displayed</p>
-          </div>
-
+        {/* Legend overlay */}
+        <div className="absolute top-0 right-0 z-[500] px-6 py-3 pointer-events-none">
           {/* Legend */}
           <div className="bg-white rounded-xl shadow-sm border border-gray-100 px-4 py-2.5 pointer-events-auto">
             <p className="text-[9px] font-bold text-gray-400 uppercase tracking-widest mb-1.5">
