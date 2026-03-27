@@ -2,15 +2,16 @@ import { useState, useEffect } from "react";
 import {
   ChevronLeft, Camera, CheckCircle2, Circle, Clock,
   WifiOff, AlertCircle, X, ImageIcon, ChevronDown, Send,
-  MapPin, Layers, Star, ChevronUp, Navigation
+  MapPin, Layers, Star, ChevronUp, Navigation, Leaf,
+  MessageSquare, ThumbsUp, ThumbsDown, Minus, TriangleAlert,
+  SquarePen
 } from "lucide-react";
 
 const BRAND = "#00AECD";
-const NAVY = "#0f2a36";
+const NAVY  = "#0f2a36";
 
 const ALLOCATED_SECS = 45 * 60;        // 45 min allocated
 const START_ELAPSED  = 23 * 60 + 45;   // already 23:45 in when screen opens
-const START_REMAINING = ALLOCATED_SECS - START_ELAPSED; // 21:15
 
 type TaskStatus = "complete" | "incomplete" | "pending";
 
@@ -34,14 +35,39 @@ const INITIAL_TASKS: Task[] = [
   { id: 8, label: "Plant coverage — ≥95%",                      status: "pending",    hasPhoto: false, note: "", showNote: false },
 ];
 
+// Pest plant species common in Porirua
+const PEST_SPECIES = [
+  "Tradescantia (Wandering Jew)",
+  "Woolly nightshade",
+  "Old man's beard",
+  "Banana passionfruit",
+  "Japanese honeysuckle",
+  "Agapanthus (escaped)",
+  "Cotoneaster",
+  "Wilding pine",
+  "Other (free text)",
+];
+
+type Condition = 0 | 1 | 2 | 3 | 4;  // 0 = unset
+const CONDITION_LABELS: Record<number, { label: string; color: string; icon: React.ReactNode }> = {
+  1: { label: "Poor",      color: "#ef4444", icon: <ThumbsDown className="w-3.5 h-3.5" /> },
+  2: { label: "Fair",      color: "#f97316", icon: <Minus      className="w-3.5 h-3.5" /> },
+  3: { label: "Good",      color: "#22c55e", icon: <ThumbsUp   className="w-3.5 h-3.5" /> },
+  4: { label: "Excellent", color: BRAND,     icon: <Star       className="w-3.5 h-3.5" /> },
+};
+
 function formatTime(secs: number): string {
   const abs = Math.abs(secs);
   const m = Math.floor(abs / 60).toString().padStart(2, "0");
   const s = (abs % 60).toString().padStart(2, "0");
   return `${m}:${s}`;
 }
+function formatMins(secs: number): string {
+  const m = Math.floor(Math.abs(secs) / 60);
+  return `${m} min`;
+}
 
-function PhotoThumb({ hasPhoto }: { hasPhoto: boolean }) {
+function PhotoThumb({ hasPhoto, onTap }: { hasPhoto: boolean; onTap?: () => void }) {
   if (hasPhoto) {
     return (
       <div className="w-12 h-12 rounded-xl overflow-hidden flex-shrink-0 relative">
@@ -56,7 +82,9 @@ function PhotoThumb({ hasPhoto }: { hasPhoto: boolean }) {
     );
   }
   return (
-    <button className="w-12 h-12 rounded-xl border-2 border-dashed border-gray-200 flex-shrink-0 flex items-center justify-center bg-gray-50">
+    <button
+      onClick={onTap}
+      className="w-12 h-12 rounded-xl border-2 border-dashed border-gray-200 flex-shrink-0 flex items-center justify-center bg-gray-50 active:bg-teal-50 active:border-teal-300 transition-colors">
       <Camera className="w-4 h-4 text-gray-300" />
     </button>
   );
@@ -67,16 +95,16 @@ function MiniMap() {
     <div className="relative rounded-2xl overflow-hidden" style={{ height: 130 }}>
       <div className="absolute inset-0" style={{ background: "linear-gradient(135deg, #e8f4f0, #d4ede6, #c8e6dc)" }}>
         <svg width="100%" height="100%" viewBox="0 0 350 130" className="absolute inset-0">
-          <line x1="0" y1="72" x2="350" y2="68" stroke="#fff" strokeWidth="8" opacity="0.7" />
-          <line x1="180" y1="0" x2="175" y2="130" stroke="#fff" strokeWidth="6" opacity="0.5" />
-          <line x1="0" y1="36" x2="180" y2="72" stroke="#fff" strokeWidth="4" opacity="0.4" />
+          <line x1="0"   y1="72" x2="350" y2="68" stroke="#fff" strokeWidth="8" opacity="0.7" />
+          <line x1="180" y1="0"  x2="175" y2="130" stroke="#fff" strokeWidth="6" opacity="0.5" />
+          <line x1="0"   y1="36" x2="180" y2="72"  stroke="#fff" strokeWidth="4" opacity="0.4" />
           <rect x="120" y="40" width="70" height="44" rx="4" fill="#d6e8e0" stroke="#b8d8cc" strokeWidth="1" />
-          <rect x="30" y="80" width="50" height="30" rx="4" fill="#d6e8e0" stroke="#b8d8cc" strokeWidth="1" />
+          <rect x="30"  y="80" width="50" height="30" rx="4" fill="#d6e8e0" stroke="#b8d8cc" strokeWidth="1" />
           <rect x="230" y="28" width="80" height="40" rx="4" fill="#d6e8e0" stroke="#b8d8cc" strokeWidth="1" />
           <ellipse cx="175" cy="72" rx="32" ry="22" fill="#4ade8060" stroke="#22c55e" strokeWidth="1.5" />
         </svg>
         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-full">
-          <div className="w-7 h-7 rounded-full border-3 border-white shadow-lg flex items-center justify-center" style={{ background: BRAND }}>
+          <div className="w-7 h-7 rounded-full border-2 border-white shadow-lg flex items-center justify-center" style={{ background: BRAND }}>
             <MapPin className="w-3.5 h-3.5 text-white" />
           </div>
           <div className="w-1.5 h-1.5 rounded-full mx-auto -mt-0.5 shadow" style={{ background: BRAND }} />
@@ -95,32 +123,57 @@ function MiniMap() {
 }
 
 export function JobCheckout() {
-  const [tasks, setTasks] = useState<Task[]>(INITIAL_TASKS);
-  const [showSignOff, setShowSignOff] = useState(false);
-  const [infoExpanded, setInfoExpanded] = useState(false);
-  const [remaining, setRemaining] = useState(START_REMAINING);
+  const [tasks,      setTasks]      = useState<Task[]>(INITIAL_TASKS);
+  const [elapsed,    setElapsed]    = useState(START_ELAPSED);
+  const [remaining,  setRemaining]  = useState(ALLOCATED_SECS - START_ELAPSED);
+  const [showSignOff,setShowSignOff]= useState(false);
+  const [infoExpanded,setInfoExpanded]=useState(false);
+  const [condition,  setCondition]  = useState<Condition>(0);
+  const [siteNotes,  setSiteNotes]  = useState("");
+  const [showNotesInput, setShowNotesInput] = useState(false);
+  const [pestPlants, setPestPlants] = useState<{ species: string; location: string }[]>([]);
+  const [showPestForm, setShowPestForm] = useState(false);
+  const [newPestSpecies, setNewPestSpecies] = useState("");
+  const [newPestLocation, setNewPestLocation] = useState("");
 
   useEffect(() => {
-    const id = setInterval(() => setRemaining(r => r - 1), 1000);
+    const id = setInterval(() => {
+      setElapsed(e => e + 1);
+      setRemaining(r => r - 1);
+    }, 1000);
     return () => clearInterval(id);
   }, []);
 
-  const isOverTime = remaining < 0;
-  const timeColor = isOverTime ? "#ef4444" : remaining < 5 * 60 ? "#f97316" : BRAND;
-
-  const done = tasks.filter(t => t.status === "complete").length;
-  const total = tasks.length;
-  const progress = Math.round((done / total) * 100);
-
+  const isOverTime  = remaining < 0;
+  const timeColor   = isOverTime ? "#ef4444" : remaining < 5 * 60 ? "#f97316" : BRAND;
+  const done        = tasks.filter(t => t.status === "complete").length;
+  const total       = tasks.length;
+  const progress    = Math.round((done / total) * 100);
+  const hasPending  = tasks.some(t => t.status === "pending");
   const incompleteWithoutNote = tasks.filter(t => t.status === "incomplete" && !t.note.trim());
-  const canSignOff = incompleteWithoutNote.length === 0 && tasks.every(t => t.status !== "pending");
-  const hasPending = tasks.some(t => t.status === "pending");
+  const canSignOff  = incompleteWithoutNote.length === 0 && !hasPending && condition > 0;
 
-  const toggleNote = (id: number) =>
+  const toggleNote  = (id: number) =>
     setTasks(prev => prev.map(t => t.id === id ? { ...t, showNote: !t.showNote } : t));
-
-  const setNote = (id: number, note: string) =>
+  const setNote     = (id: number, note: string) =>
     setTasks(prev => prev.map(t => t.id === id ? { ...t, note } : t));
+  // Tapping camera on a pending task completes it (simulated photo)
+  const completeTask = (id: number) =>
+    setTasks(prev => prev.map(t => t.id === id ? { ...t, status: "complete", hasPhoto: true } : t));
+
+  const addPestPlant = () => {
+    if (!newPestSpecies) return;
+    setPestPlants(p => [...p, { species: newPestSpecies, location: newPestLocation }]);
+    setNewPestSpecies("");
+    setNewPestLocation("");
+    setShowPestForm(false);
+  };
+
+  const variantSecs = elapsed - ALLOCATED_SECS;
+  const variantStr  = variantSecs <= 0
+    ? `${formatMins(-variantSecs)} under`
+    : `${formatMins(variantSecs)} over`;
+  const variantColor = variantSecs <= 0 ? "#22c55e" : variantSecs < 10 * 60 ? "#f97316" : "#ef4444";
 
   return (
     <div className="flex flex-col min-h-screen bg-gray-50 font-sans" style={{ maxWidth: 390 }}>
@@ -133,10 +186,10 @@ export function JobCheckout() {
         </span>
       </div>
 
-      {/* ── Sticky header block ── */}
+      {/* ── Sticky header ── */}
       <div className="bg-white border-b flex-shrink-0">
 
-        {/* Row 1: back + title + countdown */}
+        {/* Row 1: back + title + time display */}
         <div className="flex items-center gap-3 px-4 pt-3 pb-2">
           <button className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center flex-shrink-0">
             <ChevronLeft className="w-4 h-4 text-gray-600" />
@@ -145,22 +198,40 @@ export function JobCheckout() {
             <p className="text-[11px] text-gray-400 font-medium">Active Job</p>
             <p className="text-sm font-bold truncate" style={{ color: NAVY }}>Tui Park Rose Garden</p>
           </div>
-          {/* Countdown timer */}
-          <div
-            className="flex flex-col items-end px-3 py-1.5 rounded-xl flex-shrink-0"
-            style={{ background: isOverTime ? "#fef2f2" : `${timeColor}18` }}
-          >
-            <span className="text-[9px] font-semibold uppercase tracking-wide" style={{ color: timeColor }}>
-              {isOverTime ? "Over time" : "Remaining"}
-            </span>
-            <span className="text-base font-black tabular-nums leading-tight" style={{ color: timeColor }}>
-              {isOverTime ? `+${formatTime(remaining)}` : formatTime(remaining)}
-            </span>
-            <span className="text-[8px] text-gray-400">of 45 min</span>
+
+          {/* Dual timer: elapsed + remaining */}
+          <div className="flex gap-2 flex-shrink-0">
+            {/* Elapsed (actual time — key for productivity) */}
+            <div className="flex flex-col items-center px-2.5 py-1.5 rounded-xl bg-gray-50 border border-gray-100">
+              <span className="text-[8px] font-semibold uppercase tracking-wide text-gray-400">Actual</span>
+              <span className="text-sm font-black tabular-nums leading-tight text-gray-700">{formatTime(elapsed)}</span>
+            </div>
+            {/* Remaining (countdown) */}
+            <div
+              className="flex flex-col items-center px-2.5 py-1.5 rounded-xl flex-shrink-0"
+              style={{ background: isOverTime ? "#fef2f2" : `${timeColor}18` }}
+            >
+              <span className="text-[8px] font-semibold uppercase tracking-wide" style={{ color: timeColor }}>
+                {isOverTime ? "Over" : "Left"}
+              </span>
+              <span className="text-sm font-black tabular-nums leading-tight" style={{ color: timeColor }}>
+                {isOverTime ? `+${formatTime(remaining)}` : formatTime(remaining)}
+              </span>
+            </div>
           </div>
         </div>
 
-        {/* Row 2: persistent site info strip */}
+        {/* Allocated vs actual variance strip */}
+        <div className="flex items-center gap-2 px-4 pb-1.5">
+          <Clock className="w-3 h-3 text-gray-400" />
+          <span className="text-[10px] text-gray-400">Allocated: <strong className="text-gray-600">45 min</strong></span>
+          <span className="text-gray-200 mx-0.5">·</span>
+          <span className="text-[10px] font-semibold" style={{ color: variantColor }}>
+            {variantStr} allocated
+          </span>
+        </div>
+
+        {/* Site info strip */}
         <button
           onClick={() => setInfoExpanded(e => !e)}
           className="w-full flex items-center gap-2 px-4 py-2 border-t border-gray-50 bg-gray-50/70 text-left"
@@ -173,22 +244,18 @@ export function JobCheckout() {
             <MapPin className="w-3 h-3 flex-shrink-0" />Tui Park, Elsdon
           </span>
           <span className="flex items-center gap-0.5 text-[10px] font-medium flex-shrink-0" style={{ color: BRAND }}>
-            {infoExpanded
-              ? <><ChevronUp className="w-3 h-3" />Hide map</>
-              : <><ChevronDown className="w-3 h-3" />Map</>
-            }
+            {infoExpanded ? <><ChevronUp className="w-3 h-3" />Hide</> : <><ChevronDown className="w-3 h-3" />Map</>}
           </span>
         </button>
 
-        {/* Expandable map + detail tiles */}
         {infoExpanded && (
           <div className="px-4 pb-3 border-t border-gray-50 bg-gray-50/50 space-y-2">
             <MiniMap />
             <div className="grid grid-cols-3 gap-2">
               {[
                 { icon: Layers, label: "Type",      value: "Rose Garden" },
-                { icon: Star,   label: "Standard", value: "High" },
-                { icon: Clock,  label: "Allocated",  value: "45 min" },
+                { icon: Star,   label: "Standard",  value: "High" },
+                { icon: Clock,  label: "Allocated", value: "45 min" },
               ].map(({ icon: Icon, label, value }) => (
                 <div key={label} className="bg-white rounded-xl p-2 shadow-sm border border-gray-100">
                   <Icon className="w-3 h-3 mb-1" style={{ color: BRAND }} />
@@ -200,7 +267,7 @@ export function JobCheckout() {
           </div>
         )}
 
-        {/* Row 3: progress bar */}
+        {/* Progress bar */}
         <div className="px-4 pb-3 pt-1">
           <div className="flex justify-between text-[11px] text-gray-400 mb-1">
             <span className="font-medium">{done} of {total} tasks complete</span>
@@ -215,88 +282,210 @@ export function JobCheckout() {
         </div>
       </div>
 
-      {/* Task list */}
-      <div className="flex-1 overflow-y-auto px-4 py-3 space-y-2">
-        {tasks.map((task) => {
-          const isComplete  = task.status === "complete";
-          const isIncomplete = task.status === "incomplete";
-          const isPending   = task.status === "pending";
+      {/* ── Scrollable body ── */}
+      <div className="flex-1 overflow-y-auto">
 
-          return (
-            <div
-              key={task.id}
-              className={`bg-white rounded-2xl border shadow-sm overflow-hidden transition-all ${
-                isComplete ? "border-green-100" : isIncomplete ? "border-amber-200" : "border-gray-100"
-              }`}
-            >
-              <div className="flex items-start gap-3 p-3">
-                <div className="flex-shrink-0 mt-0.5">
-                  {isComplete   ? <CheckCircle2 className="w-5 h-5 text-green-500" />
-                  : isIncomplete ? <AlertCircle  className="w-5 h-5 text-amber-500" />
-                  :                <Circle       className="w-5 h-5 text-gray-300" />}
-                </div>
-
-                <div className="flex-1 min-w-0">
-                  <p className={`text-[12px] leading-snug font-medium ${
-                    isComplete ? "line-through text-gray-400" : isPending ? "text-gray-500" : "text-gray-800"
-                  }`}>
-                    {task.label}
-                  </p>
-
-                  {isComplete && (
-                    <p className="text-[10px] text-green-500 mt-0.5 font-medium">✓ Photo added · Marked complete</p>
-                  )}
-                  {isIncomplete && (
-                    <button
-                      onClick={() => toggleNote(task.id)}
-                      className="flex items-center gap-1 mt-1 text-[11px] text-amber-600 font-medium"
-                    >
-                      <ChevronDown className={`w-3 h-3 transition-transform ${task.showNote ? "rotate-180" : ""}`} />
-                      {task.note ? "Note added" : "Add note — required for sign-off"}
-                    </button>
-                  )}
-                  {isPending && (
-                    <p className="text-[10px] text-gray-400 mt-0.5">Take photo to begin this task</p>
-                  )}
-                </div>
-
-                <PhotoThumb hasPhoto={task.hasPhoto} />
-              </div>
-
-              {isIncomplete && task.showNote && (
-                <div className="px-3 pb-3 border-t border-amber-100 pt-2">
-                  <p className="text-[10px] text-amber-600 font-semibold mb-1.5 uppercase tracking-wide">Why is this task incomplete?</p>
-                  <textarea
-                    value={task.note}
-                    onChange={e => setNote(task.id, e.target.value)}
-                    placeholder="e.g. Mulch supply not available on site today. Scheduled for delivery Friday."
-                    className="w-full text-[12px] rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 resize-none focus:outline-none text-gray-700 placeholder-gray-400"
-                    style={{ minHeight: 72 }}
+        {/* Task list */}
+        <div className="px-4 py-3 space-y-2">
+          {tasks.map((task) => {
+            const isComplete   = task.status === "complete";
+            const isIncomplete = task.status === "incomplete";
+            const isPending    = task.status === "pending";
+            return (
+              <div
+                key={task.id}
+                className={`bg-white rounded-2xl border shadow-sm overflow-hidden transition-all ${
+                  isComplete ? "border-green-100" : isIncomplete ? "border-amber-200" : "border-gray-100"
+                }`}
+              >
+                <div className="flex items-start gap-3 p-3">
+                  <div className="flex-shrink-0 mt-0.5">
+                    {isComplete   ? <CheckCircle2 className="w-5 h-5 text-green-500" />
+                    : isIncomplete ? <AlertCircle  className="w-5 h-5 text-amber-500" />
+                    :                <Circle       className="w-5 h-5 text-gray-300" />}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className={`text-[12px] leading-snug font-medium ${
+                      isComplete ? "line-through text-gray-400" : isPending ? "text-gray-500" : "text-gray-800"
+                    }`}>
+                      {task.label}
+                    </p>
+                    {isComplete && (
+                      <p className="text-[10px] text-green-500 mt-0.5 font-medium">✓ Photo added · Marked complete</p>
+                    )}
+                    {isIncomplete && (
+                      <button
+                        onClick={() => toggleNote(task.id)}
+                        className="flex items-center gap-1 mt-1 text-[11px] text-amber-600 font-medium"
+                      >
+                        <ChevronDown className={`w-3 h-3 transition-transform ${task.showNote ? "rotate-180" : ""}`} />
+                        {task.note ? "Note added" : "Add note — required for sign-off"}
+                      </button>
+                    )}
+                    {isPending && (
+                      <p className="text-[10px] text-gray-400 mt-0.5">Tap camera to complete this task</p>
+                    )}
+                  </div>
+                  <PhotoThumb
+                    hasPhoto={task.hasPhoto}
+                    onTap={() => isPending ? completeTask(task.id) : undefined}
                   />
-                  {!task.note.trim() && (
-                    <p className="text-[10px] text-amber-500 mt-1">⚠ Note required before you can sign off</p>
-                  )}
                 </div>
-              )}
+
+                {isIncomplete && task.showNote && (
+                  <div className="px-3 pb-3 border-t border-amber-100 pt-2">
+                    <p className="text-[10px] text-amber-600 font-semibold mb-1.5 uppercase tracking-wide">Why is this task incomplete?</p>
+                    <textarea
+                      value={task.note}
+                      onChange={e => setNote(task.id, e.target.value)}
+                      placeholder="e.g. Mulch supply not available on site today. Scheduled for delivery Friday."
+                      className="w-full text-[12px] rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 resize-none focus:outline-none text-gray-700 placeholder-gray-400"
+                      style={{ minHeight: 64 }}
+                    />
+                    {!task.note.trim() && (
+                      <p className="text-[10px] text-amber-500 mt-1">⚠ Note required before sign-off</p>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+
+        {/* ── Observations section (new) ── */}
+        <div className="px-4 pb-3 space-y-2">
+          <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wide px-1">Observations</p>
+
+          {/* Site condition rating */}
+          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-3">
+            <p className="text-[11px] font-semibold text-gray-700 mb-2">Overall site condition *</p>
+            <div className="grid grid-cols-4 gap-1.5">
+              {([1, 2, 3, 4] as const).map(n => {
+                const c = CONDITION_LABELS[n];
+                const isSelected = condition === n;
+                return (
+                  <button key={n} onClick={() => setCondition(n)}
+                    className={`flex flex-col items-center gap-1 py-2 rounded-xl border-2 transition-all ${
+                      isSelected ? "border-transparent text-white" : "border-gray-100 text-gray-500 bg-gray-50"
+                    }`}
+                    style={isSelected ? { background: c.color, borderColor: c.color } : {}}>
+                    <span style={isSelected ? { color: "white" } : { color: c.color }}>{c.icon}</span>
+                    <span className="text-[10px] font-bold">{c.label}</span>
+                  </button>
+                );
+              })}
             </div>
-          );
-        })}
+            {condition === 0 && (
+              <p className="text-[10px] text-gray-400 mt-1.5">⚠ Rating required before sign-off</p>
+            )}
+          </div>
+
+          {/* Pest plants */}
+          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-3">
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center gap-1.5">
+                <Leaf className="w-3.5 h-3.5 text-red-400" />
+                <p className="text-[11px] font-semibold text-gray-700">Pest plants observed</p>
+              </div>
+              <button onClick={() => setShowPestForm(f => !f)}
+                className="text-[10px] font-bold px-2.5 py-1 rounded-lg text-white flex items-center gap-1"
+                style={{ background: BRAND }}>
+                + Log
+              </button>
+            </div>
+
+            {pestPlants.length === 0 && !showPestForm && (
+              <p className="text-[11px] text-gray-400">None observed — tap Log to record any sightings</p>
+            )}
+
+            {pestPlants.map((p, i) => (
+              <div key={i} className="flex items-center gap-2 py-1.5 border-t border-gray-50">
+                <TriangleAlert className="w-3 h-3 text-red-400 flex-shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <p className="text-[11px] font-semibold text-gray-800 truncate">{p.species}</p>
+                  {p.location && <p className="text-[10px] text-gray-400">{p.location}</p>}
+                </div>
+                <button onClick={() => setPestPlants(pp => pp.filter((_, j) => j !== i))}>
+                  <X className="w-3.5 h-3.5 text-gray-300" />
+                </button>
+              </div>
+            ))}
+
+            {showPestForm && (
+              <div className="mt-2 pt-2 border-t border-gray-100 space-y-2">
+                <div>
+                  <p className="text-[10px] text-gray-400 mb-1 font-medium">Species</p>
+                  <select
+                    value={newPestSpecies}
+                    onChange={e => setNewPestSpecies(e.target.value)}
+                    className="w-full text-[12px] rounded-xl border border-gray-200 px-3 py-2 bg-white outline-none focus:border-[#00AECD]">
+                    <option value="">Select species…</option>
+                    {PEST_SPECIES.map(s => <option key={s}>{s}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <p className="text-[10px] text-gray-400 mb-1 font-medium">Location on site</p>
+                  <input
+                    value={newPestLocation}
+                    onChange={e => setNewPestLocation(e.target.value)}
+                    placeholder="e.g. NE corner near fence"
+                    className="w-full text-[12px] rounded-xl border border-gray-200 px-3 py-2 outline-none focus:border-[#00AECD]"
+                  />
+                </div>
+                <div className="flex gap-2">
+                  <button onClick={() => setShowPestForm(false)}
+                    className="flex-1 py-1.5 rounded-xl text-[11px] font-semibold text-gray-400 border border-gray-200">Cancel</button>
+                  <button onClick={addPestPlant}
+                    className="flex-1 py-1.5 rounded-xl text-[11px] font-semibold text-white"
+                    style={{ background: BRAND }}>Add</button>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Site notes */}
+          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-3">
+            <button onClick={() => setShowNotesInput(n => !n)}
+              className="w-full flex items-center justify-between">
+              <div className="flex items-center gap-1.5">
+                <SquarePen className="w-3.5 h-3.5 text-gray-400" />
+                <p className="text-[11px] font-semibold text-gray-700">Site notes</p>
+              </div>
+              <span className="text-[10px] text-gray-400">{siteNotes ? "1 note" : "Optional"}</span>
+            </button>
+            {showNotesInput && (
+              <textarea
+                value={siteNotes}
+                onChange={e => setSiteNotes(e.target.value)}
+                placeholder="Any observations, hazards, or handover notes for the manager…"
+                className="w-full mt-2 text-[12px] rounded-xl border border-gray-200 px-3 py-2 resize-none focus:outline-none text-gray-700 placeholder-gray-400"
+                style={{ minHeight: 72 }}
+              />
+            )}
+          </div>
+        </div>
       </div>
 
-      {/* Sign-off CTA */}
+      {/* ── Sign-off CTA ── */}
       <div className="px-4 py-4 bg-white border-t space-y-2 flex-shrink-0">
         {hasPending && (
           <div className="flex items-center gap-2 bg-gray-50 rounded-xl px-3 py-2">
             <AlertCircle className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />
-            <p className="text-[11px] text-gray-500">Complete or add notes for all tasks before signing off</p>
+            <p className="text-[11px] text-gray-500">Complete or add notes for all tasks</p>
           </div>
         )}
         {!hasPending && incompleteWithoutNote.length > 0 && (
           <div className="flex items-center gap-2 bg-amber-50 rounded-xl px-3 py-2 border border-amber-200">
             <AlertCircle className="w-3.5 h-3.5 text-amber-500 flex-shrink-0" />
             <p className="text-[11px] text-amber-700">
-              {incompleteWithoutNote.length} incomplete task{incompleteWithoutNote.length > 1 ? "s" : ""} need{incompleteWithoutNote.length === 1 ? "s" : ""} a note before sign-off
+              {incompleteWithoutNote.length} incomplete task{incompleteWithoutNote.length > 1 ? "s" : ""} need a note
             </p>
+          </div>
+        )}
+        {!hasPending && incompleteWithoutNote.length === 0 && condition === 0 && (
+          <div className="flex items-center gap-2 bg-blue-50 rounded-xl px-3 py-2 border border-blue-100">
+            <AlertCircle className="w-3.5 h-3.5 text-blue-400 flex-shrink-0" />
+            <p className="text-[11px] text-blue-600">Rate the site condition to enable sign-off</p>
           </div>
         )}
         <button
@@ -311,34 +500,72 @@ export function JobCheckout() {
           Sign Off & Close Job
         </button>
         {canSignOff && (
-          <p className="text-center text-[10px] text-gray-400">Work record will be saved against Tui Park Rose Garden</p>
+          <p className="text-center text-[10px] text-gray-400">This will update the Tui Park Rose Garden work record</p>
         )}
       </div>
 
-      {/* Sign-off confirmation sheet */}
+      {/* ── Sign-off confirmation sheet (enhanced) ── */}
       {showSignOff && (
         <div className="absolute inset-0 bg-black/50 flex items-end z-50">
-          <div className="w-full bg-white rounded-t-3xl p-6">
+          <div className="w-full bg-white rounded-t-3xl p-5 max-h-[85vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-bold" style={{ color: NAVY }}>Confirm Sign-Off</h3>
+              <h3 className="text-base font-bold" style={{ color: NAVY }}>Completed Works Record</h3>
               <button onClick={() => setShowSignOff(false)}>
                 <X className="w-5 h-5 text-gray-400" />
               </button>
             </div>
-            <div className="space-y-2 mb-4">
+
+            {/* Job summary */}
+            <div className="space-y-0 mb-4 divide-y divide-gray-50">
               {[
-                { label: "Site",           value: "Tui Park Rose Garden" },
-                { label: "Started",        value: "9:18am" },
-                { label: "Time on site",   value: `${formatTime(START_ELAPSED)} (${isOverTime ? "over" : "under"} allocated)` },
-                { label: "Tasks complete", value: `${done}/${total}` },
-                { label: "Photos taken",   value: "3" },
-              ].map(({ label, value }) => (
-                <div key={label} className="flex justify-between text-sm">
+                { label: "Site",            value: "Tui Park Rose Garden" },
+                { label: "Started",         value: "9:18 am" },
+                { label: "Time on site",    value: formatMins(elapsed), highlight: false },
+                { label: "Allocated",       value: "45 min" },
+                { label: "Variance",        value: variantStr, variantColor },
+                { label: "Tasks complete",  value: `${done}/${total}` },
+                { label: "Photos taken",    value: `${tasks.filter(t => t.hasPhoto).length}` },
+                { label: "Site condition",  value: condition > 0 ? CONDITION_LABELS[condition].label : "—" },
+                { label: "Pest plants",     value: pestPlants.length > 0 ? `${pestPlants.length} logged` : "None observed" },
+              ].map(({ label, value, variantColor: vc }) => (
+                <div key={label} className="flex justify-between py-2 text-sm">
                   <span className="text-gray-400">{label}</span>
-                  <span className="font-semibold text-gray-800">{value}</span>
+                  <span className="font-semibold" style={{ color: vc || "inherit" }}>{value}</span>
                 </div>
               ))}
             </div>
+
+            {/* Incomplete task reasons */}
+            {tasks.filter(t => t.status === "incomplete" && t.note).length > 0 && (
+              <div className="mb-4 p-3 rounded-xl bg-amber-50 border border-amber-100 space-y-1.5">
+                <p className="text-[10px] font-bold text-amber-700 uppercase tracking-wide">Incomplete task notes</p>
+                {tasks.filter(t => t.status === "incomplete" && t.note).map(t => (
+                  <div key={t.id}>
+                    <p className="text-[11px] font-semibold text-amber-800">{t.label}</p>
+                    <p className="text-[11px] text-amber-700">{t.note}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Pest plants */}
+            {pestPlants.length > 0 && (
+              <div className="mb-4 p-3 rounded-xl bg-red-50 border border-red-100 space-y-1">
+                <p className="text-[10px] font-bold text-red-600 uppercase tracking-wide">Pest plants logged</p>
+                {pestPlants.map((p, i) => (
+                  <p key={i} className="text-[11px] text-red-700"><strong>{p.species}</strong>{p.location ? ` — ${p.location}` : ""}</p>
+                ))}
+              </div>
+            )}
+
+            {/* Site notes */}
+            {siteNotes && (
+              <div className="mb-4 p-3 rounded-xl bg-gray-50 border border-gray-100">
+                <p className="text-[10px] font-bold text-gray-500 uppercase tracking-wide mb-1">Site notes</p>
+                <p className="text-[12px] text-gray-700">{siteNotes}</p>
+              </div>
+            )}
+
             <button
               className="w-full py-4 rounded-2xl text-white font-bold text-base shadow-lg"
               style={{ background: `linear-gradient(135deg, ${BRAND}, #0097b2)` }}
@@ -346,7 +573,7 @@ export function JobCheckout() {
             >
               Confirm & Submit
             </button>
-            <p className="text-center text-[10px] text-gray-400 mt-2">Data will sync when connection is restored</p>
+            <p className="text-center text-[10px] text-gray-400 mt-2">Will sync to Tui Park Rose Garden work history when online</p>
           </div>
         </div>
       )}
