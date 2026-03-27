@@ -183,18 +183,19 @@ function FilterGroup({
 }
 
 function ToggleChip({
-  label, active, color, onToggle,
-}: { label: string; active: boolean; color?: string; onToggle: () => void }) {
+  label, active, color, dimmed, onToggle,
+}: { label: string; active: boolean; color?: string; dimmed?: boolean; onToggle: () => void }) {
+  const swatchColor = dimmed ? "#d1d5db" : color;
   return (
     <button
       onClick={onToggle}
       className={`w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg border text-xs font-medium transition-all text-left ${
-        active ? "border-transparent text-white" : "border-gray-200 bg-white text-gray-600 hover:border-gray-300"
-      }`}
-      style={active ? { background: color || BRAND } : {}}
+        active ? "border-transparent text-white" : "border-gray-200 bg-white hover:border-gray-300"
+      } ${dimmed && !active ? "text-gray-400" : "text-gray-600"}`}
+      style={active ? { background: dimmed ? "#9ca3af" : (color || BRAND) } : {}}
     >
       {color && (
-        <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: color }} />
+        <span className="w-2.5 h-2.5 rounded-full flex-shrink-0 transition-colors" style={{ background: swatchColor }} />
       )}
       {label}
       {active && <X className="w-3 h-3 ml-auto opacity-70" />}
@@ -312,6 +313,7 @@ export function AssetMap() {
                 label={SCHEDULE_CONFIG[s].label}
                 active={scheduleFilter.has(s)}
                 color={SCHEDULE_CONFIG[s].color}
+                dimmed={colorMode !== "schedule"}
                 onToggle={() => setScheduleFilter(toggle(scheduleFilter, s))}
               />
             ))}
@@ -324,6 +326,7 @@ export function AssetMap() {
                 label={t}
                 active={typeFilter.has(t)}
                 color={TYPE_COLORS[t]}
+                dimmed={colorMode !== "type"}
                 onToggle={() => setTypeFilter(toggle(typeFilter, t))}
               />
             ))}
