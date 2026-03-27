@@ -61,15 +61,15 @@ function Sidebar({ active }: { active: string }) {
 // ─── Columns (9 garden types from PCC Hort Maintenance Spec Mar 2026) ────────
 
 const COLUMNS = [
-  { id: "annuals",       label: "1. Annuals",                color: "#f59e0b" },
-  { id: "roses",         label: "2. Roses & Perennials",     color: "#ec4899" },
-  { id: "ornamental",    label: "3. Ornamental",             color: "#8b5cf6" },
-  { id: "amenity",       label: "4. Amenity",                color: BRAND },
-  { id: "rain_garden",   label: "Rain Garden",               color: "#06b6d4" },
-  { id: "reveg",         label: "Reveg",                     color: "#84cc16" },
-  { id: "bush",          label: "Bush",                      color: "#16a34a" },
-  { id: "tree_planters", label: "8. Tree Planters/Pits",     color: "#78716c" },
-  { id: "hedges",        label: "7. Hedges",                 color: "#6b7280" },
+  { id: "annuals",       label: "Annuals",             color: "#f59e0b" },
+  { id: "roses",         label: "Roses & Perennials",  color: "#ec4899" },
+  { id: "ornamental",    label: "Ornamental",          color: "#8b5cf6" },
+  { id: "amenity",       label: "Amenity",             color: BRAND },
+  { id: "rain_garden",   label: "Rain Garden",         color: "#06b6d4" },
+  { id: "reveg",         label: "Reveg",               color: "#84cc16" },
+  { id: "bush",          label: "Bush",                color: "#16a34a" },
+  { id: "tree_planters", label: "Tree Planters/Pits",  color: "#78716c" },
+  { id: "hedges",        label: "Hedges",              color: "#6b7280" },
 ];
 
 type RowType = "select" | "text" | "readonly";
@@ -172,7 +172,7 @@ const SPEC_ROWS: SpecRow[] = [
       amenity:       "50–100mm. No mulch required on slopes >30°, flood-prone sites, or where vegetation has fully covered the site.",
       rain_garden:   "None allowed",
       reveg:         "Mulched once at inception only",
-      bush:          "None",
+      bush:          "n/a",
       tree_planters: "50–100mm if already present. No mulch on slopes >30°, flood-prone sites, or where vegetation has fully covered the site.",
       hedges:        "None",
     },
@@ -186,7 +186,7 @@ const SPEC_ROWS: SpecRow[] = [
       amenity:       "Bark or aged tree chip",
       rain_garden:   "n/a",
       reveg:         "n/a",
-      bush:          "Bark or aged tree chip",
+      bush:          "n/a",
       tree_planters: "Bark mulch, gravel or lime chip",
       hedges:        "n/a",
     },
@@ -200,7 +200,7 @@ const SPEC_ROWS: SpecRow[] = [
       amenity:       "Clear of trunks, plant stems and crowns; not buried. Not allowed to spill over garden edges.",
       rain_garden:   "n/a",
       reveg:         "n/a",
-      bush:          "Clear of trunks, plant stems and crowns; not buried. Not allowed to spill over garden edges.",
+      bush:          "n/a",
       tree_planters: "Clear of trunks, plant stems and crowns; not buried. Not allowed to spill over garden edges.",
       hedges:        "n/a",
     },
@@ -506,7 +506,6 @@ export function Specification() {
                       className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide bg-gray-50 border-r border-gray-200 sticky left-0 z-20"
                       style={{ minWidth: 190 }}
                     >
-                      Specification
                     </th>
                     {COLUMNS.map(col => (
                       <th key={col.id} className="px-3 py-3 text-center" style={{ minWidth: 160 }}>
