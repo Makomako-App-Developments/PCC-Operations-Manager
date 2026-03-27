@@ -949,14 +949,6 @@ export function InfillPlanting() {
               ))}
             </div>
           </div>
-
-          {/* Info note */}
-          <div className="flex items-start gap-3 p-4 rounded-xl bg-blue-50 border border-blue-100">
-            <AlertCircle className="w-4 h-4 text-blue-400 flex-shrink-0 mt-0.5" />
-            <p className="text-xs text-blue-700">
-              <span className="font-semibold">Assessments are added by Jude Morison in the field</span> using the mobile app or this page. Once species and quantities are recorded, the manager assigns the planting work to a team — creating a job that appears in their job list with full plant requirements.
-            </p>
-          </div>
         </div>
       </main>
     </div>
