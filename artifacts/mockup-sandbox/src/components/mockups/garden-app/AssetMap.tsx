@@ -325,8 +325,8 @@ export function AssetMap() {
             ))}
           </FilterGroup>
 
-          {/* Jobs */}
-          <FilterGroup title="Jobs" open={openSections.jobs} onToggle={() => toggleSection("jobs")}>
+          {/* Job Type */}
+          <FilterGroup title="Job Type" open={openSections.jobs} onToggle={() => toggleSection("jobs")}>
             {JOB_TYPES.map(j => {
               const jobColors: Record<JobType,string> = {
                 "Scheduled":      "#3b82f6",
