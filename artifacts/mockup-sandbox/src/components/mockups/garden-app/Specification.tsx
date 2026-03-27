@@ -4,7 +4,8 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   LayoutDashboard, ClipboardList, List, CalendarDays, ClipboardCheck,
-  Sprout, Layers, FileSpreadsheet, Pencil, Save, X, Info, BarChart2, Lock
+  Sprout, Layers, FileSpreadsheet, Pencil, Save, X, Info, BarChart2, Lock,
+  Map as MapIcon
 } from "lucide-react";
 
 const BRAND = "#00AECD";
@@ -14,6 +15,7 @@ function Sidebar({ active }: { active: string }) {
   const nav = [
     { icon: LayoutDashboard, label: "Dashboard" },
     { icon: List,            label: "Asset Register" },
+    { icon: MapIcon,         label: "Map",            id: "map" },
     { icon: CalendarDays,    label: "Schedule" },
     { icon: ClipboardCheck,  label: "Audits",          id: "audits" },
     { icon: Sprout,          label: "Infill Planting",  id: "planting" },

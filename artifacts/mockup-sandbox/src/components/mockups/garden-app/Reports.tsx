@@ -3,7 +3,8 @@ import {
   Leaf, List, LayoutDashboard, CalendarDays, ClipboardCheck,
   Sprout, Layers, FileSpreadsheet, BarChart2, TrendingUp, TrendingDown,
   Minus, AlertTriangle, CheckCircle2, Clock, SkipForward,
-  Target, ChevronDown, Download, DollarSign, TriangleAlert, Users
+  Target, ChevronDown, Download, DollarSign, TriangleAlert, Users,
+  Map as MapIcon
 } from "lucide-react";
 
 const BRAND = "#00AECD";
@@ -13,6 +14,7 @@ function Sidebar({ active }: { active: string }) {
   const nav = [
     { icon: LayoutDashboard, label: "Dashboard",      id: "dashboard" },
     { icon: List,            label: "Asset Register" },
+    { icon: MapIcon,         label: "Map",            id: "map" },
     { icon: CalendarDays,    label: "Schedule" },
     { icon: ClipboardCheck,  label: "Audits",          id: "audits" },
     { icon: Sprout,          label: "Infill Planting",  id: "planting" },

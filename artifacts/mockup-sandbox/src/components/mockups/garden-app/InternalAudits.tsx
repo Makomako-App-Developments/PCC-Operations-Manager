@@ -3,7 +3,8 @@ import {
   LayoutDashboard, List, CalendarDays, ClipboardCheck, Sprout, Layers,
   FileSpreadsheet, BarChart2, Plus, CheckCircle2, XCircle,
   Clock, ChevronRight, Search, MapPin,
-  AlertTriangle, X, Shuffle, Wrench, CalendarPlus, CheckCheck
+  AlertTriangle, X, Shuffle, Wrench, CalendarPlus, CheckCheck,
+  Map as MapIcon
 } from "lucide-react";
 
 const BRAND = "#00AECD";
@@ -13,6 +14,7 @@ function Sidebar({ active }: { active: string }) {
   const nav = [
     { icon: LayoutDashboard, label: "Dashboard" },
     { icon: List,            label: "Asset Register" },
+    { icon: MapIcon,         label: "Map",            id: "map" },
     { icon: CalendarDays,    label: "Schedule" },
     { icon: ClipboardCheck,  label: "Audits",          id: "audits" },
     { icon: Sprout,          label: "Infill Planting",  id: "planting" },

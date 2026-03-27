@@ -8,7 +8,8 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import {
   MapPin, Camera, Navigation, Leaf, CheckCircle2, ClipboardList,
-  LayoutDashboard, CalendarDays, List, Menu, Upload, X, ClipboardCheck, Sprout, Layers, FileSpreadsheet, BarChart2
+  LayoutDashboard, CalendarDays, List, Menu, Upload, X, ClipboardCheck, Sprout, Layers, FileSpreadsheet, BarChart2,
+  Map as MapIcon
 } from "lucide-react";
 
 const BRAND = "#00AECD";
@@ -17,6 +18,7 @@ function Sidebar({ active }: { active: string }) {
   const nav = [
     { icon: LayoutDashboard, label: "Dashboard" },
     { icon: List, label: "Asset Register" },
+    { icon: MapIcon, label: "Map", id: "map" },
     { icon: CalendarDays, label: "Schedule" },
     { icon: ClipboardCheck, label: "Audits", id: "audits" },
     { icon: Sprout, label: "Infill Planting", id: "planting" },

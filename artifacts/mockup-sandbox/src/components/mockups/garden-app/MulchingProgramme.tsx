@@ -3,7 +3,8 @@ import {
   LayoutDashboard, List, CalendarDays, ClipboardCheck, Sprout,
   FileSpreadsheet, BarChart2, X, Layers, CheckCircle2, Clock,
   AlertTriangle, AlertCircle, Zap, ChevronRight, CalendarRange,
-  TrendingUp, Truck, Info, Download, ChevronDown, FileText, Table2
+  TrendingUp, Truck, Info, Download, ChevronDown, FileText, Table2,
+  Map as MapIcon
 } from "lucide-react";
 
 const BRAND = "#00AECD";
@@ -539,6 +540,7 @@ function ForwardProgramme({ assets, onSchedule }: { assets: MulchAsset[]; onSche
 const NAV = [
   { icon: LayoutDashboard, label: "Dashboard"      },
   { icon: List,            label: "Asset Register" },
+  { icon: MapIcon,         label: "Map",           id: "map" },
   { icon: CalendarDays,    label: "Schedule"       },
   { icon: ClipboardCheck,  label: "Audits"         },
   { icon: Sprout,          label: "Infill Planting"},

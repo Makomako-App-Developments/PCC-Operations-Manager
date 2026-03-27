@@ -7,7 +7,8 @@ import { Card, CardContent } from "@/components/ui/card";
 import {
   Search, LayoutGrid, List, Leaf, ClipboardCheck, LayoutDashboard,
   CalendarDays, Eye, MapPin, ClipboardList, Sprout, Layers, FileSpreadsheet, BarChart2,
-  X, CheckCircle2, AlertTriangle, History, ShieldAlert, ClipboardX, Info, Pencil
+  X, CheckCircle2, AlertTriangle, History, ShieldAlert, ClipboardX, Info, Pencil,
+  Map as MapIcon
 } from "lucide-react";
 import { MapContainer, TileLayer, CircleMarker, Tooltip } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
@@ -19,6 +20,7 @@ function Sidebar({ active }: { active: string }) {
   const nav = [
     { icon: LayoutDashboard, label: "Dashboard" },
     { icon: List,            label: "Asset Register", id: "list" },
+    { icon: MapIcon,         label: "Map",            id: "map" },
     { icon: CalendarDays,    label: "Schedule" },
     { icon: ClipboardCheck,  label: "Audits",          id: "audits" },
     { icon: Sprout,          label: "Infill Planting",  id: "planting" },

@@ -4,7 +4,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
-  CalendarDays, ClipboardList, LayoutDashboard, List, Users, ChevronLeft, ChevronRight, CheckCircle2, ClipboardCheck, Sprout, Layers, FileSpreadsheet, BarChart2, Zap
+  CalendarDays, ClipboardList, LayoutDashboard, List, Users, ChevronLeft, ChevronRight, CheckCircle2, ClipboardCheck, Sprout, Layers, FileSpreadsheet, BarChart2, Zap,
+  Map as MapIcon
 } from "lucide-react";
 import { ReactiveJobFlow } from "./ReactiveJobFlow";
 
@@ -14,6 +15,7 @@ function Sidebar({ active }: { active: string }) {
   const nav = [
     { icon: LayoutDashboard, label: "Dashboard" },
     { icon: List, label: "Asset Register" },
+    { icon: MapIcon, label: "Map", id: "map" },
     { icon: CalendarDays, label: "Schedule", id: "maintenance" },
     { icon: ClipboardCheck, label: "Audits", id: "audits" },
     { icon: Sprout, label: "Infill Planting", id: "planting" },
