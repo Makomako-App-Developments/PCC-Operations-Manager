@@ -250,13 +250,17 @@ export function AssetMap() {
 
   // Filtered assets
   const visible = useMemo(() => ASSETS.filter(a => {
-    if (typeFilter.size > 0     && !typeFilter.has(a.type))             return false;
+    if (typeFilter.size > 0     && !typeFilter.has(a.type))              return false;
     if (scheduleFilter.size > 0 && !scheduleFilter.has(a.scheduleState)) return false;
-    if (jobFilter.size > 0      && !a.jobs.some(j => jobFilter.has(j))) return false;
-    if (freqFilter.size > 0     && !freqFilter.has(a.freq))             return false;
-    if (teamFilter.size > 0     && !teamFilter.has(a.team))             return false;
+    if (jobFilter.size > 0      && !a.jobs.some(j => jobFilter.has(j)))  return false;
+    if (freqFilter.size > 0     && !freqFilter.has(a.freq))              return false;
+    if (teamFilter.size > 0     && !teamFilter.has(a.team))              return false;
     return true;
   }), [typeFilter, scheduleFilter, jobFilter, freqFilter, teamFilter]);
+
+  // Composite key — changes whenever the visible set changes, forcing Leaflet to
+  // fully tear down and re-create markers (including permanent tooltip labels).
+  const visibleKey = visible.map(a => a.id).join("|");
 
   return (
     <div className="flex h-screen bg-[#f5f7f9] font-sans overflow-hidden">
@@ -424,7 +428,7 @@ export function AssetMap() {
             const schedCfg = SCHEDULE_CONFIG[asset.scheduleState];
             return (
               <CircleMarker
-                key={asset.id}
+                key={`${asset.id}:${visibleKey}`}
                 center={[asset.lat, asset.lng]}
                 radius={13}
                 pathOptions={{
