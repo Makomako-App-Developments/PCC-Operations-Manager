@@ -1,7 +1,7 @@
 import { useState } from "react";
 import {
   Leaf, List, LayoutDashboard, CalendarDays, ClipboardCheck,
-  Sprout, FileSpreadsheet, BarChart2, TrendingUp, TrendingDown,
+  Sprout, Layers, FileSpreadsheet, BarChart2, TrendingUp, TrendingDown,
   Minus, AlertTriangle, CheckCircle2, Clock, SkipForward,
   Target, ChevronDown, Download, DollarSign, TriangleAlert, Users
 } from "lucide-react";
@@ -16,6 +16,7 @@ function Sidebar({ active }: { active: string }) {
     { icon: CalendarDays,    label: "Schedule" },
     { icon: ClipboardCheck,  label: "Audits",          id: "audits" },
     { icon: Sprout,          label: "Infill Planting",  id: "planting" },
+    { icon: Layers,          label: "Mulching",         id: "mulching" },
     { icon: FileSpreadsheet, label: "Specification",   id: "spec" },
     { icon: BarChart2,       label: "Reports",         id: "reports" },
   ];

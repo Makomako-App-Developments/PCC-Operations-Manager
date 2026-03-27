@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   LayoutDashboard, ClipboardList, List, CalendarDays, ClipboardCheck,
-  Sprout, FileSpreadsheet, Pencil, Save, X, Info, BarChart2, Lock
+  Sprout, Layers, FileSpreadsheet, Pencil, Save, X, Info, BarChart2, Lock
 } from "lucide-react";
 
 const BRAND = "#00AECD";
@@ -17,6 +17,7 @@ function Sidebar({ active }: { active: string }) {
     { icon: CalendarDays,    label: "Schedule" },
     { icon: ClipboardCheck,  label: "Audits",          id: "audits" },
     { icon: Sprout,          label: "Infill Planting",  id: "planting" },
+    { icon: Layers,          label: "Mulching",         id: "mulching" },
     { icon: FileSpreadsheet, label: "Specification",   id: "spec" },
     { icon: BarChart2,       label: "Reports",          id: "reports" },
   ];

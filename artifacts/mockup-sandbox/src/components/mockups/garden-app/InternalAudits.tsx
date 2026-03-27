@@ -1,6 +1,6 @@
 import { useState } from "react";
 import {
-  LayoutDashboard, List, CalendarDays, ClipboardCheck, Sprout,
+  LayoutDashboard, List, CalendarDays, ClipboardCheck, Sprout, Layers,
   FileSpreadsheet, BarChart2, Plus, CheckCircle2, XCircle,
   Clock, ChevronRight, Search, MapPin,
   AlertTriangle, X, Shuffle, Wrench, CalendarPlus, CheckCheck
@@ -16,6 +16,7 @@ function Sidebar({ active }: { active: string }) {
     { icon: CalendarDays,    label: "Schedule" },
     { icon: ClipboardCheck,  label: "Audits",          id: "audits" },
     { icon: Sprout,          label: "Infill Planting",  id: "planting" },
+    { icon: Layers,          label: "Mulching",         id: "mulching" },
     { icon: FileSpreadsheet, label: "Specification",   id: "spec" },
     { icon: BarChart2,       label: "Reports",         id: "reports" },
   ];

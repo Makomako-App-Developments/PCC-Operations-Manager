@@ -5,7 +5,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import {
   Leaf, ClipboardList, LayoutDashboard, CalendarDays, List,
-  Users, TrendingUp, AlertCircle, CheckCircle, Clock, ClipboardCheck, Sprout, FileSpreadsheet, BarChart2
+  Users, TrendingUp, AlertCircle, CheckCircle, Clock, ClipboardCheck, Sprout, Layers, FileSpreadsheet, BarChart2
 } from "lucide-react";
 
 const BRAND = "#00AECD";
@@ -17,6 +17,7 @@ function Sidebar({ active }: { active: string }) {
     { icon: CalendarDays, label: "Schedule" },
     { icon: ClipboardCheck, label: "Audits", id: "audits" },
     { icon: Sprout, label: "Infill Planting", id: "planting" },
+    { icon: Layers, label: "Mulching",        id: "mulching" },
     { icon: FileSpreadsheet, label: "Specification", id: "spec" },
     { icon: BarChart2, label: "Reports", id: "reports" },
   ];
