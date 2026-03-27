@@ -3,8 +3,7 @@ import {
   ChevronLeft, Camera, CheckCircle2, Circle, Clock,
   WifiOff, AlertCircle, X, ImageIcon, ChevronDown, Send,
   MapPin, Layers, Star, ChevronUp, Navigation, Leaf,
-  MessageSquare, ThumbsUp, ThumbsDown, Minus, TriangleAlert,
-  SquarePen
+  TriangleAlert, SquarePen
 } from "lucide-react";
 
 const BRAND = "#00AECD";
@@ -48,13 +47,6 @@ const PEST_SPECIES = [
   "Other (free text)",
 ];
 
-type Condition = 0 | 1 | 2 | 3 | 4;  // 0 = unset
-const CONDITION_LABELS: Record<number, { label: string; color: string; icon: React.ReactNode }> = {
-  1: { label: "Poor",      color: "#ef4444", icon: <ThumbsDown className="w-3.5 h-3.5" /> },
-  2: { label: "Fair",      color: "#f97316", icon: <Minus      className="w-3.5 h-3.5" /> },
-  3: { label: "Good",      color: "#22c55e", icon: <ThumbsUp   className="w-3.5 h-3.5" /> },
-  4: { label: "Excellent", color: BRAND,     icon: <Star       className="w-3.5 h-3.5" /> },
-};
 
 function formatTime(secs: number): string {
   const abs = Math.abs(secs);
@@ -128,7 +120,6 @@ export function JobCheckout() {
   const [remaining,  setRemaining]  = useState(ALLOCATED_SECS - START_ELAPSED);
   const [showSignOff,setShowSignOff]= useState(false);
   const [infoExpanded,setInfoExpanded]=useState(false);
-  const [condition,  setCondition]  = useState<Condition>(0);
   const [siteNotes,  setSiteNotes]  = useState("");
   const [showNotesInput, setShowNotesInput] = useState(false);
   const [pestPlants, setPestPlants] = useState<{ species: string; location: string }[]>([]);
@@ -151,7 +142,7 @@ export function JobCheckout() {
   const progress    = Math.round((done / total) * 100);
   const hasPending  = tasks.some(t => t.status === "pending");
   const incompleteWithoutNote = tasks.filter(t => t.status === "incomplete" && !t.note.trim());
-  const canSignOff  = incompleteWithoutNote.length === 0 && !hasPending && condition > 0;
+  const canSignOff  = incompleteWithoutNote.length === 0 && !hasPending;
 
   const toggleNote  = (id: number) =>
     setTasks(prev => prev.map(t => t.id === id ? { ...t, showNote: !t.showNote } : t));
@@ -356,30 +347,6 @@ export function JobCheckout() {
         <div className="px-4 pb-3 space-y-2">
           <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wide px-1">Observations</p>
 
-          {/* Site condition rating */}
-          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-3">
-            <p className="text-[11px] font-semibold text-gray-700 mb-2">Overall site condition *</p>
-            <div className="grid grid-cols-4 gap-1.5">
-              {([1, 2, 3, 4] as const).map(n => {
-                const c = CONDITION_LABELS[n];
-                const isSelected = condition === n;
-                return (
-                  <button key={n} onClick={() => setCondition(n)}
-                    className={`flex flex-col items-center gap-1 py-2 rounded-xl border-2 transition-all ${
-                      isSelected ? "border-transparent text-white" : "border-gray-100 text-gray-500 bg-gray-50"
-                    }`}
-                    style={isSelected ? { background: c.color, borderColor: c.color } : {}}>
-                    <span style={isSelected ? { color: "white" } : { color: c.color }}>{c.icon}</span>
-                    <span className="text-[10px] font-bold">{c.label}</span>
-                  </button>
-                );
-              })}
-            </div>
-            {condition === 0 && (
-              <p className="text-[10px] text-gray-400 mt-1.5">⚠ Rating required before sign-off</p>
-            )}
-          </div>
-
           {/* Pest plants */}
           <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-3">
             <div className="flex items-center justify-between mb-2">
@@ -482,12 +449,6 @@ export function JobCheckout() {
             </p>
           </div>
         )}
-        {!hasPending && incompleteWithoutNote.length === 0 && condition === 0 && (
-          <div className="flex items-center gap-2 bg-blue-50 rounded-xl px-3 py-2 border border-blue-100">
-            <AlertCircle className="w-3.5 h-3.5 text-blue-400 flex-shrink-0" />
-            <p className="text-[11px] text-blue-600">Rate the site condition to enable sign-off</p>
-          </div>
-        )}
         <button
           disabled={!canSignOff}
           onClick={() => setShowSignOff(true)}
@@ -525,7 +486,6 @@ export function JobCheckout() {
                 { label: "Variance",        value: variantStr, variantColor },
                 { label: "Tasks complete",  value: `${done}/${total}` },
                 { label: "Photos taken",    value: `${tasks.filter(t => t.hasPhoto).length}` },
-                { label: "Site condition",  value: condition > 0 ? CONDITION_LABELS[condition].label : "—" },
                 { label: "Pest plants",     value: pestPlants.length > 0 ? `${pestPlants.length} logged` : "None observed" },
               ].map(({ label, value, variantColor: vc }) => (
                 <div key={label} className="flex justify-between py-2 text-sm">
