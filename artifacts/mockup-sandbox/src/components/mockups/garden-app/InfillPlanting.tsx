@@ -3,7 +3,7 @@ import { Badge } from "@/components/ui/badge";
 import {
   LayoutDashboard, List, CalendarDays, ClipboardCheck, Sprout,
   FileSpreadsheet, BarChart2, Plus, X, Search, Users, Calendar,
-  CheckCircle2, Clock, ChevronRight, Leaf, AlertCircle, Filter
+  CheckCircle2, Clock, ChevronRight, Leaf, AlertCircle, AlertTriangle, Filter
 } from "lucide-react";
 
 const BRAND = "#00AECD";
@@ -466,6 +466,72 @@ function NewAssessmentModal({
   );
 }
 
+// ─── Capacity heatmap data ────────────────────────────────────────────────────
+
+const PRODUCTIVE_MIN = 360;
+const MAX_CAP_MIN    = 480;
+
+interface CalDay { label: string; date: string; scheduled: number; }
+
+// Working days 30 Mar – 17 Apr 2026 (3 weeks)
+const WEEK_DAYS: { label: string; date: string }[] = [
+  { label: "Mon", date: "30 Mar" }, { label: "Tue", date: "31 Mar" },
+  { label: "Wed", date: "1 Apr"  }, { label: "Thu", date: "2 Apr"  },
+  { label: "Fri", date: "3 Apr"  },
+  { label: "Mon", date: "6 Apr"  }, { label: "Tue", date: "7 Apr"  },
+  { label: "Wed", date: "8 Apr"  }, { label: "Thu", date: "9 Apr"  },
+  { label: "Fri", date: "10 Apr" },
+  { label: "Mon", date: "13 Apr" }, { label: "Tue", date: "14 Apr" },
+  { label: "Wed", date: "15 Apr" }, { label: "Thu", date: "16 Apr" },
+  { label: "Fri", date: "17 Apr" },
+];
+
+const TEAM_BASE: Record<string, number[]> = {
+  // Team A — busy: rose gardens weekly + fortnightlies
+  "Team A": [280, 315, 375, 250, 120,  320, 360, 110, 290, 260,  295, 320, 375, 80, 270],
+  // Team B — medium: fortnightly + monthly assets
+  "Team B": [165, 90,  165, 75,  90,   165, 90,  75,  165, 60,   90,  165, 75,  90, 60 ],
+  // Team C — light: 2 assets, monthly/6-monthly
+  "Team C": [45,  0,   90,  45,  0,    45,  0,   45,  0,   45,   45,  0,   45,  0,  45 ],
+};
+
+// Representative jobs for conflict resolution on busy Team A days
+interface ConflictJob {
+  id: string; site: string; mins: number; freq: string;
+  dayOf: number; windowSize: number; lastVisit: string; nextDue: string;
+}
+const TEAM_CONFLICT_JOBS: Record<string, ConflictJob[]> = {
+  "Team A": [
+    { id: "CJ1", site: "Waitangirua Mall Entry", mins: 120, freq: "Weekly",      dayOf: 7,  windowSize: 7,  lastVisit: "20 Mar", nextDue: "Selected date" },
+    { id: "CJ2", site: "Cobham Court",            mins: 120, freq: "Weekly",      dayOf: 7,  windowSize: 7,  lastVisit: "20 Mar", nextDue: "Selected date" },
+    { id: "CJ3", site: "Mungavin Ave Berm",       mins: 45,  freq: "Fortnightly", dayOf: 12, windowSize: 14, lastVisit: "18 Mar", nextDue: "1 Apr"  },
+    { id: "CJ4", site: "Aotea Lagoon Reserve",    mins: 90,  freq: "Fortnightly", dayOf: 12, windowSize: 14, lastVisit: "18 Mar", nextDue: "1 Apr"  },
+  ],
+  "Team B": [
+    { id: "CJ1", site: "Aotea Lagoon Reserve",  mins: 90, freq: "Fortnightly", dayOf: 12, windowSize: 14, lastVisit: "18 Mar", nextDue: "1 Apr" },
+    { id: "CJ2", site: "Titahi Bay Esplanade",  mins: 75, freq: "Fortnightly", dayOf: 10, windowSize: 14, lastVisit: "20 Mar", nextDue: "3 Apr" },
+  ],
+  "Team C": [],
+};
+
+function capBand(m: number): "green" | "amber" | "red" {
+  if (m > MAX_CAP_MIN)    return "red";
+  if (m > PRODUCTIVE_MIN) return "amber";
+  return "green";
+}
+function capColor(b: "green" | "amber" | "red") {
+  return b === "green" ? "#16a34a" : b === "amber" ? "#d97706" : "#dc2626";
+}
+function capBg(b: "green" | "amber" | "red") {
+  return b === "green" ? "bg-green-100 border-green-300 text-green-800"
+       : b === "amber" ? "bg-amber-50 border-amber-300 text-amber-800"
+       : "bg-red-50 border-red-300 text-red-700";
+}
+function fmtM(m: number) {
+  const h = Math.floor(m / 60), r = m % 60;
+  return h > 0 ? `${h}h${r > 0 ? ` ${r}m` : ""}` : `${r}m`;
+}
+
 // ─── Assign to Team Modal ─────────────────────────────────────────────────────
 
 function AssignModal({ assessment, onClose, onSave }: {
@@ -473,60 +539,249 @@ function AssignModal({ assessment, onClose, onSave }: {
   onSave: (team: string, date: string, mins: number) => void;
 }) {
   const defaultMins = Math.max(30, Math.round(totalPlants(assessment) * 3));
-  const [team, setTeam] = useState("Team A");
-  const [date, setDate] = useState("8 Apr 2026");
-  const [mins, setMins] = useState(defaultMins);
+  const [team, setTeam]   = useState("Team A");
+  const [selDay, setSelDay] = useState<CalDay | null>(null);
+  const [estMins, setEstMins] = useState(defaultMins);
+  const [contingencyOk, setContingencyOk] = useState(false);
+
+  // Conflict resolution state
+  type CJAction = "none" | "push" | "defer" | "delete";
+  const [cjActions, setCjActions] = useState<Record<string, CJAction>>({});
+  const setCjAction = (id: string, a: CJAction) =>
+    setCjActions(prev => ({ ...prev, [id]: a }));
+
+  // Build calendar days for selected team
+  const calDays: CalDay[] = WEEK_DAYS.map((d, i) => ({
+    ...d, scheduled: TEAM_BASE[team][i],
+  }));
+
+  // Compute totals for selected day
+  const dayTotal = selDay ? selDay.scheduled + estMins : 0;
+  const resolvedRemoved = selDay
+    ? (TEAM_CONFLICT_JOBS[team] || [])
+        .filter(j => ["push","defer","delete"].includes(cjActions[j.id] || "none"))
+        .reduce((s, j) => s + j.mins, 0)
+    : 0;
+  const resolvedTotal = dayTotal - resolvedRemoved;
+  const dayBand = selDay ? capBand(resolvedTotal) : "green";
+  const overMax = resolvedTotal > MAX_CAP_MIN;
+
+  const canConfirm = selDay && !overMax && (dayBand !== "amber" || contingencyOk);
+
+  // Reset resolution when team or day changes
+  const pickTeam = (t: string) => { setTeam(t); setSelDay(null); setCjActions({}); setContingencyOk(false); };
+  const pickDay  = (d: CalDay) => { setSelDay(d); setCjActions({}); setContingencyOk(false); };
+
+  // Team load summary
+  const teamGreen = (t: string) => WEEK_DAYS.filter((_, i) => capBand(TEAM_BASE[t][i] + estMins) === "green").length;
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-6">
-      <div className="bg-white rounded-2xl w-full max-w-md shadow-2xl">
-        <div className="px-6 py-4 border-b flex items-center justify-between">
-          <h3 className="text-sm font-bold text-gray-900">Assign Planting Job</h3>
+    <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
+      <div className="bg-white rounded-2xl w-full max-w-3xl shadow-2xl flex flex-col max-h-[92vh]">
+
+        {/* Header */}
+        <div className="px-6 py-4 border-b flex items-start justify-between flex-shrink-0">
+          <div>
+            <h3 className="text-sm font-bold text-gray-900">Assign Planting Job — Capacity Check</h3>
+            <p className="text-[11px] text-gray-400 mt-0.5">
+              {assessment.assetName} · {totalPlants(assessment)} plants · ~{fmtM(defaultMins)} estimated
+            </p>
+          </div>
           <button onClick={onClose}><X className="w-5 h-5 text-gray-400" /></button>
         </div>
-        <div className="px-6 py-5 space-y-4">
-          {/* Summary */}
-          <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-200">
-            <p className="text-xs font-bold text-emerald-800">{assessment.assetName}</p>
-            <p className="text-[11px] text-emerald-700 mt-0.5">
-              {assessment.species.length} species · {totalPlants(assessment)} plants total
+
+        <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
+
+          {/* Team selector */}
+          <div>
+            <p className="text-xs font-semibold text-gray-500 mb-2">Select team</p>
+            <div className="flex gap-2">
+              {["Team A", "Team B", "Team C"].map(t => {
+                const greenDays = teamGreen(t);
+                const active = team === t;
+                return (
+                  <button key={t} onClick={() => pickTeam(t)}
+                    className={`flex-1 p-3 rounded-xl border-2 text-left transition-all ${active ? "border-[#00AECD] bg-[#00AECD08]" : "border-gray-200 hover:border-gray-300 bg-white"}`}>
+                    <p className={`text-xs font-bold ${active ? "text-[#00AECD]" : "text-gray-700"}`}>{t}</p>
+                    <div className="flex items-center gap-1 mt-1">
+                      <div className="flex gap-0.5">
+                        {WEEK_DAYS.map((_, i) => {
+                          const b = capBand(TEAM_BASE[t][i] + estMins);
+                          return <div key={i} className="w-1.5 h-3 rounded-sm" style={{ background: capColor(b) }} />;
+                        })}
+                      </div>
+                    </div>
+                    <p className="text-[10px] text-gray-400 mt-1">{greenDays} of 15 days free</p>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Estimated time */}
+          <div className="flex items-center gap-4 p-3 rounded-xl bg-gray-50 border border-gray-100">
+            <div className="flex-1">
+              <p className="text-xs font-semibold text-gray-700">Estimated planting time</p>
+              <p className="text-[10px] text-gray-400">Auto: ~3 min/plant · adjust if needed</p>
+            </div>
+            <div className="flex items-center gap-2">
+              <button onClick={() => setEstMins(m => Math.max(15, m - 15))} className="w-7 h-7 rounded-lg bg-white border text-sm font-bold text-gray-600 hover:bg-gray-100">−</button>
+              <span className="text-sm font-bold text-gray-900 w-12 text-center">{fmtM(estMins)}</span>
+              <button onClick={() => setEstMins(m => m + 15)} className="w-7 h-7 rounded-lg bg-white border text-sm font-bold text-gray-600 hover:bg-gray-100">+</button>
+            </div>
+          </div>
+
+          {/* 3-week heatmap */}
+          <div>
+            <p className="text-xs font-semibold text-gray-500 mb-2">
+              Pick a date — days coloured by team capacity after adding planting job
             </p>
-            <div className="mt-2 space-y-0.5">
-              {assessment.species.map(sp => (
-                <div key={sp.name} className="flex justify-between text-[10px] text-emerald-700">
-                  <SciName name={sp.name} /><span className="font-semibold">{sp.qty}</span>
-                </div>
+            <div className="grid grid-cols-5 gap-1.5">
+              {/* Week labels */}
+              {["Week 1 (30 Mar)", "Week 2 (6 Apr)", "Week 3 (13 Apr)"].map(w => (
+                <div key={w} className="col-span-5 text-[10px] text-gray-400 font-semibold uppercase tracking-wide pt-1">{w}</div>
+              )).reduce((acc: JSX.Element[], el, wi) => {
+                const slice = calDays.slice(wi * 5, wi * 5 + 5);
+                return [...acc, el, ...slice.map(d => {
+                  const total = d.scheduled + estMins;
+                  const band  = capBand(total);
+                  const isSelected = selDay?.date === d.date;
+                  return (
+                    <button key={d.date} onClick={() => pickDay(d)}
+                      className={`p-2 rounded-xl border-2 text-left transition-all ${isSelected ? "ring-2 ring-offset-1 ring-[#00AECD]" : "hover:opacity-90"} ${capBg(band)}`}>
+                      <p className="text-[10px] font-bold">{d.label}</p>
+                      <p className="text-[10px] leading-tight">{d.date}</p>
+                      <p className="text-[9px] mt-1 font-semibold">{fmtM(total)}</p>
+                    </button>
+                  );
+                })];
+              }, [])}
+            </div>
+            <div className="flex gap-4 mt-2">
+              {(["green","amber","red"] as const).map(b => (
+                <span key={b} className="flex items-center gap-1.5 text-[10px] text-gray-500">
+                  <span className="w-3 h-3 rounded-sm" style={{ background: capColor(b) }} />
+                  {b === "green" ? "Within target (≤6h)" : b === "amber" ? "Contingency (6–8h)" : "Over maximum (>8h)"}
+                </span>
               ))}
             </div>
           </div>
 
-          <div>
-            <label className="text-xs text-gray-500 font-medium block mb-1.5">Assign to Team *</label>
-            <select value={team} onChange={e => setTeam(e.target.value)}
-              className="w-full px-3 py-2 text-sm border border-gray-200 rounded-xl outline-none focus:border-[#00AECD] bg-white">
-              <option>Team A</option><option>Team B</option><option>Team C</option>
-            </select>
-          </div>
-          <div>
-            <label className="text-xs text-gray-500 font-medium block mb-1.5">Planned Date *</label>
-            <input value={date} onChange={e => setDate(e.target.value)}
-              className="w-full px-3 py-2 text-sm border border-gray-200 rounded-xl outline-none focus:border-[#00AECD]" />
-          </div>
-          <div>
-            <label className="text-xs text-gray-500 font-medium block mb-1.5">
-              Estimated time (min)
-              <span className="text-gray-400 font-normal"> — auto: ~3 min/plant</span>
-            </label>
-            <input type="number" value={mins} onChange={e => setMins(Number(e.target.value))}
-              className="w-full px-3 py-2 text-sm border border-gray-200 rounded-xl outline-none focus:border-[#00AECD]" />
-          </div>
+          {/* ── Selected day action panel ── */}
+          {selDay && (() => {
+            const band = capBand(dayTotal);
+            const conflictJobs = TEAM_CONFLICT_JOBS[team] || [];
+
+            return (
+              <div className={`rounded-xl border-2 overflow-hidden ${capBg(band)}`}>
+                {/* Day header */}
+                <div className="px-4 py-3 border-b border-current/20 flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-bold">{selDay.label} {selDay.date}</p>
+                    <p className="text-[11px] mt-0.5">
+                      {fmtM(selDay.scheduled)} scheduled + {fmtM(estMins)} planting = <strong>{fmtM(dayTotal)}</strong>
+                      {resolvedRemoved > 0 && <span className="ml-1">→ <strong>{fmtM(resolvedTotal)}</strong> after changes</span>}
+                    </p>
+                  </div>
+                  {band === "green" && <CheckCircle2 className="w-5 h-5 text-green-600" />}
+                  {band === "amber" && <AlertCircle className="w-5 h-5 text-amber-500" />}
+                  {band === "red"   && <AlertTriangle className="w-5 h-5 text-red-500" />}
+                </div>
+
+                <div className="px-4 py-3 space-y-3">
+                  {/* GREEN — straight confirm */}
+                  {band === "green" && (
+                    <p className="text-xs text-green-800">
+                      ✓ Fits comfortably within the 6-hour productive target. No scheduling conflicts.
+                    </p>
+                  )}
+
+                  {/* AMBER — authorise contingency */}
+                  {band === "amber" && !contingencyOk && (
+                    <>
+                      <p className="text-xs text-amber-800">
+                        This day uses <strong>{fmtM(resolvedTotal - PRODUCTIVE_MIN)}</strong> of the 2-hour contingency buffer (between 6h and 8h max). Authorise overtime to proceed.
+                      </p>
+                      <button onClick={() => setContingencyOk(true)}
+                        className="px-3 py-1.5 rounded-lg text-xs font-bold bg-amber-500 text-white hover:bg-amber-600">
+                        Authorise Additional Hours
+                      </button>
+                    </>
+                  )}
+                  {band === "amber" && contingencyOk && (
+                    <p className="text-xs text-amber-800 flex items-center gap-1.5">
+                      <CheckCircle2 className="w-3.5 h-3.5 text-green-600" />
+                      <span className="text-green-700 font-semibold">Contingency authorised —</span> team approved to work up to 8 hours.
+                    </p>
+                  )}
+
+                  {/* RED — conflict resolution */}
+                  {band === "red" && (
+                    <>
+                      <p className="text-xs text-red-700">
+                        Team is <strong>{fmtM(resolvedTotal - MAX_CAP_MIN)}</strong> over the 8-hour maximum. Push, defer or delete scheduled work to make room.
+                      </p>
+                      {conflictJobs.length > 0 && (
+                        <div className="space-y-2">
+                          {conflictJobs.map(j => {
+                            const act = cjActions[j.id] || "none";
+                            const resolved = act !== "none";
+                            const atEdge = j.dayOf >= j.windowSize;
+                            return (
+                              <div key={j.id} className={`p-3 rounded-lg border bg-white/70 ${resolved ? "opacity-60" : ""}`}>
+                                <div className="flex items-center justify-between gap-2 flex-wrap">
+                                  <div>
+                                    <p className="text-[11px] font-semibold text-gray-900">{j.site}</p>
+                                    <p className="text-[10px] text-gray-500">{j.freq} · {fmtM(j.mins)} · last visit {j.lastVisit}</p>
+                                    {atEdge && <span className="text-[9px] text-red-600 font-semibold">⚠ At window edge — push may breach</span>}
+                                  </div>
+                                  <div className="flex gap-1">
+                                    {(["push","defer","delete"] as CJAction[]).filter(a => a !== "none").map(a => (
+                                      <button key={a} onClick={() => setCjAction(j.id, act === a ? "none" : a)}
+                                        className={`text-[10px] font-semibold px-2 py-1 rounded-lg border transition-all ${act === a
+                                          ? a === "delete" ? "bg-red-500 border-red-500 text-white"
+                                            : a === "push" ? "bg-blue-500 border-blue-500 text-white"
+                                            : "bg-purple-500 border-purple-500 text-white"
+                                          : "bg-white border-gray-200 text-gray-500 hover:border-gray-300"}`}>
+                                        {a === "push" ? "Push +1d" : a === "defer" ? "Defer" : "Delete"}
+                                      </button>
+                                    ))}
+                                  </div>
+                                </div>
+                                {resolved && (
+                                  <p className="text-[9px] mt-1.5 font-semibold text-green-700">
+                                    -{fmtM(j.mins)} freed · {act === "delete" ? "removed from schedule" : act === "push" ? "moved to next day" : "deferred 3 days"}
+                                  </p>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                      {/* Updated capacity after resolutions */}
+                      {resolvedRemoved > 0 && (
+                        <div className={`p-2 rounded-lg text-[11px] font-semibold ${capBg(capBand(resolvedTotal))}`}>
+                          After changes: {fmtM(resolvedTotal)} total — {capBand(resolvedTotal) === "red" ? `still ${fmtM(resolvedTotal - MAX_CAP_MIN)} over max` : capBand(resolvedTotal) === "amber" ? "within contingency buffer ✓" : "within productive target ✓"}
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
+              </div>
+            );
+          })()}
         </div>
-        <div className="px-6 py-4 border-t flex items-center justify-between">
+
+        {/* Footer */}
+        <div className="px-6 py-4 border-t flex items-center justify-between flex-shrink-0">
           <button onClick={onClose} className="text-sm text-gray-400 hover:text-gray-600">Cancel</button>
-          <button onClick={() => { onSave(team, date, mins); onClose(); }}
-            className="flex items-center gap-2 px-5 py-2 rounded-xl text-sm font-semibold text-white"
+          <button
+            disabled={!canConfirm}
+            onClick={() => { onSave(team, selDay!.date + " 2026", estMins); onClose(); }}
+            className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-40 transition-opacity"
             style={{ background: BRAND }}>
-            <CheckCircle2 className="w-4 h-4" /> Assign Job
+            <CheckCircle2 className="w-4 h-4" />
+            {selDay ? `Assign to ${team} — ${selDay.date}` : "Select a date above"}
           </button>
         </div>
       </div>
