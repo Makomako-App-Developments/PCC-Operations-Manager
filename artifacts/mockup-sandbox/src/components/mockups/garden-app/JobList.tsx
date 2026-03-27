@@ -25,19 +25,22 @@ interface Job {
 }
 
 const INITIAL_JOBS: Job[] = [
-  { id: 1, runNo: 1, site: "Waitangirua Mall Entry",  type: "Rose",           standard: "High",   mins: 120, suburb: "Waitangirua",  status: "complete",   tasksTotal: 8, tasksDone: 8 },
-  { id: 2, runNo: 2, site: "Cobham Court",             type: "Rose",           standard: "High",   mins: 120, suburb: "Porirua CBD", status: "inprogress", tasksTotal: 8, tasksDone: 3 },
-  { id: 3, runNo: 3, site: "Mungavin Ave Berm",        type: "Annual Bedding", standard: "High",   mins: 45,  suburb: "Porirua",     status: "pending",    tasksTotal: 6, tasksDone: 0 },
-  { id: 4, runNo: 4, site: "Aotea Lagoon Reserve",     type: "Shrub Bed",      standard: "High",   mins: 90,  suburb: "Papakowhai",  status: "pending",    tasksTotal: 7, tasksDone: 0 },
-  { id: 5, runNo: 5, site: "Titahi Bay Esplanade",     type: "Annual Bedding", standard: "High",   mins: 75,  suburb: "Titahi Bay",  status: "pending",    tasksTotal: 6, tasksDone: 0 },
+  { id: 1, runNo: 1, site: "Waitangirua Mall Entry",  type: "Roses & Perennials", standard: "High", mins: 120, suburb: "Waitangirua", status: "complete",   tasksTotal: 8, tasksDone: 8 },
+  { id: 2, runNo: 2, site: "Cobham Court",             type: "Roses & Perennials", standard: "High", mins: 120, suburb: "Porirua CBD", status: "inprogress", tasksTotal: 8, tasksDone: 3 },
+  { id: 3, runNo: 3, site: "Mungavin Ave Berm",        type: "Annuals",            standard: "High", mins: 45,  suburb: "Porirua",     status: "pending",    tasksTotal: 6, tasksDone: 0 },
+  { id: 4, runNo: 4, site: "Aotea Lagoon Reserve",     type: "Ornamental",         standard: "High", mins: 90,  suburb: "Papakowhai",  status: "pending",    tasksTotal: 7, tasksDone: 0 },
+  { id: 5, runNo: 5, site: "Titahi Bay Esplanade",     type: "Annuals",            standard: "High", mins: 75,  suburb: "Titahi Bay",  status: "pending",    tasksTotal: 6, tasksDone: 0 },
 ];
 
 const TYPE_COLORS: Record<string, string> = {
-  Rose: "#ec4899",
-  "Shrub Bed": BRAND,
-  "Annual Bedding": "#f59e0b",
-  Revegetation: "#16a34a",
-  Bush: "#166534",
+  "Roses & Perennials": "#ec4899",
+  "Annuals":            "#f59e0b",
+  "Ornamental":         "#8b5cf6",
+  "Amenity":            BRAND,
+  "Reveg":              "#84cc16",
+  "Bush":               "#16a34a",
+  "Tree Planter/Pits":  "#78716c",
+  "Hedge":              "#6b7280",
 };
 
 function StatusBadge({ status }: { status: JobStatus }) {

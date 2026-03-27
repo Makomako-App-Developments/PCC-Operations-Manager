@@ -54,23 +54,27 @@ function Sidebar({ active }: { active: string }) {
 }
 
 const TYPE_COLORS: Record<string, string> = {
-  "Rose": "#ec4899",
-  "Annual Bedding": "#f59e0b",
-  "Shrub Bed": "#10b981",
-  "Revegetation": "#84cc16",
-  "Bush": "#16a34a",
+  "Roses & Perennials": "#ec4899",
+  "Annuals":            "#f59e0b",
+  "Ornamental":         "#8b5cf6",
+  "Amenity":            "#00AECD",
+  "Rain Garden":        "#06b6d4",
+  "Reveg":              "#84cc16",
+  "Bush":               "#16a34a",
+  "Tree Planter/Pits":  "#78716c",
+  "Hedge":              "#6b7280",
 };
 
 // Real Porirua City coordinates
 const MAP_PINS = [
-  { id: "GRD-0847", site: "Aotea Lagoon Reserve", type: "Shrub Bed", standard: "High", area: 142, lat: -41.0987, lng: 174.8756 },
-  { id: "GRD-0212", site: "Cobham Court", type: "Rose", standard: "High", area: 68, lat: -41.1281, lng: 174.8523 },
-  { id: "GRD-0391", site: "Titahi Bay Esplanade", type: "Annual Bedding", standard: "High", area: 95, lat: -41.0956, lng: 174.8293 },
-  { id: "GRD-0558", site: "Kenepuru Landing", type: "Revegetation", standard: "Medium", area: 520, lat: -41.1378, lng: 174.8697 },
-  { id: "GRD-0629", site: "Paremata Station", type: "Bush", standard: "Low", area: 1240, lat: -41.1089, lng: 174.8634 },
-  { id: "GRD-0714", site: "Elsdon Reserve", type: "Shrub Bed", standard: "High", area: 203, lat: -41.1456, lng: 174.8467 },
-  { id: "GRD-0801", site: "Mungavin Ave Berm", type: "Annual Bedding", standard: "High", area: 48, lat: -41.1367, lng: 174.8512 },
-  { id: "GRD-0022", site: "Waitangirua Mall Entry", type: "Rose", standard: "High", area: 32, lat: -41.1523, lng: 174.8389 },
+  { id: "GRD-0847", site: "Aotea Lagoon Reserve",   type: "Ornamental",        standard: "High",   area: 142, lat: -41.0987, lng: 174.8756 },
+  { id: "GRD-0212", site: "Cobham Court",            type: "Roses & Perennials", standard: "High",  area: 68,  lat: -41.1281, lng: 174.8523 },
+  { id: "GRD-0391", site: "Titahi Bay Esplanade",    type: "Annuals",            standard: "High",  area: 95,  lat: -41.0956, lng: 174.8293 },
+  { id: "GRD-0558", site: "Kenepuru Landing",        type: "Reveg",              standard: "Medium", area: 520, lat: -41.1378, lng: 174.8697 },
+  { id: "GRD-0629", site: "Paremata Station",        type: "Bush",               standard: "Low",   area: 1240, lat: -41.1089, lng: 174.8634 },
+  { id: "GRD-0714", site: "Elsdon Reserve",          type: "Ornamental",         standard: "High",  area: 203, lat: -41.1456, lng: 174.8467 },
+  { id: "GRD-0801", site: "Mungavin Ave Berm",       type: "Annuals",            standard: "High",  area: 48,  lat: -41.1367, lng: 174.8512 },
+  { id: "GRD-0022", site: "Waitangirua Mall Entry",  type: "Roses & Perennials", standard: "High",  area: 32,  lat: -41.1523, lng: 174.8389 },
 ];
 
 function PoriruaMap() {
@@ -152,10 +156,11 @@ function MetricCard({ icon: Icon, label, value, sub, color }: { icon: any, label
 }
 
 const TYPE_COUNTS = [
-  { type: "Shrub Bed", count: 3, pct: 37 },
-  { type: "Rose", count: 2, pct: 25 },
-  { type: "Annual Bedding", count: 2, pct: 25 },
-  { type: "Revegetation", count: 1, pct: 13 },
+  { type: "Ornamental",        count: 2, pct: 25 },
+  { type: "Roses & Perennials", count: 2, pct: 25 },
+  { type: "Annuals",           count: 2, pct: 25 },
+  { type: "Reveg",             count: 1, pct: 13 },
+  { type: "Bush",              count: 1, pct: 12 },
 ];
 
 const STANDARD_COUNTS = [
@@ -165,15 +170,15 @@ const STANDARD_COUNTS = [
 ];
 
 const RECENT = [
-  { site: "Cobham Court", type: "Rose", date: "Today 9:42am", team: "Team A" },
-  { site: "Waitangirua Mall Entry", type: "Rose", date: "Today 8:15am", team: "Team A" },
-  { site: "Aotea Lagoon Reserve", type: "Shrub Bed", date: "Yesterday 2:30pm", team: "Team B" },
+  { site: "Cobham Court",          type: "Roses & Perennials", date: "Today 9:42am",      team: "Mobile 1" },
+  { site: "Waitangirua Mall Entry", type: "Roses & Perennials", date: "Today 8:15am",      team: "Mobile 1" },
+  { site: "Aotea Lagoon Reserve",  type: "Ornamental",         date: "Yesterday 2:30pm",  team: "Mobile 2" },
 ];
 
 const DUE_THIS_WEEK = [
-  { site: "Cobham Court", nextDue: "13 Mar", type: "Rose", urgent: true },
-  { site: "Waitangirua Mall Entry", nextDue: "13 Mar", type: "Rose", urgent: true },
-  { site: "Titahi Bay Esplanade", nextDue: "20 Mar", type: "Annual Bedding", urgent: false },
+  { site: "Cobham Court",         nextDue: "13 Mar", type: "Roses & Perennials", urgent: true  },
+  { site: "Waitangirua Mall Entry", nextDue: "13 Mar", type: "Roses & Perennials", urgent: true  },
+  { site: "Titahi Bay Esplanade", nextDue: "20 Mar", type: "Annuals",            urgent: false },
 ];
 
 export function Dashboard() {

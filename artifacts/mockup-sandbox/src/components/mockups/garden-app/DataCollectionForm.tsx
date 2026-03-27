@@ -169,8 +169,8 @@ export function DataCollectionForm() {
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        {["Rose", "Annual Bedding", "Shrub Bed", "Revegetation", "Bush"].map(t => (
-                          <SelectItem key={t} value={t.toLowerCase().replace(" ", "-")}>{t}</SelectItem>
+                        {["Annuals","Roses & Perennials","Ornamental","Amenity","Rain Garden","Reveg","Bush","Tree Planter/Pits","Hedge"].map(t => (
+                          <SelectItem key={t} value={t.toLowerCase().replace(/\s+/g, "-")}>{t}</SelectItem>
                         ))}
                       </SelectContent>
                     </Select>

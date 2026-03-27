@@ -73,7 +73,7 @@ interface AuditRecord {
 }
 
 const AUDITS: AuditRecord[] = [
-  { id: 1, type: "completed-works", site: "Waitangirua Mall Entry",   gardenType: "Rose",     suburb: "Waitangirua",  servicedDate: "22 Mar", auditDate: "24 Mar", auditor: "Daniela Biaggio", score: 91, result: "pass",    daysAfterService: 2, flags: [] },
+  { id: 1, type: "completed-works", site: "Waitangirua Mall Entry",   gardenType: "Roses & Perennials", suburb: "Waitangirua",  servicedDate: "22 Mar", auditDate: "24 Mar", auditor: "Daniela Biaggio", score: 91, result: "pass",    daysAfterService: 2, flags: [] },
   { id: 2, type: "completed-works", site: "Cobham Court Reserve",     gardenType: "Amenity",  suburb: "Papakowhai",   servicedDate: "21 Mar", auditDate: "24 Mar", auditor: "Jude Morison",    score: 62, result: "fail",    daysAfterService: 3, flags: ["Litter not cleared", "Edging incomplete"] },
   { id: 3, type: "outcomes",        site: "Kenepuru Stream Edge",      gardenType: "Reveg",    suburb: "Kenepuru",     servicedDate: "–",      auditDate: "23 Mar", auditor: "Daniela Biaggio", score: 84, result: "pass",    flags: [] },
   { id: 4, type: "completed-works", site: "Titahi Bay Esplanade",     gardenType: "Ornamental",suburb: "Titahi Bay",  servicedDate: "22 Mar", auditDate: "25 Mar", auditor: "Tim Broadwith",   score: 78, result: "partial", daysAfterService: 3, flags: ["Weed cover marginal — 8%"] },
@@ -85,7 +85,7 @@ const AUDITS: AuditRecord[] = [
 
 const SITES_IN_WINDOW = [
   { id: "S1", site: "Rangituhi Reserve",    type: "Amenity", suburb: "Waitangirua", servicedDate: "22 Mar", daysAgo: 4 },
-  { id: "S2", site: "Papakowhai Entrance",  type: "Rose",    suburb: "Papakowhai",  servicedDate: "23 Mar", daysAgo: 3 },
+  { id: "S2", site: "Papakowhai Entrance",  type: "Roses & Perennials", suburb: "Papakowhai",  servicedDate: "23 Mar", daysAgo: 3 },
   { id: "S3", site: "Te Pua o Wairaka",     type: "Reveg",   suburb: "Porirua",     servicedDate: "24 Mar", daysAgo: 2 },
   { id: "S4", site: "Elsdon Park Edge",     type: "Ornamental", suburb: "Elsdon",   servicedDate: "25 Mar", daysAgo: 1 },
 ];
@@ -96,7 +96,7 @@ const ALL_SITES = [
   { id: "A3", site: "Cobham Ct Reserve",        type: "Amenity",  suburb: "Papakowhai",  lastService: "21 Mar" },
   { id: "A4", site: "Mungavin Ave Median",      type: "Amenity",  suburb: "Porirua East",lastService: "8 Mar"  },
   { id: "A5", site: "Tītahi Bay Esplanade",     type: "Ornamental",suburb: "Titahi Bay",  lastService: "18 Mar" },
-  { id: "A6", site: "Waitangirua Mall Entry",   type: "Rose",     suburb: "Waitangirua", lastService: "22 Mar" },
+  { id: "A6", site: "Waitangirua Mall Entry",   type: "Roses & Perennials", suburb: "Waitangirua", lastService: "22 Mar" },
 ];
 
 const PRIORITY_OPTIONS = [
@@ -151,7 +151,7 @@ function RemedialModal({ audit, onClose }: { audit: AuditRecord; onClose: () => 
           <h2 className="text-base font-bold text-gray-900 mb-1">Remedial Task Created</h2>
           <p className="text-sm text-gray-500 mb-1"><strong>{audit.site}</strong></p>
           <p className="text-sm text-gray-400 mb-6">Scheduled for {date} · Priority: {PRIORITY_OPTIONS.find(p => p.value === priority)?.label}</p>
-          <p className="text-xs text-gray-400 mb-4">This job has been added to the Schedule and assigned to Team B. Jude Morison has been notified.</p>
+          <p className="text-xs text-gray-400 mb-4">This job has been added to the Schedule and assigned to Mobile 2. Jude Morison has been notified.</p>
           <button onClick={onClose} className="w-full py-3 rounded-xl font-semibold text-white text-sm" style={{ background: BRAND }}>Done</button>
         </div>
       </div>
@@ -234,10 +234,10 @@ function RemedialModal({ audit, onClose }: { audit: AuditRecord; onClose: () => 
           <div>
             <p className="text-xs font-semibold text-gray-700 mb-2">Assign to</p>
             <div className="flex gap-2">
-              {["Team A", "Team B", "Team C"].map(t => (
+              {["Mobile 1", "Mobile 2", "CBD", "Specialist"].map(t => (
                 <button key={t}
                   className={`flex-1 py-2 rounded-xl border-2 text-xs font-semibold transition-all ${
-                    t === "Team B" ? "border-[#00AECD] text-[#00AECD] bg-[#00AECD08]" : "border-gray-100 text-gray-500 hover:border-gray-200"
+                    t === "Mobile 2" ? "border-[#00AECD] text-[#00AECD] bg-[#00AECD08]" : "border-gray-100 text-gray-500 hover:border-gray-200"
                   }`}>
                   {t}
                 </button>

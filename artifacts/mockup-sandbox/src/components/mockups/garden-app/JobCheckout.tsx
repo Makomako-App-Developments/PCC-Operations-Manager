@@ -227,7 +227,7 @@ export function JobCheckout() {
           onClick={() => setInfoExpanded(e => !e)}
           className="w-full flex items-center gap-2 px-4 py-2 border-t border-gray-50 bg-gray-50/70 text-left"
         >
-          <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full text-white" style={{ background: "#ec4899" }}>Rose</span>
+          <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full text-white" style={{ background: "#ec4899" }}>Roses & Perennials</span>
           <span className="flex items-center gap-1 text-[11px] font-medium text-gray-500">
             <Star className="w-3 h-3 text-gray-400" />High
           </span>
@@ -244,7 +244,7 @@ export function JobCheckout() {
             <MiniMap />
             <div className="grid grid-cols-3 gap-2">
               {[
-                { icon: Layers, label: "Type",      value: "Rose Garden" },
+                { icon: Layers, label: "Type",      value: "Roses & Perennials" },
                 { icon: Star,   label: "Standard",  value: "High" },
                 { icon: Clock,  label: "Allocated", value: "45 min" },
               ].map(({ icon: Icon, label, value }) => (

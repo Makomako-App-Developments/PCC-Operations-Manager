@@ -126,17 +126,17 @@ interface Assessment {
 
 const INITIAL_ASSESSMENTS: Assessment[] = [
   {
-    id: "IP-001", assetId: "GRD-0022", assetName: "Waitangirua Mall Entry", assetType: "Rose",
+    id: "IP-001", assetId: "GRD-0022", assetName: "Waitangirua Mall Entry", assetType: "Roses & Perennials",
     assessedBy: "Jude Morison", assessedDate: "12 Mar 2026", notes: "Several gaps near south entrance following winter dieback.",
     species: [
       { name: "'Iceberg'",         category: "Roses",          qty: 3 },
       { name: "'Queen Elizabeth'", category: "Roses",          qty: 2 },
       { name: "Alyssum",           category: "Annual Bedding", qty: 24 },
     ],
-    status: "assigned", assignedTeam: "Team A", plannedDate: "4 Apr 2026", estimatedMins: 120,
+    status: "assigned", assignedTeam: "Mobile 1", plannedDate: "4 Apr 2026", estimatedMins: 120,
   },
   {
-    id: "IP-002", assetId: "GRD-0558", assetName: "Kenepuru Landing", assetType: "Revegetation",
+    id: "IP-002", assetId: "GRD-0558", assetName: "Kenepuru Landing", assetType: "Reveg",
     assessedBy: "Jude Morison", assessedDate: "18 Mar 2026", notes: "Significant gaps in canopy layer. Rabbit browsing evident.",
     species: [
       { name: "Cordyline australis", category: "Native Trees",  qty: 8  },
@@ -148,26 +148,26 @@ const INITIAL_ASSESSMENTS: Assessment[] = [
     status: "assessed",
   },
   {
-    id: "IP-003", assetId: "GRD-0801", assetName: "Mungavin Ave Berm", assetType: "Annual Bedding",
+    id: "IP-003", assetId: "GRD-0801", assetName: "Mungavin Ave Berm", assetType: "Annuals",
     assessedBy: "Jude Morison", assessedDate: "20 Mar 2026", notes: "End-of-season change needed. Install summer colour.",
     species: [
       { name: "Lobelia",   category: "Annual Bedding", qty: 48 },
       { name: "Petunia",   category: "Annual Bedding", qty: 36 },
       { name: "Marigold (Tagetes)", category: "Annual Bedding", qty: 24 },
     ],
-    status: "completed", assignedTeam: "Team A", plannedDate: "25 Mar 2026", estimatedMins: 90,
+    status: "completed", assignedTeam: "Mobile 1", plannedDate: "25 Mar 2026", estimatedMins: 90,
   },
 ];
 
 const ASSETS = [
-  { id: "GRD-0022", name: "Waitangirua Mall Entry",  type: "Rose"          },
-  { id: "GRD-0212", name: "Cobham Court",             type: "Rose"          },
-  { id: "GRD-0801", name: "Mungavin Ave Berm",        type: "Annual Bedding"},
-  { id: "GRD-0847", name: "Aotea Lagoon Reserve",     type: "Shrub Bed"     },
-  { id: "GRD-0391", name: "Titahi Bay Esplanade",     type: "Annual Bedding"},
-  { id: "GRD-0714", name: "Elsdon Reserve",           type: "Shrub Bed"     },
-  { id: "GRD-0558", name: "Kenepuru Landing",         type: "Revegetation"  },
-  { id: "GRD-0629", name: "Paremata Station",         type: "Bush"          },
+  { id: "GRD-0022", name: "Waitangirua Mall Entry",  type: "Roses & Perennials" },
+  { id: "GRD-0212", name: "Cobham Court",             type: "Roses & Perennials" },
+  { id: "GRD-0801", name: "Mungavin Ave Berm",        type: "Annuals"            },
+  { id: "GRD-0847", name: "Aotea Lagoon Reserve",     type: "Ornamental"         },
+  { id: "GRD-0391", name: "Titahi Bay Esplanade",     type: "Annuals"            },
+  { id: "GRD-0714", name: "Elsdon Reserve",           type: "Ornamental"         },
+  { id: "GRD-0558", name: "Kenepuru Landing",         type: "Reveg"              },
+  { id: "GRD-0629", name: "Paremata Station",         type: "Bush"               },
 ];
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -489,31 +489,31 @@ const WEEK_DAYS: { label: string; date: string }[] = [
 ];
 
 const TEAM_BASE: Record<string, number[]> = {
-  // Team A — busy: rose gardens weekly + fortnightlies
-  "Team A": [280, 315, 375, 250, 120,  320, 360, 110, 290, 260,  295, 320, 375, 80, 270],
-  // Team B — medium: fortnightly + monthly assets
-  "Team B": [165, 90,  165, 75,  90,   165, 90,  75,  165, 60,   90,  165, 75,  90, 60 ],
-  // Team C — light: 2 assets, monthly/6-monthly
-  "Team C": [45,  0,   90,  45,  0,    45,  0,   45,  0,   45,   45,  0,   45,  0,  45 ],
+  // Mobile 1 — busy: roses & perennials weekly + fortnightlies
+  "Mobile 1": [280, 315, 375, 250, 120,  320, 360, 110, 290, 260,  295, 320, 375, 80, 270],
+  // Mobile 2 — medium: fortnightly + monthly assets
+  "Mobile 2": [165, 90,  165, 75,  90,   165, 90,  75,  165, 60,   90,  165, 75,  90, 60 ],
+  // CBD — light: 2 assets, monthly/bimonthly
+  "CBD":      [45,  0,   90,  45,  0,    45,  0,   45,  0,   45,   45,  0,   45,  0,  45 ],
 };
 
-// Representative jobs for conflict resolution on busy Team A days
+// Representative jobs for conflict resolution on busy Mobile 1 days
 interface ConflictJob {
   id: string; site: string; mins: number; freq: string;
   dayOf: number; windowSize: number; lastVisit: string; nextDue: string;
 }
 const TEAM_CONFLICT_JOBS: Record<string, ConflictJob[]> = {
-  "Team A": [
+  "Mobile 1": [
     { id: "CJ1", site: "Waitangirua Mall Entry", mins: 120, freq: "Weekly",      dayOf: 7,  windowSize: 7,  lastVisit: "20 Mar", nextDue: "Selected date" },
     { id: "CJ2", site: "Cobham Court",            mins: 120, freq: "Weekly",      dayOf: 7,  windowSize: 7,  lastVisit: "20 Mar", nextDue: "Selected date" },
     { id: "CJ3", site: "Mungavin Ave Berm",       mins: 45,  freq: "Fortnightly", dayOf: 12, windowSize: 14, lastVisit: "18 Mar", nextDue: "1 Apr"  },
     { id: "CJ4", site: "Aotea Lagoon Reserve",    mins: 90,  freq: "Fortnightly", dayOf: 12, windowSize: 14, lastVisit: "18 Mar", nextDue: "1 Apr"  },
   ],
-  "Team B": [
+  "Mobile 2": [
     { id: "CJ1", site: "Aotea Lagoon Reserve",  mins: 90, freq: "Fortnightly", dayOf: 12, windowSize: 14, lastVisit: "18 Mar", nextDue: "1 Apr" },
     { id: "CJ2", site: "Titahi Bay Esplanade",  mins: 75, freq: "Fortnightly", dayOf: 10, windowSize: 14, lastVisit: "20 Mar", nextDue: "3 Apr" },
   ],
-  "Team C": [],
+  "CBD": [],
 };
 
 function capBand(m: number): "green" | "amber" | "red" {
@@ -541,7 +541,7 @@ function AssignModal({ assessment, onClose, onSave }: {
   onSave: (team: string, date: string, mins: number) => void;
 }) {
   const defaultMins = Math.max(30, Math.round(totalPlants(assessment) * 3));
-  const [team, setTeam]   = useState("Team A");
+  const [team, setTeam]   = useState("Mobile 1");
   const [selDay, setSelDay] = useState<CalDay | null>(null);
   const [estMins, setEstMins] = useState(defaultMins);
   const [contingencyOk, setContingencyOk] = useState(false);
@@ -598,7 +598,7 @@ function AssignModal({ assessment, onClose, onSave }: {
           <div>
             <p className="text-xs font-semibold text-gray-500 mb-2">Select team</p>
             <div className="flex gap-2">
-              {["Team A", "Team B", "Team C"].map(t => {
+              {["Mobile 1", "Mobile 2", "CBD"].map(t => {
                 const greenDays = teamGreen(t);
                 const active = team === t;
                 return (

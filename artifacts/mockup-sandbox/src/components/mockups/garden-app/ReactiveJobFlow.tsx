@@ -19,16 +19,16 @@ interface Job {
 }
 
 const JOBS: Job[] = [
-  { id: "J1", site: "Waitangirua Mall Entry", type: "Rose",           typeColor: "#ec4899", mins: 120, freq: "Weekly",      dayOf: 7, windowSize: 7,  lastVisit: "20 Mar", nextDue: "27 Mar" },
-  { id: "J2", site: "Cobham Court",            type: "Rose",           typeColor: "#ec4899", mins: 120, freq: "Weekly",      dayOf: 7, windowSize: 7,  lastVisit: "20 Mar", nextDue: "27 Mar" },
-  { id: "J3", site: "Mungavin Ave Berm",        type: "Annual Bedding", typeColor: "#f59e0b", mins: 45,  freq: "Fortnightly", dayOf: 9, windowSize: 14, lastVisit: "18 Mar", nextDue: "1 Apr"  },
-  { id: "J4", site: "Aotea Lagoon Reserve",     type: "Shrub Bed",      typeColor: "#10b981", mins: 90,  freq: "Fortnightly", dayOf: 9, windowSize: 14, lastVisit: "18 Mar", nextDue: "1 Apr"  },
-  { id: "J5", site: "Titahi Bay Esplanade",     type: "Annual Bedding", typeColor: "#f59e0b", mins: 75,  freq: "Fortnightly", dayOf: 7, windowSize: 14, lastVisit: "20 Mar", nextDue: "3 Apr"  },
+  { id: "J1", site: "Waitangirua Mall Entry", type: "Roses & Perennials", typeColor: "#ec4899", mins: 120, freq: "Weekly",      dayOf: 7, windowSize: 7,  lastVisit: "20 Mar", nextDue: "27 Mar" },
+  { id: "J2", site: "Cobham Court",            type: "Roses & Perennials", typeColor: "#ec4899", mins: 120, freq: "Weekly",      dayOf: 7, windowSize: 7,  lastVisit: "20 Mar", nextDue: "27 Mar" },
+  { id: "J3", site: "Mungavin Ave Berm",        type: "Annuals",            typeColor: "#f59e0b", mins: 45,  freq: "Fortnightly", dayOf: 9, windowSize: 14, lastVisit: "18 Mar", nextDue: "1 Apr"  },
+  { id: "J4", site: "Aotea Lagoon Reserve",     type: "Ornamental",         typeColor: "#8b5cf6", mins: 90,  freq: "Fortnightly", dayOf: 9, windowSize: 14, lastVisit: "18 Mar", nextDue: "1 Apr"  },
+  { id: "J5", site: "Titahi Bay Esplanade",     type: "Annuals",            typeColor: "#f59e0b", mins: 75,  freq: "Fortnightly", dayOf: 7, windowSize: 14, lastVisit: "20 Mar", nextDue: "3 Apr"  },
 ];
 
 const REASSIGN_OPTIONS = [
-  { team: "Team B", scheduled: 285, max: 480 },
-  { team: "Team C", scheduled: 420, max: 480 },
+  { team: "Mobile 2", scheduled: 285, max: 480 },
+  { team: "CBD",      scheduled: 420, max: 480 },
 ];
 
 const REASON_TYPES = [
@@ -44,14 +44,14 @@ interface AssetScheduleInfo {
 }
 
 const ASSET_SCHEDULE: Record<string, AssetScheduleInfo> = {
-  "Waitangirua Mall Entry": { id: "GRD-0022", nextDate: "27 Mar", workingDays: 0,   scheduledMins: 120, team: "Team A", freq: "Weekly",      lastVisit: "20 Mar", daysSinceLastVisit: 7,  minInterval: 5  },
-  "Cobham Court":            { id: "GRD-0212", nextDate: "27 Mar", workingDays: 0,   scheduledMins: 120, team: "Team A", freq: "Weekly",      lastVisit: "20 Mar", daysSinceLastVisit: 7,  minInterval: 5  },
-  "Mungavin Ave Berm":       { id: "GRD-0801", nextDate: "1 Apr",  workingDays: 3,   scheduledMins: 45,  team: "Team A", freq: "Fortnightly", lastVisit: "18 Mar", daysSinceLastVisit: 9,  minInterval: 10 },
-  "Aotea Lagoon Reserve":    { id: "GRD-0847", nextDate: "1 Apr",  workingDays: 3,   scheduledMins: 90,  team: "Team B", freq: "Fortnightly", lastVisit: "18 Mar", daysSinceLastVisit: 9,  minInterval: 10 },
-  "Titahi Bay Esplanade":    { id: "GRD-0391", nextDate: "3 Apr",  workingDays: 5,   scheduledMins: 75,  team: "Team B", freq: "Fortnightly", lastVisit: "20 Mar", daysSinceLastVisit: 7,  minInterval: 10 },
-  "Elsdon Reserve":          { id: "GRD-0714", nextDate: "5 Apr",  workingDays: 7,   scheduledMins: 60,  team: "Team B", freq: "Monthly",     lastVisit: "5 Mar",  daysSinceLastVisit: 22, minInterval: 20 },
-  "Kenepuru Landing":        { id: "GRD-0558", nextDate: "1 Apr",  workingDays: 3,   scheduledMins: 45,  team: "Team C", freq: "Monthly",     lastVisit: "1 Mar",  daysSinceLastVisit: 26, minInterval: 20 },
-  "Paremata Station":        { id: "GRD-0629", nextDate: "Sep 2026", workingDays: 130, scheduledMins: 30, team: "Team C", freq: "6-Monthly",  lastVisit: "Sep 2025", daysSinceLastVisit: 182, minInterval: 90 },
+  "Waitangirua Mall Entry": { id: "GRD-0022", nextDate: "27 Mar", workingDays: 0,   scheduledMins: 120, team: "Mobile 1", freq: "Weekly",      lastVisit: "20 Mar",  daysSinceLastVisit: 7,   minInterval: 5  },
+  "Cobham Court":            { id: "GRD-0212", nextDate: "27 Mar", workingDays: 0,   scheduledMins: 120, team: "Mobile 1", freq: "Weekly",      lastVisit: "20 Mar",  daysSinceLastVisit: 7,   minInterval: 5  },
+  "Mungavin Ave Berm":       { id: "GRD-0801", nextDate: "1 Apr",  workingDays: 3,   scheduledMins: 45,  team: "Mobile 1", freq: "Fortnightly", lastVisit: "18 Mar",  daysSinceLastVisit: 9,   minInterval: 10 },
+  "Aotea Lagoon Reserve":    { id: "GRD-0847", nextDate: "1 Apr",  workingDays: 3,   scheduledMins: 90,  team: "Mobile 2", freq: "Fortnightly", lastVisit: "18 Mar",  daysSinceLastVisit: 9,   minInterval: 10 },
+  "Titahi Bay Esplanade":    { id: "GRD-0391", nextDate: "3 Apr",  workingDays: 5,   scheduledMins: 75,  team: "Mobile 2", freq: "Fortnightly", lastVisit: "20 Mar",  daysSinceLastVisit: 7,   minInterval: 10 },
+  "Elsdon Reserve":          { id: "GRD-0714", nextDate: "5 Apr",  workingDays: 7,   scheduledMins: 60,  team: "Mobile 2", freq: "Monthly",     lastVisit: "5 Mar",   daysSinceLastVisit: 22,  minInterval: 20 },
+  "Kenepuru Landing":        { id: "GRD-0558", nextDate: "1 Apr",  workingDays: 3,   scheduledMins: 45,  team: "CBD",      freq: "Monthly",     lastVisit: "1 Mar",   daysSinceLastVisit: 26,  minInterval: 20 },
+  "Paremata Station":        { id: "GRD-0629", nextDate: "Sep 2026", workingDays: 130, scheduledMins: 30, team: "CBD",     freq: "Bimonthly",   lastVisit: "Sep 2025", daysSinceLastVisit: 182, minInterval: 90 },
 };
 
 const COMBINE_THRESHOLD = 5; // working days
@@ -86,7 +86,7 @@ function CapBar({ total, reactive }: { total: number; reactive: number }) {
   return (
     <div>
       <div className="flex justify-between text-[11px] mb-1.5">
-        <span className="font-semibold" style={{ color: NAVY }}>Team A capacity — Wed 27 Mar</span>
+        <span className="font-semibold" style={{ color: NAVY }}>Mobile 1 capacity — Wed 27 Mar</span>
         <span className="font-bold" style={{ color }}>{fmtMins(total)} / 8h day</span>
       </div>
       <div className="relative h-5 rounded-full overflow-hidden bg-gray-100 flex">
@@ -145,7 +145,7 @@ export function ReactiveJobFlow({ onClose }: ReactiveJobFlowProps = {}) {
   const [reason,    setReason]    = useState("Storm / wind damage");
   const [reactiveMin, setReactiveMin] = useState(90);
   const [priority,  setPriority]  = useState<"urgent" | "normal">("urgent");
-  const [assignTeam, setAssignTeam] = useState("Team A");
+  const [assignTeam, setAssignTeam] = useState("Mobile 1");
 
   // Derived: asset info and combination logic
   const assetInfo = selectedAsset ? ASSET_SCHEDULE[selectedAsset] : null;
@@ -251,7 +251,7 @@ export function ReactiveJobFlow({ onClose }: ReactiveJobFlowProps = {}) {
                 <div className="space-y-3">
                   <div>
                     <label className="text-xs text-gray-500 font-medium block mb-1.5">Select garden asset *</label>
-                    <select value={selectedAsset} onChange={e => { setSelectedAsset(e.target.value); setCombineScheduled(false); if (e.target.value) setAssignTeam(ASSET_SCHEDULE[e.target.value]?.team || "Team A"); }}
+                    <select value={selectedAsset} onChange={e => { setSelectedAsset(e.target.value); setCombineScheduled(false); if (e.target.value) setAssignTeam(ASSET_SCHEDULE[e.target.value]?.team || "Mobile 1"); }}
                       className="w-full px-3 py-2 text-sm border border-gray-200 rounded-xl outline-none focus:border-[#00AECD] bg-white">
                       <option value="">— Select an asset —</option>
                       {Object.entries(ASSET_SCHEDULE).map(([name, info]) => (
@@ -363,9 +363,10 @@ export function ReactiveJobFlow({ onClose }: ReactiveJobFlowProps = {}) {
                   <label className="text-xs text-gray-500 font-medium block mb-1.5">Assign to Team *</label>
                   <select value={assignTeam} onChange={e => setAssignTeam(e.target.value)}
                     className="w-full px-3 py-2 text-sm border border-gray-200 rounded-xl outline-none focus:border-[#00AECD] bg-white">
-                    <option>Team A</option>
-                    <option>Team B</option>
-                    <option>Team C</option>
+                    <option>Mobile 1</option>
+                    <option>Mobile 2</option>
+                    <option>CBD</option>
+                    <option>Specialist</option>
                   </select>
                   {locationType === "asset" && selectedAsset && assetInfo && assignTeam !== assetInfo.team && (
                     <p className="text-[10px] text-amber-600 mt-1">⚠ This asset is normally serviced by {assetInfo.team}</p>
@@ -422,7 +423,7 @@ export function ReactiveJobFlow({ onClose }: ReactiveJobFlowProps = {}) {
                 <div className="flex items-center gap-3 mt-0.5">
                   <span className="text-[11px] text-gray-400">{reason}</span>
                   <span className="text-[11px] text-gray-400">·</span>
-                  <span className="text-[11px] font-medium" style={{ color: BRAND }}>Team A · Wed 27 Mar</span>
+                  <span className="text-[11px] font-medium" style={{ color: BRAND }}>Mobile 1 · Wed 27 Mar</span>
                   <span className="text-[11px] text-gray-400">·</span>
                   <span className="flex items-center gap-1 text-[11px] text-gray-500"><Clock className="w-3 h-3" />{fmtMins(serviceMin)}</span>
                 </div>
@@ -432,7 +433,7 @@ export function ReactiveJobFlow({ onClose }: ReactiveJobFlowProps = {}) {
 
             {/* Capacity impact */}
             <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
-              <h3 className="text-sm font-bold text-gray-900 mb-4">Schedule impact — Team A, Wed 27 Mar</h3>
+              <h3 className="text-sm font-bold text-gray-900 mb-4">Schedule impact — Mobile 1, Wed 27 Mar</h3>
               <CapBar total={totalWithReactive} reactive={serviceMin} />
 
               <div className="mt-5 grid grid-cols-3 gap-4">
@@ -452,7 +453,7 @@ export function ReactiveJobFlow({ onClose }: ReactiveJobFlowProps = {}) {
                 <div className="mt-4 p-4 rounded-xl bg-red-50 border border-red-200 flex gap-3">
                   <AlertTriangle className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" />
                   <div>
-                    <p className="text-sm font-bold text-red-700">Team A will be {fmtMins(totalWithReactive - MAX_CAP)} over the 8-hour maximum</p>
+                    <p className="text-sm font-bold text-red-700">Mobile 1 will be {fmtMins(totalWithReactive - MAX_CAP)} over the 8-hour maximum</p>
                     <p className="text-xs text-red-600 mt-0.5">
                       You need to push, defer, delete, or reassign at least {fmtMins(totalWithReactive - MAX_CAP)} of scheduled work before you can publish this change.
                     </p>
@@ -463,7 +464,7 @@ export function ReactiveJobFlow({ onClose }: ReactiveJobFlowProps = {}) {
                 <div className="mt-4 p-4 rounded-xl bg-amber-50 border border-amber-200 flex gap-3">
                   <AlertCircle className="w-5 h-5 text-amber-500 flex-shrink-0 mt-0.5" />
                   <div>
-                    <p className="text-sm font-bold text-amber-700">Team A will be using {fmtMins(totalWithReactive - PRODUCTIVE)} of the 2-hour contingency buffer</p>
+                    <p className="text-sm font-bold text-amber-700">Mobile 1 will be using {fmtMins(totalWithReactive - PRODUCTIVE)} of the 2-hour contingency buffer</p>
                     <p className="text-xs text-amber-600 mt-0.5">This is within the 8-hour maximum. You can proceed with contingency authorisation, or reschedule some work.</p>
                   </div>
                 </div>
@@ -522,7 +523,7 @@ export function ReactiveJobFlow({ onClose }: ReactiveJobFlowProps = {}) {
             {/* Job resolution list */}
             <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
               <div className="px-5 py-3 border-b bg-gray-50 flex items-center justify-between">
-                <p className="text-xs font-bold text-gray-700 uppercase tracking-wider">Team A — Scheduled jobs for Wed 27 Mar</p>
+                <p className="text-xs font-bold text-gray-700 uppercase tracking-wider">Mobile 1 — Scheduled jobs for Wed 27 Mar</p>
                 <p className="text-[11px] text-gray-400">Push/Defer ≤1 day where possible · service windows shown</p>
               </div>
               <div className="divide-y divide-gray-50">
@@ -662,7 +663,7 @@ export function ReactiveJobFlow({ onClose }: ReactiveJobFlowProps = {}) {
                   <div className="flex items-center gap-3 mt-0.5">
                     <span className="text-[11px] text-gray-500">{reason}</span>
                     <span className="text-[11px] text-gray-500">·</span>
-                    <span className="text-[11px] text-gray-500">Team A · Wed 27 Mar · {fmtMins(serviceMin)}</span>
+                    <span className="text-[11px] text-gray-500">Mobile 1 · Wed 27 Mar · {fmtMins(serviceMin)}</span>
                     <span className="text-[11px] font-bold text-red-600">Urgent</span>
                   </div>
                 </div>
@@ -696,7 +697,7 @@ export function ReactiveJobFlow({ onClose }: ReactiveJobFlowProps = {}) {
 
             {/* Final capacity */}
             <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
-              <h3 className="text-sm font-bold text-gray-900 mb-4">Final capacity — Team A, Wed 27 Mar</h3>
+              <h3 className="text-sm font-bold text-gray-900 mb-4">Final capacity — Mobile 1, Wed 27 Mar</h3>
               <CapBar total={resolvedTotal} reactive={serviceMin} />
               {contingencyApproved && (
                 <div className="mt-3 flex items-center gap-2 text-[11px] text-amber-700 font-semibold">

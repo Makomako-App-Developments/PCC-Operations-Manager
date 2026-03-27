@@ -58,11 +58,15 @@ function Sidebar({ active }: { active: string }) {
 }
 
 const TYPE_COLORS: Record<string, string> = {
-  "Rose":           "bg-pink-100 text-pink-700",
-  "Annual Bedding": "bg-yellow-100 text-yellow-700",
-  "Shrub Bed":      "bg-emerald-100 text-emerald-700",
-  "Revegetation":   "bg-lime-100 text-lime-700",
-  "Bush":           "bg-green-100 text-green-700",
+  "Roses & Perennials": "bg-pink-100 text-pink-700",
+  "Annuals":            "bg-yellow-100 text-yellow-700",
+  "Ornamental":         "bg-purple-100 text-purple-700",
+  "Amenity":            "bg-sky-100 text-sky-700",
+  "Rain Garden":        "bg-cyan-100 text-cyan-700",
+  "Reveg":              "bg-lime-100 text-lime-700",
+  "Bush":               "bg-green-100 text-green-700",
+  "Tree Planter/Pits":  "bg-stone-100 text-stone-700",
+  "Hedge":              "bg-emerald-100 text-emerald-700",
 };
 
 const STANDARD_COLORS: Record<string, string> = {
@@ -115,14 +119,14 @@ const ASSET_AUDITS: AuditRecord[] = [
 ];
 
 const SAMPLE_DATA = [
-  { id: "GRD-2024-0847", site: "Aotea Lagoon Reserve",    type: "Shrub Bed",      standard: "High",   area: 142,  serviceTime: 90,  freq: "Fortnightly", nextDue: "18 Mar 2026", team: "Team A", compliance: "in-spec"       as ComplianceStatus },
-  { id: "GRD-2024-0212", site: "Cobham Court",            type: "Rose",           standard: "High",   area: 68,   serviceTime: 120, freq: "Weekly",       nextDue: "14 Mar 2026", team: "Team A", compliance: "audit-due"     as ComplianceStatus },
-  { id: "GRD-2024-0391", site: "Titahi Bay Esplanade",    type: "Annual Bedding", standard: "High",   area: 95,   serviceTime: 75,  freq: "Fortnightly", nextDue: "20 Mar 2026", team: "Team B", compliance: "in-spec"       as ComplianceStatus },
-  { id: "GRD-2024-0558", site: "Kenepuru Landing",        type: "Revegetation",   standard: "Medium", area: 520,  serviceTime: 45,  freq: "Monthly",      nextDue: "01 Apr 2026", team: "Team C", compliance: "non-compliant" as ComplianceStatus },
-  { id: "GRD-2024-0629", site: "Paremata Station",        type: "Bush",           standard: "Low",    area: 1240, serviceTime: 30,  freq: "6-Monthly",    nextDue: "Sep 2026",    team: "Team C", compliance: "in-spec"       as ComplianceStatus },
-  { id: "GRD-2024-0714", site: "Elsdon Reserve",          type: "Shrub Bed",      standard: "High",   area: 203,  serviceTime: 60,  freq: "Monthly",      nextDue: "5 Apr 2026",  team: "Team B", compliance: "overdue"       as ComplianceStatus },
-  { id: "GRD-2024-0801", site: "Mungavin Ave Berm",       type: "Annual Bedding", standard: "High",   area: 48,   serviceTime: 45,  freq: "Fortnightly", nextDue: "18 Mar 2026", team: "Team A", compliance: "in-spec"       as ComplianceStatus },
-  { id: "GRD-2024-0022", site: "Waitangirua Mall Entry",  type: "Rose",           standard: "High",   area: 32,   serviceTime: 120, freq: "Weekly",       nextDue: "13 Mar 2026", team: "Team A", compliance: "in-spec"       as ComplianceStatus },
+  { id: "GRD-2024-0847", site: "Aotea Lagoon Reserve",   type: "Ornamental",        standard: "High",   area: 142,  serviceTime: 90,  freq: "Fortnightly", nextDue: "18 Mar 2026", team: "Mobile 2", compliance: "in-spec"       as ComplianceStatus, suburb: "Aotea",        ward: "Western",  locationType: "Parkgarden",   plantCoverage: 97, trafficControl: false },
+  { id: "GRD-2024-0212", site: "Cobham Court",           type: "Roses & Perennials", standard: "High",  area: 68,   serviceTime: 120, freq: "Weekly",       nextDue: "14 Mar 2026", team: "Mobile 1", compliance: "audit-due"     as ComplianceStatus, suburb: "Papakowhai",  ward: "Northern", locationType: "Parkgarden",   plantCoverage: 95, trafficControl: false },
+  { id: "GRD-2024-0391", site: "Titahi Bay Esplanade",   type: "Annuals",            standard: "High",  area: 95,   serviceTime: 75,  freq: "Fortnightly", nextDue: "20 Mar 2026", team: "Mobile 2", compliance: "in-spec"       as ComplianceStatus, suburb: "Titahi Bay",  ward: "Western",  locationType: "Streetgarden", plantCoverage: 93, trafficControl: true  },
+  { id: "GRD-2024-0558", site: "Kenepuru Landing",       type: "Reveg",              standard: "Medium",area: 520,  serviceTime: 45,  freq: "Monthly",      nextDue: "01 Apr 2026", team: "CBD",      compliance: "non-compliant" as ComplianceStatus, suburb: "Kenepuru",    ward: "Northern", locationType: "Parkgarden",   plantCoverage: 82, trafficControl: false },
+  { id: "GRD-2024-0629", site: "Paremata Station",       type: "Bush",               standard: "Low",   area: 1240, serviceTime: 30,  freq: "Bimonthly",    nextDue: "Sep 2026",    team: "CBD",      compliance: "in-spec"       as ComplianceStatus, suburb: "Paremata",    ward: "Northern", locationType: "Parkgarden",   plantCoverage: 88, trafficControl: false },
+  { id: "GRD-2024-0714", site: "Elsdon Reserve",         type: "Ornamental",         standard: "High",  area: 203,  serviceTime: 60,  freq: "Monthly",      nextDue: "5 Apr 2026",  team: "Mobile 2", compliance: "overdue"       as ComplianceStatus, suburb: "Elsdon",       ward: "Eastern",  locationType: "Parkgarden",   plantCoverage: 91, trafficControl: false },
+  { id: "GRD-2024-0801", site: "Mungavin Ave Berm",      type: "Annuals",            standard: "High",  area: 48,   serviceTime: 45,  freq: "Fortnightly", nextDue: "18 Mar 2026", team: "Mobile 1", compliance: "in-spec"       as ComplianceStatus, suburb: "Porirua East", ward: "Eastern",  locationType: "Streetgarden", plantCoverage: 96, trafficControl: true  },
+  { id: "GRD-2024-0022", site: "Waitangirua Mall Entry", type: "Roses & Perennials", standard: "High",  area: 32,   serviceTime: 120, freq: "Weekly",       nextDue: "13 Mar 2026", team: "Mobile 1", compliance: "in-spec"       as ComplianceStatus, suburb: "Waitangirua", ward: "Eastern",  locationType: "Streetgarden", plantCoverage: 98, trafficControl: true  },
 ];
 
 type Asset = typeof SAMPLE_DATA[0];
@@ -173,7 +177,7 @@ function AssetDetailPanel({ asset, onClose }: { asset: Asset; onClose: () => voi
         )}
       </div>
 
-      {/* Asset quick stats */}
+      {/* Asset quick stats — row 1 */}
       <div className="grid grid-cols-4 gap-0 border-b flex-shrink-0">
         {[
           { label: "Area",      value: `${asset.area} m²` },
@@ -186,6 +190,27 @@ function AssetDetailPanel({ asset, onClose }: { asset: Asset; onClose: () => voi
             <p className="text-[11px] font-semibold text-gray-800 mt-0.5 leading-tight">{value}</p>
           </div>
         ))}
+      </div>
+      {/* Asset quick stats — row 2 */}
+      <div className="grid grid-cols-4 gap-0 border-b flex-shrink-0">
+        <div className="px-3 py-3 text-center border-r">
+          <p className="text-[9px] text-gray-400 uppercase tracking-wide">Ward</p>
+          <p className="text-[11px] font-semibold text-gray-800 mt-0.5 leading-tight">{asset.ward}</p>
+        </div>
+        <div className="px-3 py-3 text-center border-r">
+          <p className="text-[9px] text-gray-400 uppercase tracking-wide">Loc. Type</p>
+          <p className="text-[11px] font-semibold text-gray-800 mt-0.5 leading-tight">{asset.locationType}</p>
+        </div>
+        <div className="px-3 py-3 text-center border-r">
+          <p className="text-[9px] text-gray-400 uppercase tracking-wide">Coverage</p>
+          <p className="text-[11px] font-semibold text-gray-800 mt-0.5 leading-tight">{asset.plantCoverage}%</p>
+        </div>
+        <div className="px-3 py-3 text-center">
+          <p className="text-[9px] text-gray-400 uppercase tracking-wide">Traffic Ctrl</p>
+          <p className={`text-[11px] font-bold mt-0.5 leading-tight ${asset.trafficControl ? "text-red-600" : "text-green-600"}`}>
+            {asset.trafficControl ? "Required" : "Not req."}
+          </p>
+        </div>
       </div>
 
       {/* Tabs */}
@@ -365,9 +390,16 @@ export function AssetList() {
               <SelectTrigger className="w-40 rounded-xl text-sm"><SelectValue placeholder="Garden Type" /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all-types">All Types</SelectItem>
-                {["Rose", "Annual Bedding", "Shrub Bed", "Revegetation", "Bush"].map(t => (
+                {["Annuals","Roses & Perennials","Ornamental","Amenity","Rain Garden","Reveg","Bush","Tree Planter/Pits","Hedge"].map(t => (
                   <SelectItem key={t} value={t}>{t}</SelectItem>
                 ))}
+              </SelectContent>
+            </Select>
+            <Select defaultValue="all-wards">
+              <SelectTrigger className="w-36 rounded-xl text-sm"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all-wards">All Wards</SelectItem>
+                {["Eastern", "Northern", "Western"].map(w => <SelectItem key={w} value={w}>{w}</SelectItem>)}
               </SelectContent>
             </Select>
             <Select defaultValue="all-compliance">
@@ -384,7 +416,7 @@ export function AssetList() {
               <SelectTrigger className="w-36 rounded-xl text-sm"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all-teams">All Teams</SelectItem>
-                {["Team A", "Team B", "Team C"].map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}
+                {["CBD", "Mobile 1", "Mobile 2", "Specialist"].map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}
               </SelectContent>
             </Select>
             <div className="ml-auto flex border rounded-xl overflow-hidden">

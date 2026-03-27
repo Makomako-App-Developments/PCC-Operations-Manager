@@ -13,12 +13,10 @@ const NAVY  = "#0f2a36";
 
 // Types that DO require 50mm mulch, topped up every 9–12 months
 const MULCH_REQUIRED = new Set([
-  "Rose Bed", "Shrub Bed", "Ornamental Planting",
-  "Native Shrub Bed", "Native Tree Planting",
-  "Amenity Planting", "Revegetation",
-  "Bush / Regeneration", "Hedge", "Tree Planters",
+  "Roses & Perennials", "Ornamental", "Amenity",
+  "Reveg", "Bush", "Hedge", "Tree Planter/Pits",
 ]);
-// NOT mulched: Annual Bedding (disturbed at each planting), Rain Garden (permeable surface must stay clear)
+// NOT mulched: Annuals (disturbed at each planting), Rain Garden (permeable surface must stay clear)
 
 // ─── Data types ──────────────────────────────────────────────────────────────
 
@@ -42,58 +40,58 @@ interface MulchAsset {
 const ASSETS: MulchAsset[] = [
   {
     id: "M1", name: "Waitangirua Mall Entry", code: "GRD-0022",
-    type: "Rose Bed", standard: "High",
-    area: 45, team: "Team A", lastMulchDate: "Feb 2025", cycleMonths: 10,
+    type: "Roses & Perennials", standard: "High",
+    area: 45, team: "Mobile 1", lastMulchDate: "Feb 2025", cycleMonths: 10,
     visitFreq: "Weekly", nextVisit: "30 Mar 2026",
   },
   {
     id: "M2", name: "Kenepuru Landing", code: "GRD-0558",
-    type: "Native Shrub Bed", standard: "Medium",
-    area: 180, team: "Team C", lastMulchDate: "Mar 2025", cycleMonths: 10,
+    type: "Reveg", standard: "Medium",
+    area: 180, team: "CBD", lastMulchDate: "Mar 2025", cycleMonths: 10,
     visitFreq: "Monthly", nextVisit: "1 Apr 2026",
   },
   {
     id: "M3", name: "Cobham Court", code: "GRD-0031",
-    type: "Shrub Bed", standard: "High",
-    area: 30, team: "Team A", lastMulchDate: "Jun 2025", cycleMonths: 10,
+    type: "Ornamental", standard: "High",
+    area: 30, team: "Mobile 1", lastMulchDate: "Jun 2025", cycleMonths: 10,
     visitFreq: "Weekly", nextVisit: "2 Apr 2026",
   },
   {
     id: "M4", name: "Mungavin Ave Berm", code: "GRD-0145",
-    type: "Amenity Planting", standard: "Medium",
-    area: 25, team: "Team A", lastMulchDate: "May 2025", cycleMonths: 10,
+    type: "Amenity", standard: "Medium",
+    area: 25, team: "Mobile 1", lastMulchDate: "May 2025", cycleMonths: 10,
     visitFreq: "Fortnightly", nextVisit: "1 Apr 2026",
   },
   {
     id: "M5", name: "Aotea Lagoon Reserve", code: "GRD-0287",
-    type: "Revegetation", standard: "Medium",
-    area: 350, team: "Team B", lastMulchDate: "Aug 2025", cycleMonths: 10,
+    type: "Reveg", standard: "Medium",
+    area: 350, team: "Mobile 2", lastMulchDate: "Aug 2025", cycleMonths: 10,
     visitFreq: "Fortnightly", nextVisit: "8 Apr 2026",
   },
   {
     id: "M6", name: "Titahi Bay Esplanade", code: "GRD-0412",
-    type: "Amenity Planting", standard: "Medium",
-    area: 65, team: "Team B", lastMulchDate: "Jul 2025", cycleMonths: 10,
+    type: "Amenity", standard: "Medium",
+    area: 65, team: "Mobile 2", lastMulchDate: "Jul 2025", cycleMonths: 10,
     visitFreq: "Fortnightly", nextVisit: "9 Apr 2026",
   },
   {
-    id: "M7", name: "Elsdon Reserve", code: "GRD-0651",
-    type: "Bush / Regeneration", standard: "Low",
-    area: 480, team: "Team B", lastMulchDate: "Nov 2025", cycleMonths: 12,
-    visitFreq: "Monthly", nextVisit: "6 Apr 2026",
+    id: "M7", name: "Paremata Station", code: "GRD-0789",
+    type: "Bush", standard: "Low",
+    area: 480, team: "CBD", lastMulchDate: "Nov 2025", cycleMonths: 12,
+    visitFreq: "Bimonthly", nextVisit: "Oct 2026",
   },
   {
-    id: "M8", name: "Paremata Station", code: "GRD-0789",
-    type: "Native Shrub Bed", standard: "Medium",
-    area: 40, team: "Team C", lastMulchDate: "Aug 2025", cycleMonths: 10,
-    visitFreq: "6-Monthly", nextVisit: "Oct 2026",
+    id: "M8", name: "Elsdon Reserve", code: "GRD-0714",
+    type: "Ornamental", standard: "High",
+    area: 40, team: "Mobile 2", lastMulchDate: "Aug 2025", cycleMonths: 10,
+    visitFreq: "Monthly", nextVisit: "5 Apr 2026",
   },
 ];
 
 // Excluded (shown as reference only)
 const EXCLUDED = [
-  { name: "Festival Beds — Cobham", type: "Annual Bedding", reason: "Annual bedding — mulch would impede replanting" },
-  { name: "Mungavin Rain Garden",   type: "Rain Garden",   reason: "Permeable surface must remain clear" },
+  { name: "Festival Beds — Cobham", type: "Annuals",    reason: "Annuals — mulch would impede replanting" },
+  { name: "Mungavin Rain Garden",   type: "Rain Garden", reason: "Permeable surface must remain clear" },
 ];
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -193,9 +191,9 @@ const WEEK_DAYS: { label: string; date: string }[] = [
 ];
 
 const TEAM_BASE: Record<string, number[]> = {
-  "Team A": [280, 315, 375, 250, 120,  320, 360, 110, 290, 260,  295, 320, 375, 80,  270],
-  "Team B": [165, 90,  165, 75,  90,   165, 90,  75,  165, 60,   90,  165, 75,  90,  60 ],
-  "Team C": [45,  0,   90,  45,  0,    45,  0,   45,  0,   45,   45,  0,   45,  0,   45 ],
+  "Mobile 1": [280, 315, 375, 250, 120,  320, 360, 110, 290, 260,  295, 320, 375, 80,  270],
+  "Mobile 2": [165, 90,  165, 75,  90,   165, 90,  75,  165, 60,   90,  165, 75,  90,  60 ],
+  "CBD":      [45,  0,   90,  45,  0,    45,  0,   45,  0,   45,   45,  0,   45,  0,   45 ],
 };
 
 function capBand(m: number): "green" | "amber" | "red" {
@@ -320,7 +318,7 @@ function ScheduleModal({ asset, onClose, onSave }: ScheduleModalProps) {
           <div>
             <p className="text-xs font-semibold text-gray-500 mb-2">Assign to team</p>
             <div className="flex gap-2">
-              {["Team A", "Team B", "Team C"].map(t => {
+              {["Mobile 1", "Mobile 2", "CBD"].map(t => {
                 const g = teamGreen(t);
                 const active = selTeam === t;
                 const isAssetTeam = t === asset.team;

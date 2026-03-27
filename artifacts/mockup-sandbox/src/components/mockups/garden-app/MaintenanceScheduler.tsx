@@ -54,9 +54,10 @@ function Sidebar({ active }: { active: string }) {
 }
 
 const TEAM_COLORS: Record<string, string> = {
-  "Team A": "#00AECD",
-  "Team B": "#8b5cf6",
-  "Team C": "#10b981",
+  "Mobile 1":  "#00AECD",
+  "Mobile 2":  "#8b5cf6",
+  "CBD":       "#10b981",
+  "Specialist":"#f59e0b",
 };
 
 interface ScheduleItem {
@@ -73,31 +74,35 @@ interface ScheduleItem {
 }
 
 const SCHEDULE: ScheduleItem[] = [
-  { id: "GRD-0022", site: "Waitangirua Mall Entry", type: "Rose", standard: "High", runNo: 1, serviceTime: 120, freq: "Weekly", team: "Team A", dates: ["13 Mar", "20 Mar", "27 Mar", "3 Apr", "10 Apr", "17 Apr"], completed: [0] },
-  { id: "GRD-0212", site: "Cobham Court", type: "Rose", standard: "High", runNo: 2, serviceTime: 120, freq: "Weekly", team: "Team A", dates: ["13 Mar", "20 Mar", "27 Mar", "3 Apr", "10 Apr", "17 Apr"], completed: [0] },
-  { id: "GRD-0801", site: "Mungavin Ave Berm", type: "Annual Bedding", standard: "High", runNo: 3, serviceTime: 45, freq: "Fortnightly", team: "Team A", dates: ["18 Mar", "1 Apr", "15 Apr", "29 Apr"], completed: [] },
-  { id: "GRD-0847", site: "Aotea Lagoon Reserve", type: "Shrub Bed", standard: "High", runNo: 4, serviceTime: 90, freq: "Fortnightly", team: "Team B", dates: ["18 Mar", "1 Apr", "15 Apr", "29 Apr"], completed: [] },
-  { id: "GRD-0391", site: "Titahi Bay Esplanade", type: "Annual Bedding", standard: "High", runNo: 5, serviceTime: 75, freq: "Fortnightly", team: "Team B", dates: ["20 Mar", "3 Apr", "17 Apr", "1 May"], completed: [] },
-  { id: "GRD-0714", site: "Elsdon Reserve", type: "Shrub Bed", standard: "High", runNo: 6, serviceTime: 60, freq: "Monthly", team: "Team B", dates: ["5 Apr", "5 May", "5 Jun"], completed: [] },
-  { id: "GRD-0558", site: "Kenepuru Landing", type: "Revegetation", standard: "Medium", runNo: 7, serviceTime: 45, freq: "Monthly", team: "Team C", dates: ["1 Apr", "1 May", "1 Jun"], completed: [] },
-  { id: "GRD-0629", site: "Paremata Station", type: "Bush", standard: "Low", runNo: 8, serviceTime: 30, freq: "6-Monthly", team: "Team C", dates: ["Sep 2026"], completed: [] },
+  { id: "GRD-0022", site: "Waitangirua Mall Entry", type: "Roses & Perennials", standard: "High",   runNo: 1, serviceTime: 120, freq: "Weekly",      team: "Mobile 1", dates: ["13 Mar", "20 Mar", "27 Mar", "3 Apr", "10 Apr", "17 Apr"], completed: [0] },
+  { id: "GRD-0212", site: "Cobham Court",           type: "Roses & Perennials", standard: "High",   runNo: 2, serviceTime: 120, freq: "Weekly",      team: "Mobile 1", dates: ["13 Mar", "20 Mar", "27 Mar", "3 Apr", "10 Apr", "17 Apr"], completed: [0] },
+  { id: "GRD-0801", site: "Mungavin Ave Berm",      type: "Annuals",            standard: "High",   runNo: 3, serviceTime: 45,  freq: "Fortnightly", team: "Mobile 1", dates: ["18 Mar", "1 Apr", "15 Apr", "29 Apr"], completed: [] },
+  { id: "GRD-0847", site: "Aotea Lagoon Reserve",   type: "Ornamental",         standard: "High",   runNo: 4, serviceTime: 90,  freq: "Fortnightly", team: "Mobile 2", dates: ["18 Mar", "1 Apr", "15 Apr", "29 Apr"], completed: [] },
+  { id: "GRD-0391", site: "Titahi Bay Esplanade",   type: "Annuals",            standard: "High",   runNo: 5, serviceTime: 75,  freq: "Fortnightly", team: "Mobile 2", dates: ["20 Mar", "3 Apr", "17 Apr", "1 May"], completed: [] },
+  { id: "GRD-0714", site: "Elsdon Reserve",         type: "Ornamental",         standard: "High",   runNo: 6, serviceTime: 60,  freq: "Monthly",     team: "Mobile 2", dates: ["5 Apr", "5 May", "5 Jun"], completed: [] },
+  { id: "GRD-0558", site: "Kenepuru Landing",       type: "Reveg",              standard: "Medium", runNo: 7, serviceTime: 45,  freq: "Monthly",     team: "CBD",      dates: ["1 Apr", "1 May", "1 Jun"], completed: [] },
+  { id: "GRD-0629", site: "Paremata Station",       type: "Bush",               standard: "Low",    runNo: 8, serviceTime: 30,  freq: "Bimonthly",   team: "CBD",      dates: ["Sep 2026"], completed: [] },
 ];
 
 const MONTHS = ["Mar", "Apr", "May", "Jun", "Jul", "Aug"];
 
 const TYPE_COLORS: Record<string, string> = {
-  "Rose": "bg-pink-100 text-pink-700",
-  "Annual Bedding": "bg-yellow-100 text-yellow-700",
-  "Shrub Bed": "bg-emerald-100 text-emerald-700",
-  "Revegetation": "bg-lime-100 text-lime-700",
-  "Bush": "bg-green-100 text-green-700",
+  "Roses & Perennials": "bg-pink-100 text-pink-700",
+  "Annuals":            "bg-yellow-100 text-yellow-700",
+  "Ornamental":         "bg-purple-100 text-purple-700",
+  "Amenity":            "bg-sky-100 text-sky-700",
+  "Rain Garden":        "bg-cyan-100 text-cyan-700",
+  "Reveg":              "bg-lime-100 text-lime-700",
+  "Bush":               "bg-green-100 text-green-700",
+  "Tree Planter/Pits":  "bg-stone-100 text-stone-700",
+  "Hedge":              "bg-emerald-100 text-emerald-700",
 };
 
 function TeamStats() {
   const stats = [
-    { team: "Team A", assets: 3, totalMins: 7 * (120 + 120 + 45 / 2), fte: "1.0" },
-    { team: "Team B", assets: 3, totalMins: 7 * (90 / 2 + 75 / 2 + 60 / 4), fte: "0.9" },
-    { team: "Team C", assets: 2, totalMins: 4 * (45 + 30 / 4), fte: "0.5" },
+    { team: "Mobile 1", assets: 3, totalMins: 7 * (120 + 120 + 45 / 2), fte: "1.0" },
+    { team: "Mobile 2", assets: 3, totalMins: 7 * (90 / 2 + 75 / 2 + 60 / 4), fte: "0.9" },
+    { team: "CBD",      assets: 2, totalMins: 4 * (45 + 30 / 4), fte: "0.5" },
   ];
   return (
     <div className="grid grid-cols-3 gap-3">
@@ -169,9 +174,10 @@ export function MaintenanceScheduler() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Teams</SelectItem>
-                <SelectItem value="Team A">Team A</SelectItem>
-                <SelectItem value="Team B">Team B</SelectItem>
-                <SelectItem value="Team C">Team C</SelectItem>
+                <SelectItem value="Mobile 1">Mobile 1</SelectItem>
+                <SelectItem value="Mobile 2">Mobile 2</SelectItem>
+                <SelectItem value="CBD">CBD</SelectItem>
+                <SelectItem value="Specialist">Specialist</SelectItem>
               </SelectContent>
             </Select>
             <div className="flex items-center gap-2 ml-auto">
@@ -235,7 +241,7 @@ export function MaintenanceScheduler() {
                               <SelectValue />
                             </SelectTrigger>
                             <SelectContent>
-                              {["Team A", "Team B", "Team C"].map(t => (
+                              {["Mobile 1", "Mobile 2", "CBD", "Specialist"].map(t => (
                                 <SelectItem key={t} value={t}>{t}</SelectItem>
                               ))}
                             </SelectContent>

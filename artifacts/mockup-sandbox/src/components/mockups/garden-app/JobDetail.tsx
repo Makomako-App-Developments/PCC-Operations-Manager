@@ -19,7 +19,7 @@ const TASKS = [
 
 const TILES = [
   { label: "Location", value: "Tui Park, Elsdon", icon: MapPin },
-  { label: "Garden Type", value: "Rose Garden", icon: Layers },
+  { label: "Garden Type", value: "Roses & Perennials", icon: Layers },
   { label: "Standard", value: "High", icon: Star },
   { label: "Time Allocated", value: "45 min", icon: Clock },
 ];
@@ -47,8 +47,19 @@ export function JobDetail() {
         <span className="text-[10px] font-semibold px-2 py-1 rounded-full text-blue-600 bg-blue-50">Pending</span>
       </div>
 
+      {/* Traffic Control warning — shown when site requires TC */}
+      <div className="mx-4 mt-3 rounded-xl px-3 py-2.5 flex items-center gap-2.5 bg-red-50 border border-red-300">
+        <div className="w-6 h-6 rounded-full bg-red-500 flex items-center justify-center flex-shrink-0">
+          <span className="text-white text-[10px] font-black">TC</span>
+        </div>
+        <div>
+          <p className="text-[11px] font-bold text-red-700">Traffic Control Required</p>
+          <p className="text-[10px] text-red-600 leading-snug">Do not begin work until traffic management is in place and signed off.</p>
+        </div>
+      </div>
+
       {/* Offline cached banner */}
-      <div className="mx-4 mt-3 rounded-xl px-3 py-2 flex items-center gap-2 bg-amber-50 border border-amber-200">
+      <div className="mx-4 mt-2 rounded-xl px-3 py-2 flex items-center gap-2 bg-amber-50 border border-amber-200">
         <WifiOff className="w-3.5 h-3.5 text-amber-500 flex-shrink-0" />
         <p className="text-[11px] text-amber-700"><span className="font-semibold">Offline ready.</span> All site data & maps cached. Photos queue when reconnected.</p>
       </div>
