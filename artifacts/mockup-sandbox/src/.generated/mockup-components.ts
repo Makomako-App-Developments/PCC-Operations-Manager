@@ -11,6 +11,7 @@ export const modules: ModuleMap = {
   "./components/mockups/garden-app/JobList.tsx": () => import("../components/mockups/garden-app/JobList.tsx"),
   "./components/mockups/garden-app/Login.tsx": () => import("../components/mockups/garden-app/Login.tsx"),
   "./components/mockups/garden-app/MaintenanceScheduler.tsx": () => import("../components/mockups/garden-app/MaintenanceScheduler.tsx"),
+  "./components/mockups/garden-app/MulchingProgramme.tsx": () => import("../components/mockups/garden-app/MulchingProgramme.tsx"),
   "./components/mockups/garden-app/ReactiveJobFlow.tsx": () => import("../components/mockups/garden-app/ReactiveJobFlow.tsx"),
   "./components/mockups/garden-app/Reports.tsx": () => import("../components/mockups/garden-app/Reports.tsx"),
   "./components/mockups/garden-app/RoleMatrix.tsx": () => import("../components/mockups/garden-app/RoleMatrix.tsx"),
