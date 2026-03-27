@@ -3,7 +3,7 @@ import {
   LayoutDashboard, List, CalendarDays, ClipboardCheck, Sprout,
   FileSpreadsheet, BarChart2, X, Layers, CheckCircle2, Clock,
   AlertTriangle, AlertCircle, Zap, ChevronRight, CalendarRange,
-  TrendingUp, Truck, Info
+  TrendingUp, Truck, Info, Download, ChevronDown, FileText, Table2
 } from "lucide-react";
 
 const BRAND = "#00AECD";
@@ -681,6 +681,144 @@ function AssetCard({ asset, onSchedule, onComplete }: {
   );
 }
 
+// ─── Export helpers ───────────────────────────────────────────────────────────
+
+function exportCSV(assets: MulchAsset[]) {
+  const headers = [
+    "Asset Code", "Site Name", "Type", "Standard", "Area (m²)", "Volume (m³)",
+    "Last Mulched", "Due Date", "Status", "Months Remaining",
+    "Scheduled Date", "Assigned Team", "Est. Time (min)",
+  ];
+  const rows = assets.map(a => {
+    const s   = status(a);
+    const vol = volumeM3(a);
+    return [
+      a.code, a.name, a.type, a.standard,
+      a.area, vol.toFixed(2),
+      a.lastMulchDate, dueDate(a), statusLabel(s), dueMonthsFromNow(a),
+      a.scheduledMulch?.date ?? "",
+      a.scheduledMulch?.team ?? a.team,
+      mulchMins(a),
+    ];
+  });
+  const csv = [headers, ...rows]
+    .map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(","))
+    .join("\n");
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+  const url  = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href     = url;
+  link.download = "mulching-programme.csv";
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
+function exportPDF(assets: MulchAsset[]) {
+  const statusColour: Record<Status, string> = {
+    overdue:   "#dc2626",
+    due:       "#d97706",
+    upcoming:  "#2563eb",
+    far:       "#64748b",
+    scheduled: "#16a34a",
+  };
+  const tableRows = assets.map(a => {
+    const s   = status(a);
+    const vol = volumeM3(a);
+    return `<tr>
+      <td>${a.code}</td>
+      <td><strong>${a.name}</strong></td>
+      <td>${a.type}</td>
+      <td>${a.standard}</td>
+      <td style="text-align:right">${a.area}</td>
+      <td style="text-align:right">${fmtVol(vol)}</td>
+      <td>${a.lastMulchDate}</td>
+      <td>${dueDate(a)}</td>
+      <td style="color:${statusColour[s]};font-weight:600">${statusLabel(s)}</td>
+      <td>${a.scheduledMulch?.date ?? "—"}</td>
+      <td>${a.scheduledMulch?.team ?? a.team}</td>
+      <td style="text-align:right">${mulchMins(a)} min</td>
+    </tr>`;
+  }).join("");
+
+  const totalVol = assets.reduce((s, a) => s + volumeM3(a), 0).toFixed(1);
+  const today    = new Date().toLocaleDateString("en-NZ", { day:"numeric", month:"long", year:"numeric" });
+
+  const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Mulching Programme — Porirua City Council</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: Arial, Helvetica, sans-serif; font-size: 11px; color: #222; padding: 24px 32px; }
+    .header { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 20px; border-bottom: 3px solid #00AECD; padding-bottom: 14px; }
+    .header-left h1 { font-size: 18px; color: #0f2a36; font-weight: 800; }
+    .header-left p  { color: #666; margin-top: 3px; font-size: 11px; }
+    .header-right   { text-align: right; color: #666; font-size: 10px; line-height: 1.6; }
+    table { width: 100%; border-collapse: collapse; margin-bottom: 16px; }
+    th { background: #0f2a36; color: #fff; padding: 6px 8px; text-align: left; font-size: 10px; letter-spacing: 0.03em; }
+    td { padding: 5px 8px; border-bottom: 1px solid #e5e7eb; vertical-align: middle; }
+    tr:nth-child(even) td { background: #f8fafc; }
+    .summary { display: flex; gap: 24px; font-size: 11px; color: #444; margin-bottom: 16px; }
+    .summary span { font-weight: 700; }
+    .footer { margin-top: 12px; font-size: 10px; color: #aaa; }
+    .actions { margin-top: 20px; display: flex; gap: 10px; }
+    .btn { padding: 9px 22px; border: none; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 600; }
+    .btn-primary { background: #00AECD; color: #fff; }
+    .btn-secondary { background: #f3f4f6; color: #374151; }
+    @media print {
+      .actions { display: none; }
+      body { padding: 0; }
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <div class="header-left">
+      <h1>Mulching Programme</h1>
+      <p>Porirua City Council — Gardens &amp; Ecology · 50 mm application depth · 9–12 month cycle</p>
+    </div>
+    <div class="header-right">
+      Exported ${today}<br/>
+      Prepared by: Gardens Manager<br/>
+      DRAFT — for internal use
+    </div>
+  </div>
+
+  <div class="summary">
+    <div>Total assets: <span>${assets.length}</span></div>
+    <div>Total volume required: <span>${totalVol} m³</span></div>
+    <div>Overdue: <span style="color:#dc2626">${assets.filter(a => status(a) === "overdue").length}</span></div>
+    <div>Due this month: <span style="color:#d97706">${assets.filter(a => status(a) === "due").length}</span></div>
+    <div>Scheduled: <span style="color:#16a34a">${assets.filter(a => status(a) === "scheduled").length}</span></div>
+  </div>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Code</th><th>Site</th><th>Type</th><th>Standard</th>
+        <th>Area (m²)</th><th>Volume</th><th>Last Mulched</th><th>Due</th>
+        <th>Status</th><th>Scheduled</th><th>Team</th><th>Est. Time</th>
+      </tr>
+    </thead>
+    <tbody>${tableRows}</tbody>
+  </table>
+
+  <div class="footer">
+    PCC Gardens Manager · ${assets.length} assets listed · Volume based on 50mm depth × planting area · Time estimates at 15 min/m³
+  </div>
+
+  <div class="actions">
+    <button class="btn btn-primary" onclick="window.print()">Print / Save as PDF</button>
+    <button class="btn btn-secondary" onclick="window.close()">Close</button>
+  </div>
+</body>
+</html>`;
+
+  const w = window.open("", "_blank", "width=1100,height=750");
+  if (w) { w.document.write(html); w.document.close(); }
+}
+
 // ─── Main component ───────────────────────────────────────────────────────────
 
 export function MulchingProgramme() {
@@ -688,6 +826,7 @@ export function MulchingProgramme() {
   const [filter, setFilter] = useState<"all" | "overdue" | "due" | "upcoming" | "scheduled" | "combine">("all");
   const [modalTarget, setModalTarget] = useState<MulchAsset | null>(null);
   const [view, setView] = useState<"programme" | "forward">("programme");
+  const [showExportMenu, setShowExportMenu] = useState(false);
 
   const stats = useMemo(() => ({
     total:     assets.length,
@@ -741,6 +880,45 @@ export function MulchingProgramme() {
             </p>
           </div>
           <div className="flex items-center gap-2">
+            {/* Export dropdown */}
+            <div className="relative">
+              <button
+                onClick={() => setShowExportMenu(v => !v)}
+                onBlur={() => setTimeout(() => setShowExportMenu(false), 150)}
+                className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold border border-gray-200 text-gray-600 hover:border-gray-300 bg-white transition-all">
+                <Download className="w-4 h-4" />Export
+                <ChevronDown className={`w-3.5 h-3.5 transition-transform ${showExportMenu ? "rotate-180" : ""}`} />
+              </button>
+              {showExportMenu && (
+                <div className="absolute right-0 top-full mt-1.5 bg-white rounded-xl border border-gray-100 shadow-lg z-20 w-52 py-1.5 overflow-hidden">
+                  <button
+                    onMouseDown={e => e.preventDefault()}
+                    onClick={() => { exportCSV(assets); setShowExportMenu(false); }}
+                    className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition-colors text-left">
+                    <div className="w-7 h-7 rounded-lg bg-green-50 flex items-center justify-center flex-shrink-0">
+                      <Table2 className="w-3.5 h-3.5 text-green-600" />
+                    </div>
+                    <div>
+                      <p className="font-medium text-gray-800">Spreadsheet (CSV)</p>
+                      <p className="text-[10px] text-gray-400">Opens in Excel / Sheets</p>
+                    </div>
+                  </button>
+                  <button
+                    onMouseDown={e => e.preventDefault()}
+                    onClick={() => { exportPDF(assets); setShowExportMenu(false); }}
+                    className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition-colors text-left">
+                    <div className="w-7 h-7 rounded-lg bg-red-50 flex items-center justify-center flex-shrink-0">
+                      <FileText className="w-3.5 h-3.5 text-red-500" />
+                    </div>
+                    <div>
+                      <p className="font-medium text-gray-800">PDF Report</p>
+                      <p className="text-[10px] text-gray-400">Print or save as PDF</p>
+                    </div>
+                  </button>
+                </div>
+              )}
+            </div>
+
             <button
               onClick={() => setView(v => v === "programme" ? "forward" : "programme")}
               className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold border transition-all ${view === "forward" ? "text-white border-transparent" : "text-gray-600 border-gray-200 hover:border-gray-300 bg-white"}`}
