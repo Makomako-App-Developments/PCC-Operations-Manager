@@ -6,9 +6,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Card, CardContent } from "@/components/ui/card";
 import {
   Search, LayoutGrid, List, Leaf, ClipboardCheck, LayoutDashboard,
-  CalendarDays, Eye, Clock, MapPin, ClipboardList, Sprout, Layers, FileSpreadsheet, BarChart2,
-  X, CheckCircle2, AlertTriangle, History, ShieldAlert, ClipboardX
+  CalendarDays, Eye, MapPin, ClipboardList, Sprout, Layers, FileSpreadsheet, BarChart2,
+  X, CheckCircle2, AlertTriangle, History, ShieldAlert, ClipboardX, Info, Pencil
 } from "lucide-react";
+import { MapContainer, TileLayer, CircleMarker, Tooltip } from "react-leaflet";
+import "leaflet/dist/leaflet.css";
 
 const BRAND = "#00AECD";
 const NAVY  = "#0f2a36";
@@ -119,14 +121,14 @@ const ASSET_AUDITS: AuditRecord[] = [
 ];
 
 const SAMPLE_DATA = [
-  { id: "GRD-2024-0847", site: "Aotea Lagoon Reserve",   type: "Ornamental",        standard: "High",   area: 142,  serviceTime: 90,  freq: "Fortnightly", nextDue: "18 Mar 2026", team: "Mobile 2", compliance: "in-spec"       as ComplianceStatus, suburb: "Aotea",        ward: "Western",  locationType: "Parkgarden",   plantCoverage: 97, trafficControl: false },
-  { id: "GRD-2024-0212", site: "Cobham Court",           type: "Roses & Perennials", standard: "High",  area: 68,   serviceTime: 120, freq: "Weekly",       nextDue: "14 Mar 2026", team: "Mobile 1", compliance: "audit-due"     as ComplianceStatus, suburb: "Papakowhai",  ward: "Northern", locationType: "Parkgarden",   plantCoverage: 95, trafficControl: false },
-  { id: "GRD-2024-0391", site: "Titahi Bay Esplanade",   type: "Annuals",            standard: "High",  area: 95,   serviceTime: 75,  freq: "Fortnightly", nextDue: "20 Mar 2026", team: "Mobile 2", compliance: "in-spec"       as ComplianceStatus, suburb: "Titahi Bay",  ward: "Western",  locationType: "Streetgarden", plantCoverage: 93, trafficControl: true  },
-  { id: "GRD-2024-0558", site: "Kenepuru Landing",       type: "Reveg",              standard: "Medium",area: 520,  serviceTime: 45,  freq: "Monthly",      nextDue: "01 Apr 2026", team: "CBD",      compliance: "non-compliant" as ComplianceStatus, suburb: "Kenepuru",    ward: "Northern", locationType: "Parkgarden",   plantCoverage: 82, trafficControl: false },
-  { id: "GRD-2024-0629", site: "Paremata Station",       type: "Bush",               standard: "Low",   area: 1240, serviceTime: 30,  freq: "Bimonthly",    nextDue: "Sep 2026",    team: "CBD",      compliance: "in-spec"       as ComplianceStatus, suburb: "Paremata",    ward: "Northern", locationType: "Parkgarden",   plantCoverage: 88, trafficControl: false },
-  { id: "GRD-2024-0714", site: "Elsdon Reserve",         type: "Ornamental",         standard: "High",  area: 203,  serviceTime: 60,  freq: "Monthly",      nextDue: "5 Apr 2026",  team: "Mobile 2", compliance: "overdue"       as ComplianceStatus, suburb: "Elsdon",       ward: "Eastern",  locationType: "Parkgarden",   plantCoverage: 91, trafficControl: false },
-  { id: "GRD-2024-0801", site: "Mungavin Ave Berm",      type: "Annuals",            standard: "High",  area: 48,   serviceTime: 45,  freq: "Fortnightly", nextDue: "18 Mar 2026", team: "Mobile 1", compliance: "in-spec"       as ComplianceStatus, suburb: "Porirua East", ward: "Eastern",  locationType: "Streetgarden", plantCoverage: 96, trafficControl: true  },
-  { id: "GRD-2024-0022", site: "Waitangirua Mall Entry", type: "Roses & Perennials", standard: "High",  area: 32,   serviceTime: 120, freq: "Weekly",       nextDue: "13 Mar 2026", team: "Mobile 1", compliance: "in-spec"       as ComplianceStatus, suburb: "Waitangirua", ward: "Eastern",  locationType: "Streetgarden", plantCoverage: 98, trafficControl: true  },
+  { id: "GRD-2024-0847", site: "Aotea Lagoon Reserve",   type: "Ornamental",         standard: "High",   area: 142,  serviceTime: 90,  freq: "Fortnightly", nextDue: "18 Mar 2026", team: "Mobile 2", compliance: "in-spec"       as ComplianceStatus, suburb: "Aotea",        ward: "Western",  locationType: "Parkgarden",   plantCoverage: 97, trafficControl: false, lat: -41.1068, lng: 174.8386 },
+  { id: "GRD-2024-0212", site: "Cobham Court",            type: "Roses & Perennials", standard: "High",   area: 68,   serviceTime: 120, freq: "Weekly",       nextDue: "14 Mar 2026", team: "Mobile 1", compliance: "audit-due"     as ComplianceStatus, suburb: "Papakowhai",  ward: "Northern", locationType: "Parkgarden",   plantCoverage: 95, trafficControl: false, lat: -41.1042, lng: 174.8628 },
+  { id: "GRD-2024-0391", site: "Titahi Bay Esplanade",   type: "Annuals",             standard: "High",   area: 95,   serviceTime: 75,  freq: "Fortnightly", nextDue: "20 Mar 2026", team: "Mobile 2", compliance: "in-spec"       as ComplianceStatus, suburb: "Titahi Bay",  ward: "Western",  locationType: "Streetgarden", plantCoverage: 93, trafficControl: true,  lat: -41.0883, lng: 174.8254 },
+  { id: "GRD-2024-0558", site: "Kenepuru Landing",        type: "Reveg",               standard: "Medium", area: 520,  serviceTime: 45,  freq: "Monthly",     nextDue: "01 Apr 2026", team: "CBD",      compliance: "non-compliant" as ComplianceStatus, suburb: "Kenepuru",    ward: "Northern", locationType: "Parkgarden",   plantCoverage: 82, trafficControl: false, lat: -41.1318, lng: 174.8494 },
+  { id: "GRD-2024-0629", site: "Paremata Station",        type: "Bush",                standard: "Low",    area: 1240, serviceTime: 30,  freq: "Bimonthly",   nextDue: "Sep 2026",    team: "CBD",      compliance: "in-spec"       as ComplianceStatus, suburb: "Paremata",    ward: "Northern", locationType: "Parkgarden",   plantCoverage: 88, trafficControl: false, lat: -41.0997, lng: 174.8705 },
+  { id: "GRD-2024-0714", site: "Elsdon Reserve",          type: "Ornamental",          standard: "High",   area: 203,  serviceTime: 60,  freq: "Monthly",     nextDue: "5 Apr 2026",  team: "Mobile 2", compliance: "overdue"       as ComplianceStatus, suburb: "Elsdon",       ward: "Eastern",  locationType: "Parkgarden",   plantCoverage: 91, trafficControl: false, lat: -41.1248, lng: 174.8491 },
+  { id: "GRD-2024-0801", site: "Mungavin Ave Berm",       type: "Annuals",             standard: "High",   area: 48,   serviceTime: 45,  freq: "Fortnightly", nextDue: "18 Mar 2026", team: "Mobile 1", compliance: "in-spec"       as ComplianceStatus, suburb: "Porirua East", ward: "Eastern",  locationType: "Streetgarden", plantCoverage: 96, trafficControl: true,  lat: -41.1352, lng: 174.8523 },
+  { id: "GRD-2024-0022", site: "Waitangirua Mall Entry",  type: "Roses & Perennials",  standard: "High",   area: 32,   serviceTime: 120, freq: "Weekly",      nextDue: "13 Mar 2026", team: "Mobile 1", compliance: "in-spec"       as ComplianceStatus, suburb: "Waitangirua", ward: "Eastern",  locationType: "Streetgarden", plantCoverage: 98, trafficControl: true,  lat: -41.1443, lng: 174.8642 },
 ];
 
 type Asset = typeof SAMPLE_DATA[0];
@@ -141,33 +143,34 @@ function ComplianceBadge({ status }: { status: ComplianceStatus }) {
 }
 
 function AssetDetailPanel({ asset, onClose }: { asset: Asset; onClose: () => void }) {
-  const [tab, setTab] = useState<"history" | "audits">("history");
+  const [tab, setTab] = useState<"details" | "history" | "audits">("details");
   const comp = COMPLIANCE_CONFIG[asset.compliance];
 
   return (
-    <div className="fixed inset-y-0 right-0 w-[400px] bg-white shadow-2xl border-l border-gray-200 flex flex-col z-40 overflow-hidden">
-      {/* Header */}
+    <div className="fixed inset-y-0 right-0 w-[420px] bg-white shadow-2xl border-l border-gray-200 flex flex-col z-40 overflow-hidden">
+
+      {/* ── Header ────────────────────────────────────────────── */}
       <div className="px-5 py-4 border-b flex items-start justify-between flex-shrink-0" style={{ background: NAVY }}>
         <div>
-          <h2 className="text-sm font-bold text-white">{asset.site}</h2>
+          <h2 className="text-sm font-bold text-white leading-snug">{asset.site}</h2>
           <p className="text-[10px] text-white/40 font-mono mt-0.5">{asset.id}</p>
-          <div className="flex gap-1.5 mt-2">
+          <div className="flex flex-wrap gap-1.5 mt-2">
             <Badge className={`text-[10px] border-0 ${TYPE_COLORS[asset.type]}`}>{asset.type}</Badge>
-            <Badge className={`text-[10px] border-0 ${STANDARD_COLORS[asset.standard]}`}>{asset.standard}</Badge>
+            <Badge className={`text-[10px] border-0 ${STANDARD_COLORS[asset.standard]}`}>{asset.standard} Standard</Badge>
             <Badge className="text-[10px] border-0 bg-white/10 text-white/70">{asset.team}</Badge>
           </div>
         </div>
-        <button onClick={onClose} className="text-white/40 hover:text-white mt-0.5">
+        <button onClick={onClose} className="text-white/40 hover:text-white mt-0.5 flex-shrink-0 ml-3">
           <X className="w-5 h-5" />
         </button>
       </div>
 
-      {/* Compliance status strip */}
-      <div className="px-5 py-2.5 flex items-center gap-2 flex-shrink-0 border-b" style={{ background: comp.bg }}>
+      {/* ── Compliance strip ──────────────────────────────────── */}
+      <div className="px-5 py-2 flex items-center gap-2 flex-shrink-0 border-b" style={{ background: comp.bg }}>
         <span style={{ color: comp.text }}>{comp.icon}</span>
         <span className="text-[11px] font-bold" style={{ color: comp.text }}>{comp.label}</span>
         {asset.compliance === "non-compliant" && (
-          <span className="text-[10px] ml-auto font-medium" style={{ color: comp.text }}>Kenepuru Landing — audit failed 12 Mar</span>
+          <span className="text-[10px] ml-auto font-medium" style={{ color: comp.text }}>Audit failed 12 Mar</span>
         )}
         {asset.compliance === "overdue" && (
           <span className="text-[10px] ml-auto font-medium" style={{ color: comp.text }}>3 days overdue</span>
@@ -177,7 +180,7 @@ function AssetDetailPanel({ asset, onClose }: { asset: Asset; onClose: () => voi
         )}
       </div>
 
-      {/* Asset quick stats — row 1 */}
+      {/* ── Quick-stat row ────────────────────────────────────── */}
       <div className="grid grid-cols-4 gap-0 border-b flex-shrink-0">
         {[
           { label: "Area",      value: `${asset.area} m²` },
@@ -185,58 +188,173 @@ function AssetDetailPanel({ asset, onClose }: { asset: Asset; onClose: () => voi
           { label: "Frequency", value: asset.freq },
           { label: "Next Due",  value: asset.nextDue.replace(" 2026", "") },
         ].map(({ label, value }) => (
-          <div key={label} className="px-3 py-3 text-center border-r last:border-r-0">
+          <div key={label} className="px-3 py-2.5 text-center border-r last:border-r-0">
             <p className="text-[9px] text-gray-400 uppercase tracking-wide">{label}</p>
             <p className="text-[11px] font-semibold text-gray-800 mt-0.5 leading-tight">{value}</p>
           </div>
         ))}
       </div>
-      {/* Asset quick stats — row 2 */}
-      <div className="grid grid-cols-4 gap-0 border-b flex-shrink-0">
-        <div className="px-3 py-3 text-center border-r">
-          <p className="text-[9px] text-gray-400 uppercase tracking-wide">Ward</p>
-          <p className="text-[11px] font-semibold text-gray-800 mt-0.5 leading-tight">{asset.ward}</p>
+
+      {/* ── Mini Leaflet map ──────────────────────────────────── */}
+      <div className="flex-shrink-0 relative" style={{ height: 168 }}>
+        <MapContainer
+          center={[asset.lat, asset.lng]}
+          zoom={15}
+          style={{ height: "100%", width: "100%" }}
+          zoomControl={false}
+          attributionControl={false}
+          dragging={false}
+          scrollWheelZoom={false}
+          doubleClickZoom={false}
+          touchZoom={false}
+        >
+          <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+          <CircleMarker
+            center={[asset.lat, asset.lng]}
+            radius={10}
+            pathOptions={{ color: "#fff", weight: 2.5, fillColor: BRAND, fillOpacity: 1 }}
+          >
+            <Tooltip permanent direction="top" offset={[0, -14]}
+              className="leaflet-tooltip-custom"
+            >
+              <span className="text-[10px] font-semibold">{asset.site}</span>
+            </Tooltip>
+          </CircleMarker>
+        </MapContainer>
+        {/* Location label overlay */}
+        <div className="absolute bottom-2 left-2 z-[500] flex items-center gap-1 bg-white/90 backdrop-blur-sm rounded-lg px-2 py-1 shadow-sm">
+          <MapPin className="w-3 h-3" style={{ color: BRAND }} />
+          <span className="text-[10px] font-medium text-gray-700">{asset.suburb} · {asset.ward} Ward</span>
         </div>
-        <div className="px-3 py-3 text-center border-r">
-          <p className="text-[9px] text-gray-400 uppercase tracking-wide">Loc. Type</p>
-          <p className="text-[11px] font-semibold text-gray-800 mt-0.5 leading-tight">{asset.locationType}</p>
-        </div>
-        <div className="px-3 py-3 text-center border-r">
-          <p className="text-[9px] text-gray-400 uppercase tracking-wide">Coverage</p>
-          <p className="text-[11px] font-semibold text-gray-800 mt-0.5 leading-tight">{asset.plantCoverage}%</p>
-        </div>
-        <div className="px-3 py-3 text-center">
-          <p className="text-[9px] text-gray-400 uppercase tracking-wide">Traffic Ctrl</p>
-          <p className={`text-[11px] font-bold mt-0.5 leading-tight ${asset.trafficControl ? "text-red-600" : "text-green-600"}`}>
-            {asset.trafficControl ? "Required" : "Not req."}
-          </p>
+        <div className="absolute top-2 right-2 z-[500] bg-white/90 backdrop-blur-sm rounded-lg px-2 py-1 shadow-sm">
+          <span className="text-[10px] text-gray-400 font-mono">{asset.lat.toFixed(4)}, {asset.lng.toFixed(4)}</span>
         </div>
       </div>
 
-      {/* Tabs */}
-      <div className="flex border-b px-5 flex-shrink-0 bg-gray-50">
+      {/* ── Tabs ─────────────────────────────────────────────── */}
+      <div className="flex border-b px-4 flex-shrink-0 bg-gray-50">
         {[
-          { id: "history", icon: History,      label: "Work History" },
-          { id: "audits",  icon: ClipboardX,   label: "Audit History" },
+          { id: "details", icon: Info,        label: "Details" },
+          { id: "history", icon: History,     label: "Work History" },
+          { id: "audits",  icon: ClipboardX,  label: "Audits" },
         ].map(({ id, icon: Icon, label }) => (
           <button
             key={id}
-            onClick={() => setTab(id as "history" | "audits")}
-            className={`flex items-center gap-1.5 px-4 py-3 text-xs font-semibold border-b-2 transition-colors ${
+            onClick={() => setTab(id as "details" | "history" | "audits")}
+            className={`flex items-center gap-1.5 px-3 py-2.5 text-[11px] font-semibold border-b-2 transition-colors ${
               tab === id ? "border-[#00AECD] text-[#00AECD]" : "border-transparent text-gray-400 hover:text-gray-600"
             }`}
           >
             <Icon className="w-3.5 h-3.5" />{label}
           </button>
         ))}
+        <button className="ml-auto flex items-center gap-1 px-3 py-2.5 text-[11px] font-semibold text-gray-400 hover:text-gray-700 transition-colors">
+          <Pencil className="w-3 h-3" />Edit
+        </button>
       </div>
 
-      {/* Tab content */}
+      {/* ── Tab content ───────────────────────────────────────── */}
       <div className="flex-1 overflow-y-auto">
+
+        {/* Details tab */}
+        {tab === "details" && (
+          <div className="px-5 py-4 space-y-5">
+
+            {/* Classification */}
+            <section>
+              <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2.5">Classification</p>
+              <div className="grid grid-cols-2 gap-x-6 gap-y-3">
+                {[
+                  { label: "Garden Type",    value: asset.type },
+                  { label: "Maint. Standard",value: asset.standard },
+                  { label: "Ward",           value: asset.ward },
+                  { label: "Location Type",  value: asset.locationType },
+                  { label: "Suburb",         value: asset.suburb },
+                  { label: "Assigned Team",  value: asset.team },
+                ].map(({ label, value }) => (
+                  <div key={label}>
+                    <p className="text-[9px] text-gray-400 uppercase tracking-wide">{label}</p>
+                    <p className="text-[12px] font-semibold text-gray-800 mt-0.5">{value}</p>
+                  </div>
+                ))}
+              </div>
+            </section>
+
+            <div className="border-t" />
+
+            {/* Schedule */}
+            <section>
+              <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2.5">Schedule</p>
+              <div className="grid grid-cols-2 gap-x-6 gap-y-3">
+                {[
+                  { label: "Service Frequency", value: asset.freq },
+                  { label: "Service Time",       value: `${asset.serviceTime} min` },
+                  { label: "Next Due",           value: asset.nextDue },
+                  { label: "Compliance Status",  value: COMPLIANCE_CONFIG[asset.compliance].label },
+                ].map(({ label, value }) => (
+                  <div key={label}>
+                    <p className="text-[9px] text-gray-400 uppercase tracking-wide">{label}</p>
+                    <p className="text-[12px] font-semibold text-gray-800 mt-0.5">{value}</p>
+                  </div>
+                ))}
+              </div>
+            </section>
+
+            <div className="border-t" />
+
+            {/* Physical attributes */}
+            <section>
+              <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2.5">Physical Attributes</p>
+              <div className="grid grid-cols-2 gap-x-6 gap-y-3">
+                <div>
+                  <p className="text-[9px] text-gray-400 uppercase tracking-wide">Area</p>
+                  <p className="text-[12px] font-semibold text-gray-800 mt-0.5">{asset.area} m²</p>
+                </div>
+                <div>
+                  <p className="text-[9px] text-gray-400 uppercase tracking-wide">Plant Coverage</p>
+                  <p className="text-[12px] font-semibold text-gray-800 mt-0.5">{asset.plantCoverage}%</p>
+                </div>
+                <div className="col-span-2">
+                  <p className="text-[9px] text-gray-400 uppercase tracking-wide">Traffic Control</p>
+                  <div className="mt-1">
+                    {asset.trafficControl ? (
+                      <span className="inline-flex items-center gap-1.5 text-[11px] font-bold text-red-600 bg-red-50 px-2.5 py-1 rounded-lg">
+                        <AlertTriangle className="w-3 h-3" />Required — TCP must be in place before works
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-green-700 bg-green-50 px-2.5 py-1 rounded-lg">
+                        <CheckCircle2 className="w-3 h-3" />Not required
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            <div className="border-t" />
+
+            {/* Location */}
+            <section>
+              <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2.5">Location</p>
+              <div className="grid grid-cols-2 gap-x-6 gap-y-3">
+                <div>
+                  <p className="text-[9px] text-gray-400 uppercase tracking-wide">Latitude</p>
+                  <p className="text-[12px] font-semibold text-gray-800 mt-0.5 font-mono">{asset.lat.toFixed(4)}</p>
+                </div>
+                <div>
+                  <p className="text-[9px] text-gray-400 uppercase tracking-wide">Longitude</p>
+                  <p className="text-[12px] font-semibold text-gray-800 mt-0.5 font-mono">{asset.lng.toFixed(4)}</p>
+                </div>
+              </div>
+            </section>
+          </div>
+        )}
+
+        {/* Work History tab */}
         {tab === "history" && (
           <div className="divide-y divide-gray-50">
             {WORK_HISTORY.map((r, i) => {
-              const over    = r.actualMins > r.allocatedMins;
+              const over     = r.actualMins > r.allocatedMins;
               const variance = Math.abs(r.actualMins - r.allocatedMins);
               return (
                 <div key={i} className="px-5 py-4">
@@ -274,6 +392,7 @@ function AssetDetailPanel({ asset, onClose }: { asset: Asset; onClose: () => voi
           </div>
         )}
 
+        {/* Audits tab */}
         {tab === "audits" && (
           <div className="divide-y divide-gray-50">
             {ASSET_AUDITS.map((a, i) => {
@@ -308,7 +427,7 @@ function AssetDetailPanel({ asset, onClose }: { asset: Asset; onClose: () => voi
         )}
       </div>
 
-      {/* Footer actions */}
+      {/* ── Footer actions ────────────────────────────────────── */}
       <div className="px-5 py-3 border-t bg-gray-50 flex gap-2 flex-shrink-0">
         <button className="flex-1 py-2 rounded-xl border border-gray-200 text-xs font-semibold text-gray-600 hover:bg-white transition-colors flex items-center justify-center gap-1.5">
           <CalendarDays className="w-3.5 h-3.5" />View Schedule
