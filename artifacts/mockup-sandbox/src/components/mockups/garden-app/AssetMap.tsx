@@ -4,7 +4,7 @@ import {
   Layers, FileSpreadsheet, BarChart2, Map as MapIcon,
   ChevronDown, ChevronUp, X, Filter
 } from "lucide-react";
-import { MapContainer, TileLayer, CircleMarker, Tooltip, Popup } from "react-leaflet";
+import { MapContainer, TileLayer, CircleMarker, Tooltip, Popup, ZoomControl } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
 
 const BRAND = "#00AECD";
@@ -413,9 +413,10 @@ export function AssetMap() {
           center={[-41.1280, 174.8520]}
           zoom={13}
           style={{ height: "100%", width: "100%" }}
-          zoomControl={true}
+          zoomControl={false}
           attributionControl={false}
         >
+          <ZoomControl position="bottomright" />
           <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
 
           {visible.map(asset => {
