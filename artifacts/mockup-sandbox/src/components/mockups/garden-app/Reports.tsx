@@ -18,7 +18,6 @@ function Sidebar({ active }: { active: string }) {
     { icon: Sprout,          label: "Infill Planting",  id: "planting" },
     { icon: Layers,          label: "Mulching",         id: "mulching" },
     { icon: FileSpreadsheet, label: "Specification",   id: "spec" },
-    { icon: BarChart2,       label: "Reports",         id: "reports" },
   ];
   return (
     <aside className="w-56 flex-shrink-0 flex flex-col min-h-screen" style={{ background: NAVY }}>
@@ -192,13 +191,13 @@ export function Reports() {
 
   return (
     <div className="flex min-h-screen bg-gray-50 font-sans text-sm">
-      <Sidebar active="reports" />
+      <Sidebar active="dashboard" />
 
       <div className="flex-1 flex flex-col min-w-0">
         {/* Top bar */}
         <div className="bg-white border-b px-8 py-4 flex items-center justify-between flex-shrink-0">
           <div>
-            <h1 className="text-xl font-black" style={{ color: NAVY }}>Reports</h1>
+            <h1 className="text-xl font-black" style={{ color: NAVY }}>Dashboard</h1>
             <p className="text-xs text-gray-400">Operational performance · Porirua City Council Gardens</p>
           </div>
           <div className="flex items-center gap-3">
