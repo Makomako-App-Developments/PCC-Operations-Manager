@@ -170,6 +170,15 @@ const ASSETS = [
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
+/** Cultivar names like 'Iceberg' start with a single-quote — not italicised.
+ *  Everything else is a scientific (Latin) name and should be in italics. */
+function SciName({ name, className = "" }: { name: string; className?: string }) {
+  const isCultivar = name.startsWith("'");
+  return isCultivar
+    ? <span className={className}>{name}</span>
+    : <em className={className}>{name}</em>;
+}
+
 function statusBadge(status: Assessment["status"]) {
   const map: Record<string, { label: string; cls: string }> = {
     assessed:  { label: "Assessed",  cls: "bg-amber-100 text-amber-700"  },
@@ -249,7 +258,7 @@ function SpeciesPicker({
                   onClick={() => !sel && onToggle(sp)}>
                   <div className="flex items-start justify-between gap-2">
                     <div className="flex-1 min-w-0">
-                      <p className="text-xs font-semibold text-gray-900 leading-tight">{sp.name}</p>
+                      <SciName name={sp.name} className="text-xs font-semibold text-gray-900 leading-tight" />
                       {sp.maori && <p className="text-[10px] text-gray-400 mt-0.5 italic">{sp.maori}</p>}
                       <p className="text-[10px] text-gray-500 mt-0.5">{sp.note}</p>
                     </div>
@@ -374,7 +383,7 @@ function NewAssessmentModal({
                   {species.map(sp => (
                     <div key={sp.name} className="flex items-center justify-between px-3 py-2 rounded-lg bg-gray-50">
                       <div>
-                        <p className="text-xs font-semibold text-gray-800">{sp.name}</p>
+                        <SciName name={sp.name} className="text-xs font-semibold text-gray-800" />
                         <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full ${CAT_COLORS[sp.category]}`}>{sp.category}</span>
                       </div>
                       <div className="flex items-center gap-2">
@@ -409,7 +418,7 @@ function NewAssessmentModal({
                 <div className="space-y-1">
                   {species.map(sp => (
                     <div key={sp.name} className="flex justify-between text-xs text-green-700">
-                      <span>{sp.name}</span><span className="font-semibold">{sp.qty} plants</span>
+                      <SciName name={sp.name} /><span className="font-semibold">{sp.qty} plants</span>
                     </div>
                   ))}
                 </div>
@@ -485,7 +494,7 @@ function AssignModal({ assessment, onClose, onSave }: {
             <div className="mt-2 space-y-0.5">
               {assessment.species.map(sp => (
                 <div key={sp.name} className="flex justify-between text-[10px] text-emerald-700">
-                  <span>{sp.name}</span><span className="font-semibold">{sp.qty}</span>
+                  <SciName name={sp.name} /><span className="font-semibold">{sp.qty}</span>
                 </div>
               ))}
             </div>
@@ -629,7 +638,7 @@ export function InfillPlanting() {
                       <div className="flex flex-wrap gap-1 mb-2">
                         {a.species.map(sp => (
                           <span key={sp.name} className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${CAT_COLORS[sp.category]}`}>
-                            {sp.qty}× {sp.name}
+                            {sp.qty}× <SciName name={sp.name} />
                           </span>
                         ))}
                       </div>
