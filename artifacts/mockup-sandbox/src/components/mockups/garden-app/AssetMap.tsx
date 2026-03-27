@@ -212,6 +212,14 @@ function pinColor(asset: MapAsset, mode: ColorMode): string {
   return TYPE_COLORS[asset.type] ?? BRAND;
 }
 
+// Job type is encoded as a STROKE PATTERN so it never conflicts with the fill colour.
+function jobStroke(jobs: JobType[]): { color: string; weight: number; dashArray?: string } {
+  if (jobs.includes("Reactive"))        return { color: "#ef4444", weight: 3.5, dashArray: "5 4" };
+  if (jobs.includes("Infill Planting")) return { color: "#22c55e", weight: 3.5, dashArray: "8 3 2 3" };
+  if (jobs.includes("Mulching"))        return { color: "#f59e0b", weight: 3.5, dashArray: "2 3" };
+  return { color: "#ffffff", weight: 2.5 };
+}
+
 // ─── Main component ───────────────────────────────────────────────────────────
 
 export function AssetMap() {
@@ -332,24 +340,15 @@ export function AssetMap() {
             ))}
           </FilterGroup>
 
-          {/* Job Type */}
+          {/* Job Type — no fill colours; job type is shown via pin stroke pattern */}
           <FilterGroup title="Job Type" open={openSections.jobs} onToggle={() => toggleSection("jobs")}>
-            {JOB_TYPES.map(j => {
-              const jobColors: Record<JobType,string> = {
-                "Scheduled":      "#3b82f6",
-                "Reactive":       "#ef4444",
-                "Mulching":       "#f59e0b",
-                "Infill Planting":"#22c55e",
-              };
-              return (
-                <ToggleChip key={j}
-                  label={j}
-                  active={jobFilter.has(j)}
-                  color={jobColors[j]}
-                  onToggle={() => setJobFilter(toggle(jobFilter, j))}
-                />
-              );
-            })}
+            {JOB_TYPES.map(j => (
+              <ToggleChip key={j}
+                label={j}
+                active={jobFilter.has(j)}
+                onToggle={() => setJobFilter(toggle(jobFilter, j))}
+              />
+            ))}
           </FilterGroup>
 
           {/* Frequency */}
@@ -408,6 +407,29 @@ export function AssetMap() {
                   ))
               }
             </div>
+
+            {/* Stroke pattern key — always visible */}
+            <div className="border-t border-gray-100 mt-2 pt-2">
+              <p className="text-[9px] font-bold text-gray-400 uppercase tracking-widest mb-1.5">Pin outline · Job type</p>
+              <div className="flex flex-wrap gap-x-4 gap-y-1">
+                {([
+                  { label: "Reactive",       dash: "5 4",     color: "#ef4444" },
+                  { label: "Infill Planting",dash: "8 3 2 3", color: "#22c55e" },
+                  { label: "Mulching",       dash: "2 3",     color: "#f59e0b" },
+                  { label: "Scheduled only", dash: undefined,  color: "#d1d5db" },
+                ] as const).map(({ label, dash, color }) => (
+                  <div key={label} className="flex items-center gap-1.5">
+                    <svg width="14" height="14" viewBox="0 0 14 14">
+                      <circle cx="7" cy="7" r="5" fill="none"
+                        stroke={color} strokeWidth="2.5"
+                        strokeDasharray={dash ?? "none"}
+                      />
+                    </svg>
+                    <span className="text-[10px] text-gray-600">{label}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
           </div>
         </div>
 
@@ -430,8 +452,7 @@ export function AssetMap() {
                 center={[asset.lat, asset.lng]}
                 radius={13}
                 pathOptions={{
-                  color: "#fff",
-                  weight: 2.5,
+                  ...jobStroke(asset.jobs),
                   fillColor: color,
                   fillOpacity: 0.95,
                 }}
