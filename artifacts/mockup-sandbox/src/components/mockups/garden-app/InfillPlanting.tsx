@@ -3,7 +3,8 @@ import { Badge } from "@/components/ui/badge";
 import {
   LayoutDashboard, List, CalendarDays, ClipboardCheck, Sprout, Layers,
   FileSpreadsheet, BarChart2, Plus, X, Search, Users, Calendar,
-  CheckCircle2, Clock, ChevronRight, Leaf, AlertCircle, AlertTriangle, Filter
+  CheckCircle2, Clock, ChevronRight, Leaf, AlertCircle, AlertTriangle, Filter,
+  Download, ChevronDown, FileText, Table2
 } from "lucide-react";
 
 const BRAND = "#00AECD";
@@ -790,13 +791,144 @@ function AssignModal({ assessment, onClose, onSave }: {
   );
 }
 
-// ─── Main Component ───────────────────────────────────────────────────────────
+// ─── Export helpers ───────────────────────────────────────────────────────────
+
+function exportCSV(assessments: Assessment[]) {
+  const headers = [
+    "Assessment ID", "Site Code", "Site Name", "Garden Type",
+    "Assessed By", "Assessed Date", "Status",
+    "Total Plants", "Species (name × qty)", "Assigned Team",
+    "Planned Date", "Est. Time (min)", "Notes",
+  ];
+  const rows = assessments.map(a => {
+    const speciesStr = a.species.map(s => `${s.name} ×${s.qty}`).join("; ");
+    return [
+      a.id, a.assetId, a.assetName, a.assetType,
+      a.assessedBy, a.assessedDate,
+      a.status.charAt(0).toUpperCase() + a.status.slice(1),
+      totalPlants(a), speciesStr,
+      a.assignedTeam ?? "",
+      a.plannedDate ?? "",
+      a.estimatedMins ?? "",
+      a.notes,
+    ];
+  });
+  const csv = [headers, ...rows]
+    .map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(","))
+    .join("\n");
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+  const url  = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href     = url;
+  link.download = "infill-planting-programme.csv";
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
+function exportPDF(assessments: Assessment[]) {
+  const statusColour: Record<string, string> = {
+    assessed:  "#d97706",
+    assigned:  "#2563eb",
+    completed: "#16a34a",
+  };
+  const tableRows = assessments.map(a => {
+    const col   = statusColour[a.status] ?? "#666";
+    const label = a.status.charAt(0).toUpperCase() + a.status.slice(1);
+    const speciesLines = a.species.map(s => `${s.name} × ${s.qty}`).join("<br/>");
+    return `<tr>
+      <td>${a.id}</td>
+      <td><strong>${a.assetName}</strong><br/><span style="color:#888;font-size:10px">${a.assetId} · ${a.assetType}</span></td>
+      <td>${a.assessedBy}<br/><span style="color:#888;font-size:10px">${a.assessedDate}</span></td>
+      <td style="color:${col};font-weight:700">${label}</td>
+      <td style="font-size:10px">${speciesLines}</td>
+      <td style="text-align:center;font-weight:700">${totalPlants(a)}</td>
+      <td>${a.assignedTeam ?? "—"}</td>
+      <td>${a.plannedDate ?? "—"}</td>
+      <td style="text-align:right">${a.estimatedMins ? `${a.estimatedMins} min` : "—"}</td>
+    </tr>
+    <tr style="background:#fafafa">
+      <td colspan="9" style="padding:4px 10px 8px;color:#555;font-size:10px;font-style:italic">${a.notes}</td>
+    </tr>`;
+  }).join("");
+
+  const totalPending = assessments
+    .filter(a => a.status !== "completed")
+    .reduce((s, a) => s + totalPlants(a), 0);
+  const today = new Date().toLocaleDateString("en-NZ", { day: "numeric", month: "long", year: "numeric" });
+
+  const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <title>Infill Planting Programme — Porirua City Council</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: Arial, Helvetica, sans-serif; font-size: 11px; color: #222; padding: 24px 32px; }
+    .header { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 20px; border-bottom: 3px solid #00AECD; padding-bottom: 14px; }
+    .header-left h1 { font-size: 18px; color: #0f2a36; font-weight: 800; }
+    .header-left p  { color: #666; margin-top: 3px; font-size: 11px; }
+    .header-right   { text-align: right; color: #666; font-size: 10px; line-height: 1.6; }
+    .summary { display: flex; gap: 24px; font-size: 11px; color: #444; margin-bottom: 16px; }
+    .summary span   { font-weight: 700; }
+    table { width: 100%; border-collapse: collapse; margin-bottom: 16px; }
+    th { background: #0f2a36; color: #fff; padding: 6px 8px; text-align: left; font-size: 10px; letter-spacing: 0.03em; }
+    td { padding: 5px 8px; border-bottom: 1px solid #e5e7eb; vertical-align: top; }
+    .footer { margin-top: 12px; font-size: 10px; color: #aaa; }
+    .actions { margin-top: 20px; display: flex; gap: 10px; }
+    .btn { padding: 9px 22px; border: none; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 600; }
+    .btn-primary { background: #00AECD; color: #fff; }
+    .btn-secondary { background: #f3f4f6; color: #374151; }
+    @media print { .actions { display: none; } body { padding: 0; } }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <div class="header-left">
+      <h1>Infill Planting Programme</h1>
+      <p>Porirua City Council — Gardens &amp; Ecology · Assessed by field team</p>
+    </div>
+    <div class="header-right">
+      Exported ${today}<br/>
+      Prepared by: Jude Morison<br/>
+      DRAFT — for internal use
+    </div>
+  </div>
+  <div class="summary">
+    <div>Assessments: <span>${assessments.length}</span></div>
+    <div>Pending assignment: <span style="color:#d97706">${assessments.filter(a => a.status === "assessed").length}</span></div>
+    <div>Assigned: <span style="color:#2563eb">${assessments.filter(a => a.status === "assigned").length}</span></div>
+    <div>Completed: <span style="color:#16a34a">${assessments.filter(a => a.status === "completed").length}</span></div>
+    <div>Plants pending: <span style="color:#00AECD">${totalPending}</span></div>
+  </div>
+  <table>
+    <thead>
+      <tr>
+        <th>ID</th><th>Site</th><th>Assessed By</th><th>Status</th>
+        <th>Species Required</th><th>Qty</th><th>Team</th><th>Planned</th><th>Est. Time</th>
+      </tr>
+    </thead>
+    <tbody>${tableRows}</tbody>
+  </table>
+  <div class="footer">PCC Gardens Manager · ${assessments.length} assessments · Time estimates at 3 min/plant (tube stock)</div>
+  <div class="actions">
+    <button class="btn btn-primary" onclick="window.print()">Print / Save as PDF</button>
+    <button class="btn btn-secondary" onclick="window.close()">Close</button>
+  </div>
+</body>
+</html>`;
+
+  const w = window.open("", "_blank", "width=1100,height=750");
+  if (w) { w.document.write(html); w.document.close(); }
+}
+
+// ─── Main component ───────────────────────────────────────────────────────────
 
 export function InfillPlanting() {
   const [assessments, setAssessments] = useState<Assessment[]>(INITIAL_ASSESSMENTS);
   const [showNew, setShowNew] = useState(false);
   const [assignTarget, setAssignTarget] = useState<Assessment | null>(null);
   const [filterStatus, setFilterStatus] = useState<"all" | Assessment["status"]>("all");
+  const [showExportMenu, setShowExportMenu] = useState(false);
 
   const stats = useMemo(() => ({
     total:     assessments.length,
@@ -830,11 +962,52 @@ export function InfillPlanting() {
             <h1 className="text-lg font-semibold text-gray-900">Infill Planting</h1>
             <p className="text-xs text-gray-400">Species requirements assessed by Jude Morison · assign to teams when ready</p>
           </div>
-          <button onClick={() => setShowNew(true)}
-            className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold text-white"
-            style={{ background: BRAND }}>
-            <Plus className="w-4 h-4" /> New Assessment
-          </button>
+          <div className="flex items-center gap-2">
+            {/* Export dropdown */}
+            <div className="relative">
+              <button
+                onClick={() => setShowExportMenu(v => !v)}
+                onBlur={() => setTimeout(() => setShowExportMenu(false), 150)}
+                className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold border border-gray-200 text-gray-600 hover:border-gray-300 bg-white transition-all">
+                <Download className="w-4 h-4" />Export
+                <ChevronDown className={`w-3.5 h-3.5 transition-transform ${showExportMenu ? "rotate-180" : ""}`} />
+              </button>
+              {showExportMenu && (
+                <div className="absolute right-0 top-full mt-1.5 bg-white rounded-xl border border-gray-100 shadow-lg z-20 w-52 py-1.5 overflow-hidden">
+                  <button
+                    onMouseDown={e => e.preventDefault()}
+                    onClick={() => { exportCSV(assessments); setShowExportMenu(false); }}
+                    className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition-colors text-left">
+                    <div className="w-7 h-7 rounded-lg bg-green-50 flex items-center justify-center flex-shrink-0">
+                      <Table2 className="w-3.5 h-3.5 text-green-600" />
+                    </div>
+                    <div>
+                      <p className="font-medium text-gray-800">Spreadsheet (CSV)</p>
+                      <p className="text-[10px] text-gray-400">Opens in Excel / Sheets</p>
+                    </div>
+                  </button>
+                  <button
+                    onMouseDown={e => e.preventDefault()}
+                    onClick={() => { exportPDF(assessments); setShowExportMenu(false); }}
+                    className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition-colors text-left">
+                    <div className="w-7 h-7 rounded-lg bg-red-50 flex items-center justify-center flex-shrink-0">
+                      <FileText className="w-3.5 h-3.5 text-red-500" />
+                    </div>
+                    <div>
+                      <p className="font-medium text-gray-800">PDF Report</p>
+                      <p className="text-[10px] text-gray-400">Print or save as PDF</p>
+                    </div>
+                  </button>
+                </div>
+              )}
+            </div>
+
+            <button onClick={() => setShowNew(true)}
+              className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold text-white"
+              style={{ background: BRAND }}>
+              <Plus className="w-4 h-4" /> New Assessment
+            </button>
+          </div>
         </header>
 
         <div className="px-8 py-5 space-y-5">
