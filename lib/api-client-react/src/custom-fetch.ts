@@ -9,6 +9,19 @@ export type BodyType<T> = T;
 const NO_BODY_STATUS = new Set([204, 205, 304]);
 const DEFAULT_JSON_ACCEPT = "application/json, application/problem+json";
 
+let _baseUrl = "";
+let _authTokenGetter: (() => string | null | Promise<string | null>) | null = null;
+
+export function setBaseUrl(url: string): void {
+  _baseUrl = url.replace(/\/$/, "");
+}
+
+export function setAuthTokenGetter(
+  getter: () => string | null | Promise<string | null>,
+): void {
+  _authTokenGetter = getter;
+}
+
 function isRequest(input: RequestInfo | URL): input is Request {
   return typeof Request !== "undefined" && input instanceof Request;
 }
@@ -19,8 +32,6 @@ function resolveMethod(input: RequestInfo | URL, explicitMethod?: string): strin
   return "GET";
 }
 
-// Use loose check for URL — some runtimes (e.g. React Native) polyfill URL
-// differently, so `instanceof URL` can fail.
 function isUrl(input: RequestInfo | URL): input is URL {
   return typeof URL !== "undefined" && input instanceof URL;
 }
@@ -64,8 +75,6 @@ function isTextMediaType(mediaType: string | null): boolean {
   );
 }
 
-// Loose equality (`== null`) handles both `null` (browser) and `undefined`
-// (React Native, which doesn't implement ReadableStream body).
 function hasNoBody(response: Response, method: string): boolean {
   if (method === "HEAD") return true;
   if (NO_BODY_STATUS.has(response.status)) return true;
@@ -207,7 +216,6 @@ async function parseErrorBody(response: Response, method: string): Promise<unkno
 
   const mediaType = getMediaType(response.headers);
 
-  // Fall back to text when blob() is unavailable (e.g. some React Native builds).
   if (mediaType && !isJsonMediaType(mediaType) && !isTextMediaType(mediaType)) {
     return typeof response.blob === "function" ? response.blob() : response.text();
   }
@@ -297,9 +305,24 @@ export async function customFetch<T = unknown>(
     headers.set("accept", DEFAULT_JSON_ACCEPT);
   }
 
-  const requestInfo = { method, url: resolveUrl(input) };
+  let resolvedUrl = resolveUrl(input);
+  if (_baseUrl && !resolvedUrl.startsWith("http")) {
+    resolvedUrl = `${_baseUrl}${resolvedUrl.startsWith("/") ? "" : "/"}${resolvedUrl}`;
+    input = resolvedUrl;
+  }
 
-  const response = await fetch(input, { ...init, method, headers, credentials: "include" });
+  let authToken: string | null = null;
+  if (_authTokenGetter) {
+    authToken = await Promise.resolve(_authTokenGetter());
+  }
+  if (authToken) {
+    headers.set("authorization", `Bearer ${authToken}`);
+  }
+
+  const requestInfo = { method, url: resolvedUrl };
+  const credentials = authToken ? ("omit" as const) : ("include" as const);
+
+  const response = await fetch(input, { ...init, method, headers, credentials });
 
   if (!response.ok) {
     const errorData = await parseErrorBody(response, method);

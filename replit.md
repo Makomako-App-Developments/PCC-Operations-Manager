@@ -10,7 +10,7 @@ Full-stack garden asset management system for Porirua City Council (PCC). Built 
 |-------|-------|--------|
 | 0 | Architecture setup: DB schema, API contract, route scaffold | ✅ Complete |
 | 1 | Core CRUD: assets, jobs, schedule generation, auth + React web app | ✅ Complete |
-| 2 | Mobile worker app (Expo) + field workflows | Pending |
+| 2 | Mobile worker app (Expo) + field workflows | ✅ Complete |
 | 3 | Programmes (infill, mulching), audits, reporting | Pending |
 
 ## Stack
@@ -50,6 +50,24 @@ Full-stack garden asset management system for Porirua City Council (PCC). Built 
 │   │   │   ├── middlewares/   # requireAuth, requireRole, validateBody, validateQuery
 │   │   │   └── lib/           # password.ts (bcrypt helpers)
 │   │   └── package.json
+│   ├── field-ops/            # Expo React Native mobile app (Barry's field app)
+│   │   ├── app/
+│   │   │   ├── _layout.tsx      # Root layout: AuthProvider, setBaseUrl, Stack nav
+│   │   │   ├── index.tsx        # Auth-based redirect (→ login or tabs)
+│   │   │   ├── login.tsx        # Login screen (bearer token, SecureStore)
+│   │   │   ├── (tabs)/
+│   │   │   │   ├── _layout.tsx  # 4 tabs: Today/Assets/Report/Me (NativeTabs + BlurView)
+│   │   │   │   ├── index.tsx    # Today's jobs (via /schedule/week, navy header)
+│   │   │   │   ├── assets.tsx   # Asset browser (search, live API)
+│   │   │   │   ├── report.tsx   # Raise reactive job form (modal pickers)
+│   │   │   │   └── me.tsx       # Profile + sign out
+│   │   │   └── job/[id].tsx     # Job detail: info tiles, task checklist, Start/Complete/Skip
+│   │   ├── components/
+│   │   │   ├── StatusBadge.tsx  # Colour-coded status pill
+│   │   │   ├── JobCard.tsx      # Tappable job card (→ job detail)
+│   │   │   └── EmptyState.tsx   # Empty state with icon + text
+│   │   ├── context/auth.tsx     # AuthContext + SecureStore token persistence
+│   │   └── constants/colors.ts  # PCC brand tokens (teal/navy, light + dark)
 │   └── web-app/              # React 18 + Vite + Tailwind + shadcn/ui (desktop)
 │       ├── src/
 │       │   ├── App.tsx        # Wouter router + AuthProvider + QueryClient
@@ -137,6 +155,13 @@ All routes prefixed `/api/`. Protected routes require a valid JWT (cookie or Bea
 | GET | `/audits/:id` | Auth | Get audit + items |
 | PATCH | `/audits/:id` | Manager/Supervisor/TL | Update audit |
 | POST | `/audits/:id/items` | Auth | Add audit item |
+
+## Mobile Auth Flow (field-ops)
+
+- Login: POST /api/auth/login → `{ user, accessToken }` → stored in `expo-secure-store`
+- `setAuthTokenGetter` registered at module load (context/auth.tsx) — injects `Authorization: Bearer <token>` into every API call
+- `setBaseUrl(`https://${EXPO_PUBLIC_DOMAIN}`)` called at module level in `app/_layout.tsx` — resolves relative `/api/...` paths to full Replit dev domain URL
+- Web app auth unchanged: uses `credentials: 'include'` (httpOnly cookies) — bearer token getter only activates when `_authTokenGetter` is set and returns a non-null token
 
 ## Key Workflows
 
