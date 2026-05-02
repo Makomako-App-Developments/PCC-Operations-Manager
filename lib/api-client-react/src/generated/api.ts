@@ -28,6 +28,8 @@ import type {
   AuditItemCreate,
   AuditListResponse,
   AuditUpdate,
+  DashboardSummary,
+  GetScheduleWeekParams,
   HealthStatus,
   Job,
   JobCreate,
@@ -43,6 +45,9 @@ import type {
   ReactiveJobCreate,
   ReactiveJobListResponse,
   ReactiveJobUpdate,
+  ScheduleGenerateBody,
+  ScheduleGenerateResult,
+  ScheduleWeekResponse,
   Team,
   TeamCreate,
   UnauthorisedResponse,
@@ -1618,6 +1623,261 @@ export function useGetTeamMembers<
   },
 ): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
   const queryOptions = getGetTeamMembersQueryOptions(id, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Return summary statistics for the dashboard
+ */
+export const getGetDashboardSummaryUrl = () => {
+  return `/api/dashboard/summary`;
+};
+
+export const getDashboardSummary = async (
+  options?: RequestInit,
+): Promise<DashboardSummary> => {
+  return customFetch<DashboardSummary>(getGetDashboardSummaryUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetDashboardSummaryQueryKey = () => {
+  return [`/api/dashboard/summary`] as const;
+};
+
+export const getGetDashboardSummaryQueryOptions = <
+  TData = Awaited<ReturnType<typeof getDashboardSummary>>,
+  TError = ErrorType<UnauthorisedResponse>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getDashboardSummary>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetDashboardSummaryQueryKey();
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getDashboardSummary>>
+  > = ({ signal }) => getDashboardSummary({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getDashboardSummary>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetDashboardSummaryQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getDashboardSummary>>
+>;
+export type GetDashboardSummaryQueryError = ErrorType<UnauthorisedResponse>;
+
+/**
+ * @summary Return summary statistics for the dashboard
+ */
+
+export function useGetDashboardSummary<
+  TData = Awaited<ReturnType<typeof getDashboardSummary>>,
+  TError = ErrorType<UnauthorisedResponse>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getDashboardSummary>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetDashboardSummaryQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Generate scheduled jobs from active assets for a date range
+ */
+export const getGenerateScheduleUrl = () => {
+  return `/api/schedule/generate`;
+};
+
+export const generateSchedule = async (
+  scheduleGenerateBody: ScheduleGenerateBody,
+  options?: RequestInit,
+): Promise<ScheduleGenerateResult> => {
+  return customFetch<ScheduleGenerateResult>(getGenerateScheduleUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(scheduleGenerateBody),
+  });
+};
+
+export const getGenerateScheduleMutationOptions = <
+  TError = ErrorType<UnauthorisedResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof generateSchedule>>,
+    TError,
+    { data: BodyType<ScheduleGenerateBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof generateSchedule>>,
+  TError,
+  { data: BodyType<ScheduleGenerateBody> },
+  TContext
+> => {
+  const mutationKey = ["generateSchedule"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof generateSchedule>>,
+    { data: BodyType<ScheduleGenerateBody> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return generateSchedule(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type GenerateScheduleMutationResult = NonNullable<
+  Awaited<ReturnType<typeof generateSchedule>>
+>;
+export type GenerateScheduleMutationBody = BodyType<ScheduleGenerateBody>;
+export type GenerateScheduleMutationError = ErrorType<UnauthorisedResponse>;
+
+/**
+ * @summary Generate scheduled jobs from active assets for a date range
+ */
+export const useGenerateSchedule = <
+  TError = ErrorType<UnauthorisedResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof generateSchedule>>,
+    TError,
+    { data: BodyType<ScheduleGenerateBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof generateSchedule>>,
+  TError,
+  { data: BodyType<ScheduleGenerateBody> },
+  TContext
+> => {
+  return useMutation(getGenerateScheduleMutationOptions(options));
+};
+
+/**
+ * @summary Get all jobs for a given week with asset details
+ */
+export const getGetScheduleWeekUrl = (params: GetScheduleWeekParams) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/schedule/week?${stringifiedParams}`
+    : `/api/schedule/week`;
+};
+
+export const getScheduleWeek = async (
+  params: GetScheduleWeekParams,
+  options?: RequestInit,
+): Promise<ScheduleWeekResponse> => {
+  return customFetch<ScheduleWeekResponse>(getGetScheduleWeekUrl(params), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetScheduleWeekQueryKey = (params?: GetScheduleWeekParams) => {
+  return [`/api/schedule/week`, ...(params ? [params] : [])] as const;
+};
+
+export const getGetScheduleWeekQueryOptions = <
+  TData = Awaited<ReturnType<typeof getScheduleWeek>>,
+  TError = ErrorType<UnauthorisedResponse>,
+>(
+  params: GetScheduleWeekParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getScheduleWeek>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetScheduleWeekQueryKey(params);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getScheduleWeek>>> = ({
+    signal,
+  }) => getScheduleWeek(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getScheduleWeek>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetScheduleWeekQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getScheduleWeek>>
+>;
+export type GetScheduleWeekQueryError = ErrorType<UnauthorisedResponse>;
+
+/**
+ * @summary Get all jobs for a given week with asset details
+ */
+
+export function useGetScheduleWeek<
+  TData = Awaited<ReturnType<typeof getScheduleWeek>>,
+  TError = ErrorType<UnauthorisedResponse>,
+>(
+  params: GetScheduleWeekParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getScheduleWeek>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetScheduleWeekQueryOptions(params, options);
 
   const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
     queryKey: QueryKey;

@@ -365,6 +365,62 @@ export interface AuditListResponse {
   data: Audit[];
 }
 
+export interface AssetTypeCount {
+  gardenType: string;
+  count: number;
+}
+
+export interface TeamJobCount {
+  teamId: string;
+  teamName: string;
+  jobCount: number;
+  completedCount: number;
+}
+
+export interface DashboardSummary {
+  totalAssets: number;
+  activeAssets: number;
+  jobsThisWeek: number;
+  completedThisWeek: number;
+  overdueJobs: number;
+  openReactiveJobs: number;
+  assetsByType: AssetTypeCount[];
+  teamSummary: TeamJobCount[];
+}
+
+export interface ScheduleGenerateBody {
+  fromDate: string;
+  toDate: string;
+  teamId?: string;
+}
+
+export interface ScheduleGenerateResult {
+  jobsCreated: number;
+  fromDate: string;
+  toDate: string;
+}
+
+export type JobWithAsset = Job & {
+  assetName: string;
+  assetRef: string;
+  gardenType: string;
+  suburb?: string | null;
+  serviceTimeMins: number;
+};
+
+export interface ScheduleWeekDay {
+  date: string;
+  jobs: JobWithAsset[];
+}
+
+export interface ScheduleWeekResponse {
+  weekStart: string;
+  weekEnd: string;
+  days: ScheduleWeekDay[];
+  totalJobs: number;
+  completedJobs: number;
+}
+
 /**
  * Unauthorised
  */
@@ -399,4 +455,12 @@ export type ListJobsParams = {
   status?: JobStatus;
   from?: string;
   to?: string;
+};
+
+export type GetScheduleWeekParams = {
+  /**
+   * ISO date of any day in the desired week (week starts Monday)
+   */
+  week: string;
+  teamId?: string;
 };

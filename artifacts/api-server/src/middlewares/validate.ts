@@ -27,7 +27,7 @@ export function validateQuery(schema: Schema) {
       res.status(400).json({ error: "Validation failed", issues: result.error.issues });
       return;
     }
-    req.query = result.data as typeof req.query;
+    res.locals.query = result.data;
     next();
   };
 }

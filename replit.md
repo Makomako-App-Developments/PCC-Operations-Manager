@@ -9,7 +9,7 @@ Full-stack garden asset management system for Porirua City Council (PCC). Built 
 | Phase | Focus | Status |
 |-------|-------|--------|
 | 0 | Architecture setup: DB schema, API contract, route scaffold | ✅ Complete |
-| 1 | Core CRUD: assets, jobs, schedule generation, auth | Pending |
+| 1 | Core CRUD: assets, jobs, schedule generation, auth + React web app | ✅ Complete |
 | 2 | Mobile worker app (Expo) + field workflows | Pending |
 | 3 | Programmes (infill, mulching), audits, reporting | Pending |
 
@@ -42,14 +42,31 @@ Full-stack garden asset management system for Porirua City Council (PCC). Built 
 
 ```text
 ├── artifacts/
-│   └── api-server/           # Express 5 API (the real backend)
+│   ├── api-server/           # Express 5 API (the real backend)
+│   │   ├── src/
+│   │   │   ├── app.ts         # CORS, JSON, cookies, router mount at /api
+│   │   │   ├── index.ts       # PORT binding
+│   │   │   ├── routes/        # health, auth, assets, jobs, teams, audits, dashboard, schedule
+│   │   │   ├── middlewares/   # requireAuth, requireRole, validateBody, validateQuery
+│   │   │   └── lib/           # password.ts (bcrypt helpers)
+│   │   └── package.json
+│   └── web-app/              # React 18 + Vite + Tailwind + shadcn/ui (desktop)
 │       ├── src/
-│       │   ├── app.ts         # CORS, JSON, cookies, router mount at /api
-│       │   ├── index.ts       # PORT binding
-│       │   ├── routes/        # health, auth, assets, jobs, teams, audits
-│       │   ├── middlewares/   # requireAuth, requireRole, validateBody, validateQuery
-│       │   └── lib/           # password.ts (bcrypt helpers)
-│       └── package.json
+│       │   ├── App.tsx        # Wouter router + AuthProvider + QueryClient
+│       │   ├── lib/auth.tsx   # AuthContext + useAuth hook (JWT cookie auth)
+│       │   ├── components/
+│       │   │   ├── layout.tsx # Sidebar nav (dark navy #0f2a36)
+│       │   │   └── ui/        # shadcn/ui components
+│       │   └── pages/
+│       │       ├── login.tsx        # Login page (pre-filled Daniela credentials)
+│       │       ├── dashboard.tsx    # Overview metrics + Leaflet map
+│       │       ├── assets/
+│       │       │   ├── index.tsx    # Asset Register (table + map view, search/filter)
+│       │       │   └── new.tsx      # New Asset form (react-hook-form + zod)
+│       │       ├── schedule.tsx     # Weekly scheduler (Mon–Fri columns, generate)
+│       │       ├── jobs.tsx         # Job Operations (cards, status update dialog)
+│       │       └── reactive-jobs.tsx # Reactive / ad-hoc jobs
+│       └── vite.config.ts     # Proxy /api → :8080
 ├── lib/
 │   ├── api-spec/              # openapi.yaml (source of truth) + orval.config.ts
 │   ├── api-client-react/      # Generated React Query hooks (via Orval)
@@ -97,6 +114,7 @@ All routes prefixed `/api/`. Protected routes require a valid JWT (cookie or Bea
 | POST | `/auth/login` | Public | Login → sets httpOnly cookies |
 | POST | `/auth/logout` | Public | Clears cookies |
 | GET | `/auth/me` | Auth | Current user |
+| GET | `/dashboard/summary` | Auth | Dashboard metrics |
 | GET | `/assets` | Auth | List assets (paginated) |
 | POST | `/assets` | Manager/Supervisor | Create asset |
 | GET | `/assets/:id` | Auth | Get asset |
@@ -109,9 +127,11 @@ All routes prefixed `/api/`. Protected routes require a valid JWT (cookie or Bea
 | GET | `/reactive-jobs` | Auth | List reactive jobs |
 | POST | `/reactive-jobs` | Auth | Raise reactive job |
 | PATCH | `/reactive-jobs/:id` | Auth | Update reactive job |
-| GET | `/teams` | Auth | List teams |
+| GET | `/teams` | Auth | List teams (returns plain Team[]) |
 | POST | `/teams` | Manager | Create team |
 | GET | `/teams/:id/members` | Auth | Team members |
+| POST | `/schedule/generate` | Manager/Supervisor | Generate scheduled jobs for date range |
+| GET | `/schedule/week` | Auth | Jobs grouped by day for a given week |
 | GET | `/audits` | Auth | List audits |
 | POST | `/audits` | Manager/Supervisor/TL | Create audit |
 | GET | `/audits/:id` | Auth | Get audit + items |

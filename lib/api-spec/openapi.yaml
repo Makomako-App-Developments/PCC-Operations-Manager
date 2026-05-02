@@ -20,6 +20,10 @@ tags:
     description: Teams and members
   - name: audits
     description: Quality audits
+  - name: dashboard
+    description: Dashboard summary statistics
+  - name: schedule
+    description: Schedule generation and weekly view
 
 # ─── Shared parameters ────────────────────────────────────────────────────────
 x-page-param: &pageParam
@@ -400,6 +404,68 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/UserSummary"
+
+  # ─── Dashboard ──────────────────────────────────────────────────────────────
+  /dashboard/summary:
+    get:
+      operationId: getDashboardSummary
+      tags: [dashboard]
+      summary: Return summary statistics for the dashboard
+      responses:
+        "200":
+          description: Dashboard summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DashboardSummary"
+        "401":
+          $ref: "#/components/responses/Unauthorised"
+
+  # ─── Schedule ────────────────────────────────────────────────────────────────
+  /schedule/generate:
+    post:
+      operationId: generateSchedule
+      tags: [schedule]
+      summary: Generate scheduled jobs from active assets for a date range
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ScheduleGenerateBody"
+      responses:
+        "200":
+          description: Result of schedule generation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ScheduleGenerateResult"
+        "401":
+          $ref: "#/components/responses/Unauthorised"
+
+  /schedule/week:
+    get:
+      operationId: getScheduleWeek
+      tags: [schedule]
+      summary: Get all jobs for a given week with asset details
+      parameters:
+        - name: week
+          in: query
+          required: true
+          schema: { type: string, format: date }
+          description: ISO date of any day in the desired week (week starts Monday)
+        - name: teamId
+          in: query
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Jobs with asset info grouped by day
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ScheduleWeekResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorised"
 
   # ─── Audits ─────────────────────────────────────────────────────────────────
   /audits:
@@ -949,3 +1015,95 @@ components:
       properties:
         data: { type: array, items: { $ref: "#/components/schemas/Audit" } }
       required: [data]
+
+    # ─── Dashboard ──────────────────────────────────────────────────────────
+    AssetTypeCount:
+      type: object
+      properties:
+        gardenType: { type: string }
+        count:      { type: integer }
+      required: [gardenType, count]
+
+    TeamJobCount:
+      type: object
+      properties:
+        teamId:         { type: string, format: uuid }
+        teamName:       { type: string }
+        jobCount:       { type: integer }
+        completedCount: { type: integer }
+      required: [teamId, teamName, jobCount, completedCount]
+
+    DashboardSummary:
+      type: object
+      properties:
+        totalAssets:        { type: integer }
+        activeAssets:       { type: integer }
+        jobsThisWeek:       { type: integer }
+        completedThisWeek:  { type: integer }
+        overdueJobs:        { type: integer }
+        openReactiveJobs:   { type: integer }
+        assetsByType:
+          type: array
+          items: { $ref: "#/components/schemas/AssetTypeCount" }
+        teamSummary:
+          type: array
+          items: { $ref: "#/components/schemas/TeamJobCount" }
+      required:
+        - totalAssets
+        - activeAssets
+        - jobsThisWeek
+        - completedThisWeek
+        - overdueJobs
+        - openReactiveJobs
+        - assetsByType
+        - teamSummary
+
+    # ─── Schedule ────────────────────────────────────────────────────────────
+    ScheduleGenerateBody:
+      type: object
+      properties:
+        fromDate: { type: string, format: date }
+        toDate:   { type: string, format: date }
+        teamId:   { type: string, format: uuid }
+      required: [fromDate, toDate]
+
+    ScheduleGenerateResult:
+      type: object
+      properties:
+        jobsCreated: { type: integer }
+        fromDate:    { type: string, format: date }
+        toDate:      { type: string, format: date }
+      required: [jobsCreated, fromDate, toDate]
+
+    JobWithAsset:
+      allOf:
+        - $ref: "#/components/schemas/Job"
+        - type: object
+          properties:
+            assetName:    { type: string }
+            assetRef:     { type: string }
+            gardenType:   { type: string }
+            suburb:       { type: string, nullable: true }
+            serviceTimeMins: { type: integer }
+          required: [assetName, assetRef, gardenType, serviceTimeMins]
+
+    ScheduleWeekDay:
+      type: object
+      properties:
+        date: { type: string, format: date }
+        jobs:
+          type: array
+          items: { $ref: "#/components/schemas/JobWithAsset" }
+      required: [date, jobs]
+
+    ScheduleWeekResponse:
+      type: object
+      properties:
+        weekStart: { type: string, format: date }
+        weekEnd:   { type: string, format: date }
+        days:
+          type: array
+          items: { $ref: "#/components/schemas/ScheduleWeekDay" }
+        totalJobs:      { type: integer }
+        completedJobs:  { type: integer }
+      required: [weekStart, weekEnd, days, totalJobs, completedJobs]

@@ -21,7 +21,7 @@ type JobQuery = z.infer<typeof jobQuerySchema>;
 
 // GET /api/jobs
 router.get("/jobs", requireAuth, validateQuery(jobQuerySchema), async (req, res) => {
-  const { page, limit } = req.query as unknown as JobQuery;
+  const { page, limit } = res.locals.query as JobQuery;
   const offset = (page - 1) * limit;
   const rows = await db.select().from(jobsTable).limit(limit).offset(offset);
   res.json({ data: rows, page, limit });

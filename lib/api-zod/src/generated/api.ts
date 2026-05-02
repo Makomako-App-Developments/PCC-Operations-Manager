@@ -558,6 +558,107 @@ export const GetTeamMembersResponseItem = zod.object({
 export const GetTeamMembersResponse = zod.array(GetTeamMembersResponseItem);
 
 /**
+ * @summary Return summary statistics for the dashboard
+ */
+export const GetDashboardSummaryResponse = zod.object({
+  totalAssets: zod.number(),
+  activeAssets: zod.number(),
+  jobsThisWeek: zod.number(),
+  completedThisWeek: zod.number(),
+  overdueJobs: zod.number(),
+  openReactiveJobs: zod.number(),
+  assetsByType: zod.array(
+    zod.object({
+      gardenType: zod.string(),
+      count: zod.number(),
+    }),
+  ),
+  teamSummary: zod.array(
+    zod.object({
+      teamId: zod.string().uuid(),
+      teamName: zod.string(),
+      jobCount: zod.number(),
+      completedCount: zod.number(),
+    }),
+  ),
+});
+
+/**
+ * @summary Generate scheduled jobs from active assets for a date range
+ */
+export const GenerateScheduleBody = zod.object({
+  fromDate: zod.date(),
+  toDate: zod.date(),
+  teamId: zod.string().uuid().optional(),
+});
+
+export const GenerateScheduleResponse = zod.object({
+  jobsCreated: zod.number(),
+  fromDate: zod.date(),
+  toDate: zod.date(),
+});
+
+/**
+ * @summary Get all jobs for a given week with asset details
+ */
+export const GetScheduleWeekQueryParams = zod.object({
+  week: zod
+    .date()
+    .describe("ISO date of any day in the desired week (week starts Monday)"),
+  teamId: zod.coerce.string().uuid().optional(),
+});
+
+export const GetScheduleWeekResponse = zod.object({
+  weekStart: zod.date(),
+  weekEnd: zod.date(),
+  days: zod.array(
+    zod.object({
+      date: zod.date(),
+      jobs: zod.array(
+        zod
+          .object({
+            id: zod.string().uuid(),
+            assetId: zod.string().uuid(),
+            jobType: zod.enum([
+              "scheduled",
+              "reactive",
+              "mulching",
+              "infill_planting",
+            ]),
+            status: zod.enum([
+              "pending",
+              "in_progress",
+              "completed",
+              "skipped",
+              "overdue",
+            ]),
+            teamId: zod.string().uuid().nullish(),
+            assignedUserId: zod.string().uuid().nullish(),
+            scheduledDate: zod.date(),
+            startedAt: zod.date().nullish(),
+            completedAt: zod.date().nullish(),
+            actualTimeMins: zod.number().nullish(),
+            notes: zod.string().nullish(),
+            createdAt: zod.date(),
+            updatedAt: zod.date(),
+          })
+          .and(
+            zod.object({
+              assetName: zod.string(),
+              assetRef: zod.string(),
+              gardenType: zod.string(),
+              suburb: zod.string().nullish(),
+              serviceTimeMins: zod.number(),
+            }),
+          ),
+      ),
+    }),
+  ),
+  totalJobs: zod.number(),
+  completedJobs: zod.number(),
+});
+
+/**
  * @summary List audits
  */
 export const listAuditsResponseDataItemOverallScoreMin = 0;

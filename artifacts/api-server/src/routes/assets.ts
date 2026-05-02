@@ -21,7 +21,7 @@ type ListQuery = z.infer<typeof listQuerySchema>;
 
 // GET /api/assets
 router.get("/assets", requireAuth, validateQuery(listQuerySchema), async (req, res) => {
-  const { page, limit, isActive } = req.query as unknown as ListQuery;
+  const { page, limit, isActive } = res.locals.query as ListQuery;
   const offset = (page - 1) * limit;
 
   const rows = await db
