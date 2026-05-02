@@ -3,20 +3,42 @@ info:
   # Do not change the title, if the title changes, the import paths will be broken
   title: Api
   version: 0.1.0
-  description: API specification
+  description: Porirua City Council – Garden Asset Management API
 servers:
   - url: /api
     description: Base API path
 tags:
   - name: health
     description: Health operations
+  - name: auth
+    description: Authentication
+  - name: assets
+    description: Garden assets
+  - name: jobs
+    description: Scheduled and reactive jobs
+  - name: teams
+    description: Teams and members
+  - name: audits
+    description: Quality audits
+
+# ─── Shared parameters ────────────────────────────────────────────────────────
+x-page-param: &pageParam
+  name: page
+  in: query
+  schema: { type: integer, default: 1 }
+
+x-limit-param: &limitParam
+  name: limit
+  in: query
+  schema: { type: integer, default: 50, maximum: 200 }
+
 paths:
+  # ─── Health ─────────────────────────────────────────────────────────────────
   /healthz:
     get:
       operationId: healthCheck
       tags: [health]
       summary: Health check
-      description: Returns server health status
       responses:
         "200":
           description: Healthy
@@ -24,13 +46,906 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+
+  # ─── Auth ───────────────────────────────────────────────────────────────────
+  /auth/login:
+    post:
+      operationId: login
+      tags: [auth]
+      summary: Log in with email and password
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginRequest"
+      responses:
+        "200":
+          description: Authenticated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LoginResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorised"
+
+  /auth/logout:
+    post:
+      operationId: logout
+      tags: [auth]
+      summary: Log out (clears auth cookies)
+      responses:
+        "200":
+          description: Logged out
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkResponse"
+
+  /auth/me:
+    get:
+      operationId: getMe
+      tags: [auth]
+      summary: Return current authenticated user
+      security: [{}]
+      responses:
+        "200":
+          description: Current user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "401":
+          $ref: "#/components/responses/Unauthorised"
+
+  # ─── Assets ─────────────────────────────────────────────────────────────────
+  /assets:
+    get:
+      operationId: listAssets
+      tags: [assets]
+      summary: List garden assets
+      parameters:
+        - name: page
+          in: query
+          schema: { type: integer, default: 1 }
+        - name: limit
+          in: query
+          schema: { type: integer, default: 50, maximum: 200 }
+        - name: search
+          in: query
+          schema: { type: string }
+        - name: gardenType
+          in: query
+          schema:
+            $ref: "#/components/schemas/GardenType"
+        - name: teamId
+          in: query
+          schema: { type: string, format: uuid }
+        - name: ward
+          in: query
+          schema:
+            $ref: "#/components/schemas/Ward"
+        - name: isActive
+          in: query
+          schema: { type: boolean, default: true }
+      responses:
+        "200":
+          description: Paginated list of assets
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssetListResponse"
+
+    post:
+      operationId: createAsset
+      tags: [assets]
+      summary: Create a new garden asset
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AssetCreate"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Asset"
+
+  /assets/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      operationId: getAsset
+      tags: [assets]
+      summary: Get a single asset
+      responses:
+        "200":
+          description: Asset
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Asset"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    patch:
+      operationId: updateAsset
+      tags: [assets]
+      summary: Update an asset
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AssetUpdate"
+      responses:
+        "200":
+          description: Updated asset
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Asset"
+    delete:
+      operationId: deleteAsset
+      tags: [assets]
+      summary: Soft-delete an asset
+      responses:
+        "200":
+          description: Deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkResponse"
+
+  # ─── Jobs ───────────────────────────────────────────────────────────────────
+  /jobs:
+    get:
+      operationId: listJobs
+      tags: [jobs]
+      summary: List scheduled jobs
+      parameters:
+        - name: page
+          in: query
+          schema: { type: integer, default: 1 }
+        - name: limit
+          in: query
+          schema: { type: integer, default: 50, maximum: 200 }
+        - name: assetId
+          in: query
+          schema: { type: string, format: uuid }
+        - name: teamId
+          in: query
+          schema: { type: string, format: uuid }
+        - name: status
+          in: query
+          schema:
+            $ref: "#/components/schemas/JobStatus"
+        - name: from
+          in: query
+          schema: { type: string, format: date }
+        - name: to
+          in: query
+          schema: { type: string, format: date }
+      responses:
+        "200":
+          description: Paginated list of jobs
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/JobListResponse"
+
+    post:
+      operationId: createJob
+      tags: [jobs]
+      summary: Create a scheduled job
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/JobCreate"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Job"
+
+  /jobs/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      operationId: getJob
+      tags: [jobs]
+      summary: Get a single job
+      responses:
+        "200":
+          description: Job
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Job"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    patch:
+      operationId: updateJob
+      tags: [jobs]
+      summary: Update job (status, completion, time log)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/JobUpdate"
+      responses:
+        "200":
+          description: Updated job
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Job"
+
+  /reactive-jobs:
+    get:
+      operationId: listReactiveJobs
+      tags: [jobs]
+      summary: List reactive jobs
+      responses:
+        "200":
+          description: Reactive jobs
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReactiveJobListResponse"
+    post:
+      operationId: createReactiveJob
+      tags: [jobs]
+      summary: Raise a reactive job
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReactiveJobCreate"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReactiveJob"
+
+  /reactive-jobs/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    patch:
+      operationId: updateReactiveJob
+      tags: [jobs]
+      summary: Update a reactive job
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReactiveJobUpdate"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReactiveJob"
+
+  # ─── Teams ──────────────────────────────────────────────────────────────────
+  /teams:
+    get:
+      operationId: listTeams
+      tags: [teams]
+      summary: List all teams
+      responses:
+        "200":
+          description: Teams
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Team"
+    post:
+      operationId: createTeam
+      tags: [teams]
+      summary: Create a team
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TeamCreate"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Team"
+
+  /teams/{id}/members:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      operationId: getTeamMembers
+      tags: [teams]
+      summary: Get members of a team
+      responses:
+        "200":
+          description: Team members
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/UserSummary"
+
+  # ─── Audits ─────────────────────────────────────────────────────────────────
+  /audits:
+    get:
+      operationId: listAudits
+      tags: [audits]
+      summary: List audits
+      responses:
+        "200":
+          description: Audits
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuditListResponse"
+    post:
+      operationId: createAudit
+      tags: [audits]
+      summary: Create an audit
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AuditCreate"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Audit"
+
+  /audits/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      operationId: getAudit
+      tags: [audits]
+      summary: Get an audit with its items
+      responses:
+        "200":
+          description: Audit with items
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuditDetail"
+    patch:
+      operationId: updateAudit
+      tags: [audits]
+      summary: Update an audit
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AuditUpdate"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Audit"
+
+  /audits/{id}/items:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    post:
+      operationId: addAuditItem
+      tags: [audits]
+      summary: Add an item to an audit
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AuditItemCreate"
+      responses:
+        "201":
+          description: Created item
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuditItem"
+
+# ─── Shared responses ──────────────────────────────────────────────────────────
 components:
+  responses:
+    Unauthorised:
+      description: Unauthorised
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    NotFound:
+      description: Not found
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+
   schemas:
+    # ─── Primitives / enums ─────────────────────────────────────────────────
     HealthStatus:
       type: object
       properties:
         status:
           type: string
-      required:
-        - status
+      required: [status]
 
+    OkResponse:
+      type: object
+      properties:
+        ok:
+          type: boolean
+      required: [ok]
+
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+      required: [error]
+
+    Role:
+      type: string
+      enum: [manager, supervisor, team_leader, field_worker]
+
+    GardenType:
+      type: string
+      enum:
+        - annuals
+        - roses_perennials
+        - ornamental
+        - amenity
+        - rain_garden
+        - reveg
+        - bush
+        - tree_planter_pits
+        - hedge
+
+    Standard:
+      type: string
+      enum: [high, medium, low]
+
+    Ward:
+      type: string
+      enum: [eastern, northern, western]
+
+    Frequency:
+      type: string
+      enum: [weekly, fortnightly, monthly, bimonthly, quarterly]
+
+    JobType:
+      type: string
+      enum: [scheduled, reactive, mulching, infill_planting]
+
+    JobStatus:
+      type: string
+      enum: [pending, in_progress, completed, skipped, overdue]
+
+    AuditStatus:
+      type: string
+      enum: [pending, passed, failed, overdue]
+
+    AuditResult:
+      type: string
+      enum: [pass, fail, na]
+
+    ReactiveJobStatus:
+      type: string
+      enum: [raised, assigned, in_progress, completed, cancelled]
+
+    ReactivePriority:
+      type: string
+      enum: [low, medium, high, urgent]
+
+    # ─── Auth ───────────────────────────────────────────────────────────────
+    LoginRequest:
+      type: object
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          minLength: 1
+      required: [email, password]
+
+    LoginResponse:
+      type: object
+      properties:
+        user:
+          $ref: "#/components/schemas/UserSummary"
+        accessToken:
+          type: string
+      required: [user, accessToken]
+
+    # ─── Users ──────────────────────────────────────────────────────────────
+    User:
+      type: object
+      properties:
+        id:        { type: string, format: uuid }
+        email:     { type: string, format: email }
+        name:      { type: string }
+        initials:  { type: string }
+        role:
+          $ref: "#/components/schemas/Role"
+        teamId:    { type: string, format: uuid, nullable: true }
+        isActive:  { type: boolean }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+      required: [id, email, name, initials, role, isActive, createdAt, updatedAt]
+
+    UserSummary:
+      type: object
+      properties:
+        id:       { type: string, format: uuid }
+        name:     { type: string }
+        initials: { type: string }
+        role:
+          $ref: "#/components/schemas/Role"
+        teamId:   { type: string, format: uuid, nullable: true }
+      required: [id, name, initials, role]
+
+    # ─── Teams ──────────────────────────────────────────────────────────────
+    Team:
+      type: object
+      properties:
+        id:        { type: string, format: uuid }
+        name:      { type: string }
+        createdAt: { type: string, format: date-time }
+      required: [id, name, createdAt]
+
+    TeamCreate:
+      type: object
+      properties:
+        name: { type: string }
+      required: [name]
+
+    # ─── Assets ─────────────────────────────────────────────────────────────
+    Asset:
+      type: object
+      properties:
+        id:              { type: string, format: uuid }
+        reference:       { type: string }
+        name:            { type: string }
+        gardenType:
+          $ref: "#/components/schemas/GardenType"
+        standard:
+          $ref: "#/components/schemas/Standard"
+        areaM2:          { type: integer }
+        serviceTimeMins: { type: integer }
+        frequency:
+          $ref: "#/components/schemas/Frequency"
+        teamId:          { type: string, format: uuid, nullable: true }
+        ward:
+          allOf:
+            - $ref: "#/components/schemas/Ward"
+          nullable: true
+        suburb:        { type: string, nullable: true }
+        streetAddress: { type: string, nullable: true }
+        lat:           { type: number, nullable: true }
+        lng:           { type: number, nullable: true }
+        notes:         { type: string, nullable: true }
+        isActive:      { type: boolean }
+        createdAt:     { type: string, format: date-time }
+        updatedAt:     { type: string, format: date-time }
+      required:
+        - id
+        - reference
+        - name
+        - gardenType
+        - standard
+        - areaM2
+        - serviceTimeMins
+        - frequency
+        - isActive
+        - createdAt
+        - updatedAt
+
+    AssetCreate:
+      type: object
+      properties:
+        reference:       { type: string }
+        name:            { type: string }
+        gardenType:
+          $ref: "#/components/schemas/GardenType"
+        standard:
+          $ref: "#/components/schemas/Standard"
+        areaM2:          { type: integer }
+        serviceTimeMins: { type: integer }
+        frequency:
+          $ref: "#/components/schemas/Frequency"
+        teamId:        { type: string, format: uuid }
+        ward:
+          $ref: "#/components/schemas/Ward"
+        suburb:        { type: string }
+        streetAddress: { type: string }
+        lat:           { type: number }
+        lng:           { type: number }
+        notes:         { type: string }
+      required:
+        - reference
+        - name
+        - gardenType
+        - standard
+        - areaM2
+        - serviceTimeMins
+        - frequency
+
+    AssetUpdate:
+      type: object
+      properties:
+        name:            { type: string }
+        gardenType:
+          $ref: "#/components/schemas/GardenType"
+        standard:
+          $ref: "#/components/schemas/Standard"
+        areaM2:          { type: integer }
+        serviceTimeMins: { type: integer }
+        frequency:
+          $ref: "#/components/schemas/Frequency"
+        teamId:        { type: string, format: uuid }
+        ward:
+          $ref: "#/components/schemas/Ward"
+        suburb:        { type: string }
+        streetAddress: { type: string }
+        lat:           { type: number }
+        lng:           { type: number }
+        notes:         { type: string }
+        isActive:      { type: boolean }
+
+    AssetListResponse:
+      type: object
+      properties:
+        data:  { type: array, items: { $ref: "#/components/schemas/Asset" } }
+        total: { type: integer }
+        page:  { type: integer }
+        limit: { type: integer }
+      required: [data, total, page, limit]
+
+    # ─── Jobs ───────────────────────────────────────────────────────────────
+    Job:
+      type: object
+      properties:
+        id:             { type: string, format: uuid }
+        assetId:        { type: string, format: uuid }
+        jobType:
+          $ref: "#/components/schemas/JobType"
+        status:
+          $ref: "#/components/schemas/JobStatus"
+        teamId:         { type: string, format: uuid, nullable: true }
+        assignedUserId: { type: string, format: uuid, nullable: true }
+        scheduledDate:  { type: string, format: date }
+        startedAt:      { type: string, format: date-time, nullable: true }
+        completedAt:    { type: string, format: date-time, nullable: true }
+        actualTimeMins: { type: integer, nullable: true }
+        notes:          { type: string, nullable: true }
+        createdAt:      { type: string, format: date-time }
+        updatedAt:      { type: string, format: date-time }
+      required:
+        - id
+        - assetId
+        - jobType
+        - status
+        - scheduledDate
+        - createdAt
+        - updatedAt
+
+    JobCreate:
+      type: object
+      properties:
+        assetId:        { type: string, format: uuid }
+        jobType:
+          $ref: "#/components/schemas/JobType"
+        teamId:         { type: string, format: uuid }
+        assignedUserId: { type: string, format: uuid }
+        scheduledDate:  { type: string, format: date }
+        notes:          { type: string }
+      required: [assetId, jobType, scheduledDate]
+
+    JobUpdate:
+      type: object
+      properties:
+        status:
+          $ref: "#/components/schemas/JobStatus"
+        assignedUserId: { type: string, format: uuid }
+        startedAt:      { type: string, format: date-time }
+        completedAt:    { type: string, format: date-time }
+        actualTimeMins: { type: integer }
+        notes:          { type: string }
+
+    JobListResponse:
+      type: object
+      properties:
+        data:  { type: array, items: { $ref: "#/components/schemas/Job" } }
+        page:  { type: integer }
+        limit: { type: integer }
+      required: [data, page, limit]
+
+    ReactiveJob:
+      type: object
+      properties:
+        id:             { type: string, format: uuid }
+        assetId:        { type: string, format: uuid }
+        raisedById:     { type: string, format: uuid }
+        assignedTeamId: { type: string, format: uuid, nullable: true }
+        assignedUserId: { type: string, format: uuid, nullable: true }
+        issueType:      { type: string }
+        description:    { type: string }
+        status:
+          $ref: "#/components/schemas/ReactiveJobStatus"
+        priority:
+          $ref: "#/components/schemas/ReactivePriority"
+        raisedAt:       { type: string, format: date-time }
+        startedAt:      { type: string, format: date-time, nullable: true }
+        completedAt:    { type: string, format: date-time, nullable: true }
+        actualTimeMins: { type: integer, nullable: true }
+        notes:          { type: string, nullable: true }
+        createdAt:      { type: string, format: date-time }
+        updatedAt:      { type: string, format: date-time }
+      required:
+        - id
+        - assetId
+        - raisedById
+        - issueType
+        - description
+        - status
+        - priority
+        - raisedAt
+        - createdAt
+        - updatedAt
+
+    ReactiveJobCreate:
+      type: object
+      properties:
+        assetId:        { type: string, format: uuid }
+        issueType:      { type: string }
+        description:    { type: string }
+        priority:
+          $ref: "#/components/schemas/ReactivePriority"
+        assignedTeamId: { type: string, format: uuid }
+      required: [assetId, issueType, description]
+
+    ReactiveJobUpdate:
+      type: object
+      properties:
+        status:
+          $ref: "#/components/schemas/ReactiveJobStatus"
+        priority:
+          $ref: "#/components/schemas/ReactivePriority"
+        assignedTeamId: { type: string, format: uuid }
+        assignedUserId: { type: string, format: uuid }
+        startedAt:      { type: string, format: date-time }
+        completedAt:    { type: string, format: date-time }
+        actualTimeMins: { type: integer }
+        notes:          { type: string }
+
+    ReactiveJobListResponse:
+      type: object
+      properties:
+        data: { type: array, items: { $ref: "#/components/schemas/ReactiveJob" } }
+      required: [data]
+
+    # ─── Audits ─────────────────────────────────────────────────────────────
+    Audit:
+      type: object
+      properties:
+        id:            { type: string, format: uuid }
+        assetId:       { type: string, format: uuid }
+        auditorId:     { type: string, format: uuid }
+        scheduledDate: { type: string, format: date }
+        completedDate: { type: string, format: date, nullable: true }
+        overallScore:  { type: number, minimum: 0, maximum: 100, nullable: true }
+        status:
+          $ref: "#/components/schemas/AuditStatus"
+        notes:         { type: string, nullable: true }
+        createdAt:     { type: string, format: date-time }
+        updatedAt:     { type: string, format: date-time }
+      required:
+        - id
+        - assetId
+        - auditorId
+        - scheduledDate
+        - status
+        - createdAt
+        - updatedAt
+
+    AuditCreate:
+      type: object
+      properties:
+        assetId:       { type: string, format: uuid }
+        scheduledDate: { type: string, format: date }
+        notes:         { type: string }
+      required: [assetId, scheduledDate]
+
+    AuditUpdate:
+      type: object
+      properties:
+        completedDate: { type: string, format: date }
+        overallScore:  { type: number, minimum: 0, maximum: 100 }
+        status:
+          $ref: "#/components/schemas/AuditStatus"
+        notes:         { type: string }
+
+    AuditItem:
+      type: object
+      properties:
+        id:        { type: string, format: uuid }
+        auditId:   { type: string, format: uuid }
+        criterion: { type: string }
+        result:
+          $ref: "#/components/schemas/AuditResult"
+        notes:     { type: string, nullable: true }
+        createdAt: { type: string, format: date-time }
+      required: [id, auditId, criterion, result, createdAt]
+
+    AuditItemCreate:
+      type: object
+      properties:
+        criterion: { type: string }
+        result:
+          $ref: "#/components/schemas/AuditResult"
+        notes:     { type: string }
+      required: [criterion, result]
+
+    AuditDetail:
+      allOf:
+        - $ref: "#/components/schemas/Audit"
+        - type: object
+          properties:
+            items:
+              type: array
+              items:
+                $ref: "#/components/schemas/AuditItem"
+          required: [items]
+
+    AuditListResponse:
+      type: object
+      properties:
+        data: { type: array, items: { $ref: "#/components/schemas/Audit" } }
+      required: [data]

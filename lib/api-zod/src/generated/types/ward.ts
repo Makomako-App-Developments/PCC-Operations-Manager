@@ -6,6 +6,10 @@
  * OpenAPI spec version: 0.1.0
  */
 
-export interface HealthStatus {
-  status: string;
-}
+export type Ward = (typeof Ward)[keyof typeof Ward];
+
+export const Ward = {
+  eastern: "eastern",
+  northern: "northern",
+  western: "western",
+} as const;

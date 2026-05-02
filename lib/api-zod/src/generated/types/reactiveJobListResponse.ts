@@ -5,7 +5,8 @@
  * Porirua City Council – Garden Asset Management API
  * OpenAPI spec version: 0.1.0
  */
+import type { ReactiveJob } from "./reactiveJob";
 
-export interface HealthStatus {
-  status: string;
+export interface ReactiveJobListResponse {
+  data: ReactiveJob[];
 }

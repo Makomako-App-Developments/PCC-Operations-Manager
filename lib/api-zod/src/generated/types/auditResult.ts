@@ -6,6 +6,10 @@
  * OpenAPI spec version: 0.1.0
  */
 
-export interface HealthStatus {
-  status: string;
-}
+export type AuditResult = (typeof AuditResult)[keyof typeof AuditResult];
+
+export const AuditResult = {
+  pass: "pass",
+  fail: "fail",
+  na: "na",
+} as const;

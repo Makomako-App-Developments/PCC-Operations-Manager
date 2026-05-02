@@ -5,7 +5,9 @@
  * Porirua City Council – Garden Asset Management API
  * OpenAPI spec version: 0.1.0
  */
+import type { ErrorResponse } from "./errorResponse";
 
-export interface HealthStatus {
-  status: string;
-}
+/**
+ * Not found
+ */
+export type NotFoundResponse = ErrorResponse;

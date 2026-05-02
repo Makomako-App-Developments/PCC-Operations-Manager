@@ -5,7 +5,11 @@
  * Porirua City Council – Garden Asset Management API
  * OpenAPI spec version: 0.1.0
  */
+import type { Asset } from "./asset";
 
-export interface HealthStatus {
-  status: string;
+export interface AssetListResponse {
+  data: Asset[];
+  total: number;
+  page: number;
+  limit: number;
 }

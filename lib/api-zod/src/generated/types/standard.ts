@@ -6,6 +6,10 @@
  * OpenAPI spec version: 0.1.0
  */
 
-export interface HealthStatus {
-  status: string;
-}
+export type Standard = (typeof Standard)[keyof typeof Standard];
+
+export const Standard = {
+  high: "high",
+  medium: "medium",
+  low: "low",
+} as const;

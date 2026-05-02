@@ -5,7 +5,9 @@
  * Porirua City Council – Garden Asset Management API
  * OpenAPI spec version: 0.1.0
  */
+import type { Audit } from "./audit";
+import type { AuditItem } from "./auditItem";
 
-export interface HealthStatus {
-  status: string;
-}
+export type AuditDetail = Audit & {
+  items: AuditItem[];
+};
