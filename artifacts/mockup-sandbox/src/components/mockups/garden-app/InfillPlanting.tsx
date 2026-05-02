@@ -643,7 +643,7 @@ function AssignModal({ assessment, onClose, onSave }: {
               {/* Week labels */}
               {["Week 1 (30 Mar)", "Week 2 (6 Apr)", "Week 3 (13 Apr)"].map(w => (
                 <div key={w} className="col-span-5 text-[10px] text-gray-400 font-semibold uppercase tracking-wide pt-1">{w}</div>
-              )).reduce((acc: JSX.Element[], el, wi) => {
+              )).reduce((acc: React.ReactElement[], el, wi) => {
                 const slice = calDays.slice(wi * 5, wi * 5 + 5);
                 return [...acc, el, ...slice.map(d => {
                   const total = d.scheduled + estMins;

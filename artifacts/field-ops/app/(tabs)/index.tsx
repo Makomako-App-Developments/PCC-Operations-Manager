@@ -46,7 +46,8 @@ export default function TodayScreen() {
       week: TODAY,
       ...(user?.teamId ? { teamId: user.teamId } : {}),
     },
-    { enabled: !!user },
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    { query: { enabled: !!user } as any },
   );
 
   const todayJobs = useMemo(() => {

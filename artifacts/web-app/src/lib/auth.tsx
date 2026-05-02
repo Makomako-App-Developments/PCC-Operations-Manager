@@ -17,12 +17,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [location, setLocation] = useLocation();
   const queryClient = useQueryClient();
 
-  const { data: user, isLoading, error } = useGetMe({
-    query: {
-      retry: false,
-      staleTime: Infinity,
-    }
-  });
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data: user, isLoading, error } = useGetMe({ query: { retry: false, staleTime: Infinity } as any });
 
   const loginMutation = useLogin({
     mutation: {

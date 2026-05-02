@@ -1,5 +1,5 @@
 import {
-  pgTable, uuid, varchar, integer, numeric, timestamp, boolean, text
+  pgTable, uuid, varchar, integer, numeric, timestamp, boolean, text, index
 } from "drizzle-orm/pg-core";
 import { createInsertSchema, createSelectSchema } from "drizzle-zod";
 import { z } from "zod/v4";
@@ -25,7 +25,12 @@ export const assetsTable = pgTable("assets", {
   isActive:        boolean("is_active").notNull().default(true),
   createdAt:       timestamp("created_at").notNull().defaultNow(),
   updatedAt:       timestamp("updated_at").notNull().defaultNow(),
-});
+}, (t) => [
+  index("assets_team_id_idx").on(t.teamId),
+  index("assets_garden_type_idx").on(t.gardenType),
+  index("assets_ward_idx").on(t.ward),
+  index("assets_is_active_idx").on(t.isActive),
+]);
 
 export const insertAssetSchema = createInsertSchema(assetsTable).omit({
   id: true,

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useListJobs, getListJobsQueryKey, useListTeams, getListTeamsQueryKey, useUpdateJob } from "@workspace/api-client-react";
+import { useListJobs, getListJobsQueryKey, useListTeams, getListTeamsQueryKey, useUpdateJob, JobWithAsset } from "@workspace/api-client-react";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -106,7 +106,7 @@ export default function Jobs() {
           <Skeleton className="w-full h-[600px] rounded-xl" />
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-            {jobsData?.data.map((job) => {
+            {(jobsData?.data as JobWithAsset[] | undefined)?.map((job) => {
               const conf = STATUS_CONFIG[job.status] || STATUS_CONFIG.pending;
               const Icon = conf.icon;
               return (

@@ -1,5 +1,5 @@
 import {
-  pgTable, uuid, timestamp, integer, text, numeric, date, varchar
+  pgTable, uuid, timestamp, integer, text, numeric, date, varchar, index
 } from "drizzle-orm/pg-core";
 import { createInsertSchema, createSelectSchema } from "drizzle-zod";
 import { z } from "zod/v4";
@@ -18,7 +18,12 @@ export const auditsTable = pgTable("audits", {
   notes:         text("notes"),
   createdAt:     timestamp("created_at").notNull().defaultNow(),
   updatedAt:     timestamp("updated_at").notNull().defaultNow(),
-});
+}, (t) => [
+  index("audits_asset_id_idx").on(t.assetId),
+  index("audits_auditor_id_idx").on(t.auditorId),
+  index("audits_status_idx").on(t.status),
+  index("audits_scheduled_date_idx").on(t.scheduledDate),
+]);
 
 export const auditItemsTable = pgTable("audit_items", {
   id:        uuid("id").primaryKey().defaultRandom(),
@@ -27,7 +32,9 @@ export const auditItemsTable = pgTable("audit_items", {
   result:    auditResultEnum("result").notNull(),
   notes:     text("notes"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
-});
+}, (t) => [
+  index("audit_items_audit_id_idx").on(t.auditId),
+]);
 
 export const insertAuditSchema     = createInsertSchema(auditsTable).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertAuditItemSchema = createInsertSchema(auditItemsTable).omit({ id: true, createdAt: true });

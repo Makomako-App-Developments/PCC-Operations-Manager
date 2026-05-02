@@ -85,7 +85,7 @@ function JobCard({ job, isNext, onSkip }: JobCardProps) {
       className={`mx-4 mb-3 rounded-2xl border bg-white shadow-sm overflow-hidden transition-all ${
         isActive ? "border-[#00AECD40]" : isSkipped ? "border-orange-100 opacity-70" : isComplete ? "border-gray-100 opacity-60" : "border-gray-100"
       } ${isNext ? "ring-2 ring-offset-1" : ""}`}
-      style={isNext ? { ringColor: BRAND } : {}}
+      style={{}}
     >
       {/* Active job banner */}
       {isActive && (
@@ -255,7 +255,7 @@ function SkipModal({ job, onConfirm, onCancel }: SkipModalProps) {
               onChange={e => setCustom(e.target.value)}
               placeholder="Describe the reason for skipping this site…"
               className="w-full mt-2 text-[12px] rounded-xl border border-gray-200 px-3 py-2 resize-none focus:outline-none focus:ring-2 text-gray-700"
-              style={{ minHeight: 72, focusRingColor: BRAND }}
+              style={{ minHeight: 72 }}
             />
           )}
         </div>

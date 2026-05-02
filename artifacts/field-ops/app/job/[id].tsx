@@ -125,7 +125,8 @@ export default function JobDetailScreen() {
   const { data: job, isLoading: jobLoading } = useGetJob(id ?? "");
   const { data: asset, isLoading: assetLoading } = useGetAsset(
     job?.assetId ?? "",
-    { enabled: !!job?.assetId },
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    { query: { enabled: !!job?.assetId } as any },
   );
   const updateJob = useUpdateJob();
 

@@ -576,7 +576,7 @@ export function ReactiveJobFlow({ onClose }: ReactiveJobFlowProps = {}) {
                         <div className="flex items-center gap-1.5 flex-shrink-0 flex-wrap justify-end max-w-xs">
                           {(["push", "defer", "delete", "reassign"] as const).map(a => {
                             const active = action === a;
-                            const icons: Record<string, JSX.Element> = {
+                            const icons: Record<string, React.ReactElement> = {
                               push:     <SkipForward className="w-3 h-3" />,
                               defer:    <Calendar className="w-3 h-3" />,
                               delete:   <Trash2 className="w-3 h-3" />,

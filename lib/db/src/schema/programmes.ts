@@ -1,5 +1,5 @@
 import {
-  pgTable, uuid, timestamp, integer, text, numeric, date, varchar
+  pgTable, uuid, timestamp, integer, text, numeric, date, varchar, index
 } from "drizzle-orm/pg-core";
 import { createInsertSchema, createSelectSchema } from "drizzle-zod";
 import { z } from "zod/v4";
@@ -24,7 +24,10 @@ export const infillOrdersTable = pgTable("infill_orders", {
   notes:         text("notes"),
   createdAt:     timestamp("created_at").notNull().defaultNow(),
   updatedAt:     timestamp("updated_at").notNull().defaultNow(),
-});
+}, (t) => [
+  index("infill_orders_asset_id_idx").on(t.assetId),
+  index("infill_orders_status_idx").on(t.status),
+]);
 
 // Mulching programme records
 export const mulchingRecordsTable = pgTable("mulching_records", {
@@ -40,7 +43,11 @@ export const mulchingRecordsTable = pgTable("mulching_records", {
   notes:         text("notes"),
   createdAt:     timestamp("created_at").notNull().defaultNow(),
   updatedAt:     timestamp("updated_at").notNull().defaultNow(),
-});
+}, (t) => [
+  index("mulching_records_asset_id_idx").on(t.assetId),
+  index("mulching_records_status_idx").on(t.status),
+  index("mulching_records_scheduled_date_idx").on(t.scheduledDate),
+]);
 
 export const insertInfillOrderSchema   = createInsertSchema(infillOrdersTable).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertMulchingRecordSchema = createInsertSchema(mulchingRecordsTable).omit({ id: true, createdAt: true, updatedAt: true });

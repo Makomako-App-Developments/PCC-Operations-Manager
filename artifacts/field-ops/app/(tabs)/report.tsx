@@ -57,10 +57,12 @@ export default function ReportScreen() {
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     mutation.mutate(
       {
-        assetId: selectedAssetId,
-        issueType,
-        description: description.trim(),
-        priority: priority as "low" | "medium" | "high" | "urgent",
+        data: {
+          assetId: selectedAssetId,
+          issueType,
+          description: description.trim(),
+          priority: priority as "low" | "medium" | "high" | "urgent",
+        },
       },
       {
         onSuccess: async () => {

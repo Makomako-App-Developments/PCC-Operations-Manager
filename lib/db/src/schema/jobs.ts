@@ -1,5 +1,5 @@
 import {
-  pgTable, uuid, timestamp, integer, text, date
+  pgTable, uuid, timestamp, integer, text, date, index
 } from "drizzle-orm/pg-core";
 import { createInsertSchema, createSelectSchema } from "drizzle-zod";
 import { z } from "zod/v4";
@@ -23,7 +23,13 @@ export const jobsTable = pgTable("jobs", {
   notes:          text("notes"),
   createdAt:      timestamp("created_at").notNull().defaultNow(),
   updatedAt:      timestamp("updated_at").notNull().defaultNow(),
-});
+}, (t) => [
+  index("jobs_asset_id_idx").on(t.assetId),
+  index("jobs_team_id_idx").on(t.teamId),
+  index("jobs_status_idx").on(t.status),
+  index("jobs_scheduled_date_idx").on(t.scheduledDate),
+  index("jobs_assigned_user_id_idx").on(t.assignedUserId),
+]);
 
 // Reactive jobs raised by field workers or managers
 export const reactiveJobsTable = pgTable("reactive_jobs", {
@@ -43,7 +49,13 @@ export const reactiveJobsTable = pgTable("reactive_jobs", {
   notes:          text("notes"),
   createdAt:      timestamp("created_at").notNull().defaultNow(),
   updatedAt:      timestamp("updated_at").notNull().defaultNow(),
-});
+}, (t) => [
+  index("reactive_jobs_asset_id_idx").on(t.assetId),
+  index("reactive_jobs_status_idx").on(t.status),
+  index("reactive_jobs_priority_idx").on(t.priority),
+  index("reactive_jobs_raised_by_id_idx").on(t.raisedById),
+  index("reactive_jobs_assigned_team_id_idx").on(t.assignedTeamId),
+]);
 
 // Photo evidence attached to jobs
 export const jobPhotosTable = pgTable("job_photos", {
