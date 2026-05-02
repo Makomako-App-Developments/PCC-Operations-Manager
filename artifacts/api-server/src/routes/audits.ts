@@ -3,6 +3,7 @@ import { db, auditsTable, auditItemsTable, insertAuditSchema, insertAuditItemSch
 import { eq } from "drizzle-orm";
 import { requireAuth, requireRole } from "../middlewares/auth";
 import { validateBody } from "../middlewares/validate";
+import { auditLog } from "../lib/audit";
 
 const auditCreateSchema = insertAuditSchema.omit({ auditorId: true });
 
@@ -34,6 +35,7 @@ router.post(
       .insert(auditsTable)
       .values({ ...req.body, auditorId: req.auth!.userId })
       .returning();
+    await auditLog({ tableName: "audits", recordId: created.id, action: "INSERT", changedById: req.auth?.userId ?? null, newData: created as Record<string, unknown>, ipAddress: req.ip ?? null });
     res.status(201).json(created);
   },
 );
@@ -45,12 +47,14 @@ router.patch(
   requireRole("manager", "supervisor", "team_leader"),
   async (req, res) => {
     const id = String(req.params.id);
+    const [before] = await db.select().from(auditsTable).where(eq(auditsTable.id, id)).limit(1);
+    if (!before) { res.status(404).json({ error: "Audit not found" }); return; }
     const [updated] = await db
       .update(auditsTable)
       .set({ ...req.body, updatedAt: new Date() })
       .where(eq(auditsTable.id, id))
       .returning();
-    if (!updated) { res.status(404).json({ error: "Audit not found" }); return; }
+    await auditLog({ tableName: "audits", recordId: id, action: "UPDATE", changedById: req.auth?.userId ?? null, oldData: before as Record<string, unknown>, newData: updated as Record<string, unknown>, ipAddress: req.ip ?? null });
     res.json(updated);
   },
 );

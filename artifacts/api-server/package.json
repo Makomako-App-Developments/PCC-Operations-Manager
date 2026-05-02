@@ -6,10 +6,15 @@
   "scripts": {
     "dev": "NODE_ENV=development tsx ./src/index.ts",
     "build": "tsx ./build.ts",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
+    "@sentry/node": "^10.51.0",
     "@types/bcryptjs": "^3.0.0",
+    "@types/express-rate-limit": "^6.0.2",
     "@types/jsonwebtoken": "^9.0.10",
     "@workspace/api-zod": "workspace:*",
     "@workspace/db": "workspace:*",
@@ -18,6 +23,8 @@
     "cors": "^2",
     "drizzle-orm": "catalog:",
     "express": "^5",
+    "express-rate-limit": "^8.4.1",
+    "helmet": "^8.1.0",
     "jsonwebtoken": "^9.0.3",
     "zod": "catalog:"
   },
@@ -25,8 +32,13 @@
     "@types/cookie-parser": "^1.4.10",
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.6",
+    "@types/helmet": "^4.0.0",
     "@types/node": "catalog:",
+    "@types/supertest": "^7.2.0",
+    "@vitest/coverage-v8": "^4.1.5",
     "esbuild": "^0.27.3",
-    "tsx": "catalog:"
+    "supertest": "^7.2.2",
+    "tsx": "catalog:",
+    "vitest": "^4.1.5"
   }
 }

@@ -8,6 +8,7 @@ import auditsRouter      from "./audits";
 import programmesRouter  from "./programmes";
 import dashboardRouter   from "./dashboard";
 import scheduleRouter    from "./schedule";
+import auditLogRouter    from "./audit-log";
 
 const router: IRouter = Router();
 
@@ -20,5 +21,6 @@ router.use(auditsRouter);
 router.use(programmesRouter);
 router.use(dashboardRouter);
 router.use(scheduleRouter);
+router.use(auditLogRouter);
 
 export default router;

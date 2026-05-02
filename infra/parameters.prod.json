@@ -1,0 +1,12 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "environment":      { "value": "prod" },
+    "location":         { "value": "australiaeast" },
+    "dbAdminLogin":     { "value": "pccadmin" },
+    "dbAdminPassword":  { "reference": { "keyVault": { "id": "/subscriptions/<SUB_ID>/resourceGroups/pcc-gardens-prod/providers/Microsoft.KeyVault/vaults/pcc-gardens-kv" }, "secretName": "db-admin-password" } },
+    "jwtSecret":        { "reference": { "keyVault": { "id": "/subscriptions/<SUB_ID>/resourceGroups/pcc-gardens-prod/providers/Microsoft.KeyVault/vaults/pcc-gardens-kv" }, "secretName": "jwt-secret" } },
+    "sentryDsnApi":     { "reference": { "keyVault": { "id": "/subscriptions/<SUB_ID>/resourceGroups/pcc-gardens-prod/providers/Microsoft.KeyVault/vaults/pcc-gardens-kv" }, "secretName": "sentry-dsn-api" } }
+  }
+}

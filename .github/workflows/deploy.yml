@@ -1,0 +1,85 @@
+name: Deploy to Azure
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    name: Build & Deploy
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    needs: []
+
+    env:
+      REGISTRY: ${{ secrets.AZURE_REGISTRY }}
+      API_IMAGE: pcc-gardens-api
+      WEB_IMAGE: pcc-gardens-web
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck
+        run: pnpm run typecheck
+
+      - name: Build API
+        run: pnpm --filter @workspace/api-server run build
+
+      - name: Build web app
+        run: pnpm --filter @workspace/web-app run build
+        env:
+          VITE_SENTRY_DSN: ${{ secrets.SENTRY_DSN_FRONTEND }}
+
+      - name: Log in to Azure Container Registry
+        uses: azure/docker-login@v2
+        with:
+          login-server: ${{ secrets.AZURE_REGISTRY }}
+          username: ${{ secrets.AZURE_REGISTRY_USERNAME }}
+          password: ${{ secrets.AZURE_REGISTRY_PASSWORD }}
+
+      - name: Build & push API image
+        run: |
+          docker build -f artifacts/api-server/Dockerfile -t $REGISTRY/$API_IMAGE:$GITHUB_SHA -t $REGISTRY/$API_IMAGE:latest .
+          docker push $REGISTRY/$API_IMAGE:$GITHUB_SHA
+          docker push $REGISTRY/$API_IMAGE:latest
+
+      - name: Build & push web image
+        run: |
+          docker build -f artifacts/web-app/Dockerfile -t $REGISTRY/$WEB_IMAGE:$GITHUB_SHA -t $REGISTRY/$WEB_IMAGE:latest .
+          docker push $REGISTRY/$WEB_IMAGE:$GITHUB_SHA
+          docker push $REGISTRY/$WEB_IMAGE:latest
+
+      - name: Deploy API to Azure App Service
+        uses: azure/webapps-deploy@v3
+        with:
+          app-name: ${{ secrets.AZURE_API_APP_NAME }}
+          publish-profile: ${{ secrets.AZURE_API_PUBLISH_PROFILE }}
+          images: ${{ secrets.AZURE_REGISTRY }}/${{ env.API_IMAGE }}:${{ github.sha }}
+
+      - name: Deploy web to Azure App Service
+        uses: azure/webapps-deploy@v3
+        with:
+          app-name: ${{ secrets.AZURE_WEB_APP_NAME }}
+          publish-profile: ${{ secrets.AZURE_WEB_PUBLISH_PROFILE }}
+          images: ${{ secrets.AZURE_REGISTRY }}/${{ env.WEB_IMAGE }}:${{ github.sha }}
+
+      - name: Run DB migrations on production
+        run: |
+          az webapp ssh --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
+            --name ${{ secrets.AZURE_API_APP_NAME }} \
+            --command "node -e \"require('./dist/migrate').runMigrations()\""
+        env:
+          AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}

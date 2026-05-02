@@ -18,6 +18,7 @@ import ReactiveJobs from "@/pages/reactive-jobs";
 import Audits from "@/pages/audits/index";
 import Programmes from "@/pages/programmes/index";
 import Reports from "@/pages/reports";
+import AuditLog from "@/pages/audit-log/index";
 
 const queryClient = new QueryClient();
 
@@ -56,6 +57,7 @@ function Router() {
       <Route path="/audits"><ProtectedRoute component={Audits} /></Route>
       <Route path="/programmes"><ProtectedRoute component={Programmes} /></Route>
       <Route path="/reports"><ProtectedRoute component={Reports} /></Route>
+      <Route path="/audit-log"><ProtectedRoute component={AuditLog} /></Route>
       <Route path="/">
         <ProtectedRoute component={() => {
           window.location.href = "/dashboard";

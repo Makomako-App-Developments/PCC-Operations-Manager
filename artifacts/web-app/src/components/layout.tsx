@@ -12,22 +12,26 @@ import {
   AlertTriangle,
   ClipboardList,
   ClipboardCheck,
+  Shield,
 } from "lucide-react";
 
 export function Layout({ children }: { children: React.ReactNode }) {
   const [location] = useLocation();
   const { user, logout } = useAuth();
 
-  const nav = [
-    { icon: LayoutDashboard, label: "Dashboard",    href: "/dashboard" },
-    { icon: List,            label: "Asset Register", href: "/assets" },
-    { icon: CalendarDays,    label: "Schedule",      href: "/schedule" },
-    { icon: ClipboardList,   label: "Jobs",          href: "/jobs" },
-    { icon: AlertTriangle,   label: "Reactive Jobs", href: "/reactive-jobs" },
-    { icon: ClipboardCheck,  label: "Audits",        href: "/audits" },
-    { icon: Sprout,          label: "Programmes",    href: "/programmes" },
-    { icon: BarChart2,       label: "Reports",       href: "/reports" },
+  const allNav = [
+    { icon: LayoutDashboard, label: "Dashboard",    href: "/dashboard",     managerOnly: false },
+    { icon: List,            label: "Asset Register", href: "/assets",      managerOnly: false },
+    { icon: CalendarDays,    label: "Schedule",      href: "/schedule",     managerOnly: false },
+    { icon: ClipboardList,   label: "Jobs",          href: "/jobs",         managerOnly: false },
+    { icon: AlertTriangle,   label: "Reactive Jobs", href: "/reactive-jobs", managerOnly: false },
+    { icon: ClipboardCheck,  label: "Audits",        href: "/audits",       managerOnly: false },
+    { icon: Sprout,          label: "Programmes",    href: "/programmes",   managerOnly: false },
+    { icon: BarChart2,       label: "Reports",       href: "/reports",      managerOnly: false },
+    { icon: Shield,          label: "Audit Log",     href: "/audit-log",    managerOnly: true  },
   ];
+  const isPrivileged = user?.role === "manager" || user?.role === "supervisor";
+  const nav = allNav.filter(item => !item.managerOnly || isPrivileged);
 
   return (
     <div className="flex min-h-screen bg-[#f5f7f9] font-sans">
@@ -39,7 +43,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
           <p className="text-white/50 text-[10px] text-center mt-1 uppercase tracking-widest">Gardens Manager</p>
         </div>
         <nav className="flex-1 px-3 py-4 space-y-1">
-          {nav.map(({ icon: Icon, label, href }) => {
+          {nav.map(({ icon: Icon, label, href, managerOnly: _m }) => {
             const isActive = location.startsWith(href);
             return (
               <Link key={label} href={href} className="block">
