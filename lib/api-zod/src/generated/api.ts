@@ -659,6 +659,182 @@ export const GetScheduleWeekResponse = zod.object({
 });
 
 /**
+ * @summary List infill planting orders
+ */
+export const ListInfillOrdersQueryParams = zod.object({
+  assetId: zod.coerce.string().uuid().optional(),
+  status: zod.enum(["draft", "ordered", "delivered", "planted"]).optional(),
+});
+
+export const ListInfillOrdersResponse = zod.object({
+  data: zod.array(
+    zod.object({
+      id: zod.string().uuid(),
+      assetId: zod.string().uuid(),
+      assetName: zod.string().nullish(),
+      assetRef: zod.string().nullish(),
+      speciesName: zod.string(),
+      speciesCategory: zod.string(),
+      quantity: zod.number(),
+      status: zod.enum(["draft", "ordered", "delivered", "planted"]),
+      orderedById: zod.string().uuid().nullish(),
+      orderDate: zod.date().nullish(),
+      deliveryDate: zod.date().nullish(),
+      plantedDate: zod.date().nullish(),
+      supplierRef: zod.string().nullish(),
+      unitCostNzd: zod.string().nullish(),
+      notes: zod.string().nullish(),
+      createdAt: zod.date(),
+      updatedAt: zod.date(),
+    }),
+  ),
+  total: zod.number(),
+});
+
+/**
+ * @summary Create an infill planting order
+ */
+export const CreateInfillOrderBody = zod.object({
+  assetId: zod.string().uuid(),
+  speciesName: zod.string(),
+  speciesCategory: zod.string(),
+  quantity: zod.number(),
+  status: zod.enum(["draft", "ordered", "delivered", "planted"]).optional(),
+  orderDate: zod.date().optional(),
+  deliveryDate: zod.date().optional(),
+  plantedDate: zod.date().optional(),
+  supplierRef: zod.string().optional(),
+  unitCostNzd: zod.string().optional(),
+  notes: zod.string().optional(),
+});
+
+/**
+ * @summary Update an infill order
+ */
+export const UpdateInfillOrderParams = zod.object({
+  id: zod.coerce.string().uuid(),
+});
+
+export const UpdateInfillOrderBody = zod.object({
+  speciesName: zod.string().optional(),
+  speciesCategory: zod.string().optional(),
+  quantity: zod.number().optional(),
+  status: zod.enum(["draft", "ordered", "delivered", "planted"]).optional(),
+  orderDate: zod.date().optional(),
+  deliveryDate: zod.date().optional(),
+  plantedDate: zod.date().optional(),
+  supplierRef: zod.string().optional(),
+  unitCostNzd: zod.string().optional(),
+  notes: zod.string().optional(),
+});
+
+export const UpdateInfillOrderResponse = zod.object({
+  id: zod.string().uuid(),
+  assetId: zod.string().uuid(),
+  assetName: zod.string().nullish(),
+  assetRef: zod.string().nullish(),
+  speciesName: zod.string(),
+  speciesCategory: zod.string(),
+  quantity: zod.number(),
+  status: zod.enum(["draft", "ordered", "delivered", "planted"]),
+  orderedById: zod.string().uuid().nullish(),
+  orderDate: zod.date().nullish(),
+  deliveryDate: zod.date().nullish(),
+  plantedDate: zod.date().nullish(),
+  supplierRef: zod.string().nullish(),
+  unitCostNzd: zod.string().nullish(),
+  notes: zod.string().nullish(),
+  createdAt: zod.date(),
+  updatedAt: zod.date(),
+});
+
+/**
+ * @summary List mulching records
+ */
+export const ListMulchingRecordsQueryParams = zod.object({
+  assetId: zod.coerce.string().uuid().optional(),
+  status: zod
+    .enum(["due", "scheduled", "completed", "not_required"])
+    .optional(),
+});
+
+export const ListMulchingRecordsResponse = zod.object({
+  data: zod.array(
+    zod.object({
+      id: zod.string().uuid(),
+      assetId: zod.string().uuid(),
+      assetName: zod.string().nullish(),
+      assetRef: zod.string().nullish(),
+      scheduledDate: zod.date().nullish(),
+      completedDate: zod.date().nullish(),
+      volumeM3: zod.string().nullish(),
+      status: zod.enum(["due", "scheduled", "completed", "not_required"]),
+      mulchType: zod.string().nullish(),
+      contractor: zod.string().nullish(),
+      costNzd: zod.string().nullish(),
+      notes: zod.string().nullish(),
+      createdAt: zod.date(),
+      updatedAt: zod.date(),
+    }),
+  ),
+  total: zod.number(),
+});
+
+/**
+ * @summary Create a mulching record
+ */
+export const CreateMulchingRecordBody = zod.object({
+  assetId: zod.string().uuid(),
+  scheduledDate: zod.date().optional(),
+  completedDate: zod.date().optional(),
+  volumeM3: zod.string().optional(),
+  status: zod
+    .enum(["due", "scheduled", "completed", "not_required"])
+    .optional(),
+  mulchType: zod.string().optional(),
+  contractor: zod.string().optional(),
+  costNzd: zod.string().optional(),
+  notes: zod.string().optional(),
+});
+
+/**
+ * @summary Update a mulching record
+ */
+export const UpdateMulchingRecordParams = zod.object({
+  id: zod.coerce.string().uuid(),
+});
+
+export const UpdateMulchingRecordBody = zod.object({
+  scheduledDate: zod.date().optional(),
+  completedDate: zod.date().optional(),
+  volumeM3: zod.string().optional(),
+  status: zod
+    .enum(["due", "scheduled", "completed", "not_required"])
+    .optional(),
+  mulchType: zod.string().optional(),
+  contractor: zod.string().optional(),
+  costNzd: zod.string().optional(),
+  notes: zod.string().optional(),
+});
+
+export const UpdateMulchingRecordResponse = zod.object({
+  id: zod.string().uuid(),
+  assetId: zod.string().uuid(),
+  assetName: zod.string().nullish(),
+  assetRef: zod.string().nullish(),
+  scheduledDate: zod.date().nullish(),
+  completedDate: zod.date().nullish(),
+  volumeM3: zod.string().nullish(),
+  status: zod.enum(["due", "scheduled", "completed", "not_required"]),
+  mulchType: zod.string().nullish(),
+  contractor: zod.string().nullish(),
+  costNzd: zod.string().nullish(),
+  notes: zod.string().nullish(),
+  createdAt: zod.date(),
+  updatedAt: zod.date(),
+});
+
+/**
  * @summary List audits
  */
 export const listAuditsResponseDataItemOverallScoreMin = 0;

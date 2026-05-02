@@ -20,6 +20,8 @@ tags:
     description: Teams and members
   - name: audits
     description: Quality audits
+  - name: programmes
+    description: Infill planting orders and mulching records
   - name: dashboard
     description: Dashboard summary statistics
   - name: schedule
@@ -466,6 +468,131 @@ paths:
                 $ref: "#/components/schemas/ScheduleWeekResponse"
         "401":
           $ref: "#/components/responses/Unauthorised"
+
+  # ─── Programmes ─────────────────────────────────────────────────────────────
+  /infill-orders:
+    get:
+      operationId: listInfillOrders
+      tags: [programmes]
+      summary: List infill planting orders
+      parameters:
+        - name: assetId
+          in: query
+          schema: { type: string, format: uuid }
+        - name: status
+          in: query
+          schema:
+            $ref: "#/components/schemas/InfillStatus"
+      responses:
+        "200":
+          description: Infill orders
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InfillOrderListResponse"
+    post:
+      operationId: createInfillOrder
+      tags: [programmes]
+      summary: Create an infill planting order
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InfillOrderCreate"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InfillOrder"
+
+  /infill-orders/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    patch:
+      operationId: updateInfillOrder
+      tags: [programmes]
+      summary: Update an infill order
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InfillOrderUpdate"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InfillOrder"
+
+  /mulching-records:
+    get:
+      operationId: listMulchingRecords
+      tags: [programmes]
+      summary: List mulching records
+      parameters:
+        - name: assetId
+          in: query
+          schema: { type: string, format: uuid }
+        - name: status
+          in: query
+          schema:
+            $ref: "#/components/schemas/MulchingStatus"
+      responses:
+        "200":
+          description: Mulching records
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MulchingRecordListResponse"
+    post:
+      operationId: createMulchingRecord
+      tags: [programmes]
+      summary: Create a mulching record
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MulchingRecordCreate"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MulchingRecord"
+
+  /mulching-records/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    patch:
+      operationId: updateMulchingRecord
+      tags: [programmes]
+      summary: Update a mulching record
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MulchingRecordUpdate"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MulchingRecord"
 
   # ─── Audits ─────────────────────────────────────────────────────────────────
   /audits:
@@ -1107,3 +1234,129 @@ components:
         totalJobs:      { type: integer }
         completedJobs:  { type: integer }
       required: [weekStart, weekEnd, days, totalJobs, completedJobs]
+
+    # ─── Programmes ──────────────────────────────────────────────────────────
+    InfillStatus:
+      type: string
+      enum: [draft, ordered, delivered, planted]
+
+    MulchingStatus:
+      type: string
+      enum: [due, scheduled, completed, not_required]
+
+    InfillOrder:
+      type: object
+      properties:
+        id:              { type: string, format: uuid }
+        assetId:         { type: string, format: uuid }
+        assetName:       { type: string, nullable: true }
+        assetRef:        { type: string, nullable: true }
+        speciesName:     { type: string }
+        speciesCategory: { type: string }
+        quantity:        { type: integer }
+        status:
+          $ref: "#/components/schemas/InfillStatus"
+        orderedById:  { type: string, format: uuid, nullable: true }
+        orderDate:    { type: string, format: date, nullable: true }
+        deliveryDate: { type: string, format: date, nullable: true }
+        plantedDate:  { type: string, format: date, nullable: true }
+        supplierRef:  { type: string, nullable: true }
+        unitCostNzd:  { type: string, nullable: true }
+        notes:        { type: string, nullable: true }
+        createdAt:    { type: string, format: date-time }
+        updatedAt:    { type: string, format: date-time }
+      required: [id, assetId, speciesName, speciesCategory, quantity, status, createdAt, updatedAt]
+
+    InfillOrderCreate:
+      type: object
+      properties:
+        assetId:         { type: string, format: uuid }
+        speciesName:     { type: string }
+        speciesCategory: { type: string }
+        quantity:        { type: integer }
+        status:
+          $ref: "#/components/schemas/InfillStatus"
+        orderDate:    { type: string, format: date }
+        deliveryDate: { type: string, format: date }
+        plantedDate:  { type: string, format: date }
+        supplierRef:  { type: string }
+        unitCostNzd:  { type: string }
+        notes:        { type: string }
+      required: [assetId, speciesName, speciesCategory, quantity]
+
+    InfillOrderUpdate:
+      type: object
+      properties:
+        speciesName:     { type: string }
+        speciesCategory: { type: string }
+        quantity:        { type: integer }
+        status:
+          $ref: "#/components/schemas/InfillStatus"
+        orderDate:    { type: string, format: date }
+        deliveryDate: { type: string, format: date }
+        plantedDate:  { type: string, format: date }
+        supplierRef:  { type: string }
+        unitCostNzd:  { type: string }
+        notes:        { type: string }
+
+    InfillOrderListResponse:
+      type: object
+      properties:
+        data:  { type: array, items: { $ref: "#/components/schemas/InfillOrder" } }
+        total: { type: integer }
+      required: [data, total]
+
+    MulchingRecord:
+      type: object
+      properties:
+        id:            { type: string, format: uuid }
+        assetId:       { type: string, format: uuid }
+        assetName:     { type: string, nullable: true }
+        assetRef:      { type: string, nullable: true }
+        scheduledDate: { type: string, format: date, nullable: true }
+        completedDate: { type: string, format: date, nullable: true }
+        volumeM3:      { type: string, nullable: true }
+        status:
+          $ref: "#/components/schemas/MulchingStatus"
+        mulchType:  { type: string, nullable: true }
+        contractor: { type: string, nullable: true }
+        costNzd:    { type: string, nullable: true }
+        notes:      { type: string, nullable: true }
+        createdAt:  { type: string, format: date-time }
+        updatedAt:  { type: string, format: date-time }
+      required: [id, assetId, status, createdAt, updatedAt]
+
+    MulchingRecordCreate:
+      type: object
+      properties:
+        assetId:       { type: string, format: uuid }
+        scheduledDate: { type: string, format: date }
+        completedDate: { type: string, format: date }
+        volumeM3:      { type: string }
+        status:
+          $ref: "#/components/schemas/MulchingStatus"
+        mulchType:  { type: string }
+        contractor: { type: string }
+        costNzd:    { type: string }
+        notes:      { type: string }
+      required: [assetId]
+
+    MulchingRecordUpdate:
+      type: object
+      properties:
+        scheduledDate: { type: string, format: date }
+        completedDate: { type: string, format: date }
+        volumeM3:      { type: string }
+        status:
+          $ref: "#/components/schemas/MulchingStatus"
+        mulchType:  { type: string }
+        contractor: { type: string }
+        costNzd:    { type: string }
+        notes:      { type: string }
+
+    MulchingRecordListResponse:
+      type: object
+      properties:
+        data:  { type: array, items: { $ref: "#/components/schemas/MulchingRecord" } }
+        total: { type: integer }
+      required: [data, total]

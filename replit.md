@@ -11,7 +11,7 @@ Full-stack garden asset management system for Porirua City Council (PCC). Built 
 | 0 | Architecture setup: DB schema, API contract, route scaffold | ✅ Complete |
 | 1 | Core CRUD: assets, jobs, schedule generation, auth + React web app | ✅ Complete |
 | 2 | Mobile worker app (Expo) + field workflows | ✅ Complete |
-| 3 | Programmes (infill, mulching), audits, reporting | Pending |
+| 3 | Programmes (infill, mulching), audits, reporting | ✅ Complete |
 
 ## Stack
 

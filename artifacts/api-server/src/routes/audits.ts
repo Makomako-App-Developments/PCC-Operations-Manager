@@ -4,6 +4,8 @@ import { eq } from "drizzle-orm";
 import { requireAuth, requireRole } from "../middlewares/auth";
 import { validateBody } from "../middlewares/validate";
 
+const auditCreateSchema = insertAuditSchema.omit({ auditorId: true });
+
 const router = Router();
 
 // GET /api/audits
@@ -26,7 +28,7 @@ router.post(
   "/audits",
   requireAuth,
   requireRole("manager", "supervisor", "team_leader"),
-  validateBody(insertAuditSchema),
+  validateBody(auditCreateSchema),
   async (req, res) => {
     const [created] = await db
       .insert(auditsTable)

@@ -421,6 +421,122 @@ export interface ScheduleWeekResponse {
   completedJobs: number;
 }
 
+export type InfillStatus = (typeof InfillStatus)[keyof typeof InfillStatus];
+
+export const InfillStatus = {
+  draft: "draft",
+  ordered: "ordered",
+  delivered: "delivered",
+  planted: "planted",
+} as const;
+
+export type MulchingStatus =
+  (typeof MulchingStatus)[keyof typeof MulchingStatus];
+
+export const MulchingStatus = {
+  due: "due",
+  scheduled: "scheduled",
+  completed: "completed",
+  not_required: "not_required",
+} as const;
+
+export interface InfillOrder {
+  id: string;
+  assetId: string;
+  assetName?: string | null;
+  assetRef?: string | null;
+  speciesName: string;
+  speciesCategory: string;
+  quantity: number;
+  status: InfillStatus;
+  orderedById?: string | null;
+  orderDate?: string | null;
+  deliveryDate?: string | null;
+  plantedDate?: string | null;
+  supplierRef?: string | null;
+  unitCostNzd?: string | null;
+  notes?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface InfillOrderCreate {
+  assetId: string;
+  speciesName: string;
+  speciesCategory: string;
+  quantity: number;
+  status?: InfillStatus;
+  orderDate?: string;
+  deliveryDate?: string;
+  plantedDate?: string;
+  supplierRef?: string;
+  unitCostNzd?: string;
+  notes?: string;
+}
+
+export interface InfillOrderUpdate {
+  speciesName?: string;
+  speciesCategory?: string;
+  quantity?: number;
+  status?: InfillStatus;
+  orderDate?: string;
+  deliveryDate?: string;
+  plantedDate?: string;
+  supplierRef?: string;
+  unitCostNzd?: string;
+  notes?: string;
+}
+
+export interface InfillOrderListResponse {
+  data: InfillOrder[];
+  total: number;
+}
+
+export interface MulchingRecord {
+  id: string;
+  assetId: string;
+  assetName?: string | null;
+  assetRef?: string | null;
+  scheduledDate?: string | null;
+  completedDate?: string | null;
+  volumeM3?: string | null;
+  status: MulchingStatus;
+  mulchType?: string | null;
+  contractor?: string | null;
+  costNzd?: string | null;
+  notes?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface MulchingRecordCreate {
+  assetId: string;
+  scheduledDate?: string;
+  completedDate?: string;
+  volumeM3?: string;
+  status?: MulchingStatus;
+  mulchType?: string;
+  contractor?: string;
+  costNzd?: string;
+  notes?: string;
+}
+
+export interface MulchingRecordUpdate {
+  scheduledDate?: string;
+  completedDate?: string;
+  volumeM3?: string;
+  status?: MulchingStatus;
+  mulchType?: string;
+  contractor?: string;
+  costNzd?: string;
+  notes?: string;
+}
+
+export interface MulchingRecordListResponse {
+  data: MulchingRecord[];
+  total: number;
+}
+
 /**
  * Unauthorised
  */
@@ -463,4 +579,14 @@ export type GetScheduleWeekParams = {
    */
   week: string;
   teamId?: string;
+};
+
+export type ListInfillOrdersParams = {
+  assetId?: string;
+  status?: InfillStatus;
+};
+
+export type ListMulchingRecordsParams = {
+  assetId?: string;
+  status?: MulchingStatus;
 };

@@ -5,14 +5,13 @@ import {
   LayoutDashboard,
   List,
   CalendarDays,
-  Map as MapIcon,
   LogOut,
   Sprout,
   Layers,
-  FileSpreadsheet,
   BarChart2,
   AlertTriangle,
   ClipboardList,
+  ClipboardCheck,
 } from "lucide-react";
 
 export function Layout({ children }: { children: React.ReactNode }) {
@@ -20,11 +19,14 @@ export function Layout({ children }: { children: React.ReactNode }) {
   const { user, logout } = useAuth();
 
   const nav = [
-    { icon: LayoutDashboard, label: "Dashboard", href: "/dashboard" },
-    { icon: List, label: "Asset Register", href: "/assets" },
-    { icon: CalendarDays, label: "Schedule", href: "/schedule" },
-    { icon: ClipboardList, label: "Jobs", href: "/jobs" },
-    { icon: AlertTriangle, label: "Reactive Jobs", href: "/reactive-jobs" },
+    { icon: LayoutDashboard, label: "Dashboard",    href: "/dashboard" },
+    { icon: List,            label: "Asset Register", href: "/assets" },
+    { icon: CalendarDays,    label: "Schedule",      href: "/schedule" },
+    { icon: ClipboardList,   label: "Jobs",          href: "/jobs" },
+    { icon: AlertTriangle,   label: "Reactive Jobs", href: "/reactive-jobs" },
+    { icon: ClipboardCheck,  label: "Audits",        href: "/audits" },
+    { icon: Sprout,          label: "Programmes",    href: "/programmes" },
+    { icon: BarChart2,       label: "Reports",       href: "/reports" },
   ];
 
   return (

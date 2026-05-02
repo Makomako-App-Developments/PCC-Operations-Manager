@@ -15,6 +15,9 @@ import NewAsset from "@/pages/assets/new";
 import Schedule from "@/pages/schedule";
 import Jobs from "@/pages/jobs";
 import ReactiveJobs from "@/pages/reactive-jobs";
+import Audits from "@/pages/audits/index";
+import Programmes from "@/pages/programmes/index";
+import Reports from "@/pages/reports";
 
 const queryClient = new QueryClient();
 
@@ -50,9 +53,11 @@ function Router() {
       <Route path="/schedule"><ProtectedRoute component={Schedule} /></Route>
       <Route path="/jobs"><ProtectedRoute component={Jobs} /></Route>
       <Route path="/reactive-jobs"><ProtectedRoute component={ReactiveJobs} /></Route>
+      <Route path="/audits"><ProtectedRoute component={Audits} /></Route>
+      <Route path="/programmes"><ProtectedRoute component={Programmes} /></Route>
+      <Route path="/reports"><ProtectedRoute component={Reports} /></Route>
       <Route path="/">
         <ProtectedRoute component={() => {
-          // Redirect from root to dashboard
           window.location.href = "/dashboard";
           return null;
         }} />

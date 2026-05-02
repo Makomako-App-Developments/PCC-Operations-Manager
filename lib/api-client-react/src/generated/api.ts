@@ -31,14 +31,24 @@ import type {
   DashboardSummary,
   GetScheduleWeekParams,
   HealthStatus,
+  InfillOrder,
+  InfillOrderCreate,
+  InfillOrderListResponse,
+  InfillOrderUpdate,
   Job,
   JobCreate,
   JobListResponse,
   JobUpdate,
   ListAssetsParams,
+  ListInfillOrdersParams,
   ListJobsParams,
+  ListMulchingRecordsParams,
   LoginRequest,
   LoginResponse,
+  MulchingRecord,
+  MulchingRecordCreate,
+  MulchingRecordListResponse,
+  MulchingRecordUpdate,
   NotFoundResponse,
   OkResponse,
   ReactiveJob,
@@ -1885,6 +1895,552 @@ export function useGetScheduleWeek<
 
   return { ...query, queryKey: queryOptions.queryKey };
 }
+
+/**
+ * @summary List infill planting orders
+ */
+export const getListInfillOrdersUrl = (params?: ListInfillOrdersParams) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/infill-orders?${stringifiedParams}`
+    : `/api/infill-orders`;
+};
+
+export const listInfillOrders = async (
+  params?: ListInfillOrdersParams,
+  options?: RequestInit,
+): Promise<InfillOrderListResponse> => {
+  return customFetch<InfillOrderListResponse>(getListInfillOrdersUrl(params), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getListInfillOrdersQueryKey = (
+  params?: ListInfillOrdersParams,
+) => {
+  return [`/api/infill-orders`, ...(params ? [params] : [])] as const;
+};
+
+export const getListInfillOrdersQueryOptions = <
+  TData = Awaited<ReturnType<typeof listInfillOrders>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: ListInfillOrdersParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listInfillOrders>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getListInfillOrdersQueryKey(params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof listInfillOrders>>
+  > = ({ signal }) => listInfillOrders(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listInfillOrders>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListInfillOrdersQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listInfillOrders>>
+>;
+export type ListInfillOrdersQueryError = ErrorType<unknown>;
+
+/**
+ * @summary List infill planting orders
+ */
+
+export function useListInfillOrders<
+  TData = Awaited<ReturnType<typeof listInfillOrders>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: ListInfillOrdersParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listInfillOrders>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListInfillOrdersQueryOptions(params, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Create an infill planting order
+ */
+export const getCreateInfillOrderUrl = () => {
+  return `/api/infill-orders`;
+};
+
+export const createInfillOrder = async (
+  infillOrderCreate: InfillOrderCreate,
+  options?: RequestInit,
+): Promise<InfillOrder> => {
+  return customFetch<InfillOrder>(getCreateInfillOrderUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(infillOrderCreate),
+  });
+};
+
+export const getCreateInfillOrderMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createInfillOrder>>,
+    TError,
+    { data: BodyType<InfillOrderCreate> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof createInfillOrder>>,
+  TError,
+  { data: BodyType<InfillOrderCreate> },
+  TContext
+> => {
+  const mutationKey = ["createInfillOrder"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof createInfillOrder>>,
+    { data: BodyType<InfillOrderCreate> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return createInfillOrder(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type CreateInfillOrderMutationResult = NonNullable<
+  Awaited<ReturnType<typeof createInfillOrder>>
+>;
+export type CreateInfillOrderMutationBody = BodyType<InfillOrderCreate>;
+export type CreateInfillOrderMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Create an infill planting order
+ */
+export const useCreateInfillOrder = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createInfillOrder>>,
+    TError,
+    { data: BodyType<InfillOrderCreate> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof createInfillOrder>>,
+  TError,
+  { data: BodyType<InfillOrderCreate> },
+  TContext
+> => {
+  return useMutation(getCreateInfillOrderMutationOptions(options));
+};
+
+/**
+ * @summary Update an infill order
+ */
+export const getUpdateInfillOrderUrl = (id: string) => {
+  return `/api/infill-orders/${id}`;
+};
+
+export const updateInfillOrder = async (
+  id: string,
+  infillOrderUpdate: InfillOrderUpdate,
+  options?: RequestInit,
+): Promise<InfillOrder> => {
+  return customFetch<InfillOrder>(getUpdateInfillOrderUrl(id), {
+    ...options,
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(infillOrderUpdate),
+  });
+};
+
+export const getUpdateInfillOrderMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updateInfillOrder>>,
+    TError,
+    { id: string; data: BodyType<InfillOrderUpdate> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof updateInfillOrder>>,
+  TError,
+  { id: string; data: BodyType<InfillOrderUpdate> },
+  TContext
+> => {
+  const mutationKey = ["updateInfillOrder"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof updateInfillOrder>>,
+    { id: string; data: BodyType<InfillOrderUpdate> }
+  > = (props) => {
+    const { id, data } = props ?? {};
+
+    return updateInfillOrder(id, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type UpdateInfillOrderMutationResult = NonNullable<
+  Awaited<ReturnType<typeof updateInfillOrder>>
+>;
+export type UpdateInfillOrderMutationBody = BodyType<InfillOrderUpdate>;
+export type UpdateInfillOrderMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Update an infill order
+ */
+export const useUpdateInfillOrder = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updateInfillOrder>>,
+    TError,
+    { id: string; data: BodyType<InfillOrderUpdate> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof updateInfillOrder>>,
+  TError,
+  { id: string; data: BodyType<InfillOrderUpdate> },
+  TContext
+> => {
+  return useMutation(getUpdateInfillOrderMutationOptions(options));
+};
+
+/**
+ * @summary List mulching records
+ */
+export const getListMulchingRecordsUrl = (
+  params?: ListMulchingRecordsParams,
+) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/mulching-records?${stringifiedParams}`
+    : `/api/mulching-records`;
+};
+
+export const listMulchingRecords = async (
+  params?: ListMulchingRecordsParams,
+  options?: RequestInit,
+): Promise<MulchingRecordListResponse> => {
+  return customFetch<MulchingRecordListResponse>(
+    getListMulchingRecordsUrl(params),
+    {
+      ...options,
+      method: "GET",
+    },
+  );
+};
+
+export const getListMulchingRecordsQueryKey = (
+  params?: ListMulchingRecordsParams,
+) => {
+  return [`/api/mulching-records`, ...(params ? [params] : [])] as const;
+};
+
+export const getListMulchingRecordsQueryOptions = <
+  TData = Awaited<ReturnType<typeof listMulchingRecords>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: ListMulchingRecordsParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listMulchingRecords>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getListMulchingRecordsQueryKey(params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof listMulchingRecords>>
+  > = ({ signal }) =>
+    listMulchingRecords(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listMulchingRecords>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListMulchingRecordsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listMulchingRecords>>
+>;
+export type ListMulchingRecordsQueryError = ErrorType<unknown>;
+
+/**
+ * @summary List mulching records
+ */
+
+export function useListMulchingRecords<
+  TData = Awaited<ReturnType<typeof listMulchingRecords>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: ListMulchingRecordsParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listMulchingRecords>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListMulchingRecordsQueryOptions(params, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Create a mulching record
+ */
+export const getCreateMulchingRecordUrl = () => {
+  return `/api/mulching-records`;
+};
+
+export const createMulchingRecord = async (
+  mulchingRecordCreate: MulchingRecordCreate,
+  options?: RequestInit,
+): Promise<MulchingRecord> => {
+  return customFetch<MulchingRecord>(getCreateMulchingRecordUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(mulchingRecordCreate),
+  });
+};
+
+export const getCreateMulchingRecordMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createMulchingRecord>>,
+    TError,
+    { data: BodyType<MulchingRecordCreate> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof createMulchingRecord>>,
+  TError,
+  { data: BodyType<MulchingRecordCreate> },
+  TContext
+> => {
+  const mutationKey = ["createMulchingRecord"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof createMulchingRecord>>,
+    { data: BodyType<MulchingRecordCreate> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return createMulchingRecord(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type CreateMulchingRecordMutationResult = NonNullable<
+  Awaited<ReturnType<typeof createMulchingRecord>>
+>;
+export type CreateMulchingRecordMutationBody = BodyType<MulchingRecordCreate>;
+export type CreateMulchingRecordMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Create a mulching record
+ */
+export const useCreateMulchingRecord = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createMulchingRecord>>,
+    TError,
+    { data: BodyType<MulchingRecordCreate> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof createMulchingRecord>>,
+  TError,
+  { data: BodyType<MulchingRecordCreate> },
+  TContext
+> => {
+  return useMutation(getCreateMulchingRecordMutationOptions(options));
+};
+
+/**
+ * @summary Update a mulching record
+ */
+export const getUpdateMulchingRecordUrl = (id: string) => {
+  return `/api/mulching-records/${id}`;
+};
+
+export const updateMulchingRecord = async (
+  id: string,
+  mulchingRecordUpdate: MulchingRecordUpdate,
+  options?: RequestInit,
+): Promise<MulchingRecord> => {
+  return customFetch<MulchingRecord>(getUpdateMulchingRecordUrl(id), {
+    ...options,
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(mulchingRecordUpdate),
+  });
+};
+
+export const getUpdateMulchingRecordMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updateMulchingRecord>>,
+    TError,
+    { id: string; data: BodyType<MulchingRecordUpdate> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof updateMulchingRecord>>,
+  TError,
+  { id: string; data: BodyType<MulchingRecordUpdate> },
+  TContext
+> => {
+  const mutationKey = ["updateMulchingRecord"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof updateMulchingRecord>>,
+    { id: string; data: BodyType<MulchingRecordUpdate> }
+  > = (props) => {
+    const { id, data } = props ?? {};
+
+    return updateMulchingRecord(id, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type UpdateMulchingRecordMutationResult = NonNullable<
+  Awaited<ReturnType<typeof updateMulchingRecord>>
+>;
+export type UpdateMulchingRecordMutationBody = BodyType<MulchingRecordUpdate>;
+export type UpdateMulchingRecordMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Update a mulching record
+ */
+export const useUpdateMulchingRecord = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updateMulchingRecord>>,
+    TError,
+    { id: string; data: BodyType<MulchingRecordUpdate> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof updateMulchingRecord>>,
+  TError,
+  { id: string; data: BodyType<MulchingRecordUpdate> },
+  TContext
+> => {
+  return useMutation(getUpdateMulchingRecordMutationOptions(options));
+};
 
 /**
  * @summary List audits
