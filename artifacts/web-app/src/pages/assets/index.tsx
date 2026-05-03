@@ -336,7 +336,7 @@ function AssetDetailDrawer({ assetId, onClose, teamName }: { assetId: string | n
                   </div>
                   <div className="grid grid-cols-3 gap-2 text-sm">
                     <span className="text-gray-500">Coordinates:</span>
-                    <span className="col-span-2 font-mono text-gray-700">{asset.lat?.toFixed(4)}, {asset.lng?.toFixed(4)}</span>
+                    <span className="col-span-2 font-mono text-gray-700">{asset.lat != null ? Number(asset.lat).toFixed(4) : "—"}, {asset.lng != null ? Number(asset.lng).toFixed(4) : "—"}</span>
                   </div>
                 </div>
               </section>
