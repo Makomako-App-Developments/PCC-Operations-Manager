@@ -14,6 +14,7 @@ import {
   ClipboardCheck,
   Shield,
   Users,
+  FileText,
 } from "lucide-react";
 
 export function Layout({ children }: { children: React.ReactNode }) {
@@ -29,6 +30,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
     { icon: ClipboardCheck,  label: "Audits",        href: "/audits",       managerOnly: false },
     { icon: Sprout,          label: "Programmes",    href: "/programmes",   managerOnly: false },
     { icon: BarChart2,       label: "Reports",       href: "/reports",      managerOnly: false },
+    { icon: FileText,        label: "Specification", href: "/specification", managerOnly: false },
     { icon: Shield,          label: "Audit Log",     href: "/audit-log",    managerOnly: true  },
     { icon: Users,           label: "Users",         href: "/users",        managerOnly: true  },
   ];
