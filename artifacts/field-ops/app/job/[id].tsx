@@ -24,6 +24,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 
 import { StatusBadge } from "@/components/StatusBadge";
+import { BoundaryMap } from "@/components/BoundaryMap";
 import { useColors } from "@/hooks/useColors";
 import { getApiUrl } from "@/lib/api";
 
@@ -527,6 +528,27 @@ export default function JobDetailScreen() {
             </View>
           ))}
         </View>
+
+        {(asset.boundary || asset.lat) && (
+          <View
+            style={[
+              styles.section,
+              { backgroundColor: colors.card, borderColor: colors.border, borderRadius: colors.radius, overflow: "hidden", padding: 0 },
+            ]}
+          >
+            <View style={[styles.sectionHeader, { paddingHorizontal: 14, paddingTop: 12, paddingBottom: 8 }]}>
+              <Feather name="map" size={16} color={colors.primary} />
+              <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Garden Boundary</Text>
+            </View>
+            <BoundaryMap
+              boundary={(asset as any).boundary}
+              lat={asset.lat}
+              lng={asset.lng}
+              color={colors.primary}
+              height={220}
+            />
+          </View>
+        )}
 
         <View
           style={[

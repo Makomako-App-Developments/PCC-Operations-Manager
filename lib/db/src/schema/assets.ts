@@ -1,5 +1,5 @@
 import {
-  pgTable, uuid, varchar, integer, numeric, timestamp, boolean, text, index
+  pgTable, uuid, varchar, integer, numeric, timestamp, boolean, text, index, jsonb
 } from "drizzle-orm/pg-core";
 import { createInsertSchema, createSelectSchema } from "drizzle-zod";
 import { z } from "zod/v4";
@@ -22,6 +22,7 @@ export const assetsTable = pgTable("assets", {
   lat:             numeric("lat", { precision: 9, scale: 6 }),
   lng:             numeric("lng", { precision: 9, scale: 6 }),
   notes:           text("notes"),
+  boundary:        jsonb("boundary"),
   isActive:        boolean("is_active").notNull().default(true),
   createdAt:       timestamp("created_at").notNull().defaultNow(),
   updatedAt:       timestamp("updated_at").notNull().defaultNow(),

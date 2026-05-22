@@ -8,7 +8,21 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Skeleton } from "@/components/ui/skeleton";
 import { Search, Plus, MapPin, Map as MapIcon, CheckCircle2, AlertTriangle, Filter, List as ListIcon, X } from "lucide-react";
 import { Link } from "wouter";
-import { MapContainer, TileLayer, CircleMarker, Tooltip } from "react-leaflet";
+import { MapContainer, TileLayer, CircleMarker, Polygon, Tooltip } from "react-leaflet";
+
+type GeoPolygon = { type: "Polygon"; coordinates: number[][][] };
+
+const MAP_COLORS: Record<string, string> = {
+  "roses_perennials": "#ec4899",
+  "annuals":          "#f59e0b",
+  "ornamental":       "#8b5cf6",
+  "amenity":          "#00AECD",
+  "rain_garden":      "#06b6d4",
+  "reveg":            "#84cc16",
+  "bush":             "#16a34a",
+  "tree_planter_pits":"#78716c",
+  "hedge":            "#10b981",
+};
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
@@ -225,24 +239,38 @@ export default function Assets() {
               style={{ height: "100%", width: "100%" }}
             >
               <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
-              {assetsData?.data.filter(a => a.lat && a.lng).map(asset => (
-                <CircleMarker
-                  key={asset.id}
-                  center={[asset.lat!, asset.lng!]}
-                  radius={8}
-                  eventHandlers={{
-                    click: () => setSelectedAssetId(asset.id),
-                  }}
-                  pathOptions={{
-                    fillColor: BRAND,
-                    fillOpacity: 0.9,
-                    color: "#fff",
-                    weight: 2,
-                  }}
-                >
-                  <Tooltip>{asset.name}</Tooltip>
-                </CircleMarker>
-              ))}
+              {assetsData?.data.map(asset => {
+                const color = MAP_COLORS[asset.gardenType] || BRAND;
+                const boundary = (asset as any).boundary as GeoPolygon | null;
+                const tip = <Tooltip><b>{asset.name}</b><br />{asset.reference}</Tooltip>;
+                if (boundary?.coordinates?.[0]?.length) {
+                  const positions: [number, number][] = boundary.coordinates[0].map(
+                    ([lng, lat]: number[]) => [lat, lng]
+                  );
+                  return (
+                    <Polygon
+                      key={asset.id}
+                      positions={positions}
+                      pathOptions={{ color, fillColor: color, fillOpacity: 0.3, weight: 2 }}
+                      eventHandlers={{ click: () => setSelectedAssetId(asset.id) }}
+                    >
+                      {tip}
+                    </Polygon>
+                  );
+                }
+                if (!asset.lat || !asset.lng) return null;
+                return (
+                  <CircleMarker
+                    key={asset.id}
+                    center={[Number(asset.lat), Number(asset.lng)]}
+                    radius={8}
+                    eventHandlers={{ click: () => setSelectedAssetId(asset.id) }}
+                    pathOptions={{ fillColor: color, fillOpacity: 0.9, color: "#fff", weight: 2 }}
+                  >
+                    {tip}
+                  </CircleMarker>
+                );
+              })}
             </MapContainer>
           </div>
         )}
@@ -313,14 +341,46 @@ function AssetDetailDrawer({ assetId, onClose, teamName }: { assetId: string | n
               ))}
             </div>
 
-            {asset.lat && asset.lng && (
-              <div className="h-40 flex-shrink-0 relative border-b border-gray-100">
-                <MapContainer center={[asset.lat, asset.lng]} zoom={15} style={{ height: "100%", width: "100%" }} zoomControl={false} dragging={false} scrollWheelZoom={false}>
-                  <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
-                  <CircleMarker center={[asset.lat, asset.lng]} radius={8} pathOptions={{ color: "#fff", weight: 2, fillColor: BRAND, fillOpacity: 1 }} />
-                </MapContainer>
-              </div>
-            )}
+            {(asset.lat && asset.lng) && (() => {
+              const boundary = (asset as any).boundary as GeoPolygon | null;
+              const hasPolygon = boundary?.coordinates?.[0]?.length;
+              const positions: [number, number][] = hasPolygon
+                ? boundary!.coordinates[0].map(([lng, lat]: number[]) => [lat, lng])
+                : [];
+              // Compute centroid for map center when polygon available
+              const center: [number, number] = hasPolygon
+                ? [
+                    positions.reduce((s, p) => s + p[0], 0) / positions.length,
+                    positions.reduce((s, p) => s + p[1], 0) / positions.length,
+                  ]
+                : [Number(asset.lat), Number(asset.lng)];
+              return (
+                <div className="h-48 flex-shrink-0 relative border-b border-gray-100">
+                  <MapContainer
+                    center={center}
+                    zoom={hasPolygon ? 16 : 17}
+                    style={{ height: "100%", width: "100%" }}
+                    zoomControl={false}
+                    dragging={false}
+                    scrollWheelZoom={false}
+                  >
+                    <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+                    {hasPolygon ? (
+                      <Polygon
+                        positions={positions}
+                        pathOptions={{ color: BRAND, fillColor: BRAND, fillOpacity: 0.3, weight: 3 }}
+                      />
+                    ) : (
+                      <CircleMarker
+                        center={[Number(asset.lat), Number(asset.lng)]}
+                        radius={10}
+                        pathOptions={{ color: "#fff", weight: 2, fillColor: BRAND, fillOpacity: 1 }}
+                      />
+                    )}
+                  </MapContainer>
+                </div>
+              );
+            })()}
 
             <div className="flex-1 overflow-y-auto p-5 space-y-6 bg-white">
               <section>

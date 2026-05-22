@@ -7,8 +7,10 @@ import { format, startOfWeek } from "date-fns";
 import {
   Leaf, AlertCircle, Users, TrendingUp, Clock, CheckCircle, Sprout, MapPin
 } from "lucide-react";
-import { MapContainer, TileLayer, CircleMarker, Tooltip } from "react-leaflet";
+import { MapContainer, TileLayer, CircleMarker, Polygon, Tooltip } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
+
+type GeoPolygon = { type: "Polygon"; coordinates: number[][][] };
 
 const BRAND = "#00AECD";
 
@@ -43,12 +45,53 @@ function MetricCard({ icon: Icon, label, value, sub, color, testId }: any) {
   );
 }
 
-function MapView() {
-  const { data } = useListAssets({ limit: 100 });
-  
-  if (!data) return <Skeleton className="w-full h-full rounded-2xl" />;
+function AssetMapFeature({ asset }: { asset: any }) {
+  const color = TYPE_COLORS[asset.gardenType] || BRAND;
+  const boundary = asset.boundary as GeoPolygon | null;
+  const tip = (
+    <Tooltip permanent={false} direction="top">
+      <div className="min-w-[160px]">
+        <p className="font-bold text-xs mb-0.5">{asset.name}</p>
+        <p className="text-[10px] text-gray-500 font-mono mb-1">{asset.reference}</p>
+        <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-gray-100 font-medium">
+          {asset.gardenType.replace(/_/g, " ")}
+        </span>
+      </div>
+    </Tooltip>
+  );
 
-  const pins = data.data.filter(a => a.lat && a.lng);
+  if (boundary?.coordinates?.[0]?.length) {
+    const positions: [number, number][] = boundary.coordinates[0].map(
+      ([lng, lat]) => [lat, lng]
+    );
+    return (
+      <Polygon
+        key={asset.id}
+        positions={positions}
+        pathOptions={{ color, fillColor: color, fillOpacity: 0.25, weight: 2 }}
+      >
+        {tip}
+      </Polygon>
+    );
+  }
+
+  if (!asset.lat || !asset.lng) return null;
+  return (
+    <CircleMarker
+      key={asset.id}
+      center={[Number(asset.lat), Number(asset.lng)]}
+      radius={6}
+      pathOptions={{ fillColor: color, fillOpacity: 0.9, color: "#fff", weight: 2 }}
+    >
+      {tip}
+    </CircleMarker>
+  );
+}
+
+function MapView() {
+  const { data } = useListAssets({ limit: 2000 });
+
+  if (!data) return <Skeleton className="w-full h-full rounded-2xl" />;
 
   return (
     <div className="relative w-full h-full rounded-2xl overflow-hidden" data-testid="dashboard-map">
@@ -62,30 +105,8 @@ function MapView() {
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
           attribution='&copy; OpenStreetMap'
         />
-        {pins.map(pin => (
-          <CircleMarker
-            key={pin.id}
-            center={[pin.lat!, pin.lng!]}
-            radius={8}
-            pathOptions={{
-              fillColor: TYPE_COLORS[pin.gardenType] || BRAND,
-              fillOpacity: 0.9,
-              color: "#fff",
-              weight: 2,
-            }}
-          >
-            <Tooltip permanent={false} direction="top" offset={[0, -8]}>
-              <div className="min-w-[160px]">
-                <p className="font-bold text-xs mb-0.5">{pin.name}</p>
-                <p className="text-[10px] text-gray-500 font-mono mb-1">{pin.reference}</p>
-                <div className="flex gap-1 mb-1">
-                  <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-gray-100 font-medium">
-                    {pin.gardenType.replace("_", " ")}
-                  </span>
-                </div>
-              </div>
-            </Tooltip>
-          </CircleMarker>
+        {data.data.map(asset => (
+          <AssetMapFeature key={asset.id} asset={asset} />
         ))}
       </MapContainer>
     </div>
