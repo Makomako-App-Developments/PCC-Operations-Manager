@@ -13,6 +13,7 @@ import {
   ClipboardList,
   ClipboardCheck,
   Shield,
+  Users,
 } from "lucide-react";
 
 export function Layout({ children }: { children: React.ReactNode }) {
@@ -29,6 +30,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
     { icon: Sprout,          label: "Programmes",    href: "/programmes",   managerOnly: false },
     { icon: BarChart2,       label: "Reports",       href: "/reports",      managerOnly: false },
     { icon: Shield,          label: "Audit Log",     href: "/audit-log",    managerOnly: true  },
+    { icon: Users,           label: "Users",         href: "/users",        managerOnly: true  },
   ];
   const isPrivileged = user?.role === "manager" || user?.role === "supervisor";
   const nav = allNav.filter(item => !item.managerOnly || isPrivileged);

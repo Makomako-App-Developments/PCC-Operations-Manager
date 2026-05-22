@@ -965,3 +965,162 @@ export const AddAuditItemBody = zod.object({
   result: zod.enum(["pass", "fail", "na"]),
   notes: zod.string().optional(),
 });
+
+/**
+ * @summary Liveness probe
+ */
+export const GetLivenessResponse = zod.object({
+  ok: zod.boolean(),
+});
+
+/**
+ * @summary Readiness probe — checks DB connectivity
+ */
+export const GetReadinessResponse = zod.object({
+  status: zod.string(),
+  db: zod.string(),
+  uptime: zod.number(),
+});
+
+/**
+ * @summary Full health status with uptime and version
+ */
+export const GetFullHealthResponse = zod.object({
+  status: zod.string(),
+  version: zod.string(),
+  uptime: zod.number(),
+  db: zod.string(),
+});
+
+/**
+ * @summary List audit log entries (manager/supervisor only)
+ */
+export const listAuditLogQueryLimitDefault = 50;
+export const listAuditLogQueryLimitMax = 200;
+
+export const listAuditLogQueryOffsetDefault = 0;
+
+export const ListAuditLogQueryParams = zod.object({
+  table: zod.coerce.string().optional(),
+  limit: zod.coerce
+    .number()
+    .max(listAuditLogQueryLimitMax)
+    .default(listAuditLogQueryLimitDefault),
+  offset: zod.coerce.number().default(listAuditLogQueryOffsetDefault),
+});
+
+export const ListAuditLogResponse = zod.object({
+  data: zod.array(
+    zod.object({
+      id: zod.string().uuid(),
+      tableName: zod.string(),
+      recordId: zod.string().uuid().nullish(),
+      action: zod.enum(["INSERT", "UPDATE", "DELETE"]),
+      changedAt: zod.date(),
+      ipAddress: zod.string().nullish(),
+      oldData: zod.object({}).passthrough().nullish(),
+      newData: zod.object({}).passthrough().nullish(),
+      changedById: zod.string().uuid().nullish(),
+      changedByName: zod.string().nullish(),
+    }),
+  ),
+  limit: zod.number(),
+  offset: zod.number(),
+});
+
+/**
+ * @summary List all users (manager/supervisor only)
+ */
+export const ListUsersResponse = zod.object({
+  data: zod.array(
+    zod.object({
+      id: zod.string().uuid(),
+      email: zod.string(),
+      name: zod.string(),
+      initials: zod.string(),
+      role: zod.enum(["manager", "supervisor", "field_worker"]),
+      teamId: zod.string().uuid().nullish(),
+      isActive: zod.boolean(),
+      createdAt: zod.date(),
+      updatedAt: zod.date(),
+    }),
+  ),
+  total: zod.number(),
+});
+
+/**
+ * @summary Create a new staff account (manager only)
+ */
+export const createUserBodyPasswordMin = 8;
+
+export const CreateUserBody = zod.object({
+  email: zod.string().email(),
+  name: zod.string(),
+  initials: zod.string(),
+  password: zod.string().min(createUserBodyPasswordMin),
+  role: zod.enum(["manager", "supervisor", "field_worker"]),
+  teamId: zod.string().uuid().optional(),
+});
+
+/**
+ * @summary Update a user account (manager only)
+ */
+export const UpdateUserParams = zod.object({
+  id: zod.coerce.string().uuid(),
+});
+
+export const updateUserBodyPasswordMin = 8;
+
+export const UpdateUserBody = zod.object({
+  name: zod.string().optional(),
+  initials: zod.string().optional(),
+  role: zod.enum(["manager", "supervisor", "field_worker"]).optional(),
+  teamId: zod.string().uuid().nullish(),
+  isActive: zod.boolean().optional(),
+  password: zod.string().min(updateUserBodyPasswordMin).optional(),
+});
+
+export const UpdateUserResponse = zod.object({
+  id: zod.string().uuid(),
+  email: zod.string(),
+  name: zod.string(),
+  initials: zod.string(),
+  role: zod.enum(["manager", "supervisor", "field_worker"]),
+  teamId: zod.string().uuid().nullish(),
+  isActive: zod.boolean(),
+  createdAt: zod.date(),
+  updatedAt: zod.date(),
+});
+
+/**
+ * @summary List photo evidence for a job
+ */
+export const ListJobPhotosParams = zod.object({
+  id: zod.coerce.string().uuid(),
+});
+
+export const ListJobPhotosResponse = zod.object({
+  data: zod.array(
+    zod.object({
+      id: zod.string().uuid(),
+      jobId: zod.string().uuid().nullish(),
+      reactiveJobId: zod.string().uuid().nullish(),
+      uploadedBy: zod.string().uuid(),
+      blobUrl: zod.string(),
+      caption: zod.string().nullish(),
+      createdAt: zod.date(),
+    }),
+  ),
+});
+
+/**
+ * @summary Upload a photo for a job (multipart)
+ */
+export const UploadJobPhotoParams = zod.object({
+  id: zod.coerce.string().uuid(),
+});
+
+export const UploadJobPhotoBody = zod.object({
+  photo: zod.instanceof(File),
+  caption: zod.string().optional(),
+});

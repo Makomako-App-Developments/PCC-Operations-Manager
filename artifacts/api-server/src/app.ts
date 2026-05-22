@@ -3,6 +3,7 @@ import cors from "cors";
 import cookieParser from "cookie-parser";
 import helmet from "helmet";
 import rateLimit from "express-rate-limit";
+import path from "path";
 import router from "./routes";
 import { initSentry, Sentry } from "./lib/sentry";
 
@@ -51,6 +52,12 @@ const authLimiter = rateLimit({
 
 app.use("/api", generalLimiter);
 app.use("/api/auth", authLimiter);
+
+// ── Static uploads (photo evidence, dev only) ─────────────────────────────────
+app.use(
+  "/api/uploads",
+  express.static(path.resolve(process.cwd(), "uploads"), { maxAge: "1d" }),
+);
 
 // ── Routes ────────────────────────────────────────────────────────────────────
 app.use("/api", router);

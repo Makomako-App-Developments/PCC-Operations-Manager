@@ -5,11 +5,13 @@ import {
   useUpdateJob,
 } from "@workspace/api-client-react";
 import * as Haptics from "expo-haptics";
+import * as ImagePicker from "expo-image-picker";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import React, { useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  Image,
   Platform,
   ScrollView,
   StyleSheet,
@@ -19,9 +21,11 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 
 import { StatusBadge } from "@/components/StatusBadge";
 import { useColors } from "@/hooks/useColors";
+import { getApiUrl } from "@/lib/api";
 
 const GARDEN_TYPE_LABEL: Record<string, string> = {
   annuals: "Annuals",
@@ -112,6 +116,200 @@ const DEFAULT_TASKS = [
   "Edging — vertical, smooth & neat",
   "Plant coverage — ≥95%",
 ];
+
+interface JobPhoto {
+  id: string;
+  blobUrl: string;
+  caption: string | null;
+  createdAt: string;
+}
+
+function useJobPhotos(jobId: string) {
+  return useQuery<{ data: JobPhoto[] }>({
+    queryKey: ["job-photos", jobId],
+    queryFn: async () => {
+      const res = await fetch(getApiUrl(`/api/jobs/${jobId}/photos`), {
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error("Failed to load photos");
+      return res.json();
+    },
+    enabled: !!jobId,
+  });
+}
+
+function useUploadPhoto(jobId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ uri, caption }: { uri: string; caption?: string }) => {
+      const form = new FormData();
+      const filename = uri.split("/").pop() ?? "photo.jpg";
+      const mimeType = filename.endsWith(".png") ? "image/png" : "image/jpeg";
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      form.append("photo", { uri, name: filename, type: mimeType } as any);
+      if (caption) form.append("caption", caption);
+      const res = await fetch(getApiUrl(`/api/jobs/${jobId}/photos`), {
+        method: "POST",
+        credentials: "include",
+        body: form,
+      });
+      if (!res.ok) throw new Error("Upload failed");
+      return res.json() as Promise<JobPhoto>;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["job-photos", jobId] }),
+  });
+}
+
+function PhotoSection({ jobId, isDone }: { jobId: string; isDone: boolean }) {
+  const colors = useColors();
+  const { data, isLoading } = useJobPhotos(jobId);
+  const uploadPhoto = useUploadPhoto(jobId);
+  const photos = data?.data ?? [];
+
+  const pickFromLibrary = async () => {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== "granted") {
+      Alert.alert("Permission needed", "Please allow photo library access in Settings.");
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ["images"],
+      quality: 0.7,
+      allowsEditing: false,
+    });
+    if (!result.canceled && result.assets[0]) {
+      uploadPhoto.mutate({ uri: result.assets[0].uri });
+    }
+  };
+
+  const takePhoto = async () => {
+    if (Platform.OS === "web") {
+      Alert.alert("Not supported", "Camera capture is not available on web. Use the library picker instead.");
+      return;
+    }
+    const { status } = await ImagePicker.requestCameraPermissionsAsync();
+    if (status !== "granted") {
+      Alert.alert("Permission needed", "Please allow camera access in Settings.");
+      return;
+    }
+    const result = await ImagePicker.launchCameraAsync({
+      mediaTypes: ["images"],
+      quality: 0.7,
+    });
+    if (!result.canceled && result.assets[0]) {
+      uploadPhoto.mutate({ uri: result.assets[0].uri });
+    }
+  };
+
+  return (
+    <View
+      style={[
+        styles.section,
+        {
+          backgroundColor: colors.card,
+          borderColor: colors.border,
+          borderRadius: colors.radius,
+        },
+      ]}
+    >
+      <View style={styles.sectionHeader}>
+        <Feather name="camera" size={16} color={colors.primary} />
+        <Text style={[styles.sectionTitle, { color: colors.foreground }]}>
+          Photo Evidence
+        </Text>
+        {photos.length > 0 && (
+          <Text style={[styles.sectionCount, { color: colors.mutedForeground }]}>
+            {photos.length}
+          </Text>
+        )}
+      </View>
+
+      {isLoading ? (
+        <ActivityIndicator color={colors.primary} style={{ margin: 14 }} />
+      ) : photos.length > 0 ? (
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.photoRow}
+        >
+          {photos.map(photo => (
+            <View key={photo.id} style={styles.photoThumb}>
+              <Image
+                source={{ uri: getApiUrl(photo.blobUrl) }}
+                style={[styles.thumbImage, { borderRadius: colors.radius / 2 }]}
+                resizeMode="cover"
+              />
+              {photo.caption ? (
+                <Text
+                  style={[styles.caption, { color: colors.mutedForeground }]}
+                  numberOfLines={1}
+                >
+                  {photo.caption}
+                </Text>
+              ) : null}
+            </View>
+          ))}
+        </ScrollView>
+      ) : (
+        <Text
+          style={[
+            styles.emptyPhotos,
+            { color: colors.mutedForeground },
+          ]}
+        >
+          No photos attached yet
+        </Text>
+      )}
+
+      {!isDone && (
+        <View style={[styles.photoActions, { borderTopColor: colors.border }]}>
+          <TouchableOpacity
+            style={[
+              styles.photoBtn,
+              {
+                borderColor: colors.border,
+                borderRadius: colors.radius,
+                flex: 1,
+              },
+            ]}
+            onPress={takePhoto}
+            activeOpacity={0.8}
+            disabled={uploadPhoto.isPending}
+          >
+            <Feather name="camera" size={15} color={colors.primary} />
+            <Text style={[styles.photoBtnText, { color: colors.foreground }]}>
+              Camera
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[
+              styles.photoBtn,
+              {
+                borderColor: colors.border,
+                borderRadius: colors.radius,
+                flex: 1,
+              },
+            ]}
+            onPress={pickFromLibrary}
+            activeOpacity={0.8}
+            disabled={uploadPhoto.isPending}
+          >
+            {uploadPhoto.isPending ? (
+              <ActivityIndicator size="small" color={colors.primary} />
+            ) : (
+              <>
+                <Feather name="image" size={15} color={colors.primary} />
+                <Text style={[styles.photoBtnText, { color: colors.foreground }]}>
+                  Library
+                </Text>
+              </>
+            )}
+          </TouchableOpacity>
+        </View>
+      )}
+    </View>
+  );
+}
 
 export default function JobDetailScreen() {
   const colors = useColors();
@@ -283,11 +481,7 @@ export default function JobDetailScreen() {
         contentContainerStyle={{ padding: 16, paddingBottom: bottomPad + 80 }}
         showsVerticalScrollIndicator={false}
       >
-        <View
-          style={[
-            styles.infoGrid,
-          ]}
-        >
+        <View style={styles.infoGrid}>
           {[
             {
               icon: "map-pin" as const,
@@ -393,6 +587,8 @@ export default function JobDetailScreen() {
             </TouchableOpacity>
           ))}
         </View>
+
+        {id && <PhotoSection jobId={id} isDone={isDone} />}
 
         {!isDone && (
           <View
@@ -616,6 +812,50 @@ const styles = StyleSheet.create({
     fontSize: 13,
     lineHeight: 19,
     flex: 1,
+  },
+  photoRow: {
+    paddingHorizontal: 14,
+    paddingBottom: 14,
+    gap: 10,
+    flexDirection: "row",
+  },
+  photoThumb: {
+    width: 90,
+  },
+  thumbImage: {
+    width: 90,
+    height: 90,
+  },
+  caption: {
+    fontFamily: "Inter_400Regular",
+    fontSize: 10,
+    marginTop: 4,
+  },
+  emptyPhotos: {
+    fontFamily: "Inter_400Regular",
+    fontSize: 13,
+    paddingHorizontal: 14,
+    paddingBottom: 14,
+  },
+  photoActions: {
+    flexDirection: "row",
+    gap: 10,
+    paddingHorizontal: 14,
+    paddingBottom: 14,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    paddingTop: 12,
+  },
+  photoBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    paddingVertical: 10,
+    borderWidth: 1,
+  },
+  photoBtnText: {
+    fontFamily: "Inter_600SemiBold",
+    fontSize: 13,
   },
   notesInput: {
     borderWidth: 1,

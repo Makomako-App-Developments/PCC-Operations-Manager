@@ -537,6 +537,110 @@ export interface MulchingRecordListResponse {
   total: number;
 }
 
+export interface ReadinessResponse {
+  status: string;
+  db: string;
+  uptime: number;
+}
+
+export interface HealthDetailResponse {
+  status: string;
+  version: string;
+  uptime: number;
+  db: string;
+}
+
+export type AuditLogEntryAction =
+  (typeof AuditLogEntryAction)[keyof typeof AuditLogEntryAction];
+
+export const AuditLogEntryAction = {
+  INSERT: "INSERT",
+  UPDATE: "UPDATE",
+  DELETE: "DELETE",
+} as const;
+
+export type AuditLogEntryOldData = { [key: string]: unknown } | null;
+
+export type AuditLogEntryNewData = { [key: string]: unknown } | null;
+
+export interface AuditLogEntry {
+  id: string;
+  tableName: string;
+  recordId?: string | null;
+  action: AuditLogEntryAction;
+  changedAt: string;
+  ipAddress?: string | null;
+  oldData?: AuditLogEntryOldData;
+  newData?: AuditLogEntryNewData;
+  changedById?: string | null;
+  changedByName?: string | null;
+}
+
+export interface AuditLogListResponse {
+  data: AuditLogEntry[];
+  limit: number;
+  offset: number;
+}
+
+export type UserRole = (typeof UserRole)[keyof typeof UserRole];
+
+export const UserRole = {
+  manager: "manager",
+  supervisor: "supervisor",
+  field_worker: "field_worker",
+} as const;
+
+export interface UserSafe {
+  id: string;
+  email: string;
+  name: string;
+  initials: string;
+  role: UserRole;
+  teamId?: string | null;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface UserCreate {
+  email: string;
+  name: string;
+  initials: string;
+  /** @minLength 8 */
+  password: string;
+  role: UserRole;
+  teamId?: string;
+}
+
+export interface UserUpdate {
+  name?: string;
+  initials?: string;
+  role?: UserRole;
+  teamId?: string | null;
+  isActive?: boolean;
+  /** @minLength 8 */
+  password?: string;
+}
+
+export interface UserListResponse {
+  data: UserSafe[];
+  total: number;
+}
+
+export interface JobPhoto {
+  id: string;
+  jobId?: string | null;
+  reactiveJobId?: string | null;
+  uploadedBy: string;
+  blobUrl: string;
+  caption?: string | null;
+  createdAt: string;
+}
+
+export interface JobPhotoListResponse {
+  data: JobPhoto[];
+}
+
 /**
  * Unauthorised
  */
@@ -589,4 +693,18 @@ export type ListInfillOrdersParams = {
 export type ListMulchingRecordsParams = {
   assetId?: string;
   status?: MulchingStatus;
+};
+
+export type ListAuditLogParams = {
+  table?: string;
+  /**
+   * @maximum 200
+   */
+  limit?: number;
+  offset?: number;
+};
+
+export type UploadJobPhotoBody = {
+  photo: Blob;
+  caption?: string;
 };

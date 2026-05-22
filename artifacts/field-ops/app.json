@@ -28,7 +28,14 @@
         }
       ],
       "expo-font",
-      "expo-web-browser"
+      "expo-web-browser",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "GardenOps needs access to your photo library to attach evidence to jobs.",
+          "cameraPermission": "GardenOps needs camera access to photograph completed work."
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,

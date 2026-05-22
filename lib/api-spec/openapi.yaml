@@ -26,6 +26,10 @@ tags:
     description: Dashboard summary statistics
   - name: schedule
     description: Schedule generation and weekly view
+  - name: audit-log
+    description: Immutable audit trail
+  - name: users
+    description: User account management
 
 # ─── Shared parameters ────────────────────────────────────────────────────────
 x-page-param: &pageParam
@@ -683,6 +687,178 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/AuditItem"
+
+  # ─── Health (extended) ──────────────────────────────────────────────────────
+  /health/live:
+    get:
+      operationId: getLiveness
+      tags: [health]
+      summary: Liveness probe
+      responses:
+        "200":
+          description: Alive
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkResponse"
+
+  /health/ready:
+    get:
+      operationId: getReadiness
+      tags: [health]
+      summary: Readiness probe — checks DB connectivity
+      responses:
+        "200":
+          description: Ready
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReadinessResponse"
+        "503":
+          description: Not ready
+
+  /health:
+    get:
+      operationId: getFullHealth
+      tags: [health]
+      summary: Full health status with uptime and version
+      responses:
+        "200":
+          description: Health detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthDetailResponse"
+
+  # ─── Audit Log ───────────────────────────────────────────────────────────────
+  /audit-log:
+    get:
+      operationId: listAuditLog
+      tags: [audit-log]
+      summary: List audit log entries (manager/supervisor only)
+      parameters:
+        - name: table
+          in: query
+          schema: { type: string }
+        - name: limit
+          in: query
+          schema: { type: integer, default: 50, maximum: 200 }
+        - name: offset
+          in: query
+          schema: { type: integer, default: 0 }
+      responses:
+        "200":
+          description: Paginated audit log entries
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuditLogListResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorised"
+
+  # ─── Users ───────────────────────────────────────────────────────────────────
+  /users:
+    get:
+      operationId: listUsers
+      tags: [users]
+      summary: List all users (manager/supervisor only)
+      responses:
+        "200":
+          description: List of users
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserListResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorised"
+    post:
+      operationId: createUser
+      tags: [users]
+      summary: Create a new staff account (manager only)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UserCreate"
+      responses:
+        "201":
+          description: Created user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserSafe"
+        "401":
+          $ref: "#/components/responses/Unauthorised"
+
+  /users/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    patch:
+      operationId: updateUser
+      tags: [users]
+      summary: Update a user account (manager only)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UserUpdate"
+      responses:
+        "200":
+          description: Updated user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserSafe"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  # ─── Job Photos ──────────────────────────────────────────────────────────────
+  /jobs/{id}/photos:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      operationId: listJobPhotos
+      tags: [jobs]
+      summary: List photo evidence for a job
+      responses:
+        "200":
+          description: Photos
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/JobPhotoListResponse"
+    post:
+      operationId: uploadJobPhoto
+      tags: [jobs]
+      summary: Upload a photo for a job (multipart)
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                photo:
+                  type: string
+                  format: binary
+                caption:
+                  type: string
+              required: [photo]
+      responses:
+        "201":
+          description: Uploaded photo
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/JobPhoto"
 
 # ─── Shared responses ──────────────────────────────────────────────────────────
 components:
@@ -1360,3 +1536,111 @@ components:
         data:  { type: array, items: { $ref: "#/components/schemas/MulchingRecord" } }
         total: { type: integer }
       required: [data, total]
+
+    # ─── Health (extended) ─────────────────────────────────────────────────────
+    ReadinessResponse:
+      type: object
+      properties:
+        status: { type: string }
+        db:     { type: string }
+        uptime: { type: number }
+      required: [status, db, uptime]
+
+    HealthDetailResponse:
+      type: object
+      properties:
+        status:  { type: string }
+        version: { type: string }
+        uptime:  { type: number }
+        db:      { type: string }
+      required: [status, version, uptime, db]
+
+    # ─── Audit Log ─────────────────────────────────────────────────────────────
+    AuditLogEntry:
+      type: object
+      properties:
+        id:            { type: string, format: uuid }
+        tableName:     { type: string }
+        recordId:      { type: string, format: uuid, nullable: true }
+        action:        { type: string, enum: [INSERT, UPDATE, DELETE] }
+        changedAt:     { type: string, format: date-time }
+        ipAddress:     { type: string, nullable: true }
+        oldData:       { type: object, nullable: true }
+        newData:       { type: object, nullable: true }
+        changedById:   { type: string, format: uuid, nullable: true }
+        changedByName: { type: string, nullable: true }
+      required: [id, tableName, action, changedAt]
+
+    AuditLogListResponse:
+      type: object
+      properties:
+        data:   { type: array, items: { $ref: "#/components/schemas/AuditLogEntry" } }
+        limit:  { type: integer }
+        offset: { type: integer }
+      required: [data, limit, offset]
+
+    # ─── Users ─────────────────────────────────────────────────────────────────
+    UserRole:
+      type: string
+      enum: [manager, supervisor, field_worker]
+
+    UserSafe:
+      type: object
+      properties:
+        id:        { type: string, format: uuid }
+        email:     { type: string }
+        name:      { type: string }
+        initials:  { type: string }
+        role:      { $ref: "#/components/schemas/UserRole" }
+        teamId:    { type: string, format: uuid, nullable: true }
+        isActive:  { type: boolean }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+      required: [id, email, name, initials, role, isActive, createdAt, updatedAt]
+
+    UserCreate:
+      type: object
+      properties:
+        email:    { type: string, format: email }
+        name:     { type: string }
+        initials: { type: string }
+        password: { type: string, minLength: 8 }
+        role:     { $ref: "#/components/schemas/UserRole" }
+        teamId:   { type: string, format: uuid }
+      required: [email, name, initials, password, role]
+
+    UserUpdate:
+      type: object
+      properties:
+        name:     { type: string }
+        initials: { type: string }
+        role:     { $ref: "#/components/schemas/UserRole" }
+        teamId:   { type: string, format: uuid, nullable: true }
+        isActive: { type: boolean }
+        password: { type: string, minLength: 8 }
+
+    UserListResponse:
+      type: object
+      properties:
+        data:  { type: array, items: { $ref: "#/components/schemas/UserSafe" } }
+        total: { type: integer }
+      required: [data, total]
+
+    # ─── Job Photos ────────────────────────────────────────────────────────────
+    JobPhoto:
+      type: object
+      properties:
+        id:            { type: string, format: uuid }
+        jobId:         { type: string, format: uuid, nullable: true }
+        reactiveJobId: { type: string, format: uuid, nullable: true }
+        uploadedBy:    { type: string, format: uuid }
+        blobUrl:       { type: string }
+        caption:       { type: string, nullable: true }
+        createdAt:     { type: string, format: date-time }
+      required: [id, uploadedBy, blobUrl, createdAt]
+
+    JobPhotoListResponse:
+      type: object
+      properties:
+        data: { type: array, items: { $ref: "#/components/schemas/JobPhoto" } }
+      required: [data]

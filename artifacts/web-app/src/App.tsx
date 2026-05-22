@@ -19,6 +19,7 @@ import Audits from "@/pages/audits/index";
 import Programmes from "@/pages/programmes/index";
 import Reports from "@/pages/reports";
 import AuditLog from "@/pages/audit-log/index";
+import Users from "@/pages/users/index";
 
 const queryClient = new QueryClient();
 
@@ -58,6 +59,7 @@ function Router() {
       <Route path="/programmes"><ProtectedRoute component={Programmes} /></Route>
       <Route path="/reports"><ProtectedRoute component={Reports} /></Route>
       <Route path="/audit-log"><ProtectedRoute component={AuditLog} /></Route>
+      <Route path="/users"><ProtectedRoute component={Users} /></Route>
       <Route path="/">
         <ProtectedRoute component={() => {
           window.location.href = "/dashboard";
