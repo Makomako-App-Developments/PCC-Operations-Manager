@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useListAssets, getListAssetsQueryKey, useListTeams, getListTeamsQueryKey, useUpdateAsset, getGetAssetQueryKey, useGetAsset, useDeleteAsset } from "@workspace/api-client-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -8,7 +8,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Skeleton } from "@/components/ui/skeleton";
 import { Search, Plus, MapPin, Map as MapIcon, CheckCircle2, AlertTriangle, Filter, List as ListIcon, X } from "lucide-react";
 import { Link } from "wouter";
-import { MapContainer, TileLayer, CircleMarker, Polygon, Tooltip } from "react-leaflet";
+import { MapContainer, TileLayer, CircleMarker, Polygon, Tooltip, useMap } from "react-leaflet";
+import L from "leaflet";
 
 type GeoPolygon = { type: "Polygon"; coordinates: number[][][] };
 
@@ -28,6 +29,93 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 
 const BRAND = "#00AECD";
+
+const TILES = {
+  street: {
+    url: "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+  },
+  aerial: {
+    url: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+    attribution: "Tiles &copy; Esri &mdash; Source: Esri, Maxar, GeoEye, Earthstar Geographics",
+  },
+};
+
+function FitBounds({ positions }: { positions: [number, number][] }) {
+  const map = useMap();
+  useEffect(() => {
+    if (positions.length > 1) {
+      map.fitBounds(L.latLngBounds(positions), { padding: [24, 24], maxZoom: 20 });
+    }
+  }, [map]);
+  return null;
+}
+
+function DrawerMap({ asset }: { asset: any }) {
+  const [layer, setLayer] = useState<"street" | "aerial">("aerial");
+  const boundary = asset.boundary as GeoPolygon | null;
+  const hasPolygon = !!(boundary?.coordinates?.[0]?.length);
+  const positions: [number, number][] = hasPolygon
+    ? boundary!.coordinates[0].map(([lng, lat]: number[]) => [lat, lng])
+    : [];
+  const center: [number, number] = hasPolygon
+    ? [
+        positions.reduce((s, p) => s + p[0], 0) / positions.length,
+        positions.reduce((s, p) => s + p[1], 0) / positions.length,
+      ]
+    : [Number(asset.lat), Number(asset.lng)];
+
+  return (
+    <div className="h-64 flex-shrink-0 relative border-b border-gray-200">
+      <MapContainer
+        center={center}
+        zoom={17}
+        style={{ height: "100%", width: "100%" }}
+        scrollWheelZoom
+        zoomControl
+      >
+        <TileLayer
+          key={layer}
+          url={TILES[layer].url}
+          attribution={TILES[layer].attribution}
+          maxNativeZoom={layer === "aerial" ? 19 : 19}
+          maxZoom={21}
+        />
+        {hasPolygon ? (
+          <>
+            <FitBounds positions={positions} />
+            <Polygon
+              positions={positions}
+              pathOptions={{ color: "#00AECD", fillColor: "#00AECD", fillOpacity: 0.2, weight: 3 }}
+            />
+          </>
+        ) : (
+          <CircleMarker
+            center={center}
+            radius={10}
+            pathOptions={{ color: "#fff", weight: 2, fillColor: BRAND, fillOpacity: 1 }}
+          />
+        )}
+      </MapContainer>
+
+      {/* Layer toggle */}
+      <div className="absolute top-2 right-2 z-[1000] flex rounded-md overflow-hidden shadow-md border border-gray-300 text-[11px] font-semibold">
+        <button
+          onClick={() => setLayer("aerial")}
+          className={`px-2.5 py-1 transition-colors ${layer === "aerial" ? "bg-[#00AECD] text-white" : "bg-white text-gray-700 hover:bg-gray-50"}`}
+        >
+          Aerial
+        </button>
+        <button
+          onClick={() => setLayer("street")}
+          className={`px-2.5 py-1 transition-colors border-l border-gray-300 ${layer === "street" ? "bg-[#00AECD] text-white" : "bg-white text-gray-700 hover:bg-gray-50"}`}
+        >
+          Street
+        </button>
+      </div>
+    </div>
+  );
+}
 
 const TYPE_COLORS: Record<string, string> = {
   "roses_perennials": "bg-pink-100 text-pink-700",
@@ -341,46 +429,9 @@ function AssetDetailDrawer({ assetId, onClose, teamName }: { assetId: string | n
               ))}
             </div>
 
-            {(asset.lat && asset.lng) && (() => {
-              const boundary = (asset as any).boundary as GeoPolygon | null;
-              const hasPolygon = boundary?.coordinates?.[0]?.length;
-              const positions: [number, number][] = hasPolygon
-                ? boundary!.coordinates[0].map(([lng, lat]: number[]) => [lat, lng])
-                : [];
-              // Compute centroid for map center when polygon available
-              const center: [number, number] = hasPolygon
-                ? [
-                    positions.reduce((s, p) => s + p[0], 0) / positions.length,
-                    positions.reduce((s, p) => s + p[1], 0) / positions.length,
-                  ]
-                : [Number(asset.lat), Number(asset.lng)];
-              return (
-                <div className="h-48 flex-shrink-0 relative border-b border-gray-100">
-                  <MapContainer
-                    center={center}
-                    zoom={hasPolygon ? 16 : 17}
-                    style={{ height: "100%", width: "100%" }}
-                    zoomControl={false}
-                    dragging={false}
-                    scrollWheelZoom={false}
-                  >
-                    <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
-                    {hasPolygon ? (
-                      <Polygon
-                        positions={positions}
-                        pathOptions={{ color: BRAND, fillColor: BRAND, fillOpacity: 0.3, weight: 3 }}
-                      />
-                    ) : (
-                      <CircleMarker
-                        center={[Number(asset.lat), Number(asset.lng)]}
-                        radius={10}
-                        pathOptions={{ color: "#fff", weight: 2, fillColor: BRAND, fillOpacity: 1 }}
-                      />
-                    )}
-                  </MapContainer>
-                </div>
-              );
-            })()}
+            {(asset.lat || (asset as any).boundary) && (
+              <DrawerMap asset={asset} />
+            )}
 
             <div className="flex-1 overflow-y-auto p-5 space-y-6 bg-white">
               <section>
