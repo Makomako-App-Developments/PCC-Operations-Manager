@@ -45,8 +45,8 @@ export default function Schedule() {
   const generateSchedule = useGenerateSchedule({
     mutation: {
       onSuccess: (data) => {
-        toast({ title: "Schedule generated", description: `Generated ${data.jobsCreated} jobs.` });
-        queryClient.invalidateQueries({ queryKey: ["/api/schedule"] });
+        toast({ title: "Schedule generated", description: `Generated ${data.jobsCreated} jobs across 12 weeks.` });
+        queryClient.invalidateQueries({ queryKey: ["/api/schedule/week"] });
       },
       onError: (err: any) => {
         toast({ title: "Generation failed", description: err?.message || "Unknown error", variant: "destructive" });
@@ -55,8 +55,10 @@ export default function Schedule() {
   });
 
   const handleGenerate = () => {
-    const fromDate = format(startOfWeek(currentWeekDate, { weekStartsOn: 1 }), "yyyy-MM-dd");
-    const toDate = format(endOfWeek(currentWeekDate, { weekStartsOn: 1 }), "yyyy-MM-dd");
+    const from = startOfWeek(currentWeekDate, { weekStartsOn: 1 });
+    const fromDate = format(from, "yyyy-MM-dd");
+    // Generate 12 weeks (approx 3 months) from the current week's Monday
+    const toDate = format(addWeeks(from, 12), "yyyy-MM-dd");
     generateSchedule.mutate({ data: { fromDate, toDate } });
   };
 

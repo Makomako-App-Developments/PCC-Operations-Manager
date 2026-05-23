@@ -135,7 +135,7 @@ router.get(
         status:         jobsTable.status,
         teamId:         jobsTable.teamId,
         assignedUserId: jobsTable.assignedUserId,
-        scheduledDate:  jobsTable.scheduledDate,
+        scheduledDate:  sql<string>`to_char(${jobsTable.scheduledDate}, 'YYYY-MM-DD')`,
         startedAt:      jobsTable.startedAt,
         completedAt:    jobsTable.completedAt,
         actualTimeMins: jobsTable.actualTimeMins,
@@ -159,20 +159,12 @@ router.get(
       dayMap.set(d, []);
     }
     for (const row of rows) {
-      const d = typeof row.scheduledDate === "string"
-        ? row.scheduledDate
-        : (row.scheduledDate as Date).toISOString().slice(0, 10);
-      dayMap.get(d)?.push(row);
+      dayMap.get(row.scheduledDate)?.push(row);
     }
 
     const days = Array.from(dayMap.entries()).map(([date, jobs]) => ({
       date,
-      jobs: jobs.map((j) => ({
-        ...j,
-        scheduledDate: typeof j.scheduledDate === "string"
-          ? j.scheduledDate
-          : (j.scheduledDate as Date).toISOString().slice(0, 10),
-      })),
+      jobs,
     }));
 
     const totalJobs     = rows.length;
