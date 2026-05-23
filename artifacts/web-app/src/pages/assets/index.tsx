@@ -8,24 +8,8 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Search, Plus, Map as MapIcon, List as ListIcon, ChevronUp, ChevronDown, ChevronsUpDown, Loader2, Pencil } from "lucide-react";
+import { Search, Plus, ChevronUp, ChevronDown, ChevronsUpDown, Loader2, Pencil } from "lucide-react";
 import { Link, useLocation } from "wouter";
-import { MapContainer, TileLayer, CircleMarker, Polygon, Tooltip, useMap } from "react-leaflet";
-import L from "leaflet";
-
-type GeoPolygon = { type: "Polygon"; coordinates: number[][][] };
-
-const MAP_COLORS: Record<string, string> = {
-  "roses_perennials": "#ec4899",
-  "annuals":          "#f59e0b",
-  "ornamental":       "#8b5cf6",
-  "amenity":          "#00AECD",
-  "rain_garden":      "#06b6d4",
-  "reveg":            "#84cc16",
-  "bush":             "#16a34a",
-  "tree_planter_pits":"#78716c",
-  "hedge":            "#10b981",
-};
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
@@ -165,7 +149,6 @@ export default function Assets() {
   const [gardenType, setGardenType] = useState<any>("all");
   const [ward, setWard] = useState<any>("all");
   const [teamId, setTeamId] = useState<any>("all");
-  const [view, setView] = useState<"list"|"map">("list");
   const [sortCol, setSortCol] = useState<SortCol>("reference");
   const [sortDir, setSortDir] = useState<SortDir>("asc");
 
@@ -217,22 +200,6 @@ export default function Assets() {
           <p className="text-xs text-gray-400">{assetsData?.total || 0} garden assets found</p>
         </div>
         <div className="flex items-center gap-3">
-          <div className="flex bg-gray-100 p-1 rounded-lg">
-            <button 
-              onClick={() => setView("list")} 
-              className={`p-1.5 rounded-md flex items-center justify-center transition-colors ${view === "list" ? "bg-white shadow-sm text-gray-900" : "text-gray-500 hover:text-gray-700"}`}
-              title="List View"
-            >
-              <ListIcon className="w-4 h-4" />
-            </button>
-            <button 
-              onClick={() => setView("map")} 
-              className={`p-1.5 rounded-md flex items-center justify-center transition-colors ${view === "map" ? "bg-white shadow-sm text-gray-900" : "text-gray-500 hover:text-gray-700"}`}
-              title="Map View"
-            >
-              <MapIcon className="w-4 h-4" />
-            </button>
-          </div>
           <Link href="/assets/new">
             <Button size="sm" style={{ background: BRAND }} className="text-white hover:opacity-90 flex items-center gap-1.5" data-testid="btn-new-asset">
               <Plus className="w-3.5 h-3.5" /> New Asset
@@ -314,7 +281,7 @@ export default function Assets() {
       <div className="flex-1 overflow-auto p-8">
         {isLoading ? (
           <Skeleton className="w-full h-96 rounded-xl" />
-        ) : view === "list" ? (
+        ) : (
           <Card className="rounded-xl border border-gray-200 shadow-sm overflow-hidden">
             <table className="w-full text-sm text-left">
               <thead className="bg-gray-50 border-b border-gray-200">
@@ -365,48 +332,6 @@ export default function Assets() {
               </tbody>
             </table>
           </Card>
-        ) : (
-          <div className="w-full h-[600px] rounded-xl overflow-hidden shadow-sm border border-gray-200">
-            <MapContainer
-              center={[-41.13, 174.85]}
-              zoom={13}
-              style={{ height: "100%", width: "100%" }}
-            >
-              <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
-              {assetsData?.data.map(asset => {
-                const color = MAP_COLORS[asset.gardenType] || BRAND;
-                const boundary = (asset as any).boundary as GeoPolygon | null;
-                const tip = <Tooltip><b>{asset.name}</b><br />{asset.reference}</Tooltip>;
-                if (boundary?.coordinates?.[0]?.length) {
-                  const positions: [number, number][] = boundary.coordinates[0].map(
-                    ([lng, lat]: number[]) => [lat, lng]
-                  );
-                  return (
-                    <Polygon
-                      key={asset.id}
-                      positions={positions}
-                      pathOptions={{ color, fillColor: color, fillOpacity: 0.3, weight: 2 }}
-                      eventHandlers={{ click: () => navigate("/assets/" + asset.id) }}
-                    >
-                      {tip}
-                    </Polygon>
-                  );
-                }
-                if (!asset.lat || !asset.lng) return null;
-                return (
-                  <CircleMarker
-                    key={asset.id}
-                    center={[Number(asset.lat), Number(asset.lng)]}
-                    radius={8}
-                    eventHandlers={{ click: () => navigate("/assets/" + asset.id) }}
-                    pathOptions={{ fillColor: color, fillOpacity: 0.9, color: "#fff", weight: 2 }}
-                  >
-                    {tip}
-                  </CircleMarker>
-                );
-              })}
-            </MapContainer>
-          </div>
         )}
       </div>
 

@@ -39,14 +39,14 @@ export function Layout({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="flex min-h-screen bg-[#f5f7f9] font-sans">
-      <aside className="w-56 flex-shrink-0 flex flex-col min-h-screen bg-[#0f2a36]">
+      <aside className="w-56 flex-shrink-0 flex flex-col sticky top-0 h-screen bg-[#0f2a36] overflow-hidden">
         <div className="px-5 py-5 border-b border-white/10">
           <div className="bg-[#00AECD] rounded-lg px-3 py-2 text-center">
             <span className="text-white font-bold text-lg tracking-tight">poriruacity</span>
           </div>
           <p className="text-white/50 text-[10px] text-center mt-1 uppercase tracking-widest">Gardens Manager</p>
         </div>
-        <nav className="flex-1 px-3 py-4 space-y-1">
+        <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
           {nav.map(({ icon: Icon, label, href, managerOnly: _m }) => {
             const isActive = location.startsWith(href);
             return (
