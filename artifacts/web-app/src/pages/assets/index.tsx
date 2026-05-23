@@ -272,7 +272,7 @@ export default function Assets() {
                 <tr>
                   <th className="px-4 py-3 font-semibold text-gray-500 uppercase tracking-wide text-xs">Reference</th>
                   <th className="px-4 py-3 font-semibold text-gray-500 uppercase tracking-wide text-xs">Site Name</th>
-                  <th className="px-4 py-3 font-semibold text-gray-500 uppercase tracking-wide text-xs">Type</th>
+                  <th className="px-4 py-3 font-semibold text-gray-500 uppercase tracking-wide text-xs">Specification</th>
                   <th className="px-4 py-3 font-semibold text-gray-500 uppercase tracking-wide text-xs">Service Time</th>
                   <th className="px-4 py-3 font-semibold text-gray-500 uppercase tracking-wide text-xs">Location</th>
                   <th className="px-4 py-3 font-semibold text-gray-500 uppercase tracking-wide text-xs">Freq</th>
