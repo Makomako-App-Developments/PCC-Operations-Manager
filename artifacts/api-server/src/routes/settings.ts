@@ -31,7 +31,7 @@ router.patch(
   requireRole("manager", "supervisor"),
   validateBody(patchSettingsSchema),
   async (req, res) => {
-    const patch = res.locals.body as z.infer<typeof patchSettingsSchema>;
+    const patch = req.body as z.infer<typeof patchSettingsSchema>;
 
     const [updated] = await db
       .insert(systemSettingsTable)
