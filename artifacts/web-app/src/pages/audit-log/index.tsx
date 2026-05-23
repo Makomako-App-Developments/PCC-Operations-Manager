@@ -121,7 +121,7 @@ function DiffRow({ entry }: { entry: AuditEntry }) {
 
 const PAGE_SIZE = 50;
 
-export default function AuditLog() {
+export default function AuditLog({ embedded }: { embedded?: boolean } = {}) {
   const [table,  setTable]  = useState("all");
   const [search, setSearch] = useState("");
   const [page,   setPage]   = useState(0);
@@ -139,20 +139,22 @@ export default function AuditLog() {
 
   return (
     <div className="flex-1 flex flex-col min-h-0 bg-[#f5f7f9]">
-      <header className="bg-white border-b px-8 py-4 flex items-center justify-between sticky top-0 z-10">
-        <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: NAVY }}>
-            <Shield className="w-4 h-4 text-white" />
+      {!embedded && (
+        <header className="bg-white border-b px-8 py-4 flex items-center justify-between sticky top-0 z-10">
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: NAVY }}>
+              <Shield className="w-4 h-4 text-white" />
+            </div>
+            <div>
+              <h1 className="text-lg font-semibold text-gray-900">Audit Log</h1>
+              <p className="text-xs text-gray-400">Immutable record of all data changes</p>
+            </div>
           </div>
-          <div>
-            <h1 className="text-lg font-semibold text-gray-900">Audit Log</h1>
-            <p className="text-xs text-gray-400">Immutable record of all data changes</p>
-          </div>
-        </div>
-        <Badge variant="outline" className="text-xs" style={{ color: BRAND, borderColor: BRAND }}>
-          Manager / Supervisor only
-        </Badge>
-      </header>
+          <Badge variant="outline" className="text-xs" style={{ color: BRAND, borderColor: BRAND }}>
+            Manager / Supervisor only
+          </Badge>
+        </header>
+      )}
 
       {/* Filters */}
       <div className="px-8 py-3 border-b bg-white flex gap-3 sticky top-[73px] z-10 shadow-sm">

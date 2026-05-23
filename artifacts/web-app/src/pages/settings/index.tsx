@@ -1,0 +1,46 @@
+import { useState } from "react";
+import { Shield, Users } from "lucide-react";
+import UsersPage from "@/pages/users/index";
+import AuditLogPage from "@/pages/audit-log/index";
+
+const TABS = [
+  { id: "users",     label: "Users",     icon: Users  },
+  { id: "audit-log", label: "Audit Log", icon: Shield },
+];
+
+export default function SettingsPage() {
+  const [tab, setTab] = useState("users");
+
+  return (
+    <div className="flex flex-col min-h-full bg-[#f5f7f9]">
+      <div className="bg-white border-b border-gray-200 px-8 py-5">
+        <h1 className="text-2xl font-bold text-gray-900">Settings</h1>
+        <p className="text-sm text-gray-500 mt-0.5">Manage users and system audit log</p>
+      </div>
+
+      <div className="bg-white border-b border-gray-100 px-8">
+        <div className="flex gap-0">
+          {TABS.map(t => (
+            <button
+              key={t.id}
+              onClick={() => setTab(t.id)}
+              className={`flex items-center gap-2 px-4 py-3 text-sm font-semibold border-b-2 transition-colors ${
+                tab === t.id
+                  ? "border-[#00AECD] text-[#00AECD]"
+                  : "border-transparent text-gray-500 hover:text-gray-700"
+              }`}
+            >
+              <t.icon className="w-4 h-4" />
+              {t.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="flex-1">
+        {tab === "users"     && <UsersPage embedded />}
+        {tab === "audit-log" && <AuditLogPage embedded />}
+      </div>
+    </div>
+  );
+}

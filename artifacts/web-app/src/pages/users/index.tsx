@@ -175,7 +175,7 @@ function CreateUserDialog({ open, onClose }: { open: boolean; onClose: () => voi
   );
 }
 
-export default function UsersPage() {
+export default function UsersPage({ embedded }: { embedded?: boolean } = {}) {
   const { data, isLoading } = useUsers();
   const updateUser = useUpdateUser();
   const { toast } = useToast();
@@ -205,20 +205,35 @@ export default function UsersPage() {
 
   return (
     <div className="flex-1 flex flex-col min-h-0 bg-[#f5f7f9]">
-      <header className="bg-white border-b px-8 py-4 flex items-center justify-between sticky top-0 z-10">
-        <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: NAVY }}>
-            <UsersIcon className="w-4 h-4 text-white" />
+      {!embedded && (
+        <header className="bg-white border-b px-8 py-4 flex items-center justify-between sticky top-0 z-10">
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: NAVY }}>
+              <UsersIcon className="w-4 h-4 text-white" />
+            </div>
+            <div>
+              <h1 className="text-lg font-semibold text-gray-900">Users</h1>
+              <p className="text-xs text-gray-400">Manage staff accounts and access</p>
+            </div>
           </div>
-          <div>
-            <h1 className="text-lg font-semibold text-gray-900">Users</h1>
-            <p className="text-xs text-gray-400">Manage staff accounts and access</p>
+          <div className="flex items-center gap-3">
+            <Badge variant="outline" className="text-xs" style={{ color: BRAND, borderColor: BRAND }}>
+              Manager only
+            </Badge>
+            <Button
+              size="sm"
+              className="gap-1.5 text-white"
+              style={{ backgroundColor: BRAND }}
+              onClick={() => setCreating(true)}
+            >
+              <Plus className="w-4 h-4" />
+              New Account
+            </Button>
           </div>
-        </div>
-        <div className="flex items-center gap-3">
-          <Badge variant="outline" className="text-xs" style={{ color: BRAND, borderColor: BRAND }}>
-            Manager only
-          </Badge>
+        </header>
+      )}
+      {embedded && (
+        <div className="px-8 py-3 bg-white border-b flex justify-end">
           <Button
             size="sm"
             className="gap-1.5 text-white"
@@ -229,7 +244,7 @@ export default function UsersPage() {
             New Account
           </Button>
         </div>
-      </header>
+      )}
 
       <div className="px-8 py-3 border-b bg-white sticky top-[73px] z-10 shadow-sm">
         <div className="relative">

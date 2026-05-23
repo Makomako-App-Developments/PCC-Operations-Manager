@@ -33,7 +33,6 @@ export function Layout({ children }: { children: React.ReactNode }) {
     { icon: BarChart2,       label: "Reports",       href: "/reports",      managerOnly: false },
     { icon: FileText,        label: "Specification", href: "/specification", managerOnly: false },
     { icon: UsersRound,      label: "Team",          href: "/team",         managerOnly: false },
-    { icon: Shield,          label: "Audit Log",     href: "/audit-log",    managerOnly: true  },
   ];
   const isPrivileged = user?.role === "manager" || user?.role === "supervisor";
   const nav = allNav.filter(item => !item.managerOnly || isPrivileged);
