@@ -135,7 +135,7 @@ const STANDARD_COLORS: Record<string, string> = {
   low:    "bg-gray-100 text-gray-600",
 };
 
-type SortCol = "reference" | "name" | "gardenType" | "serviceTimeMins" | "location" | "frequency" | "team";
+type SortCol = "reference" | "name" | "gardenType" | "serviceTimeMins" | "siteType" | "frequency" | "team";
 type SortDir = "asc" | "desc";
 
 function SortTh({ label, col, sortCol, sortDir, onSort, className }: {
@@ -197,7 +197,7 @@ export default function Assets() {
       else if (sortCol === "name")      { av = a.name;            bv = b.name; }
       else if (sortCol === "gardenType"){ av = a.gardenType;      bv = b.gardenType; }
       else if (sortCol === "serviceTimeMins") { av = a.serviceTimeMins ?? 0; bv = b.serviceTimeMins ?? 0; }
-      else if (sortCol === "location")  { av = a.suburb || a.ward || ""; bv = b.suburb || b.ward || ""; }
+      else if (sortCol === "siteType")  { av = a.siteType || ""; bv = b.siteType || ""; }
       else if (sortCol === "frequency") { av = a.frequency;       bv = b.frequency; }
       else if (sortCol === "team")      { av = getTeamName(a.teamId); bv = getTeamName(b.teamId); }
       if (av == null) av = ""; if (bv == null) bv = "";
@@ -321,7 +321,7 @@ export default function Assets() {
                   <SortTh label="Site Name"     col="name"           sortCol={sortCol} sortDir={sortDir} onSort={handleSort} />
                   <SortTh label="Specification" col="gardenType"     sortCol={sortCol} sortDir={sortDir} onSort={handleSort} />
                   <SortTh label="Service Time"  col="serviceTimeMins" sortCol={sortCol} sortDir={sortDir} onSort={handleSort} />
-                  <SortTh label="Location"      col="location"       sortCol={sortCol} sortDir={sortDir} onSort={handleSort} />
+                  <SortTh label="Garden Type"   col="siteType"       sortCol={sortCol} sortDir={sortDir} onSort={handleSort} />
                   <SortTh label="Freq"          col="frequency"      sortCol={sortCol} sortDir={sortDir} onSort={handleSort} />
                   <SortTh label="Team"          col="team"           sortCol={sortCol} sortDir={sortDir} onSort={handleSort} />
                 </tr>
@@ -342,11 +342,12 @@ export default function Assets() {
                       </Badge>
                     </td>
                     <td className="px-4 py-3 text-sm text-gray-700">{asset.serviceTimeMins} min</td>
-                    <td className="px-4 py-3 text-gray-500">
-                      <div className="flex items-center gap-1.5">
-                        <MapPin className="w-3 h-3 text-gray-400" />
-                        <span className="truncate max-w-[120px]">{asset.suburb || asset.ward || "-"}</span>
-                      </div>
+                    <td className="px-4 py-3">
+                      {asset.siteType ? (
+                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase ${asset.siteType === "park" ? "bg-green-100 text-green-700" : "bg-blue-100 text-blue-700"}`}>
+                          {asset.siteType}
+                        </span>
+                      ) : <span className="text-gray-300 text-xs">—</span>}
                     </td>
                     <td className="px-4 py-3 text-gray-500 capitalize">{asset.frequency}</td>
                     <td className="px-4 py-3 text-gray-500">{getTeamName(asset.teamId)}</td>

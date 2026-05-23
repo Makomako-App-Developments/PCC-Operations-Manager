@@ -3,7 +3,7 @@ import {
 } from "drizzle-orm/pg-core";
 import { createInsertSchema, createSelectSchema } from "drizzle-zod";
 import { z } from "zod/v4";
-import { gardenTypeEnum, standardEnum, wardEnum, frequencyEnum } from "./enums";
+import { gardenTypeEnum, standardEnum, wardEnum, frequencyEnum, siteTypeEnum } from "./enums";
 import { teamsTable } from "./teams";
 
 export const assetsTable = pgTable("assets", {
@@ -16,6 +16,7 @@ export const assetsTable = pgTable("assets", {
   serviceTimeMins: integer("service_time_mins").notNull(),
   frequency:       frequencyEnum("frequency").notNull(),
   teamId:          uuid("team_id").references(() => teamsTable.id),
+  siteType:        siteTypeEnum("site_type"),
   ward:            wardEnum("ward"),
   suburb:          varchar("suburb", { length: 100 }),
   streetAddress:   varchar("street_address", { length: 255 }),

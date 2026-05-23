@@ -164,6 +164,8 @@ export interface TeamCreate {
   name: string;
 }
 
+export type SiteType = "park" | "street";
+
 export interface Asset {
   id: string;
   reference: string;
@@ -180,6 +182,7 @@ export interface Asset {
   lat?: number | null;
   lng?: number | null;
   notes?: string | null;
+  siteType?: SiteType | null;
   isActive: boolean;
   createdAt: string;
   updatedAt: string;

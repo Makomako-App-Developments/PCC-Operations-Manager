@@ -21,6 +21,8 @@ export const gardenTypeEnum = pgEnum("garden_type", [
 
 export const standardEnum = pgEnum("standard", ["high", "medium", "low"]);
 
+export const siteTypeEnum = pgEnum("site_type", ["park", "street"]);
+
 export const wardEnum = pgEnum("ward", ["eastern", "northern", "western"]);
 
 export const frequencyEnum = pgEnum("frequency", [

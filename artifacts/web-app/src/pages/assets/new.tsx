@@ -17,6 +17,7 @@ const BRAND = "#00AECD";
 const assetSchema = z.object({
   reference: z.string().min(1, "Reference is required"),
   name: z.string().min(1, "Name is required"),
+  siteType: z.enum(["park","street"]).optional(),
   gardenType: z.enum(["annuals","roses_perennials","ornamental","amenity","rain_garden","reveg","bush","tree_planter_pits","hedge"]),
   standard: z.enum(["high","medium","low"]),
   areaM2: z.coerce.number().min(1, "Area must be at least 1"),
@@ -108,7 +109,23 @@ export default function NewAsset() {
                     </FormItem>
                   )} />
 
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-3 gap-4">
+                    <FormField control={form.control} name="siteType" render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className="text-xs text-gray-500 uppercase tracking-wide">Garden Type</FormLabel>
+                        <Select onValueChange={field.onChange} defaultValue={field.value}>
+                          <FormControl>
+                            <SelectTrigger className="h-10"><SelectValue placeholder="Select…" /></SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            <SelectItem value="park">Park</SelectItem>
+                            <SelectItem value="street">Street</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )} />
+
                     <FormField control={form.control} name="gardenType" render={({ field }) => (
                       <FormItem>
                         <FormLabel className="text-xs text-gray-500 uppercase tracking-wide">Specification</FormLabel>
