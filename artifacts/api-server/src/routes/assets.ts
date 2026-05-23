@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db, assetsTable, insertAssetSchema } from "@workspace/db";
-import { eq, sql } from "drizzle-orm";
+import { and, eq, ilike, sql } from "drizzle-orm";
 import { z } from "zod";
 import { requireAuth, requireRole } from "../middlewares/auth";
 import { validateBody, validateQuery } from "../middlewares/validate";
@@ -22,20 +22,29 @@ type ListQuery = z.infer<typeof listQuerySchema>;
 
 // GET /api/assets
 router.get("/assets", requireAuth, validateQuery(listQuerySchema), async (req, res) => {
-  const { page, limit, isActive } = res.locals.query as ListQuery;
+  const { page, limit, isActive, gardenType, teamId, ward, search } = res.locals.query as ListQuery;
   const offset = (page - 1) * limit;
+
+  const conditions = [
+    eq(assetsTable.isActive, isActive),
+    ...(gardenType ? [eq(assetsTable.gardenType, gardenType as any)] : []),
+    ...(teamId ? [eq(assetsTable.teamId, teamId)] : []),
+    ...(ward ? [eq(assetsTable.ward, ward)] : []),
+    ...(search ? [ilike(assetsTable.name, `%${search}%`)] : []),
+  ];
+  const where = and(...conditions);
 
   const rows = await db
     .select()
     .from(assetsTable)
-    .where(eq(assetsTable.isActive, isActive))
+    .where(where)
     .limit(limit)
     .offset(offset);
 
   const [{ count }] = await db
     .select({ count: sql<number>`count(*)` })
     .from(assetsTable)
-    .where(eq(assetsTable.isActive, isActive));
+    .where(where);
 
   res.json({ data: rows, total: Number(count), page, limit });
 });
