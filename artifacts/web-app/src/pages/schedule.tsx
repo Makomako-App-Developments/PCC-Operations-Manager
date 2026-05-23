@@ -358,12 +358,16 @@ function DayView({
 function WeekView({
   weekData,
   isLoading,
+  selectedTeamId,
+  teamsCount,
   getTeamColor,
   getTeamName,
   onJobClick,
 }: {
   weekData: any;
   isLoading: boolean;
+  selectedTeamId: string;
+  teamsCount: number;
   getTeamColor: (id?: string | null) => string;
   getTeamName:  (id?: string | null) => string;
   onJobClick:   (job: any) => void;
@@ -371,26 +375,55 @@ function WeekView({
   if (isLoading) return <div className="p-8"><Skeleton className="w-full h-96 rounded-2xl" /></div>;
   if (!weekData?.days) return null;
 
+  const productiveTimeMins: number = weekData?.settings?.productiveTimeMins ?? 390;
+
   return (
     <div className="flex-1 overflow-auto p-5">
       <div className="grid grid-cols-7 gap-3" style={{ minWidth: 840, minHeight: 520 }}>
         {weekData.days.map((day: any) => {
           const dateObj = new Date(day.date + "T00:00:00");
           const isToday = format(new Date(), "yyyy-MM-dd") === day.date;
+
+          // Capacity bar calculation
+          const relevantJobs = selectedTeamId !== "all"
+            ? day.jobs.filter((j: any) => j.teamId === selectedTeamId)
+            : day.jobs;
+          const totalMins   = relevantJobs.reduce((s: number, j: any) => s + (j.estimatedTimeMins ?? j.serviceTimeMins ?? 0), 0);
+          const capacityMins = selectedTeamId !== "all" ? productiveTimeMins : productiveTimeMins * teamsCount;
+          const pct      = capacityMins > 0 ? Math.min((totalMins / capacityMins) * 100, 100) : 0;
+          const isOver   = totalMins > capacityMins * 1.05;
+          const isHigh   = totalMins > capacityMins * 0.9;
+          const barColor = isOver ? "#ef4444" : isHigh ? "#f59e0b" : "#10b981";
+
           return (
             <div
               key={day.date}
               className={`rounded-xl shadow-sm flex flex-col bg-white ${isToday ? "ring-2 ring-[#00AECD]" : "border border-gray-100"}`}
               style={{ minHeight: 480 }}
             >
-              <div className="px-3 py-2.5 border-b bg-gray-50/60 flex-shrink-0 flex items-center justify-between rounded-t-xl">
-                <div>
-                  <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wide">{format(dateObj, "EEE")}</p>
-                  <p className={`text-sm font-semibold ${isToday ? "text-[#00AECD]" : "text-gray-900"}`}>{format(dateObj, "d MMM")}</p>
+              <div className="px-3 pt-2.5 pb-2 border-b bg-gray-50/60 flex-shrink-0 rounded-t-xl">
+                <div className="flex items-center justify-between mb-1.5">
+                  <div>
+                    <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wide">{format(dateObj, "EEE")}</p>
+                    <p className={`text-sm font-semibold ${isToday ? "text-[#00AECD]" : "text-gray-900"}`}>{format(dateObj, "d MMM")}</p>
+                  </div>
+                  <Badge variant="outline" className="text-[10px] bg-white border-gray-200 font-medium">
+                    {day.jobs.length}
+                  </Badge>
                 </div>
-                <Badge variant="outline" className="text-[10px] bg-white border-gray-200 font-medium">
-                  {day.jobs.length}
-                </Badge>
+                {totalMins > 0 && (
+                  <div className="flex items-center gap-1.5">
+                    <div className="flex-1 h-1 bg-gray-200 rounded-full overflow-hidden">
+                      <div
+                        className="h-full rounded-full transition-all"
+                        style={{ width: `${pct}%`, background: barColor }}
+                      />
+                    </div>
+                    <span style={{ color: barColor }} className="text-[9px] font-bold whitespace-nowrap leading-none">
+                      {(totalMins / 60).toFixed(1)}h
+                    </span>
+                  </div>
+                )}
               </div>
               <div className="flex-1 overflow-y-auto p-2 space-y-1.5">
                 {day.jobs.length === 0 ? (
@@ -451,6 +484,16 @@ function WeekView({
   );
 }
 
+/** Advance dateStr by 1+ days, skipping weekends */
+function nextWorkingDayStr(dateStr: string): string {
+  const d = new Date(dateStr + "T00:00:00Z");
+  d.setUTCDate(d.getUTCDate() + 1);
+  while (d.getUTCDay() === 0 || d.getUTCDay() === 6) {
+    d.setUTCDate(d.getUTCDate() + 1);
+  }
+  return d.toISOString().slice(0, 10);
+}
+
 const FREQ_DAYS_LABEL: Record<string, number> = {
   weekly: 7, fortnightly: 14, monthly: 28, bimonthly: 56, quarterly: 91,
 };
@@ -492,6 +535,12 @@ export default function Schedule() {
   const [urgentNotes, setUrgentNotes]   = useState("");
   const [urgentPriority, setUrgentPriority] = useState("high");
 
+  // Urgent job step 2 — capacity impact
+  const [urgentStep, setUrgentStep]         = useState<1 | 2>(1);
+  const [dayCapacity, setDayCapacity]       = useState<any | null>(null);
+  const [dayCapLoading, setDayCapLoading]   = useState(false);
+  const [jobsToPush, setJobsToPush]         = useState<Set<string>>(new Set());
+
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
@@ -508,10 +557,13 @@ export default function Schedule() {
     mutation: {
       onSuccess: (data: any) => {
         setDialogOpen(false);
-        const refreshed = data.jobsRefreshed ? ` · ${data.jobsRefreshed} refreshed` : "";
+        const parts = [`${data.jobsCreated} new jobs`];
+        if (data.jobsRefreshed)      parts.push(`${data.jobsRefreshed} refreshed`);
+        if (data.jobsCarriedForward) parts.push(`${data.jobsCarriedForward} carried forward`);
+        if (data.capacityConflicts)  parts.push(`${data.capacityConflicts} capacity conflicts`);
         toast({
           title: "Schedule generated",
-          description: `${data.jobsCreated} new jobs${refreshed} from ${format(new Date(genFrom), "d MMM yyyy")} to ${format(new Date(genTo), "d MMM yyyy")}.`,
+          description: `${parts.join(" · ")} · ${format(new Date(genFrom), "d MMM")}–${format(new Date(genTo), "d MMM yyyy")}.`,
         });
         queryClient.invalidateQueries({ queryKey: ["/api/schedule/week"] });
         queryClient.invalidateQueries({ queryKey: ["/api/schedule/range"] });
@@ -588,22 +640,70 @@ export default function Schedule() {
     setUrgentAsset(null);
     setUrgentNotes("");
     setUrgentPriority("high");
+    setUrgentStep(1);
+    setDayCapacity(null);
+    setJobsToPush(new Set());
     setUrgentOpen(true);
   };
 
-  const handleAddUrgentJob = () => {
+  /** Advance to step 2 by fetching the day's capacity data */
+  const handleReviewImpact = async () => {
     if (!urgentAsset || !urgentDate) return;
-    createJob.mutate({
-      data: {
-        assetId:       urgentAsset.id,
-        jobType:       "reactive",
-        teamId:        urgentAsset.teamId ?? undefined,
-        scheduledDate: urgentDate,
-        status:        "pending",
-        crewStatus:    "full",
-        notes:         urgentNotes || undefined,
-      } as any,
-    });
+    if (!urgentAsset.teamId) {
+      // No team assigned — skip capacity check and go straight to confirm
+      handleAddUrgentJobFinal(new Set());
+      return;
+    }
+    setDayCapLoading(true);
+    try {
+      const r = await fetch(
+        `/api/schedule/day-capacity?date=${urgentDate}&teamId=${urgentAsset.teamId}`,
+        { credentials: "include" },
+      );
+      if (!r.ok) throw new Error("Failed to load capacity");
+      const data = await r.json();
+      setDayCapacity(data);
+      setJobsToPush(new Set());
+      setUrgentStep(2);
+    } catch {
+      toast({ title: "Could not load capacity", variant: "destructive" });
+    } finally {
+      setDayCapLoading(false);
+    }
+  };
+
+  /** Final confirmation — optionally push selected jobs then add reactive job */
+  const handleAddUrgentJobFinal = (pushIds = jobsToPush) => {
+    if (!urgentAsset || !urgentDate) return;
+    // Push marked jobs to next working day first, then create urgent job
+    const pushArray = Array.from(pushIds);
+    const pushDate = nextWorkingDayStr(urgentDate);
+
+    const doPushThenCreate = async () => {
+      for (const jobId of pushArray) {
+        await fetch(`/api/jobs/${jobId}`, {
+          method:  "PATCH",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body:    JSON.stringify({ scheduledDate: pushDate }),
+        });
+      }
+      createJob.mutate({
+        data: {
+          assetId:       urgentAsset.id,
+          jobType:       "reactive",
+          teamId:        urgentAsset.teamId ?? undefined,
+          scheduledDate: urgentDate,
+          status:        "pending",
+          crewStatus:    "full",
+          notes:         urgentNotes || undefined,
+        } as any,
+      });
+    };
+
+    doPushThenCreate().catch(() =>
+      toast({ title: "Error while pushing jobs", variant: "destructive" }),
+    );
   };
 
   const filteredAssets = (allAssets?.data ?? []).filter((a: any) =>
@@ -776,6 +876,8 @@ export default function Schedule() {
           <WeekView
             weekData={weekData}
             isLoading={weekLoading}
+            selectedTeamId={selectedTeamId}
+            teamsCount={teamsData?.length ?? 1}
             getTeamColor={getTeamColor}
             getTeamName={getTeamName}
             onJobClick={handleJobClick}
@@ -955,96 +1057,208 @@ export default function Schedule() {
       </Sheet>
 
       {/* ── Add Urgent Job dialog ──────────────────────────────────────────── */}
-      <Dialog open={urgentOpen} onOpenChange={setUrgentOpen}>
-        <DialogContent className="sm:max-w-md">
+      <Dialog open={urgentOpen} onOpenChange={o => { if (!o) { setUrgentOpen(false); setUrgentStep(1); } }}>
+        <DialogContent className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Zap className="w-4 h-4 text-orange-500" />
-              Add Urgent Job
+              {urgentStep === 1 ? "Add Urgent Job" : "Capacity Impact"}
             </DialogTitle>
             <DialogDescription>
-              Add a reactive or urgent job to the schedule. It won't be touched by the schedule generator.
+              {urgentStep === 1
+                ? "Add a reactive or urgent job to the schedule. It won't be touched by the schedule generator."
+                : `Reviewing ${format(new Date(urgentDate + "T00:00:00"), "EEEE d MMM")} for ${getTeamName(urgentAsset?.teamId)}`}
             </DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-4 py-2">
-            {/* Asset search */}
-            <div className="space-y-1.5">
-              <Label className="text-xs font-semibold text-gray-700 uppercase tracking-wide">Asset</Label>
-              {urgentAsset ? (
-                <div className="flex items-center justify-between px-3 py-2.5 rounded-lg border border-[#00AECD] bg-[#00AECD]/5">
-                  <div>
-                    <p className="text-sm font-semibold text-gray-900">{urgentAsset.name}</p>
-                    <p className="text-[11px] text-gray-400 font-mono">{urgentAsset.reference} · {getTeamName(urgentAsset.teamId)}</p>
-                  </div>
-                  <button onClick={() => { setUrgentAsset(null); setUrgentSearch(""); }} className="text-xs text-gray-400 hover:text-gray-700 underline">Change</button>
-                </div>
-              ) : (
-                <div className="space-y-1">
-                  <Input
-                    placeholder="Search by name or ref…"
-                    value={urgentSearch}
-                    onChange={e => setUrgentSearch(e.target.value)}
-                    className="text-sm"
-                    autoFocus
-                  />
-                  {urgentSearch.length >= 2 && filteredAssets.length === 0 && (
-                    <p className="text-xs text-gray-400 px-1">No assets found.</p>
-                  )}
-                  {filteredAssets.length > 0 && (
-                    <div className="border border-gray-200 rounded-lg overflow-hidden shadow-sm max-h-48 overflow-y-auto">
-                      {filteredAssets.map((a: any) => (
-                        <button
-                          key={a.id}
-                          onClick={() => { setUrgentAsset(a); setUrgentSearch(""); }}
-                          className="w-full text-left px-3 py-2 hover:bg-gray-50 border-b border-gray-100 last:border-b-0 transition-colors"
-                        >
-                          <p className="text-sm font-medium text-gray-900">{a.name}</p>
-                          <p className="text-[11px] text-gray-400 font-mono">{a.reference} · {getTeamName(a.teamId)}</p>
-                        </button>
-                      ))}
+          {/* ── Step 1 ── */}
+          {urgentStep === 1 && (
+            <div className="space-y-4 py-2">
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold text-gray-700 uppercase tracking-wide">Asset</Label>
+                {urgentAsset ? (
+                  <div className="flex items-center justify-between px-3 py-2.5 rounded-lg border border-[#00AECD] bg-[#00AECD]/5">
+                    <div>
+                      <p className="text-sm font-semibold text-gray-900">{urgentAsset.name}</p>
+                      <p className="text-[11px] text-gray-400 font-mono">{urgentAsset.reference} · {getTeamName(urgentAsset.teamId)}</p>
                     </div>
+                    <button onClick={() => { setUrgentAsset(null); setUrgentSearch(""); }} className="text-xs text-gray-400 hover:text-gray-700 underline">Change</button>
+                  </div>
+                ) : (
+                  <div className="space-y-1">
+                    <Input
+                      placeholder="Search by name or ref…"
+                      value={urgentSearch}
+                      onChange={e => setUrgentSearch(e.target.value)}
+                      className="text-sm"
+                      autoFocus
+                    />
+                    {urgentSearch.length >= 2 && filteredAssets.length === 0 && (
+                      <p className="text-xs text-gray-400 px-1">No assets found.</p>
+                    )}
+                    {filteredAssets.length > 0 && (
+                      <div className="border border-gray-200 rounded-lg overflow-hidden shadow-sm max-h-48 overflow-y-auto">
+                        {filteredAssets.map((a: any) => (
+                          <button
+                            key={a.id}
+                            onClick={() => { setUrgentAsset(a); setUrgentSearch(""); }}
+                            className="w-full text-left px-3 py-2 hover:bg-gray-50 border-b border-gray-100 last:border-b-0 transition-colors"
+                          >
+                            <p className="text-sm font-medium text-gray-900">{a.name}</p>
+                            <p className="text-[11px] text-gray-400 font-mono">{a.reference} · {getTeamName(a.teamId)}</p>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              <div className="space-y-1.5">
+                <Label htmlFor="urgent-date" className="text-xs font-semibold text-gray-700 uppercase tracking-wide">Date</Label>
+                <Input
+                  id="urgent-date"
+                  type="date"
+                  value={urgentDate}
+                  onChange={e => setUrgentDate(e.target.value)}
+                  className="text-sm"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <Label htmlFor="urgent-notes" className="text-xs font-semibold text-gray-700 uppercase tracking-wide">
+                  Notes <span className="font-normal text-gray-400 normal-case">(optional)</span>
+                </Label>
+                <Textarea
+                  id="urgent-notes"
+                  placeholder="Describe the urgent work required…"
+                  value={urgentNotes}
+                  onChange={e => setUrgentNotes(e.target.value)}
+                  className="text-sm resize-none"
+                  rows={2}
+                />
+              </div>
+            </div>
+          )}
+
+          {/* ── Step 2: Capacity Impact ── */}
+          {urgentStep === 2 && dayCapacity && (
+            <div className="space-y-4 py-2">
+              {/* Capacity bar */}
+              {(() => {
+                const cap   = dayCapacity.productiveTimeMins as number;
+                const urgentMins = urgentAsset?.serviceTimeMins ?? 0;
+                const pushedMins = dayCapacity.jobs
+                  .filter((j: any) => jobsToPush.has(j.id))
+                  .reduce((s: number, j: any) => s + (j.estimatedTimeMins ?? j.serviceTimeMins ?? 0), 0);
+                const afterMins = dayCapacity.totalScheduledMins - pushedMins + urgentMins;
+                const pct       = Math.min((afterMins / cap) * 100, 105);
+                const isOver    = afterMins > cap * 1.05;
+                const isHigh    = afterMins > cap * 0.9;
+                const barColor  = isOver ? "#ef4444" : isHigh ? "#f59e0b" : "#10b981";
+                return (
+                  <div className={`rounded-xl p-4 space-y-2 ${isOver ? "bg-red-50 border border-red-200" : isHigh ? "bg-amber-50 border border-amber-200" : "bg-green-50 border border-green-200"}`}>
+                    <div className="flex items-center justify-between text-xs font-semibold" style={{ color: barColor }}>
+                      <span>{isOver ? "Over capacity after adding urgent job" : isHigh ? "Near capacity" : "Within capacity"}</span>
+                      <span>{(afterMins / 60).toFixed(1)}h / {(cap / 60).toFixed(1)}h ({Math.round(pct)}%)</span>
+                    </div>
+                    <div className="w-full h-2 bg-white/60 rounded-full overflow-hidden">
+                      <div className="h-full rounded-full transition-all" style={{ width: `${Math.min(pct, 100)}%`, background: barColor }} />
+                    </div>
+                    {jobsToPush.size > 0 && (
+                      <p className="text-[11px]" style={{ color: barColor }}>
+                        {jobsToPush.size} job{jobsToPush.size > 1 ? "s" : ""} selected to push → saves {(pushedMins / 60).toFixed(1)}h
+                      </p>
+                    )}
+                  </div>
+                );
+              })()}
+
+              {/* Existing jobs list */}
+              <div className="space-y-1.5">
+                <p className="text-xs font-semibold text-gray-700 uppercase tracking-wide">
+                  Scheduled jobs that day
+                  {dayCapacity.jobs.filter((j: any) => j.jobType === "scheduled").length === 0 && (
+                    <span className="font-normal text-gray-400 normal-case ml-1">— none</span>
                   )}
+                </p>
+                <div className="space-y-1 max-h-52 overflow-y-auto">
+                  {dayCapacity.jobs
+                    .filter((j: any) => j.jobType === "scheduled")
+                    .map((j: any) => {
+                      const isPushed = jobsToPush.has(j.id);
+                      const mins = j.estimatedTimeMins ?? j.serviceTimeMins ?? 0;
+                      return (
+                        <label
+                          key={j.id}
+                          className={`flex items-center gap-3 px-3 py-2.5 rounded-lg border cursor-pointer transition-colors ${
+                            isPushed ? "bg-amber-50 border-amber-200" : "bg-white border-gray-200 hover:bg-gray-50"
+                          }`}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={isPushed}
+                            onChange={e => {
+                              setJobsToPush(prev => {
+                                const next = new Set(prev);
+                                e.target.checked ? next.add(j.id) : next.delete(j.id);
+                                return next;
+                              });
+                            }}
+                            className="accent-amber-500 w-3.5 h-3.5 flex-shrink-0"
+                          />
+                          <div className="flex-1 min-w-0">
+                            <p className={`text-sm font-medium truncate ${isPushed ? "line-through text-gray-400" : "text-gray-900"}`}>{j.assetName}</p>
+                            <p className="text-[10px] text-gray-400 font-mono">{j.assetRef}</p>
+                          </div>
+                          <span className="text-xs text-gray-500 flex-shrink-0">{(mins / 60).toFixed(1)}h</span>
+                          {isPushed && (
+                            <span className="text-[10px] text-amber-600 font-semibold flex-shrink-0">
+                              → {format(new Date(nextWorkingDayStr(urgentDate) + "T00:00:00"), "d MMM")}
+                            </span>
+                          )}
+                        </label>
+                      );
+                    })
+                  }
                 </div>
-              )}
+                {dayCapacity.jobs.filter((j: any) => j.jobType === "scheduled").length > 0 && (
+                  <p className="text-[11px] text-gray-400 pl-1">Check jobs to push them to the next working day to make space.</p>
+                )}
+              </div>
             </div>
-
-            {/* Date */}
-            <div className="space-y-1.5">
-              <Label htmlFor="urgent-date" className="text-xs font-semibold text-gray-700 uppercase tracking-wide">Date</Label>
-              <Input
-                id="urgent-date"
-                type="date"
-                value={urgentDate}
-                onChange={e => setUrgentDate(e.target.value)}
-                className="text-sm"
-              />
-            </div>
-
-            {/* Notes */}
-            <div className="space-y-1.5">
-              <Label htmlFor="urgent-notes" className="text-xs font-semibold text-gray-700 uppercase tracking-wide">Notes <span className="font-normal text-gray-400 normal-case">(optional)</span></Label>
-              <Textarea
-                id="urgent-notes"
-                placeholder="Describe the urgent work required…"
-                value={urgentNotes}
-                onChange={e => setUrgentNotes(e.target.value)}
-                className="text-sm resize-none"
-                rows={2}
-              />
-            </div>
-          </div>
+          )}
 
           <DialogFooter className="gap-2">
-            <Button variant="outline" onClick={() => setUrgentOpen(false)}>Cancel</Button>
-            <Button
-              className="gap-2 bg-orange-500 hover:bg-orange-600 text-white"
-              onClick={handleAddUrgentJob}
-              disabled={createJob.isPending || !urgentAsset || !urgentDate}
-            >
-              <Zap className="w-4 h-4" />
-              {createJob.isPending ? "Adding…" : "Add to schedule"}
-            </Button>
+            {urgentStep === 1 ? (
+              <>
+                <Button variant="outline" onClick={() => setUrgentOpen(false)}>Cancel</Button>
+                <Button
+                  className="gap-2 bg-orange-500 hover:bg-orange-600 text-white"
+                  onClick={handleReviewImpact}
+                  disabled={dayCapLoading || !urgentAsset || !urgentDate}
+                >
+                  {dayCapLoading ? <RotateCcw className="w-4 h-4 animate-spin" /> : <Zap className="w-4 h-4" />}
+                  {dayCapLoading ? "Loading…" : "Review Capacity Impact →"}
+                </Button>
+              </>
+            ) : (
+              <>
+                <Button variant="outline" onClick={() => setUrgentStep(1)}>← Back</Button>
+                <Button
+                  className="gap-2 bg-orange-500 hover:bg-orange-600 text-white"
+                  onClick={() => handleAddUrgentJobFinal()}
+                  disabled={createJob.isPending}
+                >
+                  <Zap className="w-4 h-4" />
+                  {createJob.isPending
+                    ? "Adding…"
+                    : jobsToPush.size > 0
+                      ? `Push ${jobsToPush.size} & Add to Schedule`
+                      : "Add to Schedule"}
+                </Button>
+              </>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>

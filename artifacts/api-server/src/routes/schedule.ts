@@ -1,6 +1,9 @@
 import { Router } from "express";
-import { db, assetsTable, jobsTable, teamMembersTable, teamAvailabilityTable } from "@workspace/db";
-import { eq, and, gte, lte, inArray, sql } from "drizzle-orm";
+import {
+  db, assetsTable, jobsTable, teamMembersTable, teamAvailabilityTable,
+  systemSettingsTable,
+} from "@workspace/db";
+import { eq, and, gte, lte, inArray, sql, notInArray } from "drizzle-orm";
 import { z } from "zod";
 import { requireAuth, requireRole } from "../middlewares/auth";
 import { validateBody, validateQuery } from "../middlewares/validate";
@@ -9,31 +12,61 @@ import { FREQ_DAYS, calcCrewAdjustment, type CrewStatus } from "../lib/crew-util
 const router = Router();
 
 const ABSENT_HOUR_THRESHOLD = 5;
+const MAX_CARRY_FORWARD_DAYS = 5;   // max working-day lookahead before placing anyway
+const CAPACITY_TOLERANCE = 1.05;    // accept up to 105% of productive time
 
-const generateBodySchema = z.object({
-  fromDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-  toDate:   z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-  teamId:   z.string().uuid().optional(),
-});
-
-const weekQuerySchema = z.object({
-  week:   z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-  teamId: z.string().uuid().optional(),
-});
+// ── Date helpers ──────────────────────────────────────────────────────────────
 
 function addDays(dateStr: string, days: number): string {
-  const d = new Date(dateStr);
+  const d = new Date(dateStr + "T00:00:00Z");
   d.setUTCDate(d.getUTCDate() + days);
   return d.toISOString().slice(0, 10);
 }
 
+function isWeekend(dateStr: string): boolean {
+  const day = new Date(dateStr + "T00:00:00Z").getUTCDay();
+  return day === 0 || day === 6;
+}
+
+/** Advance n calendar days, skipping weekends. */
+function addWorkingDays(dateStr: string, n: number): string {
+  let d = dateStr;
+  let added = 0;
+  while (added < n) {
+    d = addDays(d, 1);
+    if (!isWeekend(d)) added++;
+  }
+  return d;
+}
+
+/** Move dateStr forward to the nearest weekday (no-op if already a weekday). */
+function toWeekday(dateStr: string): string {
+  let d = dateStr;
+  while (isWeekend(d)) d = addDays(d, 1);
+  return d;
+}
+
 function mondayOf(dateStr: string): string {
-  const d = new Date(dateStr);
+  const d = new Date(dateStr + "T00:00:00Z");
   const day = d.getUTCDay();
   const diff = day === 0 ? -6 : 1 - day;
   d.setUTCDate(d.getUTCDate() + diff);
   return d.toISOString().slice(0, 10);
 }
+
+// ── minutesUsed helpers ───────────────────────────────────────────────────────
+
+function addMins(map: Map<string, Map<string, number>>, teamId: string, date: string, mins: number) {
+  if (!map.has(teamId)) map.set(teamId, new Map());
+  const byDate = map.get(teamId)!;
+  byDate.set(date, (byDate.get(date) ?? 0) + mins);
+}
+
+function getMins(map: Map<string, Map<string, number>>, teamId: string, date: string): number {
+  return map.get(teamId)?.get(date) ?? 0;
+}
+
+// ── Absence map ───────────────────────────────────────────────────────────────
 
 async function buildAbsenceMap(
   fromDate: string,
@@ -53,28 +86,35 @@ async function buildAbsenceMap(
       ),
     );
 
-  const absenceCountMap = new Map<string, Map<string, number>>();
+  const countMap = new Map<string, Map<string, number>>();
   for (const row of availRows) {
     if (row.status === "available") continue;
-    if (!absenceCountMap.has(row.date)) absenceCountMap.set(row.date, new Map());
-    const byPerson = absenceCountMap.get(row.date)!;
+    if (!countMap.has(row.date)) countMap.set(row.date, new Map());
+    const byPerson = countMap.get(row.date)!;
     byPerson.set(row.personName, (byPerson.get(row.personName) ?? 0) + 1);
   }
 
   const absenceMap = new Map<string, Set<string>>();
-  for (const [date, byPerson] of absenceCountMap) {
-    const absentSet = new Set<string>();
+  for (const [date, byPerson] of countMap) {
+    const absent = new Set<string>();
     for (const [person, count] of byPerson) {
-      if (count >= ABSENT_HOUR_THRESHOLD) absentSet.add(person);
+      if (count >= ABSENT_HOUR_THRESHOLD) absent.add(person);
     }
-    if (absentSet.size > 0) absenceMap.set(date, absentSet);
+    if (absent.size > 0) absenceMap.set(date, absent);
   }
   return absenceMap;
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
 // POST /api/schedule/generate
-// Creates new jobs AND refreshes crew status on existing pending jobs.
-// Never touches in_progress, completed, skipped, or overdue jobs.
+// Capacity-aware generator with geosequenced carry-forward.
+// ─────────────────────────────────────────────────────────────────────────────
+const generateBodySchema = z.object({
+  fromDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  toDate:   z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  teamId:   z.string().uuid().optional(),
+});
+
 router.post(
   "/schedule/generate",
   requireAuth,
@@ -83,6 +123,13 @@ router.post(
   async (req, res) => {
     const { fromDate, toDate, teamId } = req.body as z.infer<typeof generateBodySchema>;
 
+    // Load system settings
+    const [settings] = await db.select().from(systemSettingsTable).limit(1);
+    const productiveTimeMins = settings?.productiveTimeMins ?? 390;
+    const standardCrewSize   = settings?.standardCrewSize   ?? 2;
+    const capacityLimit      = Math.round(productiveTimeMins * CAPACITY_TOLERANCE);
+
+    // Load assets (with routeOrder for carry-forward tie-breaking)
     const assets = await db
       .select()
       .from(assetsTable)
@@ -103,8 +150,56 @@ router.post(
     const allPersonNames = allMembers.map(m => m.personName);
     const absenceMap = await buildAbsenceMap(fromDate, toDate, allPersonNames);
 
+    // Pre-load all non-completed jobs in range to initialise minutesUsed
+    const existingInRange = await db
+      .select({
+        teamId:            jobsTable.teamId,
+        scheduledDate:     sql<string>`to_char(${jobsTable.scheduledDate}, 'YYYY-MM-DD')`,
+        estimatedTimeMins: jobsTable.estimatedTimeMins,
+        serviceTimeMins:   assetsTable.serviceTimeMins,
+      })
+      .from(jobsTable)
+      .innerJoin(assetsTable, eq(jobsTable.assetId, assetsTable.id))
+      .where(
+        and(
+          gte(jobsTable.scheduledDate, fromDate),
+          lte(jobsTable.scheduledDate, toDate),
+          notInArray(jobsTable.status, ["completed", "skipped"]),
+          ...(teamId ? [eq(jobsTable.teamId, teamId)] : []),
+        ),
+      );
+
+    const minutesUsed = new Map<string, Map<string, number>>();
+    for (const j of existingInRange) {
+      if (j.teamId) {
+        addMins(minutesUsed, j.teamId, j.scheduledDate, j.estimatedTimeMins ?? j.serviceTimeMins);
+      }
+    }
+
+    // ── Step 1: Enumerate all (asset, naturalDate) candidates ────────────────
+    type Candidate = { asset: typeof assets[number]; naturalDate: string };
+    const candidatesByDate = new Map<string, Candidate[]>();
+
+    for (const asset of assets) {
+      const intervalDays = FREQ_DAYS[asset.frequency] ?? 28;
+      let cursor = fromDate;
+      while (cursor <= toDate) {
+        const weekday = toWeekday(cursor);
+        if (weekday <= toDate) {
+          if (!candidatesByDate.has(weekday)) candidatesByDate.set(weekday, []);
+          candidatesByDate.get(weekday)!.push({ asset, naturalDate: weekday });
+        }
+        cursor = addDays(cursor, intervalDays);
+      }
+    }
+
+    // ── Step 2: Process dates in order, smallest jobs first per day ──────────
+    const sortedDates = Array.from(candidatesByDate.keys()).sort();
+
     let jobsCreated = 0;
     let jobsRefreshed = 0;
+    let jobsCarriedForward = 0;
+    let capacityConflicts = 0;
 
     const insertRows: {
       assetId: string;
@@ -116,55 +211,112 @@ router.post(
       crewStatus: CrewStatus;
     }[] = [];
 
-    for (const asset of assets) {
-      const intervalDays = FREQ_DAYS[asset.frequency] ?? 28;
-      let cursor = fromDate;
+    for (const naturalDate of sortedDates) {
+      const candidates = candidatesByDate.get(naturalDate)!;
 
-      while (cursor <= toDate) {
-        const { estimatedTimeMins, crewStatus } = calcCrewAdjustment(
-          asset.teamId ?? null,
-          cursor,
-          membersByTeam,
-          absenceMap,
-          asset.serviceTimeMins,
-        );
+      // Sort: smallest serviceTimeMins first; ties broken by routeOrder (nulls last)
+      candidates.sort((a, b) => {
+        const timeDiff = a.asset.serviceTimeMins - b.asset.serviceTimeMins;
+        if (timeDiff !== 0) return timeDiff;
+        const ro_a = a.asset.routeOrder ?? 999999;
+        const ro_b = b.asset.routeOrder ?? 999999;
+        return ro_a - ro_b;
+      });
 
-        // Look for an existing scheduled job for this asset on this date
-        const [existing] = await db
+      for (const { asset } of candidates) {
+        const tid = asset.teamId ?? null;
+
+        // Check for an existing scheduled job on the natural date
+        const [existingOnNatural] = await db
           .select({ id: jobsTable.id, status: jobsTable.status })
           .from(jobsTable)
           .where(
             and(
               eq(jobsTable.assetId, asset.id),
-              eq(jobsTable.scheduledDate, cursor),
+              eq(jobsTable.scheduledDate, naturalDate),
               eq(jobsTable.jobType, "scheduled"),
             ),
           )
           .limit(1);
 
-        if (!existing) {
-          // New job — queue for insert
+        if (existingOnNatural) {
+          if (existingOnNatural.status === "pending") {
+            // Refresh crew status in place — don't move existing jobs
+            const { estimatedTimeMins, crewStatus } = calcCrewAdjustment(
+              tid, naturalDate, membersByTeam, absenceMap, asset.serviceTimeMins, standardCrewSize,
+            );
+            await db
+              .update(jobsTable)
+              .set({ estimatedTimeMins, crewStatus, updatedAt: new Date() })
+              .where(eq(jobsTable.id, existingOnNatural.id));
+            jobsRefreshed++;
+          }
+          // Non-pending — leave completely untouched
+          continue;
+        }
+
+        // New job — find best placement date with capacity check
+        let placementDate = naturalDate;
+        let carried = false;
+
+        const { estimatedTimeMins: estNatural, crewStatus: csNatural } = calcCrewAdjustment(
+          tid, naturalDate, membersByTeam, absenceMap, asset.serviceTimeMins, standardCrewSize,
+        );
+
+        const usedOnNatural = tid ? getMins(minutesUsed, tid, naturalDate) : 0;
+        const fitsOnNatural = !tid || usedOnNatural + estNatural <= capacityLimit;
+
+        if (fitsOnNatural) {
+          placementDate = naturalDate;
+          if (tid) addMins(minutesUsed, tid, naturalDate, estNatural);
           insertRows.push({
-            assetId:           asset.id,
-            jobType:           "scheduled",
-            teamId:            asset.teamId ?? null,
-            scheduledDate:     cursor,
-            status:            "pending",
-            estimatedTimeMins,
-            crewStatus,
+            assetId: asset.id, jobType: "scheduled", teamId: tid,
+            scheduledDate: naturalDate, status: "pending",
+            estimatedTimeMins: estNatural, crewStatus: csNatural,
           });
           jobsCreated++;
-        } else if (existing.status === "pending") {
-          // Existing pending job — refresh crew status in place
-          await db
-            .update(jobsTable)
-            .set({ estimatedTimeMins, crewStatus, updatedAt: new Date() })
-            .where(eq(jobsTable.id, existing.id));
-          jobsRefreshed++;
-        }
-        // in_progress / completed / skipped / overdue — leave untouched
+        } else {
+          // Try carry-forward: next working days, up to MAX_CARRY_FORWARD_DAYS
+          let placed = false;
+          for (let attempt = 1; attempt <= MAX_CARRY_FORWARD_DAYS; attempt++) {
+            const tryDate = addWorkingDays(naturalDate, attempt);
+            if (tryDate > toDate) break;
 
-        cursor = addDays(cursor, intervalDays);
+            const { estimatedTimeMins: estTry, crewStatus: csTry } = calcCrewAdjustment(
+              tid, tryDate, membersByTeam, absenceMap, asset.serviceTimeMins, standardCrewSize,
+            );
+            const usedOnTry = tid ? getMins(minutesUsed, tid, tryDate) : 0;
+
+            if (!tid || usedOnTry + estTry <= capacityLimit) {
+              placementDate = tryDate;
+              carried = true;
+              if (tid) addMins(minutesUsed, tid, tryDate, estTry);
+              insertRows.push({
+                assetId: asset.id, jobType: "scheduled", teamId: tid,
+                scheduledDate: tryDate, status: "pending",
+                estimatedTimeMins: estTry, crewStatus: csTry,
+              });
+              jobsCreated++;
+              placed = true;
+              break;
+            }
+          }
+
+          if (!placed) {
+            // Couldn't fit within 5 working days — place on natural date regardless
+            capacityConflicts++;
+            if (tid) addMins(minutesUsed, tid, naturalDate, estNatural);
+            insertRows.push({
+              assetId: asset.id, jobType: "scheduled", teamId: tid,
+              scheduledDate: naturalDate, status: "pending",
+              estimatedTimeMins: estNatural, crewStatus: csNatural,
+            });
+            jobsCreated++;
+            carried = true; // was a conflict
+          }
+
+          if (carried) jobsCarriedForward++;
+        }
       }
     }
 
@@ -172,11 +324,20 @@ router.post(
       await db.insert(jobsTable).values(insertRows);
     }
 
-    res.json({ jobsCreated, jobsRefreshed, fromDate, toDate });
+    res.json({ jobsCreated, jobsRefreshed, jobsCarriedForward, capacityConflicts, fromDate, toDate });
   },
 );
 
+// ─────────────────────────────────────────────────────────────────────────────
 // GET /api/schedule/week
+// Returns jobs for a Mon–Sun week, sorted by route_order within each day.
+// Includes system settings for client-side capacity bar rendering.
+// ─────────────────────────────────────────────────────────────────────────────
+const weekQuerySchema = z.object({
+  week:   z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  teamId: z.string().uuid().optional(),
+});
+
 router.get(
   "/schedule/week",
   requireAuth,
@@ -186,13 +347,13 @@ router.get(
     const weekStart = mondayOf(week);
     const weekEnd   = addDays(weekStart, 6);
 
-    const baseConditions = and(
+    const [settings] = await db.select().from(systemSettingsTable).limit(1);
+
+    const condition = and(
       gte(jobsTable.scheduledDate, weekStart),
       lte(jobsTable.scheduledDate, weekEnd),
+      ...(teamId ? [eq(jobsTable.teamId, teamId)] : []),
     );
-    const condition = teamId
-      ? and(baseConditions, eq(jobsTable.teamId, teamId))
-      : baseConditions;
 
     const rows = await db
       .select({
@@ -216,11 +377,17 @@ router.get(
         gardenType:        assetsTable.gardenType,
         suburb:            assetsTable.suburb,
         serviceTimeMins:   assetsTable.serviceTimeMins,
+        routeOrder:        assetsTable.routeOrder,
+        frequency:         assetsTable.frequency,
       })
       .from(jobsTable)
       .innerJoin(assetsTable, eq(jobsTable.assetId, assetsTable.id))
       .where(condition)
-      .orderBy(jobsTable.scheduledDate);
+      .orderBy(
+        jobsTable.scheduledDate,
+        sql`${assetsTable.routeOrder} NULLS LAST`,
+        assetsTable.name,
+      );
 
     const dayMap = new Map<string, typeof rows>();
     for (let i = 0; i < 7; i++) {
@@ -238,11 +405,17 @@ router.get(
       days,
       totalJobs:     rows.length,
       completedJobs: rows.filter(r => r.status === "completed").length,
+      settings: {
+        productiveTimeMins: settings?.productiveTimeMins ?? 390,
+        standardCrewSize:   settings?.standardCrewSize   ?? 2,
+      },
     });
   },
 );
 
+// ─────────────────────────────────────────────────────────────────────────────
 // GET /api/schedule/range — jobs grouped by asset for Gantt view
+// ─────────────────────────────────────────────────────────────────────────────
 const rangeQuerySchema = z.object({
   from:   z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   to:     z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
@@ -271,6 +444,7 @@ router.get(
         serviceTimeMins:   assetsTable.serviceTimeMins,
         estimatedTimeMins: jobsTable.estimatedTimeMins,
         teamId:            assetsTable.teamId,
+        routeOrder:        assetsTable.routeOrder,
       })
       .from(jobsTable)
       .innerJoin(assetsTable, eq(jobsTable.assetId, assetsTable.id))
@@ -281,12 +455,16 @@ router.get(
           ...(teamId ? [eq(jobsTable.teamId, teamId)] : []),
         ),
       )
-      .orderBy(assetsTable.name, jobsTable.scheduledDate);
+      .orderBy(
+        sql`${assetsTable.routeOrder} NULLS LAST`,
+        assetsTable.name,
+        jobsTable.scheduledDate,
+      );
 
     const assetMap = new Map<string, {
       assetId: string; assetName: string; assetRef: string;
       gardenType: string; standard: string; frequency: string;
-      serviceTimeMins: number; teamId: string | null;
+      serviceTimeMins: number; teamId: string | null; routeOrder: number | null;
       jobs: { id: string; scheduledDate: string; status: string; crewStatus: string | null; estimatedTimeMins: number | null }[];
     }>();
 
@@ -295,7 +473,8 @@ router.get(
         assetMap.set(row.assetId, {
           assetId: row.assetId, assetName: row.assetName, assetRef: row.assetRef,
           gardenType: row.gardenType, standard: row.standard, frequency: row.frequency,
-          serviceTimeMins: row.serviceTimeMins, teamId: row.teamId, jobs: [],
+          serviceTimeMins: row.serviceTimeMins, teamId: row.teamId, routeOrder: row.routeOrder,
+          jobs: [],
         });
       }
       assetMap.get(row.assetId)!.jobs.push({
@@ -305,6 +484,67 @@ router.get(
     }
 
     res.json({ from, to, rows: Array.from(assetMap.values()) });
+  },
+);
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /api/schedule/day-capacity
+// Returns capacity usage per team for a specific date.
+// Used by the reactive job impact flow.
+// ─────────────────────────────────────────────────────────────────────────────
+const dayCapacityQuerySchema = z.object({
+  date:   z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  teamId: z.string().uuid(),
+});
+
+router.get(
+  "/schedule/day-capacity",
+  requireAuth,
+  validateQuery(dayCapacityQuerySchema),
+  async (req, res) => {
+    const { date, teamId } = res.locals.query as z.infer<typeof dayCapacityQuerySchema>;
+
+    const [settings] = await db.select().from(systemSettingsTable).limit(1);
+    const productiveTimeMins = settings?.productiveTimeMins ?? 390;
+
+    const jobs = await db
+      .select({
+        id:                jobsTable.id,
+        status:            jobsTable.status,
+        jobType:           jobsTable.jobType,
+        estimatedTimeMins: jobsTable.estimatedTimeMins,
+        serviceTimeMins:   assetsTable.serviceTimeMins,
+        assetName:         assetsTable.name,
+        assetRef:          assetsTable.reference,
+        routeOrder:        assetsTable.routeOrder,
+        crewStatus:        jobsTable.crewStatus,
+        notes:             jobsTable.notes,
+        assetId:           jobsTable.assetId,
+      })
+      .from(jobsTable)
+      .innerJoin(assetsTable, eq(jobsTable.assetId, assetsTable.id))
+      .where(
+        and(
+          eq(jobsTable.teamId, teamId),
+          eq(jobsTable.scheduledDate, date),
+          notInArray(jobsTable.status, ["completed", "skipped"]),
+        ),
+      )
+      .orderBy(sql`${assetsTable.routeOrder} NULLS LAST`, assetsTable.name);
+
+    const totalMins = jobs.reduce(
+      (sum, j) => sum + (j.estimatedTimeMins ?? j.serviceTimeMins),
+      0,
+    );
+
+    res.json({
+      date,
+      teamId,
+      productiveTimeMins,
+      totalScheduledMins: totalMins,
+      utilizationPct:     Math.round((totalMins / productiveTimeMins) * 100),
+      jobs,
+    });
   },
 );
 

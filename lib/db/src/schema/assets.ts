@@ -23,6 +23,7 @@ export const assetsTable = pgTable("assets", {
   streetAddress:   varchar("street_address", { length: 255 }),
   lat:             numeric("lat", { precision: 9, scale: 6 }),
   lng:             numeric("lng", { precision: 9, scale: 6 }),
+  routeOrder:      integer("route_order"),          // geosequence position within team
   notes:           text("notes"),
   boundary:        jsonb("boundary"),
   isActive:        boolean("is_active").notNull().default(true),

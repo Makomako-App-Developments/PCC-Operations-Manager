@@ -1,4 +1,4 @@
-import { db, teamMembersTable, teamAvailabilityTable, jobsTable, assetsTable } from "@workspace/db";
+import { db, teamMembersTable, teamAvailabilityTable, jobsTable, assetsTable, systemSettingsTable } from "@workspace/db";
 import { and, eq, inArray } from "drizzle-orm";
 
 export const FREQ_DAYS: Record<string, number> = {
@@ -14,30 +14,57 @@ const ABSENT_HOUR_THRESHOLD = 5;
 
 export type CrewStatus = "full" | "reduced" | "none";
 
+/**
+ * Load current system settings. Returns defaults if no row exists.
+ */
+export async function loadSystemSettings(): Promise<{ productiveTimeMins: number; standardCrewSize: number }> {
+  const [row] = await db.select().from(systemSettingsTable).limit(1);
+  return {
+    productiveTimeMins: row?.productiveTimeMins ?? 390,
+    standardCrewSize:   row?.standardCrewSize   ?? 2,
+  };
+}
+
+/**
+ * Calculate crew-adjusted estimated time for a job.
+ *
+ * All service times are calibrated for `standardCrewSize` people (default 2).
+ * So even a 1-person team gets estimatedTimeMins = serviceTimeMins × (2 / 1) = 2×.
+ *
+ * @param standardCrewSize  The baseline crew size all service times are calibrated for (from system settings)
+ * @param availCount        How many crew members are available that day
+ */
 export function calcCrewAdjustment(
   teamId: string | null,
   dateStr: string,
   membersByTeam: Map<string, string[]>,
   absenceMap: Map<string, Set<string>>,
   baseTimeMins: number,
+  standardCrewSize = 2,
 ): { estimatedTimeMins: number; crewStatus: CrewStatus } {
   if (!teamId) return { estimatedTimeMins: baseTimeMins, crewStatus: "full" };
+
   const members  = membersByTeam.get(teamId) ?? [];
-  const fullCrew = members.length;
-  if (fullCrew === 0) return { estimatedTimeMins: baseTimeMins, crewStatus: "full" };
   const absentToday = absenceMap.get(dateStr) ?? new Set<string>();
   const availCount  = members.filter(n => !absentToday.has(n)).length;
-  if (availCount === 0) return { estimatedTimeMins: baseTimeMins, crewStatus: "none" };
-  if (availCount >= fullCrew) return { estimatedTimeMins: baseTimeMins, crewStatus: "full" };
-  return {
-    estimatedTimeMins: Math.ceil(baseTimeMins * (fullCrew / availCount)),
-    crewStatus: "reduced",
-  };
+
+  if (availCount === 0) {
+    // No one available — job flagged, time stays at base (will be rescheduled by capacity logic)
+    return { estimatedTimeMins: baseTimeMins, crewStatus: "none" };
+  }
+
+  const adjusted = Math.ceil(baseTimeMins * (standardCrewSize / availCount));
+
+  if (availCount >= standardCrewSize) {
+    // Full standard crew (or more) — no scaling needed
+    return { estimatedTimeMins: baseTimeMins, crewStatus: "full" };
+  }
+
+  return { estimatedTimeMins: adjusted, crewStatus: "reduced" };
 }
 
 /**
  * Build membersByTeam + absenceMap for a single team on a single date.
- * Exported for use in the availability route.
  */
 export async function buildAbsenceDataForTeamDate(
   teamId: string,
@@ -92,6 +119,7 @@ export async function refreshCrewStatusForTeamDate(
   teamId: string,
   date: string,
 ): Promise<number> {
+  const { standardCrewSize } = await loadSystemSettings();
   const { membersByTeam, absenceMap } = await buildAbsenceDataForTeamDate(teamId, date);
 
   const jobs = await db
@@ -111,11 +139,7 @@ export async function refreshCrewStatusForTeamDate(
 
   for (const job of jobs) {
     const { estimatedTimeMins, crewStatus } = calcCrewAdjustment(
-      teamId,
-      date,
-      membersByTeam,
-      absenceMap,
-      job.serviceTimeMins,
+      teamId, date, membersByTeam, absenceMap, job.serviceTimeMins, standardCrewSize,
     );
     await db
       .update(jobsTable)
