@@ -491,7 +491,7 @@ export default function JobDetailScreen() {
             },
             {
               icon: "tag" as const,
-              label: "Garden Type",
+              label: "Specification",
               value: GARDEN_TYPE_LABEL[asset.gardenType] ?? asset.gardenType,
             },
             {

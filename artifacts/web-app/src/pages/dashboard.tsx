@@ -203,7 +203,7 @@ export default function Dashboard() {
           <div className="space-y-4">
             <Card className="rounded-2xl border-0 shadow-sm flex-1">
               <CardContent className="p-4">
-                <p className="text-xs font-semibold text-gray-700 mb-3">Gardens by Type</p>
+                <p className="text-xs font-semibold text-gray-700 mb-3">Assets by Specification</p>
                 <div className="space-y-3">
                   {summary.assetsByType.map(({ gardenType, count }) => {
                     const pct = summary.activeAssets > 0 ? (count / summary.activeAssets) * 100 : 0;

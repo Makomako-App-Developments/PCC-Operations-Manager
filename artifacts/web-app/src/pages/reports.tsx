@@ -164,7 +164,7 @@ export default function Reports() {
           {/* Assets by type */}
           <Card className="rounded-2xl border-0 shadow-sm">
             <CardHeader className="pb-2 pt-5 px-6">
-              <CardTitle className="text-sm font-semibold text-gray-700">Assets by Garden Type</CardTitle>
+              <CardTitle className="text-sm font-semibold text-gray-700">Assets by Specification</CardTitle>
             </CardHeader>
             <CardContent className="pb-4">
               {assetTypeData.length === 0 ? (

@@ -342,7 +342,7 @@ export default function SpecificationPage() {
             <div>
               <p className="font-semibold text-gray-900 text-sm">PCC Hort Maintenance Specifications</p>
               <p className="text-xs text-gray-500 mt-0.5">
-                Porirua City Council · Issued 21 March 2026 · 9 garden types
+                Porirua City Council · Issued 21 March 2026 · 9 specifications
               </p>
             </div>
           </div>
@@ -361,7 +361,7 @@ export default function SpecificationPage() {
         <div className="grid grid-cols-3 gap-4">
           <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm">
             <p className="text-xs font-semibold uppercase tracking-wider text-gray-400 mb-3">
-              Garden Types
+              Specifications
             </p>
             <p className="text-4xl font-bold mb-2" style={{ color: NAVY }}>9</p>
             <p className="text-xs text-gray-500 leading-relaxed">
@@ -406,7 +406,7 @@ export default function SpecificationPage() {
         <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
           <div className="px-6 py-4 border-b border-gray-100">
             <h2 className="text-base font-semibold text-gray-900">Full Specification Matrix</h2>
-            <p className="text-xs text-gray-400 mt-0.5">Scroll horizontally to view all garden types</p>
+            <p className="text-xs text-gray-400 mt-0.5">Scroll horizontally to view all specifications</p>
           </div>
 
           <div className="overflow-x-auto">

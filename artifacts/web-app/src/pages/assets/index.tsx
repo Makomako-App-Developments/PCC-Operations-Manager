@@ -205,10 +205,10 @@ export default function Assets() {
         
         <Select value={gardenType} onValueChange={setGardenType}>
           <SelectTrigger className="w-[160px] h-9 text-sm bg-white">
-            <SelectValue placeholder="Garden Type" />
+            <SelectValue placeholder="Specification" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">All Types</SelectItem>
+            <SelectItem value="all">All Specifications</SelectItem>
             <SelectItem value="amenity">Amenity</SelectItem>
             <SelectItem value="annuals">Annuals</SelectItem>
             <SelectItem value="bush">Bush</SelectItem>

@@ -111,7 +111,7 @@ export default function NewAsset() {
                   <div className="grid grid-cols-2 gap-4">
                     <FormField control={form.control} name="gardenType" render={({ field }) => (
                       <FormItem>
-                        <FormLabel className="text-xs text-gray-500 uppercase tracking-wide">Type</FormLabel>
+                        <FormLabel className="text-xs text-gray-500 uppercase tracking-wide">Specification</FormLabel>
                         <Select onValueChange={field.onChange} defaultValue={field.value}>
                           <FormControl>
                             <SelectTrigger className="h-10"><SelectValue /></SelectTrigger>
