@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useGetDashboardSummary, useListAssets, getGetDashboardSummaryQueryKey } from "@workspace/api-client-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -7,7 +7,7 @@ import { format, startOfWeek } from "date-fns";
 import {
   Leaf, AlertCircle, Users, TrendingUp, Clock, CheckCircle, Sprout, MapPin
 } from "lucide-react";
-import { MapContainer, TileLayer, CircleMarker, Polygon, Tooltip } from "react-leaflet";
+import { MapContainer, TileLayer, CircleMarker, Polygon, Tooltip, useMap } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
 
 type GeoPolygon = { type: "Polygon"; coordinates: number[][][] };
@@ -43,6 +43,15 @@ function MetricCard({ icon: Icon, label, value, sub, color, testId }: any) {
       </CardContent>
     </Card>
   );
+}
+
+function InvalidateSize() {
+  const map = useMap();
+  useEffect(() => {
+    const t = setTimeout(() => map.invalidateSize(), 100);
+    return () => clearTimeout(t);
+  }, [map]);
+  return null;
 }
 
 function AssetMapFeature({ asset }: { asset: any }) {
@@ -89,9 +98,7 @@ function AssetMapFeature({ asset }: { asset: any }) {
 }
 
 function MapView() {
-  const { data } = useListAssets({ limit: 2000 });
-
-  if (!data) return <Skeleton className="w-full rounded-2xl" style={{ height: 360 }} />;
+  const { data } = useListAssets({ limit: 200 });
 
   return (
     <div className="relative w-full rounded-2xl overflow-hidden" data-testid="dashboard-map" style={{ height: 360 }}>
@@ -101,11 +108,12 @@ function MapView() {
         style={{ height: 360, width: "100%" }}
         scrollWheelZoom={false}
       >
+        <InvalidateSize />
         <TileLayer
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
           attribution='&copy; OpenStreetMap'
         />
-        {data.data.map(asset => (
+        {data?.data.map(asset => (
           <AssetMapFeature key={asset.id} asset={asset} />
         ))}
       </MapContainer>
