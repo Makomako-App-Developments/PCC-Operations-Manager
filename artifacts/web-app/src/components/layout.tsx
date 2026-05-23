@@ -4,6 +4,7 @@ import { useAuth } from "@/lib/auth";
 import {
   LayoutDashboard,
   List,
+  Map,
   CalendarDays,
   LogOut,
   Sprout,
@@ -25,6 +26,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
   const allNav = [
     { icon: LayoutDashboard, label: "Dashboard",    href: "/dashboard",     managerOnly: false },
     { icon: List,            label: "Asset Register", href: "/assets",      managerOnly: false },
+    { icon: Map,             label: "Map",           href: "/map",          managerOnly: false },
     { icon: CalendarDays,    label: "Schedule",      href: "/schedule",     managerOnly: false },
     { icon: ClipboardList,   label: "Jobs",          href: "/jobs",         managerOnly: false },
     { icon: AlertTriangle,   label: "Reactive Jobs", href: "/reactive-jobs", managerOnly: false },

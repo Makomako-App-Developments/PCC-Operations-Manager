@@ -24,6 +24,7 @@ import Users from "@/pages/users/index";
 import Specification from "@/pages/specification/index";
 import Team from "@/pages/team/index";
 import Settings from "@/pages/settings/index";
+import MapPage from "@/pages/map";
 
 const queryClient = new QueryClient();
 
@@ -57,6 +58,7 @@ function Router() {
       <Route path="/assets"><ProtectedRoute component={Assets} /></Route>
       <Route path="/assets/new"><ProtectedRoute component={NewAsset} /></Route>
       <Route path="/assets/:id"><ProtectedRoute component={AssetDetail} /></Route>
+      <Route path="/map"><ProtectedRoute component={MapPage} /></Route>
       <Route path="/schedule"><ProtectedRoute component={Schedule} /></Route>
       <Route path="/jobs"><ProtectedRoute component={Jobs} /></Route>
       <Route path="/reactive-jobs"><ProtectedRoute component={ReactiveJobs} /></Route>
