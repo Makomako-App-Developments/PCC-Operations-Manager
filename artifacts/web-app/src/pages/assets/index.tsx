@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useListAssets, getListAssetsQueryKey, useListTeams, getListTeamsQueryKey, useUpdateAsset, getGetAssetQueryKey, useGetAsset, useDeleteAsset } from "@workspace/api-client-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Search, Plus, MapPin, Map as MapIcon, CheckCircle2, AlertTriangle, Filter, List as ListIcon, X } from "lucide-react";
+import { Search, Plus, MapPin, Map as MapIcon, CheckCircle2, AlertTriangle, Filter, List as ListIcon, X, ChevronUp, ChevronDown, ChevronsUpDown } from "lucide-react";
 import { Link } from "wouter";
 import { MapContainer, TileLayer, CircleMarker, Polygon, Tooltip, useMap } from "react-leaflet";
 import L from "leaflet";
@@ -135,6 +135,28 @@ const STANDARD_COLORS: Record<string, string> = {
   low:    "bg-gray-100 text-gray-600",
 };
 
+type SortCol = "reference" | "name" | "gardenType" | "serviceTimeMins" | "location" | "frequency" | "team";
+type SortDir = "asc" | "desc";
+
+function SortTh({ label, col, sortCol, sortDir, onSort, className }: {
+  label: string; col: SortCol; sortCol: SortCol; sortDir: SortDir;
+  onSort: (c: SortCol) => void; className?: string;
+}) {
+  const active = sortCol === col;
+  const Icon = active ? (sortDir === "asc" ? ChevronUp : ChevronDown) : ChevronsUpDown;
+  return (
+    <th
+      className={`px-4 py-3 font-semibold text-gray-500 uppercase tracking-wide text-xs cursor-pointer select-none group ${className ?? ""}`}
+      onClick={() => onSort(col)}
+    >
+      <span className="flex items-center gap-1">
+        {label}
+        <Icon className={`w-3 h-3 transition-opacity ${active ? "opacity-100" : "opacity-30 group-hover:opacity-60"}`} />
+      </span>
+    </th>
+  );
+}
+
 export default function Assets() {
   const [search, setSearch] = useState("");
   const [gardenType, setGardenType] = useState<any>("all");
@@ -142,6 +164,8 @@ export default function Assets() {
   const [teamId, setTeamId] = useState<any>("all");
   const [view, setView] = useState<"list"|"map">("list");
   const [selectedAssetId, setSelectedAssetId] = useState<string | null>(null);
+  const [sortCol, setSortCol] = useState<SortCol>("reference");
+  const [sortDir, setSortDir] = useState<SortDir>("asc");
 
   const { data: teamsData } = useListTeams({ query: { queryKey: getListTeamsQueryKey() }});
 
@@ -159,6 +183,29 @@ export default function Assets() {
     if (!id || !teamsData) return "Unassigned";
     return teamsData.find(t => t.id === id)?.name || "Unassigned";
   };
+
+  const handleSort = (col: SortCol) => {
+    if (col === sortCol) setSortDir(d => d === "asc" ? "desc" : "asc");
+    else { setSortCol(col); setSortDir("asc"); }
+  };
+
+  const sortedAssets = useMemo(() => {
+    const rows = [...(assetsData?.data ?? [])];
+    rows.sort((a, b) => {
+      let av: any, bv: any;
+      if (sortCol === "reference")      { av = a.reference;       bv = b.reference; }
+      else if (sortCol === "name")      { av = a.name;            bv = b.name; }
+      else if (sortCol === "gardenType"){ av = a.gardenType;      bv = b.gardenType; }
+      else if (sortCol === "serviceTimeMins") { av = a.serviceTimeMins ?? 0; bv = b.serviceTimeMins ?? 0; }
+      else if (sortCol === "location")  { av = a.suburb || a.ward || ""; bv = b.suburb || b.ward || ""; }
+      else if (sortCol === "frequency") { av = a.frequency;       bv = b.frequency; }
+      else if (sortCol === "team")      { av = getTeamName(a.teamId); bv = getTeamName(b.teamId); }
+      if (av == null) av = ""; if (bv == null) bv = "";
+      const cmp = typeof av === "number" ? av - bv : String(av).localeCompare(String(bv));
+      return sortDir === "asc" ? cmp : -cmp;
+    });
+    return rows;
+  }, [assetsData?.data, sortCol, sortDir, teamsData]);
 
   return (
     <div className="flex-1 flex flex-col min-h-0 bg-[#f5f7f9] relative">
@@ -270,17 +317,17 @@ export default function Assets() {
             <table className="w-full text-sm text-left">
               <thead className="bg-gray-50 border-b border-gray-200">
                 <tr>
-                  <th className="px-4 py-3 font-semibold text-gray-500 uppercase tracking-wide text-xs">Reference</th>
-                  <th className="px-4 py-3 font-semibold text-gray-500 uppercase tracking-wide text-xs">Site Name</th>
-                  <th className="px-4 py-3 font-semibold text-gray-500 uppercase tracking-wide text-xs">Specification</th>
-                  <th className="px-4 py-3 font-semibold text-gray-500 uppercase tracking-wide text-xs">Service Time</th>
-                  <th className="px-4 py-3 font-semibold text-gray-500 uppercase tracking-wide text-xs">Location</th>
-                  <th className="px-4 py-3 font-semibold text-gray-500 uppercase tracking-wide text-xs">Freq</th>
-                  <th className="px-4 py-3 font-semibold text-gray-500 uppercase tracking-wide text-xs">Team</th>
+                  <SortTh label="Reference"     col="reference"      sortCol={sortCol} sortDir={sortDir} onSort={handleSort} />
+                  <SortTh label="Site Name"     col="name"           sortCol={sortCol} sortDir={sortDir} onSort={handleSort} />
+                  <SortTh label="Specification" col="gardenType"     sortCol={sortCol} sortDir={sortDir} onSort={handleSort} />
+                  <SortTh label="Service Time"  col="serviceTimeMins" sortCol={sortCol} sortDir={sortDir} onSort={handleSort} />
+                  <SortTh label="Location"      col="location"       sortCol={sortCol} sortDir={sortDir} onSort={handleSort} />
+                  <SortTh label="Freq"          col="frequency"      sortCol={sortCol} sortDir={sortDir} onSort={handleSort} />
+                  <SortTh label="Team"          col="team"           sortCol={sortCol} sortDir={sortDir} onSort={handleSort} />
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {assetsData?.data.map((asset) => (
+                {sortedAssets.map((asset) => (
                   <tr 
                     key={asset.id} 
                     className="hover:bg-gray-50/50 transition-colors cursor-pointer"
