@@ -495,7 +495,7 @@ function FieldChangesTab({ assetId }: { assetId: string }) {
   return (
     <div className="flex-1 overflow-y-auto">
       <div className="px-6 py-4 border-b bg-gray-50">
-        <p className="text-sm font-semibold text-gray-800">Field Changes</p>
+        <p className="text-sm font-semibold text-gray-800">Asset Edits</p>
         <p className="text-xs text-gray-400 mt-0.5">Changes to core asset details</p>
       </div>
 
@@ -753,7 +753,7 @@ export default function AssetDetail() {
   const tabs = [
     { id: "scheduled", icon: CalendarCheck, label: "Scheduled Jobs", count: scheduledCount },
     { id: "history",   icon: Wrench,        label: "Works History",  count: historyCount },
-    { id: "changes",   icon: History,       label: "Field Changes",  count: null },
+    { id: "changes",   icon: History,       label: "Asset Edits",    count: null },
   ] as const;
 
   if (isLoading || !asset) {
@@ -763,7 +763,7 @@ export default function AssetDetail() {
           <Skeleton className="h-5 w-64" />
         </div>
         <div className="flex flex-1 min-h-0 p-8 gap-6">
-          <Skeleton className="w-80 h-full rounded-xl" />
+          <Skeleton className="w-[368px] h-full rounded-xl" />
           <Skeleton className="flex-1 h-full rounded-xl" />
         </div>
       </div>
@@ -788,7 +788,7 @@ export default function AssetDetail() {
       <div className="flex flex-1 min-h-0 overflow-hidden">
 
         {/* Left: asset info / edit panel */}
-        <div className="w-80 flex-shrink-0 flex flex-col bg-white overflow-hidden" style={{ borderRight: "1px solid #e5e7eb" }}>
+        <div className="w-[368px] flex-shrink-0 flex flex-col bg-white overflow-hidden" style={{ borderRight: "1px solid #e5e7eb" }}>
           {editing ? (
             <EditPanel
               asset={asset}
@@ -853,6 +853,12 @@ export default function AssetDetail() {
                       <span className="text-[11px] font-semibold text-gray-700 capitalize">{value || "—"}</span>
                     </div>
                   ))}
+                  {asset.routeOrder != null && (
+                    <div className="flex justify-between">
+                      <span className="text-[11px] text-gray-400">Geosequence</span>
+                      <span className="text-[11px] font-semibold text-gray-700">{asset.routeOrder}</span>
+                    </div>
+                  )}
                   {(asset as any).globalId && (
                     <div className="flex justify-between">
                       <span className="text-[11px] text-gray-400">Global ID</span>
