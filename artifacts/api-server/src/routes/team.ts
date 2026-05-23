@@ -1,9 +1,10 @@
 import { Router } from "express";
-import { db, teamAvailabilityTable } from "@workspace/db";
+import { db, teamAvailabilityTable, teamMembersTable } from "@workspace/db";
 import { and, eq, gte, lte } from "drizzle-orm";
 import { z } from "zod";
 import { requireAuth, requireRole } from "../middlewares/auth";
 import { validateBody, validateQuery } from "../middlewares/validate";
+import { refreshCrewStatusForTeamDate } from "../lib/crew-utils";
 
 const router = Router();
 
@@ -24,54 +25,82 @@ const deleteSchema = z.object({
   hour:       z.number().int().min(8).max(16),
 });
 
+async function getTeamIdForPerson(personName: string): Promise<string | null> {
+  const [row] = await db
+    .select({ teamId: teamMembersTable.teamId })
+    .from(teamMembersTable)
+    .where(eq(teamMembersTable.personName, personName))
+    .limit(1);
+  return row?.teamId ?? null;
+}
+
 // GET /api/team/availability?weekStart=YYYY-MM-DD
-router.get("/team/availability", requireAuth, validateQuery(weekQuerySchema), async (req, res) => {
-  const { weekStart } = res.locals.query as { weekStart: string };
-  const start = new Date(weekStart);
-  const end = new Date(start);
-  end.setDate(end.getDate() + 6);
+router.get(
+  "/team/availability",
+  requireAuth,
+  validateQuery(weekQuerySchema),
+  async (req, res) => {
+    const { weekStart } = res.locals.query as { weekStart: string };
+    const start = new Date(weekStart);
+    const end   = new Date(start);
+    end.setDate(end.getDate() + 6);
 
-  const rows = await db
-    .select()
-    .from(teamAvailabilityTable)
-    .where(
-      and(
-        gte(teamAvailabilityTable.date, weekStart),
-        lte(teamAvailabilityTable.date, end.toISOString().slice(0, 10)),
-      )
-    );
-
-  res.json(rows);
-});
-
-// PUT /api/team/availability — upsert one cell
-router.put("/team/availability", requireAuth, requireRole("manager", "supervisor"), validateBody(upsertSchema), async (req, res) => {
-  const { personName, date, hour, status } = res.locals.body as z.infer<typeof upsertSchema>;
-
-  if (status === "available") {
-    await db
-      .delete(teamAvailabilityTable)
+    const rows = await db
+      .select()
+      .from(teamAvailabilityTable)
       .where(
         and(
-          eq(teamAvailabilityTable.personName, personName),
-          eq(teamAvailabilityTable.date, date),
-          eq(teamAvailabilityTable.hour, hour),
-        )
+          gte(teamAvailabilityTable.date, weekStart),
+          lte(teamAvailabilityTable.date, end.toISOString().slice(0, 10)),
+        ),
       );
-    res.json({ deleted: true });
-    return;
-  }
 
-  const [row] = await db
-    .insert(teamAvailabilityTable)
-    .values({ personName, date, hour, status })
-    .onConflictDoUpdate({
-      target: [teamAvailabilityTable.personName, teamAvailabilityTable.date, teamAvailabilityTable.hour],
-      set: { status, updatedAt: new Date() },
-    })
-    .returning();
+    res.json(rows);
+  },
+);
 
-  res.json(row);
-});
+// PUT /api/team/availability — upsert one cell, then auto-refresh crew status
+router.put(
+  "/team/availability",
+  requireAuth,
+  requireRole("manager", "supervisor"),
+  validateBody(upsertSchema),
+  async (req, res) => {
+    const { personName, date, hour, status } = res.locals.body as z.infer<typeof upsertSchema>;
+
+    if (status === "available") {
+      await db
+        .delete(teamAvailabilityTable)
+        .where(
+          and(
+            eq(teamAvailabilityTable.personName, personName),
+            eq(teamAvailabilityTable.date, date),
+            eq(teamAvailabilityTable.hour, hour),
+          ),
+        );
+    } else {
+      await db
+        .insert(teamAvailabilityTable)
+        .values({ personName, date, hour, status })
+        .onConflictDoUpdate({
+          target: [
+            teamAvailabilityTable.personName,
+            teamAvailabilityTable.date,
+            teamAvailabilityTable.hour,
+          ],
+          set: { status, updatedAt: new Date() },
+        });
+    }
+
+    // Auto-refresh crew status on pending jobs for this person's team on this date
+    const teamId = await getTeamIdForPerson(personName);
+    let jobsRefreshed = 0;
+    if (teamId) {
+      jobsRefreshed = await refreshCrewStatusForTeamDate(teamId, date);
+    }
+
+    res.json({ ok: true, jobsRefreshed });
+  },
+);
 
 export default router;

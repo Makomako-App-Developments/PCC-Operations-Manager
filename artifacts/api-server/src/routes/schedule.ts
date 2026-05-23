@@ -1,22 +1,13 @@
 import { Router } from "express";
-import { db, assetsTable, jobsTable, teamsTable, teamMembersTable, teamAvailabilityTable } from "@workspace/db";
+import { db, assetsTable, jobsTable, teamMembersTable, teamAvailabilityTable } from "@workspace/db";
 import { eq, and, gte, lte, inArray, sql } from "drizzle-orm";
 import { z } from "zod";
 import { requireAuth, requireRole } from "../middlewares/auth";
 import { validateBody, validateQuery } from "../middlewares/validate";
+import { FREQ_DAYS, calcCrewAdjustment, type CrewStatus } from "../lib/crew-utils";
 
 const router = Router();
 
-const FREQ_DAYS: Record<string, number> = {
-  weekly:      7,
-  fortnightly: 14,
-  monthly:     28,
-  bimonthly:   56,
-  quarterly:   91,
-};
-
-// A person counts as unavailable for the day if 5+ of their 9 working hours
-// are marked as non-available (simplified mode — precise per-hour in v2)
 const ABSENT_HOUR_THRESHOLD = 5;
 
 const generateBodySchema = z.object({
@@ -44,48 +35,46 @@ function mondayOf(dateStr: string): string {
   return d.toISOString().slice(0, 10);
 }
 
-function dateRange(from: string, to: string): string[] {
-  const dates: string[] = [];
-  let cur = from;
-  while (cur <= to) {
-    dates.push(cur);
-    cur = addDays(cur, 1);
-  }
-  return dates;
-}
+async function buildAbsenceMap(
+  fromDate: string,
+  toDate: string,
+  allPersonNames: string[],
+): Promise<Map<string, Set<string>>> {
+  if (allPersonNames.length === 0) return new Map();
 
-type CrewStatus = "full" | "reduced" | "none";
+  const availRows = await db
+    .select()
+    .from(teamAvailabilityTable)
+    .where(
+      and(
+        gte(teamAvailabilityTable.date, fromDate),
+        lte(teamAvailabilityTable.date, toDate),
+        inArray(teamAvailabilityTable.personName, allPersonNames),
+      ),
+    );
 
-function calcCrewAdjustment(
-  teamId: string | null,
-  dateStr: string,
-  membersByTeam: Map<string, string[]>,
-  absenceMap: Map<string, Set<string>>, // date → Set<personName> who are absent that day
-  baseTimeMins: number,
-): { estimatedTimeMins: number; crewStatus: CrewStatus } {
-  if (!teamId) {
-    return { estimatedTimeMins: baseTimeMins, crewStatus: "full" };
+  const absenceCountMap = new Map<string, Map<string, number>>();
+  for (const row of availRows) {
+    if (row.status === "available") continue;
+    if (!absenceCountMap.has(row.date)) absenceCountMap.set(row.date, new Map());
+    const byPerson = absenceCountMap.get(row.date)!;
+    byPerson.set(row.personName, (byPerson.get(row.personName) ?? 0) + 1);
   }
-  const members   = membersByTeam.get(teamId) ?? [];
-  const fullCrew  = members.length;
-  if (fullCrew === 0) {
-    return { estimatedTimeMins: baseTimeMins, crewStatus: "full" };
-  }
-  const absentToday = absenceMap.get(dateStr) ?? new Set<string>();
-  const availCount  = members.filter(name => !absentToday.has(name)).length;
 
-  if (availCount === 0) {
-    return { estimatedTimeMins: baseTimeMins, crewStatus: "none" };
+  const absenceMap = new Map<string, Set<string>>();
+  for (const [date, byPerson] of absenceCountMap) {
+    const absentSet = new Set<string>();
+    for (const [person, count] of byPerson) {
+      if (count >= ABSENT_HOUR_THRESHOLD) absentSet.add(person);
+    }
+    if (absentSet.size > 0) absenceMap.set(date, absentSet);
   }
-  if (availCount >= fullCrew) {
-    return { estimatedTimeMins: baseTimeMins, crewStatus: "full" };
-  }
-  // Scale: if 1 person does a 2-person job, it takes twice as long
-  const adjusted = Math.ceil(baseTimeMins * (fullCrew / availCount));
-  return { estimatedTimeMins: adjusted, crewStatus: "reduced" };
+  return absenceMap;
 }
 
 // POST /api/schedule/generate
+// Creates new jobs AND refreshes crew status on existing pending jobs.
+// Never touches in_progress, completed, skipped, or overdue jobs.
 router.post(
   "/schedule/generate",
   requireAuth,
@@ -94,7 +83,6 @@ router.post(
   async (req, res) => {
     const { fromDate, toDate, teamId } = req.body as z.infer<typeof generateBodySchema>;
 
-    // Load all active assets
     const assets = await db
       .select()
       .from(assetsTable)
@@ -104,7 +92,7 @@ router.post(
           : eq(assetsTable.isActive, true),
       );
 
-    // Load team membership (all teams)
+    // Load team membership
     const allMembers = await db.select().from(teamMembersTable);
     const membersByTeam = new Map<string, string[]>();
     for (const m of allMembers) {
@@ -112,44 +100,12 @@ router.post(
       membersByTeam.get(m.teamId)!.push(m.personName);
     }
 
-    // Build set of all person names across relevant teams
     const allPersonNames = allMembers.map(m => m.personName);
+    const absenceMap = await buildAbsenceMap(fromDate, toDate, allPersonNames);
 
-    // Load all availability records for the entire generation range
-    // (only non-available records are stored; missing = available)
-    const availRows = allPersonNames.length > 0
-      ? await db
-          .select()
-          .from(teamAvailabilityTable)
-          .where(
-            and(
-              gte(teamAvailabilityTable.date, fromDate),
-              lte(teamAvailabilityTable.date, toDate),
-              inArray(teamAvailabilityTable.personName, allPersonNames),
-            )
-          )
-      : [];
-
-    // Build absenceMap: date → Set<personName> who are absent that day
-    // A person is absent if they have ABSENT_HOUR_THRESHOLD+ non-available hours
-    const absenceCountMap = new Map<string, Map<string, number>>(); // date → personName → count
-    for (const row of availRows) {
-      if (row.status === "available") continue; // skip — available rows don't count
-      if (!absenceCountMap.has(row.date)) absenceCountMap.set(row.date, new Map());
-      const byPerson = absenceCountMap.get(row.date)!;
-      byPerson.set(row.personName, (byPerson.get(row.personName) ?? 0) + 1);
-    }
-    const absenceMap = new Map<string, Set<string>>();
-    for (const [date, byPerson] of absenceCountMap) {
-      const absentSet = new Set<string>();
-      for (const [person, count] of byPerson) {
-        if (count >= ABSENT_HOUR_THRESHOLD) absentSet.add(person);
-      }
-      if (absentSet.size > 0) absenceMap.set(date, absentSet);
-    }
-
-    // Generate jobs
     let jobsCreated = 0;
+    let jobsRefreshed = 0;
+
     const insertRows: {
       assetId: string;
       jobType: "scheduled";
@@ -165,8 +121,17 @@ router.post(
       let cursor = fromDate;
 
       while (cursor <= toDate) {
-        const existing = await db
-          .select({ id: jobsTable.id })
+        const { estimatedTimeMins, crewStatus } = calcCrewAdjustment(
+          asset.teamId ?? null,
+          cursor,
+          membersByTeam,
+          absenceMap,
+          asset.serviceTimeMins,
+        );
+
+        // Look for an existing scheduled job for this asset on this date
+        const [existing] = await db
+          .select({ id: jobsTable.id, status: jobsTable.status })
           .from(jobsTable)
           .where(
             and(
@@ -177,15 +142,8 @@ router.post(
           )
           .limit(1);
 
-        if (existing.length === 0) {
-          const { estimatedTimeMins, crewStatus } = calcCrewAdjustment(
-            asset.teamId ?? null,
-            cursor,
-            membersByTeam,
-            absenceMap,
-            asset.serviceTimeMins,
-          );
-
+        if (!existing) {
+          // New job — queue for insert
           insertRows.push({
             assetId:           asset.id,
             jobType:           "scheduled",
@@ -196,7 +154,15 @@ router.post(
             crewStatus,
           });
           jobsCreated++;
+        } else if (existing.status === "pending") {
+          // Existing pending job — refresh crew status in place
+          await db
+            .update(jobsTable)
+            .set({ estimatedTimeMins, crewStatus, updatedAt: new Date() })
+            .where(eq(jobsTable.id, existing.id));
+          jobsRefreshed++;
         }
+        // in_progress / completed / skipped / overdue — leave untouched
 
         cursor = addDays(cursor, intervalDays);
       }
@@ -206,7 +172,7 @@ router.post(
       await db.insert(jobsTable).values(insertRows);
     }
 
-    res.json({ jobsCreated, fromDate, toDate });
+    res.json({ jobsCreated, jobsRefreshed, fromDate, toDate });
   },
 );
 
@@ -217,7 +183,6 @@ router.get(
   validateQuery(weekQuerySchema),
   async (req, res) => {
     const { week, teamId } = res.locals.query as z.infer<typeof weekQuerySchema>;
-
     const weekStart = mondayOf(week);
     const weekEnd   = addDays(weekStart, 6);
 
@@ -225,7 +190,6 @@ router.get(
       gte(jobsTable.scheduledDate, weekStart),
       lte(jobsTable.scheduledDate, weekEnd),
     );
-
     const condition = teamId
       ? and(baseConditions, eq(jobsTable.teamId, teamId))
       : baseConditions;
@@ -260,8 +224,7 @@ router.get(
 
     const dayMap = new Map<string, typeof rows>();
     for (let i = 0; i < 7; i++) {
-      const d = addDays(weekStart, i);
-      dayMap.set(d, []);
+      dayMap.set(addDays(weekStart, i), []);
     }
     for (const row of rows) {
       dayMap.get(row.scheduledDate)?.push(row);
@@ -269,14 +232,17 @@ router.get(
 
     const days = Array.from(dayMap.entries()).map(([date, jobs]) => ({ date, jobs }));
 
-    const totalJobs     = rows.length;
-    const completedJobs = rows.filter((r) => r.status === "completed").length;
-
-    res.json({ weekStart, weekEnd, days, totalJobs, completedJobs });
+    res.json({
+      weekStart,
+      weekEnd,
+      days,
+      totalJobs:     rows.length,
+      completedJobs: rows.filter(r => r.status === "completed").length,
+    });
   },
 );
 
-// GET /api/schedule/range  — jobs grouped by asset for an arbitrary date range
+// GET /api/schedule/range — jobs grouped by asset for Gantt view
 const rangeQuerySchema = z.object({
   from:   z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   to:     z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
@@ -327,23 +293,14 @@ router.get(
     for (const row of rows) {
       if (!assetMap.has(row.assetId)) {
         assetMap.set(row.assetId, {
-          assetId:         row.assetId,
-          assetName:       row.assetName,
-          assetRef:        row.assetRef,
-          gardenType:      row.gardenType,
-          standard:        row.standard,
-          frequency:       row.frequency,
-          serviceTimeMins: row.serviceTimeMins,
-          teamId:          row.teamId,
-          jobs:            [],
+          assetId: row.assetId, assetName: row.assetName, assetRef: row.assetRef,
+          gardenType: row.gardenType, standard: row.standard, frequency: row.frequency,
+          serviceTimeMins: row.serviceTimeMins, teamId: row.teamId, jobs: [],
         });
       }
       assetMap.get(row.assetId)!.jobs.push({
-        id:                row.jobId,
-        scheduledDate:     row.scheduledDate,
-        status:            row.status,
-        crewStatus:        row.crewStatus,
-        estimatedTimeMins: row.estimatedTimeMins,
+        id: row.jobId, scheduledDate: row.scheduledDate, status: row.status,
+        crewStatus: row.crewStatus, estimatedTimeMins: row.estimatedTimeMins,
       });
     }
 

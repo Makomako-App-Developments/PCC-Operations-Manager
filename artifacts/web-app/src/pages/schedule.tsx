@@ -5,6 +5,9 @@ import {
   useListTeams,
   getListTeamsQueryKey,
   useGenerateSchedule,
+  useUpdateJob,
+  useCreateJob,
+  useListAssets,
 } from "@workspace/api-client-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Badge } from "@/components/ui/badge";
@@ -14,6 +17,8 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription, SheetFooter } from "@/components/ui/sheet";
+import { Textarea } from "@/components/ui/textarea";
 import {
   format, addWeeks, subWeeks, addDays, startOfWeek,
   addMonths, startOfMonth, endOfMonth,
@@ -21,6 +26,7 @@ import {
 import {
   ChevronLeft, ChevronRight, Route, CheckCircle2, Clock,
   CalendarRange, CalendarDays, Calendar, LayoutGrid, CheckCircle, AlertTriangle, XCircle,
+  Zap, RotateCcw, PlayCircle,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
@@ -270,12 +276,14 @@ function DayView({
   isLoading,
   getTeamColor,
   getTeamName,
+  onJobClick,
 }: {
   currentDate: Date;
   weekData: any;
   isLoading: boolean;
   getTeamColor: (id?: string | null) => string;
   getTeamName:  (id?: string | null) => string;
+  onJobClick:   (job: any) => void;
 }) {
   const dayStr = format(currentDate, "yyyy-MM-dd");
   const jobs: any[] = weekData?.days?.find((d: any) => d.date === dayStr)?.jobs ?? [];
@@ -305,7 +313,8 @@ function DayView({
               return (
                 <div
                   key={job.id}
-                  className={`p-4 rounded-xl border shadow-sm bg-white relative overflow-hidden ${
+                  onClick={() => onJobClick(job)}
+                  className={`p-4 rounded-xl border shadow-sm bg-white relative overflow-hidden cursor-pointer hover:shadow-md transition-shadow ${
                     crewNone   ? "border-red-300 bg-red-50/40" :
                     crewReduced ? "border-amber-200 bg-amber-50/30" :
                     done       ? "opacity-60 border-gray-200" :
@@ -351,11 +360,13 @@ function WeekView({
   isLoading,
   getTeamColor,
   getTeamName,
+  onJobClick,
 }: {
   weekData: any;
   isLoading: boolean;
   getTeamColor: (id?: string | null) => string;
   getTeamName:  (id?: string | null) => string;
+  onJobClick:   (job: any) => void;
 }) {
   if (isLoading) return <div className="p-8"><Skeleton className="w-full h-96 rounded-2xl" /></div>;
   if (!weekData?.days) return null;
@@ -395,7 +406,8 @@ function WeekView({
                   return (
                     <div
                       key={job.id}
-                      className={`p-2.5 rounded-lg border shadow-sm bg-white relative overflow-hidden ${
+                      onClick={() => onJobClick(job)}
+                      className={`p-2.5 rounded-lg border shadow-sm bg-white relative overflow-hidden cursor-pointer hover:shadow-md transition-shadow ${
                         crewNone    ? "border-red-300 bg-red-50/50" :
                         crewReduced ? "border-amber-200 bg-amber-50/40" :
                         done        ? "opacity-60 border-gray-200" :
@@ -439,6 +451,23 @@ function WeekView({
   );
 }
 
+const FREQ_DAYS_LABEL: Record<string, number> = {
+  weekly: 7, fortnightly: 14, monthly: 28, bimonthly: 56, quarterly: 91,
+};
+function nextScheduledDate(scheduledDate: string, frequency: string): string {
+  const days = FREQ_DAYS_LABEL[frequency] ?? 28;
+  const d = new Date(scheduledDate);
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+
+const STATUS_OPTIONS = [
+  { value: "pending",     label: "Pending",     color: "text-gray-600" },
+  { value: "in_progress", label: "In Progress", color: "text-blue-600" },
+  { value: "completed",   label: "Completed",   color: "text-green-600" },
+  { value: "skipped",     label: "Skipped",     color: "text-orange-600" },
+];
+
 // ── Main Schedule Page ────────────────────────────────────────────────────────
 export default function Schedule() {
   const [view, setView]                 = useState<ViewType>("week");
@@ -448,6 +477,20 @@ export default function Schedule() {
   const [dialogOpen, setDialogOpen]     = useState(false);
   const [genFrom, setGenFrom]           = useState("");
   const [genTo, setGenTo]               = useState("");
+
+  // Job update sheet
+  const [selectedJob, setSelectedJob]   = useState<any | null>(null);
+  const [jobStatus, setJobStatus]       = useState("");
+  const [jobActualTime, setJobActualTime] = useState("");
+  const [jobNotes, setJobNotes]         = useState("");
+
+  // Urgent job dialog
+  const [urgentOpen, setUrgentOpen]     = useState(false);
+  const [urgentSearch, setUrgentSearch] = useState("");
+  const [urgentAsset, setUrgentAsset]   = useState<any | null>(null);
+  const [urgentDate, setUrgentDate]     = useState("");
+  const [urgentNotes, setUrgentNotes]   = useState("");
+  const [urgentPriority, setUrgentPriority] = useState("high");
 
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -463,11 +506,12 @@ export default function Schedule() {
 
   const generateSchedule = useGenerateSchedule({
     mutation: {
-      onSuccess: (data) => {
+      onSuccess: (data: any) => {
         setDialogOpen(false);
+        const refreshed = data.jobsRefreshed ? ` · ${data.jobsRefreshed} refreshed` : "";
         toast({
           title: "Schedule generated",
-          description: `${data.jobsCreated} jobs created from ${format(new Date(genFrom), "d MMM yyyy")} to ${format(new Date(genTo), "d MMM yyyy")}.`,
+          description: `${data.jobsCreated} new jobs${refreshed} from ${format(new Date(genFrom), "d MMM yyyy")} to ${format(new Date(genTo), "d MMM yyyy")}.`,
         });
         queryClient.invalidateQueries({ queryKey: ["/api/schedule/week"] });
         queryClient.invalidateQueries({ queryKey: ["/api/schedule/range"] });
@@ -477,6 +521,96 @@ export default function Schedule() {
       },
     },
   });
+
+  // ── Job update ──────────────────────────────────────────────────────────────
+  const updateJob = useUpdateJob({
+    mutation: {
+      onSuccess: (updated: any) => {
+        setSelectedJob(null);
+        const isSkipped = updated.status === "skipped";
+        toast({
+          title: isSkipped ? "Job skipped — rescheduled" : "Job updated",
+          description: isSkipped && updated.rescheduledTo
+            ? `Rescheduled to ${format(new Date(updated.rescheduledTo + "T00:00:00"), "d MMM yyyy")}.`
+            : `Status set to ${updated.status.replace("_", " ")}.`,
+        });
+        queryClient.invalidateQueries({ queryKey: ["/api/schedule/week"] });
+        queryClient.invalidateQueries({ queryKey: ["/api/schedule/range"] });
+      },
+      onError: (err: any) => {
+        toast({ title: "Update failed", description: err?.message ?? "Unknown error", variant: "destructive" });
+      },
+    },
+  });
+
+  const handleJobClick = (job: any) => {
+    setSelectedJob(job);
+    setJobStatus(job.status);
+    setJobActualTime(job.actualTimeMins ? String(job.actualTimeMins) : "");
+    setJobNotes(job.notes ?? "");
+  };
+
+  const handleJobSave = () => {
+    if (!selectedJob) return;
+    const patch: Record<string, unknown> = { status: jobStatus };
+    if (jobNotes) patch.notes = jobNotes;
+    if (jobActualTime && jobStatus === "completed") patch.actualTimeMins = parseInt(jobActualTime);
+    updateJob.mutate({ id: selectedJob.id, data: patch as any });
+  };
+
+  // ── Urgent job ──────────────────────────────────────────────────────────────
+  const { data: allAssets } = useListAssets(
+    { limit: 500 },
+    { query: { enabled: urgentOpen } },
+  );
+
+  const createJob = useCreateJob({
+    mutation: {
+      onSuccess: () => {
+        setUrgentOpen(false);
+        setUrgentAsset(null);
+        setUrgentSearch("");
+        setUrgentDate("");
+        setUrgentNotes("");
+        toast({ title: "Urgent job added", description: "The job has been added to the schedule." });
+        queryClient.invalidateQueries({ queryKey: ["/api/schedule/week"] });
+        queryClient.invalidateQueries({ queryKey: ["/api/schedule/range"] });
+      },
+      onError: (err: any) => {
+        toast({ title: "Failed to add job", description: err?.message ?? "Unknown error", variant: "destructive" });
+      },
+    },
+  });
+
+  const openUrgentJob = () => {
+    setUrgentDate(format(currentDate, "yyyy-MM-dd"));
+    setUrgentSearch("");
+    setUrgentAsset(null);
+    setUrgentNotes("");
+    setUrgentPriority("high");
+    setUrgentOpen(true);
+  };
+
+  const handleAddUrgentJob = () => {
+    if (!urgentAsset || !urgentDate) return;
+    createJob.mutate({
+      data: {
+        assetId:       urgentAsset.id,
+        jobType:       "reactive",
+        teamId:        urgentAsset.teamId ?? undefined,
+        scheduledDate: urgentDate,
+        status:        "pending",
+        crewStatus:    "full",
+        notes:         urgentNotes || undefined,
+      } as any,
+    });
+  };
+
+  const filteredAssets = (allAssets?.data ?? []).filter((a: any) =>
+    urgentSearch.length < 2 ? false :
+    a.name.toLowerCase().includes(urgentSearch.toLowerCase()) ||
+    a.reference.toLowerCase().includes(urgentSearch.toLowerCase()),
+  ).slice(0, 8);
 
   const openGenerateDialog = () => {
     setGenFrom(defaultFrom(currentDate));
@@ -563,6 +697,15 @@ export default function Schedule() {
 
           <Button
             size="sm"
+            variant="outline"
+            className="gap-2 border-orange-200 text-orange-700 hover:bg-orange-50"
+            onClick={openUrgentJob}
+          >
+            <Zap className="w-4 h-4" />
+            Add Urgent Job
+          </Button>
+          <Button
+            size="sm"
             style={{ background: BRAND }}
             className="text-white hover:opacity-90 gap-2"
             onClick={openGenerateDialog}
@@ -625,6 +768,7 @@ export default function Schedule() {
               isLoading={weekLoading}
               getTeamColor={getTeamColor}
               getTeamName={getTeamName}
+              onJobClick={handleJobClick}
             />
           </div>
         )}
@@ -634,6 +778,7 @@ export default function Schedule() {
             isLoading={weekLoading}
             getTeamColor={getTeamColor}
             getTeamName={getTeamName}
+            onJobClick={handleJobClick}
           />
         )}
         {view === "gantt" && (
@@ -652,7 +797,7 @@ export default function Schedule() {
           <DialogHeader>
             <DialogTitle>Generate Schedule</DialogTitle>
             <DialogDescription>
-              Jobs will be created for all active assets within the selected date range, skipping dates that already have jobs.
+              New jobs will be created for all active assets in the date range. Existing pending jobs will have their crew status refreshed. In-progress, completed, and skipped jobs are never touched.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-2">
@@ -668,8 +813,8 @@ export default function Schedule() {
             </div>
             {genFrom && genTo && genFrom <= genTo && (
               <p className="text-xs text-gray-500 bg-gray-50 rounded-lg px-3 py-2">
-                Jobs from <span className="font-medium text-gray-700">{format(new Date(genFrom), "d MMM yyyy")}</span> to{" "}
-                <span className="font-medium text-gray-700">{format(new Date(genTo), "d MMM yyyy")}</span> — existing jobs won't be duplicated.
+                <span className="font-medium text-gray-700">{format(new Date(genFrom), "d MMM yyyy")}</span> to{" "}
+                <span className="font-medium text-gray-700">{format(new Date(genTo), "d MMM yyyy")}</span>
               </p>
             )}
             {genFrom && genTo && genFrom > genTo && (
@@ -685,6 +830,220 @@ export default function Schedule() {
               disabled={generateSchedule.isPending || !genFrom || !genTo || genFrom > genTo}
             >
               {generateSchedule.isPending ? "Generating..." : "Generate"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Job Update Sheet ───────────────────────────────────────────────── */}
+      <Sheet open={!!selectedJob} onOpenChange={open => { if (!open) setSelectedJob(null); }}>
+        <SheetContent className="w-[420px] sm:w-[460px] flex flex-col">
+          <SheetHeader className="pb-4 border-b">
+            <SheetTitle className="text-base font-semibold text-gray-900">
+              {selectedJob?.assetName ?? "Job"}
+            </SheetTitle>
+            <SheetDescription className="text-xs text-gray-400 font-mono">
+              {selectedJob?.assetRef} · {selectedJob?.scheduledDate ? format(new Date(selectedJob.scheduledDate + "T00:00:00"), "EEEE d MMM yyyy") : ""}
+            </SheetDescription>
+          </SheetHeader>
+
+          {selectedJob && (
+            <div className="flex-1 overflow-y-auto py-5 space-y-5">
+              {/* Info pills */}
+              <div className="flex flex-wrap gap-2">
+                <span className="text-[11px] px-2.5 py-1 rounded-full bg-gray-100 text-gray-600 font-medium">
+                  {getTeamName(selectedJob.teamId)}
+                </span>
+                <span className="text-[11px] px-2.5 py-1 rounded-full bg-gray-100 text-gray-600 font-medium flex items-center gap-1">
+                  <Clock className="w-3 h-3" />
+                  Est. {selectedJob.estimatedTimeMins ?? selectedJob.serviceTimeMins}m
+                </span>
+                {selectedJob.jobType === "reactive" && (
+                  <span className="text-[11px] px-2.5 py-1 rounded-full bg-orange-100 text-orange-700 font-medium flex items-center gap-1">
+                    <Zap className="w-3 h-3" />Urgent
+                  </span>
+                )}
+                {selectedJob.crewStatus === "reduced" && (
+                  <span className="text-[11px] px-2.5 py-1 rounded-full bg-amber-100 text-amber-700 font-medium flex items-center gap-1">
+                    <AlertTriangle className="w-3 h-3" />Reduced crew
+                  </span>
+                )}
+                {selectedJob.crewStatus === "none" && (
+                  <span className="text-[11px] px-2.5 py-1 rounded-full bg-red-100 text-red-700 font-medium flex items-center gap-1">
+                    <XCircle className="w-3 h-3" />No crew
+                  </span>
+                )}
+              </div>
+
+              {/* Status */}
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold text-gray-700 uppercase tracking-wide">Status</Label>
+                <div className="grid grid-cols-2 gap-2">
+                  {STATUS_OPTIONS.map(opt => (
+                    <button
+                      key={opt.value}
+                      onClick={() => setJobStatus(opt.value)}
+                      className={`flex items-center gap-2 px-3 py-2.5 rounded-lg border text-sm font-medium transition-all ${
+                        jobStatus === opt.value
+                          ? "border-[#00AECD] bg-[#00AECD]/5 text-[#00AECD] shadow-sm"
+                          : "border-gray-200 text-gray-600 hover:border-gray-300 hover:bg-gray-50"
+                      }`}
+                    >
+                      {opt.value === "pending"     && <RotateCcw className="w-3.5 h-3.5" />}
+                      {opt.value === "in_progress" && <PlayCircle className="w-3.5 h-3.5" />}
+                      {opt.value === "completed"   && <CheckCircle className="w-3.5 h-3.5" />}
+                      {opt.value === "skipped"     && <XCircle className="w-3.5 h-3.5" />}
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Actual time (only when completing) */}
+              {jobStatus === "completed" && (
+                <div className="space-y-1.5">
+                  <Label htmlFor="actual-time" className="text-xs font-semibold text-gray-700 uppercase tracking-wide">
+                    Actual time (minutes)
+                  </Label>
+                  <Input
+                    id="actual-time"
+                    type="number"
+                    min={1}
+                    placeholder={String(selectedJob.estimatedTimeMins ?? selectedJob.serviceTimeMins)}
+                    value={jobActualTime}
+                    onChange={e => setJobActualTime(e.target.value)}
+                    className="text-sm"
+                  />
+                </div>
+              )}
+
+              {/* Skip reschedule notice */}
+              {jobStatus === "skipped" && selectedJob.jobType === "scheduled" && (
+                <div className="rounded-lg bg-orange-50 border border-orange-200 px-4 py-3 text-xs text-orange-800">
+                  <p className="font-semibold mb-0.5">This job will be rescheduled</p>
+                  <p>A new pending job will be created for the next scheduled occurrence.</p>
+                </div>
+              )}
+
+              {/* Notes */}
+              <div className="space-y-1.5">
+                <Label htmlFor="job-notes" className="text-xs font-semibold text-gray-700 uppercase tracking-wide">Notes</Label>
+                <Textarea
+                  id="job-notes"
+                  placeholder="Add notes about this job…"
+                  value={jobNotes}
+                  onChange={e => setJobNotes(e.target.value)}
+                  className="text-sm resize-none"
+                  rows={3}
+                />
+              </div>
+            </div>
+          )}
+
+          <SheetFooter className="pt-4 border-t gap-2">
+            <Button variant="outline" onClick={() => setSelectedJob(null)}>Cancel</Button>
+            <Button
+              style={{ background: BRAND }}
+              className="text-white hover:opacity-90 flex-1"
+              onClick={handleJobSave}
+              disabled={updateJob.isPending || !jobStatus}
+            >
+              {updateJob.isPending ? "Saving…" : "Save changes"}
+            </Button>
+          </SheetFooter>
+        </SheetContent>
+      </Sheet>
+
+      {/* ── Add Urgent Job dialog ──────────────────────────────────────────── */}
+      <Dialog open={urgentOpen} onOpenChange={setUrgentOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Zap className="w-4 h-4 text-orange-500" />
+              Add Urgent Job
+            </DialogTitle>
+            <DialogDescription>
+              Add a reactive or urgent job to the schedule. It won't be touched by the schedule generator.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-2">
+            {/* Asset search */}
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold text-gray-700 uppercase tracking-wide">Asset</Label>
+              {urgentAsset ? (
+                <div className="flex items-center justify-between px-3 py-2.5 rounded-lg border border-[#00AECD] bg-[#00AECD]/5">
+                  <div>
+                    <p className="text-sm font-semibold text-gray-900">{urgentAsset.name}</p>
+                    <p className="text-[11px] text-gray-400 font-mono">{urgentAsset.reference} · {getTeamName(urgentAsset.teamId)}</p>
+                  </div>
+                  <button onClick={() => { setUrgentAsset(null); setUrgentSearch(""); }} className="text-xs text-gray-400 hover:text-gray-700 underline">Change</button>
+                </div>
+              ) : (
+                <div className="space-y-1">
+                  <Input
+                    placeholder="Search by name or ref…"
+                    value={urgentSearch}
+                    onChange={e => setUrgentSearch(e.target.value)}
+                    className="text-sm"
+                    autoFocus
+                  />
+                  {urgentSearch.length >= 2 && filteredAssets.length === 0 && (
+                    <p className="text-xs text-gray-400 px-1">No assets found.</p>
+                  )}
+                  {filteredAssets.length > 0 && (
+                    <div className="border border-gray-200 rounded-lg overflow-hidden shadow-sm max-h-48 overflow-y-auto">
+                      {filteredAssets.map((a: any) => (
+                        <button
+                          key={a.id}
+                          onClick={() => { setUrgentAsset(a); setUrgentSearch(""); }}
+                          className="w-full text-left px-3 py-2 hover:bg-gray-50 border-b border-gray-100 last:border-b-0 transition-colors"
+                        >
+                          <p className="text-sm font-medium text-gray-900">{a.name}</p>
+                          <p className="text-[11px] text-gray-400 font-mono">{a.reference} · {getTeamName(a.teamId)}</p>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Date */}
+            <div className="space-y-1.5">
+              <Label htmlFor="urgent-date" className="text-xs font-semibold text-gray-700 uppercase tracking-wide">Date</Label>
+              <Input
+                id="urgent-date"
+                type="date"
+                value={urgentDate}
+                onChange={e => setUrgentDate(e.target.value)}
+                className="text-sm"
+              />
+            </div>
+
+            {/* Notes */}
+            <div className="space-y-1.5">
+              <Label htmlFor="urgent-notes" className="text-xs font-semibold text-gray-700 uppercase tracking-wide">Notes <span className="font-normal text-gray-400 normal-case">(optional)</span></Label>
+              <Textarea
+                id="urgent-notes"
+                placeholder="Describe the urgent work required…"
+                value={urgentNotes}
+                onChange={e => setUrgentNotes(e.target.value)}
+                className="text-sm resize-none"
+                rows={2}
+              />
+            </div>
+          </div>
+
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setUrgentOpen(false)}>Cancel</Button>
+            <Button
+              className="gap-2 bg-orange-500 hover:bg-orange-600 text-white"
+              onClick={handleAddUrgentJob}
+              disabled={createJob.isPending || !urgentAsset || !urgentDate}
+            >
+              <Zap className="w-4 h-4" />
+              {createJob.isPending ? "Adding…" : "Add to schedule"}
             </Button>
           </DialogFooter>
         </DialogContent>
