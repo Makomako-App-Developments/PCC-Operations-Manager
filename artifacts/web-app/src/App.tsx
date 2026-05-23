@@ -21,6 +21,7 @@ import Reports from "@/pages/reports";
 import AuditLog from "@/pages/audit-log/index";
 import Users from "@/pages/users/index";
 import Specification from "@/pages/specification/index";
+import Team from "@/pages/team/index";
 
 const queryClient = new QueryClient();
 
@@ -62,6 +63,7 @@ function Router() {
       <Route path="/audit-log"><ProtectedRoute component={AuditLog} /></Route>
       <Route path="/users"><ProtectedRoute component={Users} /></Route>
       <Route path="/settings"><ProtectedRoute component={Users} /></Route>
+      <Route path="/team"><ProtectedRoute component={Team} /></Route>
       <Route path="/specification"><ProtectedRoute component={Specification} /></Route>
       <Route path="/">
         <ProtectedRoute component={() => {

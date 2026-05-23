@@ -11,6 +11,7 @@ import dashboardRouter   from "./dashboard";
 import scheduleRouter    from "./schedule";
 import auditLogRouter    from "./audit-log";
 import usersRouter       from "./users";
+import teamRouter        from "./team";
 
 const router: IRouter = Router();
 
@@ -26,5 +27,6 @@ router.use(dashboardRouter);
 router.use(scheduleRouter);
 router.use(auditLogRouter);
 router.use(usersRouter);
+router.use(teamRouter);
 
 export default router;

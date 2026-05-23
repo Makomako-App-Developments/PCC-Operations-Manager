@@ -85,3 +85,11 @@ export const reactivePriorityEnum = pgEnum("reactive_priority", [
   "high",
   "urgent",
 ]);
+
+export const availabilityStatusEnum = pgEnum("availability_status", [
+  "available",
+  "annual_leave",
+  "sick",
+  "statutory_holiday",
+  "unpaid_leave",
+]);
