@@ -273,7 +273,7 @@ export default function Assets() {
                   <th className="px-4 py-3 font-semibold text-gray-500 uppercase tracking-wide text-xs">Reference</th>
                   <th className="px-4 py-3 font-semibold text-gray-500 uppercase tracking-wide text-xs">Site Name</th>
                   <th className="px-4 py-3 font-semibold text-gray-500 uppercase tracking-wide text-xs">Type</th>
-                  <th className="px-4 py-3 font-semibold text-gray-500 uppercase tracking-wide text-xs">Standard</th>
+                  <th className="px-4 py-3 font-semibold text-gray-500 uppercase tracking-wide text-xs">Service Time</th>
                   <th className="px-4 py-3 font-semibold text-gray-500 uppercase tracking-wide text-xs">Location</th>
                   <th className="px-4 py-3 font-semibold text-gray-500 uppercase tracking-wide text-xs">Freq</th>
                   <th className="px-4 py-3 font-semibold text-gray-500 uppercase tracking-wide text-xs">Team</th>
@@ -294,11 +294,7 @@ export default function Assets() {
                         {asset.gardenType.replace("_", " ")}
                       </Badge>
                     </td>
-                    <td className="px-4 py-3">
-                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase ${STANDARD_COLORS[asset.standard]}`}>
-                        {asset.standard}
-                      </span>
-                    </td>
+                    <td className="px-4 py-3 text-sm text-gray-700">{asset.serviceTimeMins} min</td>
                     <td className="px-4 py-3 text-gray-500">
                       <div className="flex items-center gap-1.5">
                         <MapPin className="w-3 h-3 text-gray-400" />
