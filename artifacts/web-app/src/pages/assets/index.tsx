@@ -704,10 +704,10 @@ function AssetDetailDrawer({ assetId, onClose, teamName }: { assetId: string | n
                         </Select>
                       </FormField>
                       <FormField label="Site Type">
-                        <Select value={form.siteType} onValueChange={v => f("siteType", v)}>
+                        <Select value={form.siteType || "__none__"} onValueChange={v => f("siteType", v === "__none__" ? "" : v)}>
                           <SelectTrigger className="text-sm"><SelectValue /></SelectTrigger>
                           <SelectContent>
-                            <SelectItem value="">—</SelectItem>
+                            <SelectItem value="__none__">—</SelectItem>
                             <SelectItem value="park">Park</SelectItem>
                             <SelectItem value="street">Street</SelectItem>
                           </SelectContent>
@@ -716,10 +716,10 @@ function AssetDetailDrawer({ assetId, onClose, teamName }: { assetId: string | n
                     </div>
                     <div className="grid grid-cols-2 gap-4">
                       <FormField label="Ward">
-                        <Select value={form.ward} onValueChange={v => f("ward", v)}>
+                        <Select value={form.ward || "__none__"} onValueChange={v => f("ward", v === "__none__" ? "" : v)}>
                           <SelectTrigger className="text-sm"><SelectValue /></SelectTrigger>
                           <SelectContent>
-                            <SelectItem value="">—</SelectItem>
+                            <SelectItem value="__none__">—</SelectItem>
                             <SelectItem value="eastern">Eastern</SelectItem>
                             <SelectItem value="northern">Northern</SelectItem>
                             <SelectItem value="western">Western</SelectItem>
@@ -727,10 +727,10 @@ function AssetDetailDrawer({ assetId, onClose, teamName }: { assetId: string | n
                         </Select>
                       </FormField>
                       <FormField label="Team">
-                        <Select value={form.teamId} onValueChange={v => f("teamId", v)}>
+                        <Select value={form.teamId || "__none__"} onValueChange={v => f("teamId", v === "__none__" ? "" : v)}>
                           <SelectTrigger className="text-sm"><SelectValue /></SelectTrigger>
                           <SelectContent>
-                            <SelectItem value="">Unassigned</SelectItem>
+                            <SelectItem value="__none__">Unassigned</SelectItem>
                             {teamsData?.map(t => (
                               <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>
                             ))}
