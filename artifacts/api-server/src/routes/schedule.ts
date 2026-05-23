@@ -174,4 +174,75 @@ router.get(
   },
 );
 
+// GET /api/schedule/range  — jobs grouped by asset for an arbitrary date range
+const rangeQuerySchema = z.object({
+  from:   z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  to:     z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  teamId: z.string().uuid().optional(),
+});
+
+router.get(
+  "/schedule/range",
+  requireAuth,
+  validateQuery(rangeQuerySchema),
+  async (req, res) => {
+    const { from, to, teamId } = res.locals.query as z.infer<typeof rangeQuerySchema>;
+
+    const rows = await db
+      .select({
+        jobId:           jobsTable.id,
+        scheduledDate:   sql<string>`to_char(${jobsTable.scheduledDate}, 'YYYY-MM-DD')`,
+        status:          jobsTable.status,
+        assetId:         assetsTable.id,
+        assetName:       assetsTable.name,
+        assetRef:        assetsTable.reference,
+        gardenType:      assetsTable.gardenType,
+        standard:        assetsTable.standard,
+        frequency:       assetsTable.frequency,
+        serviceTimeMins: assetsTable.serviceTimeMins,
+        teamId:          assetsTable.teamId,
+      })
+      .from(jobsTable)
+      .innerJoin(assetsTable, eq(jobsTable.assetId, assetsTable.id))
+      .where(
+        and(
+          gte(jobsTable.scheduledDate, from),
+          lte(jobsTable.scheduledDate, to),
+          ...(teamId ? [eq(jobsTable.teamId, teamId)] : []),
+        ),
+      )
+      .orderBy(assetsTable.name, jobsTable.scheduledDate);
+
+    const assetMap = new Map<string, {
+      assetId: string; assetName: string; assetRef: string;
+      gardenType: string; standard: string; frequency: string;
+      serviceTimeMins: number; teamId: string | null;
+      jobs: { id: string; scheduledDate: string; status: string }[];
+    }>();
+
+    for (const row of rows) {
+      if (!assetMap.has(row.assetId)) {
+        assetMap.set(row.assetId, {
+          assetId:         row.assetId,
+          assetName:       row.assetName,
+          assetRef:        row.assetRef,
+          gardenType:      row.gardenType,
+          standard:        row.standard,
+          frequency:       row.frequency,
+          serviceTimeMins: row.serviceTimeMins,
+          teamId:          row.teamId,
+          jobs:            [],
+        });
+      }
+      assetMap.get(row.assetId)!.jobs.push({
+        id:            row.jobId,
+        scheduledDate: row.scheduledDate,
+        status:        row.status,
+      });
+    }
+
+    res.json({ from, to, rows: Array.from(assetMap.values()) });
+  },
+);
+
 export default router;
