@@ -426,9 +426,6 @@ export default function SpecificationPage() {
                       className="px-4 py-3 text-center border-r border-gray-100 last:border-r-0"
                       style={{ minWidth: 130 }}
                     >
-                      <span className="block text-[10px] font-medium text-gray-400 mb-0.5">
-                        {col.type}
-                      </span>
                       <span className="block text-xs font-bold text-gray-700 whitespace-pre-line leading-tight">
                         {col.label}
                       </span>
