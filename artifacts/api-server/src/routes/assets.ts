@@ -1,10 +1,36 @@
 import { Router } from "express";
-import { db, assetsTable, insertAssetSchema } from "@workspace/db";
-import { and, eq, ilike, sql } from "drizzle-orm";
+import { db, assetsTable, insertAssetSchema, auditLogTable, usersTable } from "@workspace/db";
+import { and, eq, ilike, sql, desc } from "drizzle-orm";
 import { z } from "zod";
 import { requireAuth, requireRole } from "../middlewares/auth";
 import { validateBody, validateQuery } from "../middlewares/validate";
 import { auditLog } from "../lib/audit";
+
+const ASSET_FIELD_LABELS: Record<string, string> = {
+  name:            "Site Name",
+  gardenType:      "Specification",
+  standard:        "Standard",
+  areaM2:          "Area (m²)",
+  serviceTimeMins: "Service Time (mins)",
+  frequency:       "Frequency",
+  teamId:          "Team",
+  siteType:        "Site Type",
+  ward:            "Ward",
+  suburb:          "Suburb",
+  streetAddress:   "Street Address",
+  notes:           "Notes",
+  isActive:        "Active",
+};
+
+function diffAsset(oldD: Record<string, any>, newD: Record<string, any>) {
+  const changes: Array<{ field: string; label: string; old: any; new: any }> = [];
+  for (const [field, label] of Object.entries(ASSET_FIELD_LABELS)) {
+    if (String(oldD[field] ?? "") !== String(newD[field] ?? "")) {
+      changes.push({ field, label, old: oldD[field] ?? null, new: newD[field] ?? null });
+    }
+  }
+  return changes;
+}
 
 const router = Router();
 
@@ -76,6 +102,44 @@ router.patch("/assets/:id", requireAuth, requireRole("manager", "supervisor"), a
     .returning();
   await auditLog({ tableName: "assets", recordId: id, action: "UPDATE", changedById: req.auth?.userId ?? null, oldData: before as Record<string, unknown>, newData: updated as Record<string, unknown>, ipAddress: req.ip ?? null });
   res.json(updated);
+});
+
+// GET /api/assets/:id/history
+router.get("/assets/:id/history", requireAuth, async (req, res) => {
+  const id = String(req.params.id);
+
+  const entries = await db
+    .select({
+      id:            auditLogTable.id,
+      action:        auditLogTable.action,
+      changedAt:     auditLogTable.changedAt,
+      oldData:       auditLogTable.oldData,
+      newData:       auditLogTable.newData,
+      changedByName: usersTable.name,
+    })
+    .from(auditLogTable)
+    .leftJoin(usersTable, eq(auditLogTable.changedById, usersTable.id))
+    .where(and(
+      eq(auditLogTable.tableName, "assets"),
+      eq(auditLogTable.recordId,  id),
+    ))
+    .orderBy(desc(auditLogTable.changedAt))
+    .limit(100);
+
+  const result = entries.map(entry => ({
+    id:            entry.id,
+    action:        entry.action,
+    changedAt:     entry.changedAt,
+    changedByName: entry.changedByName ?? "System",
+    changes: entry.action === "UPDATE"
+      ? diffAsset(
+          entry.oldData as Record<string, any> ?? {},
+          entry.newData as Record<string, any> ?? {},
+        )
+      : [],
+  }));
+
+  res.json(result);
 });
 
 // DELETE /api/assets/:id  (soft delete)

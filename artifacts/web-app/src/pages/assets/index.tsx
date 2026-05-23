@@ -1,12 +1,14 @@
 import { useState, useEffect, useMemo } from "react";
-import { useListAssets, getListAssetsQueryKey, useListTeams, getListTeamsQueryKey, useUpdateAsset, getGetAssetQueryKey, useGetAsset, useDeleteAsset } from "@workspace/api-client-react";
+import { useListAssets, getListAssetsQueryKey, useListTeams, getListTeamsQueryKey, getGetAssetQueryKey, useGetAsset, useDeleteAsset } from "@workspace/api-client-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Search, Plus, MapPin, Map as MapIcon, CheckCircle2, AlertTriangle, Filter, List as ListIcon, X, ChevronUp, ChevronDown, ChevronsUpDown } from "lucide-react";
+import { Search, Plus, Map as MapIcon, List as ListIcon, ChevronUp, ChevronDown, ChevronsUpDown, Loader2, Pencil } from "lucide-react";
 import { Link } from "wouter";
 import { MapContainer, TileLayer, CircleMarker, Polygon, Tooltip, useMap } from "react-leaflet";
 import L from "leaflet";
@@ -417,13 +419,98 @@ export default function Assets() {
   );
 }
 
+type EditForm = {
+  name: string; gardenType: string; standard: string; areaM2: string;
+  serviceTimeMins: string; frequency: string; siteType: string; ward: string;
+  teamId: string; suburb: string; streetAddress: string; notes: string;
+};
+
+interface HistoryEntry {
+  id: string; action: string; changedAt: string; changedByName: string;
+  changes: Array<{ field: string; label: string; old: any; new: any }>;
+}
+
+function InfoRow({ label, value, mono }: { label: string; value?: string | null; mono?: boolean }) {
+  return (
+    <div className="grid grid-cols-3 gap-2 text-sm">
+      <span className="text-gray-500">{label}:</span>
+      <span className={`col-span-2 font-medium text-gray-900 ${mono ? "font-mono text-xs text-gray-600 break-all" : ""}`}>
+        {value || "—"}
+      </span>
+    </div>
+  );
+}
+
+function FormField({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="space-y-1">
+      <Label className="text-xs font-semibold text-gray-600 uppercase tracking-wide">{label}</Label>
+      {children}
+    </div>
+  );
+}
+
+const ACTION_DOT: Record<string, string> = { INSERT: "#16a34a", UPDATE: "#00AECD", DELETE: "#dc2626" };
+const ACTION_LABEL: Record<string, string> = { INSERT: "Asset created", UPDATE: "Updated", DELETE: "Archived" };
+
 function AssetDetailDrawer({ assetId, onClose, teamName }: { assetId: string | null, onClose: () => void, teamName: (id?: string|null) => string }) {
   const { data: asset, isLoading } = useGetAsset(assetId || "", {
     query: { enabled: !!assetId, queryKey: getGetAssetQueryKey(assetId || "") }
   });
+  const { data: teamsData } = useListTeams({ query: { queryKey: getListTeamsQueryKey() } });
+
+  const [activeTab, setActiveTab] = useState<"details" | "history">("details");
+  const [editing, setEditing]     = useState(false);
+  const [saving, setSaving]       = useState(false);
+  const [history, setHistory]     = useState<HistoryEntry[]>([]);
+  const [histLoading, setHistLoading] = useState(false);
+  const [form, setForm] = useState<EditForm>({
+    name: "", gardenType: "", standard: "", areaM2: "", serviceTimeMins: "",
+    frequency: "", siteType: "", ward: "", teamId: "", suburb: "", streetAddress: "", notes: "",
+  });
 
   const queryClient = useQueryClient();
   const { toast } = useToast();
+
+  // Reset on asset change
+  useEffect(() => {
+    setEditing(false);
+    setActiveTab("details");
+    setHistory([]);
+  }, [assetId]);
+
+  // Populate form when asset loads
+  useEffect(() => {
+    if (asset) {
+      setForm({
+        name:            asset.name || "",
+        gardenType:      asset.gardenType || "",
+        standard:        asset.standard || "",
+        areaM2:          String(asset.areaM2 ?? ""),
+        serviceTimeMins: String(asset.serviceTimeMins ?? ""),
+        frequency:       asset.frequency || "",
+        siteType:        (asset as any).siteType || "",
+        ward:            asset.ward || "",
+        teamId:          asset.teamId || "",
+        suburb:          asset.suburb || "",
+        streetAddress:   asset.streetAddress || "",
+        notes:           asset.notes || "",
+      });
+    }
+  }, [asset]);
+
+  // Load history when tab is activated
+  useEffect(() => {
+    if (activeTab === "history" && assetId && history.length === 0) {
+      setHistLoading(true);
+      fetch(`/api/assets/${assetId}/history`, { credentials: "include" })
+        .then(r => r.json())
+        .then(setHistory)
+        .catch(() => toast({ title: "Failed to load history", variant: "destructive" }))
+        .finally(() => setHistLoading(false));
+    }
+  }, [activeTab, assetId]);
+
   const deleteMutation = useDeleteAsset({
     mutation: {
       onSuccess: () => {
@@ -434,21 +521,61 @@ function AssetDetailDrawer({ assetId, onClose, teamName }: { assetId: string | n
     }
   });
 
+  const f = (key: keyof EditForm, val: string) => setForm(prev => ({ ...prev, [key]: val }));
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      const payload = {
+        ...form,
+        areaM2:          parseInt(form.areaM2) || 0,
+        serviceTimeMins: parseInt(form.serviceTimeMins) || 0,
+        siteType:        form.siteType      || null,
+        ward:            form.ward          || null,
+        teamId:          form.teamId        || null,
+        suburb:          form.suburb        || null,
+        streetAddress:   form.streetAddress || null,
+        notes:           form.notes         || null,
+      };
+      const r = await fetch(`/api/assets/${asset!.id}`, {
+        method: "PATCH", credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      if (!r.ok) throw new Error(await r.text());
+      toast({ title: "Asset updated" });
+      queryClient.invalidateQueries({ queryKey: ["/api/assets"] });
+      queryClient.invalidateQueries({ queryKey: getGetAssetQueryKey(asset!.id) });
+      setEditing(false);
+      setHistory([]); // reset so history reloads fresh
+    } catch {
+      toast({ title: "Save failed", variant: "destructive" });
+    } finally {
+      setSaving(false);
+    }
+  };
+
   return (
     <Sheet open={!!assetId} onOpenChange={(open) => !open && onClose()}>
-      <SheetContent className="w-[480px] sm:max-w-md p-0 flex flex-col gap-0 border-l border-gray-200" data-testid="drawer-asset-detail">
+      <SheetContent className="w-[520px] sm:max-w-lg p-0 flex flex-col gap-0 border-l border-gray-200" data-testid="drawer-asset-detail">
         {isLoading || !asset ? (
           <div className="p-6"><Skeleton className="h-64" /></div>
         ) : (
           <>
-            <div className="px-5 py-5 border-b bg-[#0f2a36] flex-shrink-0">
-              <div className="flex justify-between items-start mb-2">
-                <h2 className="text-lg font-bold text-white leading-snug">{asset.name}</h2>
+            {/* Header */}
+            <div className="px-5 py-4 border-b bg-[#0f2a36] flex-shrink-0">
+              <div className="flex justify-between items-start mb-1">
+                <h2 className="text-base font-bold text-white leading-snug">{asset.name}</h2>
+                {!editing && (
+                  <button onClick={() => setEditing(true)} className="ml-3 flex items-center gap-1 text-white/60 hover:text-white text-[11px] flex-shrink-0">
+                    <Pencil className="w-3 h-3" /> Edit
+                  </button>
+                )}
               </div>
-              <p className="text-[11px] text-white/50 font-mono mb-3">{asset.reference}</p>
-              <div className="flex flex-wrap gap-2">
+              <p className="text-[11px] text-white/50 font-mono mb-2.5">{asset.reference}</p>
+              <div className="flex flex-wrap gap-1.5">
                 <Badge className={`text-[10px] border-0 capitalize ${TYPE_COLORS[asset.gardenType] || "bg-gray-100 text-gray-700"}`}>
-                  {asset.gardenType.replace("_", " ")}
+                  {asset.gardenType.replace(/_/g, " ")}
                 </Badge>
                 <Badge className={`text-[10px] border-0 capitalize ${STANDARD_COLORS[asset.standard]}`}>
                   {asset.standard} Standard
@@ -459,82 +586,230 @@ function AssetDetailDrawer({ assetId, onClose, teamName }: { assetId: string | n
               </div>
             </div>
 
-            <div className="grid grid-cols-4 gap-0 border-b flex-shrink-0 bg-white">
-              {[
-                { label: "Area",      value: `${asset.areaM2} m²` },
-                { label: "Service",   value: `${asset.serviceTimeMins} min` },
-                { label: "Freq",      value: asset.frequency },
-                { label: "Ward",      value: asset.ward || "-" },
-              ].map(({ label, value }) => (
-                <div key={label} className="px-3 py-3 text-center border-r border-gray-100 last:border-r-0">
-                  <p className="text-[9px] text-gray-400 uppercase tracking-widest font-semibold">{label}</p>
-                  <p className="text-[12px] font-bold text-gray-900 mt-1 truncate">{value}</p>
-                </div>
-              ))}
-            </div>
-
-            {(asset.lat || (asset as any).boundary) && (
-              <DrawerMap asset={asset} />
+            {/* Stats bar */}
+            {!editing && (
+              <div className="grid grid-cols-4 gap-0 border-b flex-shrink-0 bg-white">
+                {[
+                  { label: "Area",    value: `${asset.areaM2} m²` },
+                  { label: "Service", value: `${asset.serviceTimeMins} min` },
+                  { label: "Freq",    value: asset.frequency },
+                  { label: "Ward",    value: asset.ward || "-" },
+                ].map(({ label, value }) => (
+                  <div key={label} className="px-3 py-2.5 text-center border-r border-gray-100 last:border-r-0">
+                    <p className="text-[9px] text-gray-400 uppercase tracking-widest font-semibold">{label}</p>
+                    <p className="text-[11px] font-bold text-gray-900 mt-0.5 truncate capitalize">{value}</p>
+                  </div>
+                ))}
+              </div>
             )}
 
-            <div className="flex-1 overflow-y-auto p-5 space-y-6 bg-white">
-              <section>
-                <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3">Location Details</p>
-                <div className="space-y-2">
-                  <div className="grid grid-cols-3 gap-2 text-sm">
-                    <span className="text-gray-500">Garden Type:</span>
-                    <span className="col-span-2">
-                      {(asset as any).siteType ? (
-                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase ${(asset as any).siteType === "park" ? "bg-green-100 text-green-700" : "bg-blue-100 text-blue-700"}`}>
-                          {(asset as any).siteType}
-                        </span>
-                      ) : <span className="font-medium text-gray-900">—</span>}
-                    </span>
-                  </div>
-                  <div className="grid grid-cols-3 gap-2 text-sm">
-                    <span className="text-gray-500">Global ID:</span>
-                    <span className="col-span-2 font-mono text-xs text-gray-600 break-all">{(asset as any).globalId || "—"}</span>
-                  </div>
-                  <div className="grid grid-cols-3 gap-2 text-sm">
-                    <span className="text-gray-500">Suburb:</span>
-                    <span className="col-span-2 font-medium text-gray-900">{asset.suburb || "-"}</span>
-                  </div>
-                  <div className="grid grid-cols-3 gap-2 text-sm">
-                    <span className="text-gray-500">Address:</span>
-                    <span className="col-span-2 font-medium text-gray-900">{asset.streetAddress || "-"}</span>
-                  </div>
-                  <div className="grid grid-cols-3 gap-2 text-sm">
-                    <span className="text-gray-500">Coordinates:</span>
-                    <span className="col-span-2 font-mono text-gray-700">{asset.lat != null ? Number(asset.lat).toFixed(4) : "—"}, {asset.lng != null ? Number(asset.lng).toFixed(4) : "—"}</span>
+            {/* Tabs (only in view mode) */}
+            {!editing && (
+              <div className="flex border-b bg-white flex-shrink-0 px-5">
+                {(["details", "history"] as const).map(t => (
+                  <button
+                    key={t}
+                    onClick={() => setActiveTab(t)}
+                    className={`px-1 py-2.5 text-xs font-semibold mr-4 border-b-2 transition-colors capitalize ${
+                      activeTab === t ? "border-[#00AECD] text-[#00AECD]" : "border-transparent text-gray-500 hover:text-gray-700"
+                    }`}
+                  >
+                    {t === "history" ? "Change History" : "Details"}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {/* ── DETAILS TAB (view) ── */}
+            {!editing && activeTab === "details" && (
+              <>
+                {(asset.lat || (asset as any).boundary) && <DrawerMap asset={asset} />}
+                <div className="flex-1 overflow-y-auto p-5 space-y-5 bg-white">
+                  <section>
+                    <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3">Location Details</p>
+                    <div className="space-y-2">
+                      <InfoRow label="Site Type"   value={(asset as any).siteType} />
+                      <InfoRow label="Global ID"   value={(asset as any).globalId} mono />
+                      <InfoRow label="Suburb"      value={asset.suburb} />
+                      <InfoRow label="Address"     value={asset.streetAddress} />
+                      <InfoRow label="Coordinates" mono
+                        value={asset.lat != null ? `${Number(asset.lat).toFixed(4)}, ${Number(asset.lng).toFixed(4)}` : null} />
+                    </div>
+                  </section>
+                  {asset.notes && (
+                    <section>
+                      <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3">Notes</p>
+                      <div className="bg-gray-50 rounded-lg p-3 text-sm text-gray-700 border border-gray-100 whitespace-pre-wrap">{asset.notes}</div>
+                    </section>
+                  )}
+                </div>
+                <div className="p-4 border-t bg-gray-50 flex items-center justify-between flex-shrink-0">
+                  <Button variant="destructive" size="sm" disabled={deleteMutation.isPending}
+                    onClick={() => { if (confirm("Archive this asset?")) deleteMutation.mutate({ id: asset.id }); }}
+                  >Archive Asset</Button>
+                  <Button variant="outline" size="sm" onClick={onClose}>Close</Button>
+                </div>
+              </>
+            )}
+
+            {/* ── EDIT FORM ── */}
+            {editing && (
+              <>
+                <div className="flex-1 overflow-y-auto p-5 bg-white">
+                  <div className="space-y-4">
+                    <FormField label="Site Name">
+                      <Input value={form.name} onChange={e => f("name", e.target.value)} className="text-sm" />
+                    </FormField>
+                    <div className="grid grid-cols-2 gap-4">
+                      <FormField label="Specification">
+                        <Select value={form.gardenType} onValueChange={v => f("gardenType", v)}>
+                          <SelectTrigger className="text-sm"><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            {["amenity","annuals","bush","hedge","ornamental","rain_garden","reveg","roses_perennials","tree_planter_pits"].map(g => (
+                              <SelectItem key={g} value={g}>{g.replace(/_/g, " ")}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </FormField>
+                      <FormField label="Standard">
+                        <Select value={form.standard} onValueChange={v => f("standard", v)}>
+                          <SelectTrigger className="text-sm"><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="high">High</SelectItem>
+                            <SelectItem value="medium">Medium</SelectItem>
+                            <SelectItem value="low">Low</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </FormField>
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <FormField label="Area (m²)">
+                        <Input type="number" value={form.areaM2} onChange={e => f("areaM2", e.target.value)} className="text-sm" />
+                      </FormField>
+                      <FormField label="Service Time (mins)">
+                        <Input type="number" value={form.serviceTimeMins} onChange={e => f("serviceTimeMins", e.target.value)} className="text-sm" />
+                      </FormField>
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <FormField label="Frequency">
+                        <Select value={form.frequency} onValueChange={v => f("frequency", v)}>
+                          <SelectTrigger className="text-sm"><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="weekly">Weekly</SelectItem>
+                            <SelectItem value="fortnightly">Fortnightly</SelectItem>
+                            <SelectItem value="monthly">Monthly</SelectItem>
+                            <SelectItem value="bimonthly">Bimonthly</SelectItem>
+                            <SelectItem value="quarterly">Quarterly</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </FormField>
+                      <FormField label="Site Type">
+                        <Select value={form.siteType} onValueChange={v => f("siteType", v)}>
+                          <SelectTrigger className="text-sm"><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="">—</SelectItem>
+                            <SelectItem value="park">Park</SelectItem>
+                            <SelectItem value="street">Street</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </FormField>
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <FormField label="Ward">
+                        <Select value={form.ward} onValueChange={v => f("ward", v)}>
+                          <SelectTrigger className="text-sm"><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="">—</SelectItem>
+                            <SelectItem value="eastern">Eastern</SelectItem>
+                            <SelectItem value="northern">Northern</SelectItem>
+                            <SelectItem value="western">Western</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </FormField>
+                      <FormField label="Team">
+                        <Select value={form.teamId} onValueChange={v => f("teamId", v)}>
+                          <SelectTrigger className="text-sm"><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="">Unassigned</SelectItem>
+                            {teamsData?.map(t => (
+                              <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </FormField>
+                    </div>
+                    <FormField label="Suburb">
+                      <Input value={form.suburb} onChange={e => f("suburb", e.target.value)} className="text-sm" />
+                    </FormField>
+                    <FormField label="Street Address">
+                      <Input value={form.streetAddress} onChange={e => f("streetAddress", e.target.value)} className="text-sm" />
+                    </FormField>
+                    <FormField label="Notes">
+                      <Textarea value={form.notes} onChange={e => f("notes", e.target.value)} className="text-sm" rows={3} />
+                    </FormField>
                   </div>
                 </div>
-              </section>
+                <div className="p-4 border-t bg-gray-50 flex items-center justify-end gap-2 flex-shrink-0">
+                  <Button variant="outline" size="sm" onClick={() => setEditing(false)} disabled={saving}>Cancel</Button>
+                  <Button size="sm" onClick={handleSave} disabled={saving} style={{ background: "#00AECD" }} className="text-white">
+                    {saving ? <><Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />Saving…</> : "Save Changes"}
+                  </Button>
+                </div>
+              </>
+            )}
 
-              {asset.notes && (
-                <section>
-                  <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3">Notes</p>
-                  <div className="bg-gray-50 rounded-lg p-3 text-sm text-gray-700 border border-gray-100 whitespace-pre-wrap">
-                    {asset.notes}
+            {/* ── HISTORY TAB ── */}
+            {!editing && activeTab === "history" && (
+              <div className="flex-1 overflow-y-auto p-5 bg-white">
+                {histLoading ? (
+                  <div className="flex items-center justify-center py-12">
+                    <Loader2 className="w-5 h-5 animate-spin text-gray-400" />
                   </div>
-                </section>
-              )}
-            </div>
-
-            <div className="p-4 border-t bg-gray-50 flex items-center justify-between flex-shrink-0">
-              <Button 
-                variant="destructive" 
-                size="sm"
-                onClick={() => {
-                  if (confirm("Are you sure you want to archive this asset?")) {
-                    deleteMutation.mutate({ id: asset.id });
-                  }
-                }}
-                disabled={deleteMutation.isPending}
-              >
-                Archive Asset
-              </Button>
-              <Button variant="outline" size="sm" onClick={onClose}>Close</Button>
-            </div>
+                ) : history.length === 0 ? (
+                  <p className="text-sm text-gray-400 text-center py-12">No changes recorded yet.</p>
+                ) : (
+                  <div className="space-y-3">
+                    {history.map((entry, i) => (
+                      <div key={entry.id} className="relative pl-6">
+                        {i < history.length - 1 && (
+                          <div className="absolute left-[7px] top-5 bottom-0 w-px bg-gray-200" />
+                        )}
+                        <div
+                          className="absolute left-0 top-1.5 w-3.5 h-3.5 rounded-full border-2 border-white shadow-sm"
+                          style={{ background: ACTION_DOT[entry.action] ?? "#94a3b8" }}
+                        />
+                        <div className="bg-gray-50 rounded-xl border border-gray-100 p-3 space-y-1.5">
+                          <div className="flex items-start justify-between gap-2">
+                            <span className="text-xs font-semibold text-gray-800">
+                              {ACTION_LABEL[entry.action] ?? entry.action}
+                            </span>
+                            <span className="text-[10px] text-gray-400 whitespace-nowrap flex-shrink-0">
+                              {new Date(entry.changedAt).toLocaleString("en-NZ", {
+                                day: "numeric", month: "short", year: "numeric",
+                                hour: "2-digit", minute: "2-digit",
+                              })}
+                            </span>
+                          </div>
+                          <p className="text-[11px] text-gray-500">by {entry.changedByName}</p>
+                          {entry.changes.length > 0 && (
+                            <div className="space-y-1 pt-1 border-t border-gray-200 mt-1">
+                              {entry.changes.map(c => (
+                                <div key={c.field} className="text-[11px] flex items-start gap-1.5 flex-wrap">
+                                  <span className="font-semibold text-gray-700 w-28 flex-shrink-0">{c.label}</span>
+                                  <span className="line-through text-red-500 max-w-[120px] truncate">{String(c.old ?? "—")}</span>
+                                  <span className="text-gray-400">→</span>
+                                  <span className="text-green-700 font-medium max-w-[120px] truncate">{String(c.new ?? "—")}</span>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
           </>
         )}
       </SheetContent>
