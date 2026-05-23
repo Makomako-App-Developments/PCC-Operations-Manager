@@ -9,11 +9,14 @@ import {
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
-import { format, addWeeks, subWeeks, startOfWeek, endOfWeek } from "date-fns";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
+import { format, addWeeks, subWeeks, startOfWeek } from "date-fns";
 import { 
-  ChevronLeft, ChevronRight, Zap, Route, CheckCircle2, Clock
+  ChevronLeft, ChevronRight, Route, CheckCircle2, Clock, CalendarRange
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
@@ -24,9 +27,19 @@ const TEAM_COLORS = [
   "#00AECD", "#8b5cf6", "#10b981", "#f59e0b", "#ec4899", "#06b6d4"
 ];
 
+function defaultFrom(weekDate: Date) {
+  return format(startOfWeek(weekDate, { weekStartsOn: 1 }), "yyyy-MM-dd");
+}
+function defaultTo(weekDate: Date) {
+  return format(addWeeks(startOfWeek(weekDate, { weekStartsOn: 1 }), 12), "yyyy-MM-dd");
+}
+
 export default function Schedule() {
   const [currentWeekDate, setCurrentWeekDate] = useState(new Date());
   const [selectedTeamId, setSelectedTeamId] = useState<string>("all");
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [genFrom, setGenFrom] = useState("");
+  const [genTo, setGenTo] = useState("");
   
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -45,7 +58,13 @@ export default function Schedule() {
   const generateSchedule = useGenerateSchedule({
     mutation: {
       onSuccess: (data) => {
-        toast({ title: "Schedule generated", description: `Generated ${data.jobsCreated} jobs across 12 weeks.` });
+        setDialogOpen(false);
+        const fromLabel = format(new Date(genFrom), "d MMM yyyy");
+        const toLabel   = format(new Date(genTo),   "d MMM yyyy");
+        toast({
+          title: "Schedule generated",
+          description: `${data.jobsCreated} jobs created from ${fromLabel} to ${toLabel}.`,
+        });
         queryClient.invalidateQueries({ queryKey: ["/api/schedule/week"] });
       },
       onError: (err: any) => {
@@ -54,12 +73,15 @@ export default function Schedule() {
     }
   });
 
-  const handleGenerate = () => {
-    const from = startOfWeek(currentWeekDate, { weekStartsOn: 1 });
-    const fromDate = format(from, "yyyy-MM-dd");
-    // Generate 12 weeks (approx 3 months) from the current week's Monday
-    const toDate = format(addWeeks(from, 12), "yyyy-MM-dd");
-    generateSchedule.mutate({ data: { fromDate, toDate } });
+  const openGenerateDialog = () => {
+    setGenFrom(defaultFrom(currentWeekDate));
+    setGenTo(defaultTo(currentWeekDate));
+    setDialogOpen(true);
+  };
+
+  const handleConfirmGenerate = () => {
+    if (!genFrom || !genTo || genFrom > genTo) return;
+    generateSchedule.mutate({ data: { fromDate: genFrom, toDate: genTo } });
   };
 
   const nextWeek = () => setCurrentWeekDate(d => addWeeks(d, 1));
@@ -89,12 +111,13 @@ export default function Schedule() {
           <Button 
             size="sm" 
             style={{ background: BRAND }} 
-            className="text-white hover:opacity-90"
-            onClick={handleGenerate}
+            className="text-white hover:opacity-90 gap-2"
+            onClick={openGenerateDialog}
             disabled={generateSchedule.isPending}
             data-testid="btn-generate-schedule"
           >
-            {generateSchedule.isPending ? "Generating..." : "Generate Schedule"}
+            <CalendarRange className="w-4 h-4" />
+            Generate Schedule
           </Button>
         </div>
       </header>
@@ -236,6 +259,71 @@ export default function Schedule() {
           </div>
         ) : null}
       </div>
+
+      {/* Generate Schedule Dialog */}
+      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Generate Schedule</DialogTitle>
+            <DialogDescription>
+              Jobs will be created for all active assets within the selected date range, skipping any dates that already have jobs.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-2">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1.5">
+                <Label htmlFor="gen-from" className="text-sm font-medium">From</Label>
+                <Input
+                  id="gen-from"
+                  type="date"
+                  value={genFrom}
+                  onChange={e => setGenFrom(e.target.value)}
+                  className="text-sm"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="gen-to" className="text-sm font-medium">To</Label>
+                <Input
+                  id="gen-to"
+                  type="date"
+                  value={genTo}
+                  min={genFrom}
+                  onChange={e => setGenTo(e.target.value)}
+                  className="text-sm"
+                />
+              </div>
+            </div>
+
+            {genFrom && genTo && genFrom <= genTo && (
+              <p className="text-xs text-gray-500 bg-gray-50 rounded-lg px-3 py-2">
+                Jobs will be generated from{" "}
+                <span className="font-medium text-gray-700">{format(new Date(genFrom), "d MMM yyyy")}</span>
+                {" "}to{" "}
+                <span className="font-medium text-gray-700">{format(new Date(genTo), "d MMM yyyy")}</span>
+                {" "}— existing jobs won't be duplicated.
+              </p>
+            )}
+            {genFrom && genTo && genFrom > genTo && (
+              <p className="text-xs text-red-500">"To" date must be after "From" date.</p>
+            )}
+          </div>
+
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              style={{ background: BRAND }}
+              className="text-white hover:opacity-90"
+              onClick={handleConfirmGenerate}
+              disabled={generateSchedule.isPending || !genFrom || !genTo || genFrom > genTo}
+            >
+              {generateSchedule.isPending ? "Generating..." : "Generate"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
