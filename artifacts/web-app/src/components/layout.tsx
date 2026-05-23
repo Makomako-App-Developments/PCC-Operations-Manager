@@ -13,7 +13,7 @@ import {
   ClipboardList,
   ClipboardCheck,
   Shield,
-  Users,
+  Settings,
   FileText,
 } from "lucide-react";
 
@@ -32,7 +32,6 @@ export function Layout({ children }: { children: React.ReactNode }) {
     { icon: BarChart2,       label: "Reports",       href: "/reports",      managerOnly: false },
     { icon: FileText,        label: "Specification", href: "/specification", managerOnly: false },
     { icon: Shield,          label: "Audit Log",     href: "/audit-log",    managerOnly: true  },
-    { icon: Users,           label: "Users",         href: "/users",        managerOnly: true  },
   ];
   const isPrivileged = user?.role === "manager" || user?.role === "supervisor";
   const nav = allNav.filter(item => !item.managerOnly || isPrivileged);
@@ -65,14 +64,25 @@ export function Layout({ children }: { children: React.ReactNode }) {
           })}
         </nav>
         <div className="px-4 py-4 border-t border-white/10">
-          <div className="flex items-center gap-2 mb-4">
-            <div className="w-8 h-8 rounded-full bg-[#00AECD] flex items-center justify-center text-white text-xs font-bold">
+          <div className="flex items-center gap-2 mb-3">
+            <div className="w-8 h-8 rounded-full bg-[#00AECD] flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
               {user?.initials || "??"}
             </div>
             <div className="flex-1 overflow-hidden">
               <p className="text-white text-xs font-medium truncate">{user?.name || "User"}</p>
               <p className="text-white/40 text-[10px] uppercase truncate">{user?.role?.replace("_", " ")}</p>
             </div>
+            {isPrivileged && (
+              <Link href="/settings">
+                <div
+                  className={`p-1.5 rounded-md cursor-pointer transition-colors ${location.startsWith("/settings") ? "bg-[#00AECD] text-white" : "text-white/40 hover:text-white hover:bg-white/10"}`}
+                  title="Settings"
+                  data-testid="nav-settings"
+                >
+                  <Settings className="w-4 h-4" />
+                </div>
+              </Link>
+            )}
           </div>
           <button
             onClick={() => logout()}

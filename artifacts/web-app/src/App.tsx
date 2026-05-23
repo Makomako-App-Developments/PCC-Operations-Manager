@@ -61,6 +61,7 @@ function Router() {
       <Route path="/reports"><ProtectedRoute component={Reports} /></Route>
       <Route path="/audit-log"><ProtectedRoute component={AuditLog} /></Route>
       <Route path="/users"><ProtectedRoute component={Users} /></Route>
+      <Route path="/settings"><ProtectedRoute component={Users} /></Route>
       <Route path="/specification"><ProtectedRoute component={Specification} /></Route>
       <Route path="/">
         <ProtectedRoute component={() => {
