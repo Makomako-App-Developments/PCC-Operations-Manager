@@ -1,13 +1,15 @@
 import { useState } from "react";
-import { Shield, Users, Clock } from "lucide-react";
+import { Shield, Users, Clock, Route } from "lucide-react";
 import UsersPage from "@/pages/users/index";
 import AuditLogPage from "@/pages/audit-log/index";
 import ProductiveTimePage from "./ProductiveTimePage";
+import RouteOptimisationPage from "./RouteOptimisationPage";
 
 const TABS = [
-  { id: "users",          label: "Users",          icon: Users  },
-  { id: "audit-log",      label: "Audit Log",      icon: Shield },
-  { id: "productive-time", label: "Productive Time", icon: Clock  },
+  { id: "users",               label: "Users",              icon: Users  },
+  { id: "audit-log",           label: "Audit Log",          icon: Shield },
+  { id: "productive-time",     label: "Productive Time",    icon: Clock  },
+  { id: "route-optimisation",  label: "Route Optimisation", icon: Route  },
 ];
 
 export default function SettingsPage() {
@@ -40,9 +42,10 @@ export default function SettingsPage() {
       </div>
 
       <div className="flex-1">
-        {tab === "users"           && <UsersPage embedded />}
-        {tab === "audit-log"       && <AuditLogPage embedded />}
-        {tab === "productive-time" && <ProductiveTimePage />}
+        {tab === "users"              && <UsersPage embedded />}
+        {tab === "audit-log"          && <AuditLogPage embedded />}
+        {tab === "productive-time"    && <ProductiveTimePage />}
+        {tab === "route-optimisation" && <RouteOptimisationPage />}
       </div>
     </div>
   );
