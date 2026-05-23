@@ -93,3 +93,9 @@ export const availabilityStatusEnum = pgEnum("availability_status", [
   "statutory_holiday",
   "unpaid_leave",
 ]);
+
+export const crewStatusEnum = pgEnum("crew_status", [
+  "full",
+  "reduced",
+  "none",
+]);

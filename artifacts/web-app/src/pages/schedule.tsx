@@ -20,7 +20,7 @@ import {
 } from "date-fns";
 import {
   ChevronLeft, ChevronRight, Route, CheckCircle2, Clock,
-  CalendarRange, CalendarDays, Calendar, LayoutGrid, CheckCircle,
+  CalendarRange, CalendarDays, Calendar, LayoutGrid, CheckCircle, AlertTriangle, XCircle,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
@@ -296,14 +296,20 @@ function DayView({
               <span className="font-medium text-gray-700">{jobs.length}</span> jobs scheduled
             </div>
             {jobs.map((job: any) => {
-              const done    = job.status === "completed";
-              const overdue = job.status === "overdue";
-              const color   = getTeamColor(job.teamId);
+              const done       = job.status === "completed";
+              const overdue    = job.status === "overdue";
+              const crewNone   = job.crewStatus === "none";
+              const crewReduced = job.crewStatus === "reduced";
+              const color      = getTeamColor(job.teamId);
+              const displayTime = job.estimatedTimeMins ?? job.serviceTimeMins;
               return (
                 <div
                   key={job.id}
                   className={`p-4 rounded-xl border shadow-sm bg-white relative overflow-hidden ${
-                    done ? "opacity-60 border-gray-200" : overdue ? "border-red-200 bg-red-50" : "border-gray-200"
+                    crewNone   ? "border-red-300 bg-red-50/40" :
+                    crewReduced ? "border-amber-200 bg-amber-50/30" :
+                    done       ? "opacity-60 border-gray-200" :
+                    overdue    ? "border-red-200 bg-red-50" : "border-gray-200"
                   }`}
                 >
                   <div className="absolute top-0 left-0 w-1 h-full rounded-l-xl" style={{ background: color }} />
@@ -312,14 +318,22 @@ function DayView({
                       <p className={`text-sm font-semibold ${done ? "line-through text-gray-400" : "text-gray-900"}`}>{job.assetName}</p>
                       <p className="text-[11px] text-gray-400 font-mono mt-0.5">{job.assetRef}</p>
                     </div>
-                    <div className="flex gap-1.5">
-                      {done    && <span className="text-[10px] px-2 py-0.5 rounded-full bg-green-100 text-green-700 font-medium">Done</span>}
-                      {overdue && <span className="text-[10px] px-2 py-0.5 rounded-full bg-red-100 text-red-700 font-medium">Overdue</span>}
+                    <div className="flex flex-col gap-1 items-end">
+                      {done       && <span className="text-[10px] px-2 py-0.5 rounded-full bg-green-100 text-green-700 font-medium">Done</span>}
+                      {overdue    && <span className="text-[10px] px-2 py-0.5 rounded-full bg-red-100 text-red-700 font-medium">Overdue</span>}
+                      {crewNone   && <span className="text-[10px] px-2 py-0.5 rounded-full bg-red-100 text-red-700 font-medium flex items-center gap-1"><XCircle className="w-2.5 h-2.5" />No crew</span>}
+                      {crewReduced && <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 font-medium flex items-center gap-1"><AlertTriangle className="w-2.5 h-2.5" />Reduced crew</span>}
                     </div>
                   </div>
                   <div className="pl-3 flex items-center justify-between mt-2 text-[11px] text-gray-400">
                     <span>{getTeamName(job.teamId)}</span>
-                    <span className="flex items-center gap-1"><Clock className="w-3 h-3" />{job.serviceTimeMins}m</span>
+                    <span className="flex items-center gap-1">
+                      <Clock className="w-3 h-3" />
+                      {crewReduced || crewNone
+                        ? <><span className="line-through mr-0.5">{job.serviceTimeMins}m</span><span className={crewNone ? "text-red-600 font-semibold" : "text-amber-600 font-semibold"}>{displayTime}m</span></>
+                        : <span>{displayTime}m</span>
+                      }
+                    </span>
                   </div>
                 </div>
               );
@@ -371,18 +385,23 @@ function WeekView({
                 {day.jobs.length === 0 ? (
                   <p className="text-center text-[11px] text-gray-400 py-6 italic">No jobs</p>
                 ) : day.jobs.map((job: any) => {
-                  const done       = job.status === "completed";
-                  const skipped    = job.status === "skipped";
-                  const overdue    = job.status === "overdue";
-                  const inProgress = job.status === "in_progress";
+                  const done        = job.status === "completed";
+                  const skipped     = job.status === "skipped";
+                  const overdue     = job.status === "overdue";
+                  const inProgress  = job.status === "in_progress";
+                  const crewNone    = job.crewStatus === "none";
+                  const crewReduced = job.crewStatus === "reduced";
+                  const displayTime = job.estimatedTimeMins ?? job.serviceTimeMins;
                   return (
                     <div
                       key={job.id}
                       className={`p-2.5 rounded-lg border shadow-sm bg-white relative overflow-hidden ${
-                        done       ? "opacity-60 border-gray-200" :
-                        skipped    ? "border-orange-200 bg-orange-50" :
-                        inProgress ? "border-[#00AECD] ring-1 ring-[#00AECD]" :
-                        overdue    ? "border-red-200 bg-red-50" : "border-gray-200"
+                        crewNone    ? "border-red-300 bg-red-50/50" :
+                        crewReduced ? "border-amber-200 bg-amber-50/40" :
+                        done        ? "opacity-60 border-gray-200" :
+                        skipped     ? "border-orange-200 bg-orange-50" :
+                        inProgress  ? "border-[#00AECD] ring-1 ring-[#00AECD]" :
+                        overdue     ? "border-red-200 bg-red-50" : "border-gray-200"
                       }`}
                     >
                       <div className="absolute top-0 left-0 w-1 h-full" style={{ background: getTeamColor(job.teamId) }} />
@@ -390,10 +409,22 @@ function WeekView({
                         <p className={`text-[11px] font-semibold truncate ${done || skipped ? "line-through text-gray-400" : "text-gray-900"}`} title={job.assetName}>
                           {job.assetName}
                         </p>
-                        <p className="text-[9px] text-gray-400 font-mono mb-1.5">{job.assetRef}</p>
+                        <p className="text-[9px] text-gray-400 font-mono mb-1">{job.assetRef}</p>
+                        {crewNone && (
+                          <p className="text-[9px] text-red-600 font-semibold flex items-center gap-0.5 mb-1"><XCircle className="w-2.5 h-2.5" />No crew available</p>
+                        )}
+                        {crewReduced && (
+                          <p className="text-[9px] text-amber-600 font-semibold flex items-center gap-0.5 mb-1"><AlertTriangle className="w-2.5 h-2.5" />Reduced crew</p>
+                        )}
                         <div className="flex items-center justify-between text-[10px] text-gray-400 border-t border-gray-100 pt-1.5">
                           <span className="truncate max-w-[60px]">{getTeamName(job.teamId)}</span>
-                          <span className="flex items-center gap-0.5 flex-shrink-0"><Clock className="w-2.5 h-2.5" />{job.serviceTimeMins}m</span>
+                          <span className="flex items-center gap-0.5 flex-shrink-0">
+                            <Clock className="w-2.5 h-2.5" />
+                            {crewReduced || crewNone
+                              ? <><span className="line-through mr-0.5 text-[9px]">{job.serviceTimeMins}m</span><span className={crewNone ? "text-red-600 font-bold" : "text-amber-600 font-bold"}>{displayTime}m</span></>
+                              : <span>{displayTime}m</span>
+                            }
+                          </span>
                         </div>
                       </div>
                     </div>

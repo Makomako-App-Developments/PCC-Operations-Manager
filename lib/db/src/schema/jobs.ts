@@ -3,26 +3,28 @@ import {
 } from "drizzle-orm/pg-core";
 import { createInsertSchema, createSelectSchema } from "drizzle-zod";
 import { z } from "zod/v4";
-import { jobTypeEnum, jobStatusEnum, reactivePriorityEnum, reactiveJobStatusEnum } from "./enums";
+import { jobTypeEnum, jobStatusEnum, reactivePriorityEnum, reactiveJobStatusEnum, crewStatusEnum } from "./enums";
 import { assetsTable } from "./assets";
 import { teamsTable } from "./teams";
 import { usersTable } from "./users";
 
 // Scheduled + recurring jobs
 export const jobsTable = pgTable("jobs", {
-  id:             uuid("id").primaryKey().defaultRandom(),
-  assetId:        uuid("asset_id").notNull().references(() => assetsTable.id),
-  jobType:        jobTypeEnum("job_type").notNull(),
-  status:         jobStatusEnum("status").notNull().default("pending"),
-  teamId:         uuid("team_id").references(() => teamsTable.id),
-  assignedUserId: uuid("assigned_user_id").references(() => usersTable.id),
-  scheduledDate:  date("scheduled_date").notNull(),
-  startedAt:      timestamp("started_at"),
-  completedAt:    timestamp("completed_at"),
-  actualTimeMins: integer("actual_time_mins"),
-  notes:          text("notes"),
-  createdAt:      timestamp("created_at").notNull().defaultNow(),
-  updatedAt:      timestamp("updated_at").notNull().defaultNow(),
+  id:               uuid("id").primaryKey().defaultRandom(),
+  assetId:          uuid("asset_id").notNull().references(() => assetsTable.id),
+  jobType:          jobTypeEnum("job_type").notNull(),
+  status:           jobStatusEnum("status").notNull().default("pending"),
+  teamId:           uuid("team_id").references(() => teamsTable.id),
+  assignedUserId:   uuid("assigned_user_id").references(() => usersTable.id),
+  scheduledDate:    date("scheduled_date").notNull(),
+  startedAt:        timestamp("started_at"),
+  completedAt:      timestamp("completed_at"),
+  actualTimeMins:   integer("actual_time_mins"),
+  estimatedTimeMins: integer("estimated_time_mins"),
+  crewStatus:       crewStatusEnum("crew_status").notNull().default("full"),
+  notes:            text("notes"),
+  createdAt:        timestamp("created_at").notNull().defaultNow(),
+  updatedAt:        timestamp("updated_at").notNull().defaultNow(),
 }, (t) => [
   index("jobs_asset_id_idx").on(t.assetId),
   index("jobs_team_id_idx").on(t.teamId),
