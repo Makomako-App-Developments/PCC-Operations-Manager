@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db, jobsTable, reactiveJobsTable, insertJobSchema, insertReactiveJobSchema, assetsTable } from "@workspace/db";
-import { eq, and } from "drizzle-orm";
+import { eq, and, inArray } from "drizzle-orm";
 import { z } from "zod";
 import { requireAuth, requireRole } from "../middlewares/auth";
 import { validateBody, validateQuery } from "../middlewares/validate";
@@ -29,9 +29,27 @@ function addDays(dateStr: string, days: number): string {
 
 // GET /api/jobs
 router.get("/jobs", requireAuth, validateQuery(jobQuerySchema), async (req, res) => {
-  const { page, limit } = res.locals.query as JobQuery;
+  const { assetId, teamId, status, page, limit } = res.locals.query as JobQuery;
   const offset = (page - 1) * limit;
-  const rows = await db.select().from(jobsTable).limit(limit).offset(offset);
+
+  const conditions = [];
+  if (assetId) conditions.push(eq(jobsTable.assetId, assetId));
+  if (teamId)  conditions.push(eq(jobsTable.teamId, teamId));
+  if (status) {
+    const statuses = status.split(",").map(s => s.trim()).filter(Boolean);
+    if (statuses.length === 1) {
+      conditions.push(eq(jobsTable.status, statuses[0] as any));
+    } else if (statuses.length > 1) {
+      conditions.push(inArray(jobsTable.status, statuses as any[]));
+    }
+  }
+
+  const rows = await db
+    .select()
+    .from(jobsTable)
+    .where(conditions.length > 0 ? and(...conditions) : undefined)
+    .limit(limit)
+    .offset(offset);
   res.json({ data: rows, page, limit });
 });
 
@@ -154,8 +172,24 @@ router.patch("/jobs/:id", requireAuth, async (req, res) => {
 // ── Reactive jobs ────────────────────────────────────────────────────────────
 
 // GET /api/reactive-jobs
-router.get("/reactive-jobs", requireAuth, async (_req, res) => {
-  const rows = await db.select().from(reactiveJobsTable).limit(100);
+router.get("/reactive-jobs", requireAuth, async (req, res) => {
+  const assetId = req.query.assetId as string | undefined;
+  const statusFilter = req.query.status as string | undefined;
+  const conditions = [];
+  if (assetId) conditions.push(eq(reactiveJobsTable.assetId, assetId));
+  if (statusFilter) {
+    const statuses = statusFilter.split(",").map(s => s.trim()).filter(Boolean);
+    if (statuses.length === 1) {
+      conditions.push(eq(reactiveJobsTable.status, statuses[0] as any));
+    } else if (statuses.length > 1) {
+      conditions.push(inArray(reactiveJobsTable.status, statuses as any[]));
+    }
+  }
+  const rows = await db
+    .select()
+    .from(reactiveJobsTable)
+    .where(conditions.length > 0 ? and(...conditions) : undefined)
+    .limit(200);
   res.json({ data: rows });
 });
 

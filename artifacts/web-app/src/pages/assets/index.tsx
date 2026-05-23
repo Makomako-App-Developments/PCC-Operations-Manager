@@ -9,7 +9,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Search, Plus, Map as MapIcon, List as ListIcon, ChevronUp, ChevronDown, ChevronsUpDown, Loader2, Pencil } from "lucide-react";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 import { MapContainer, TileLayer, CircleMarker, Polygon, Tooltip, useMap } from "react-leaflet";
 import L from "leaflet";
 
@@ -160,12 +160,12 @@ function SortTh({ label, col, sortCol, sortDir, onSort, className }: {
 }
 
 export default function Assets() {
+  const [, navigate] = useLocation();
   const [search, setSearch] = useState("");
   const [gardenType, setGardenType] = useState<any>("all");
   const [ward, setWard] = useState<any>("all");
   const [teamId, setTeamId] = useState<any>("all");
   const [view, setView] = useState<"list"|"map">("list");
-  const [selectedAssetId, setSelectedAssetId] = useState<string | null>(null);
   const [sortCol, setSortCol] = useState<SortCol>("reference");
   const [sortDir, setSortDir] = useState<SortDir>("asc");
 
@@ -333,7 +333,7 @@ export default function Assets() {
                   <tr 
                     key={asset.id} 
                     className="hover:bg-gray-50/50 transition-colors cursor-pointer"
-                    onClick={() => setSelectedAssetId(asset.id)}
+                    onClick={() => navigate("/assets/" + asset.id)}
                     data-testid={`row-asset-${asset.id}`}
                   >
                     <td className="px-4 py-3 font-mono text-xs text-gray-500">{asset.reference}</td>
@@ -386,7 +386,7 @@ export default function Assets() {
                       key={asset.id}
                       positions={positions}
                       pathOptions={{ color, fillColor: color, fillOpacity: 0.3, weight: 2 }}
-                      eventHandlers={{ click: () => setSelectedAssetId(asset.id) }}
+                      eventHandlers={{ click: () => navigate("/assets/" + asset.id) }}
                     >
                       {tip}
                     </Polygon>
@@ -398,7 +398,7 @@ export default function Assets() {
                     key={asset.id}
                     center={[Number(asset.lat), Number(asset.lng)]}
                     radius={8}
-                    eventHandlers={{ click: () => setSelectedAssetId(asset.id) }}
+                    eventHandlers={{ click: () => navigate("/assets/" + asset.id) }}
                     pathOptions={{ fillColor: color, fillOpacity: 0.9, color: "#fff", weight: 2 }}
                   >
                     {tip}
@@ -410,11 +410,6 @@ export default function Assets() {
         )}
       </div>
 
-      <AssetDetailDrawer 
-        assetId={selectedAssetId} 
-        onClose={() => setSelectedAssetId(null)}
-        teamName={getTeamName}
-      />
     </div>
   );
 }

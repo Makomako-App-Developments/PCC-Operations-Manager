@@ -12,6 +12,7 @@ import Login from "@/pages/login";
 import Dashboard from "@/pages/dashboard";
 import Assets from "@/pages/assets/index";
 import NewAsset from "@/pages/assets/new";
+import AssetDetail from "@/pages/assets/detail";
 import Schedule from "@/pages/schedule";
 import Jobs from "@/pages/jobs";
 import ReactiveJobs from "@/pages/reactive-jobs";
@@ -55,6 +56,7 @@ function Router() {
       <Route path="/dashboard"><ProtectedRoute component={Dashboard} /></Route>
       <Route path="/assets"><ProtectedRoute component={Assets} /></Route>
       <Route path="/assets/new"><ProtectedRoute component={NewAsset} /></Route>
+      <Route path="/assets/:id"><ProtectedRoute component={AssetDetail} /></Route>
       <Route path="/schedule"><ProtectedRoute component={Schedule} /></Route>
       <Route path="/jobs"><ProtectedRoute component={Jobs} /></Route>
       <Route path="/reactive-jobs"><ProtectedRoute component={ReactiveJobs} /></Route>
