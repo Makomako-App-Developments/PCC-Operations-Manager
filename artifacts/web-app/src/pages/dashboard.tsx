@@ -91,14 +91,14 @@ function AssetMapFeature({ asset }: { asset: any }) {
 function MapView() {
   const { data } = useListAssets({ limit: 2000 });
 
-  if (!data) return <Skeleton className="w-full h-full rounded-2xl" />;
+  if (!data) return <Skeleton className="w-full rounded-2xl" style={{ height: 360 }} />;
 
   return (
-    <div className="relative w-full h-full rounded-2xl overflow-hidden" data-testid="dashboard-map">
+    <div className="relative w-full rounded-2xl overflow-hidden" data-testid="dashboard-map" style={{ height: 360 }}>
       <MapContainer
         center={[-41.13, 174.85]}
         zoom={13}
-        style={{ height: "100%", width: "100%" }}
+        style={{ height: 360, width: "100%" }}
         scrollWheelZoom={false}
       >
         <TileLayer
@@ -187,7 +187,7 @@ export default function Dashboard() {
 
         <div className="grid grid-cols-3 gap-5">
           <div className="col-span-2">
-            <Card className="rounded-2xl border-0 shadow-sm overflow-hidden h-[360px]">
+            <Card className="rounded-2xl border-0 shadow-sm overflow-hidden">
               <MapView />
             </Card>
           </div>
