@@ -8,6 +8,7 @@ import { teamsTable } from "./teams";
 
 export const assetsTable = pgTable("assets", {
   id:              uuid("id").primaryKey().defaultRandom(),
+  globalId:        varchar("global_id", { length: 100 }),
   reference:       varchar("reference", { length: 20 }).notNull().unique(), // e.g. GRD-2024-0847
   name:            varchar("name", { length: 200 }).notNull(),
   gardenType:      gardenTypeEnum("garden_type").notNull(),

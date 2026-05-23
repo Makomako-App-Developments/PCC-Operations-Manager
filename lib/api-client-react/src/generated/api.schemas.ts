@@ -168,6 +168,7 @@ export type SiteType = "park" | "street";
 
 export interface Asset {
   id: string;
+  globalId?: string | null;
   reference: string;
   name: string;
   gardenType: GardenType;

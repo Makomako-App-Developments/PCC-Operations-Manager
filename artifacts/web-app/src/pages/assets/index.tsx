@@ -482,6 +482,20 @@ function AssetDetailDrawer({ assetId, onClose, teamName }: { assetId: string | n
                 <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3">Location Details</p>
                 <div className="space-y-2">
                   <div className="grid grid-cols-3 gap-2 text-sm">
+                    <span className="text-gray-500">Garden Type:</span>
+                    <span className="col-span-2">
+                      {(asset as any).siteType ? (
+                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase ${(asset as any).siteType === "park" ? "bg-green-100 text-green-700" : "bg-blue-100 text-blue-700"}`}>
+                          {(asset as any).siteType}
+                        </span>
+                      ) : <span className="font-medium text-gray-900">—</span>}
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-3 gap-2 text-sm">
+                    <span className="text-gray-500">Global ID:</span>
+                    <span className="col-span-2 font-mono text-xs text-gray-600 break-all">{(asset as any).globalId || "—"}</span>
+                  </div>
+                  <div className="grid grid-cols-3 gap-2 text-sm">
                     <span className="text-gray-500">Suburb:</span>
                     <span className="col-span-2 font-medium text-gray-900">{asset.suburb || "-"}</span>
                   </div>
