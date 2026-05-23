@@ -169,7 +169,7 @@ export default function Assets() {
 
   const { data: teamsData } = useListTeams({ query: { queryKey: getListTeamsQueryKey() }});
 
-  const queryParams: any = { limit: 100 };
+  const queryParams: any = { limit: 2000 };
   if (search) queryParams.search = search;
   if (gardenType && gardenType !== "all") queryParams.gardenType = gardenType;
   if (ward && ward !== "all") queryParams.ward = ward;
