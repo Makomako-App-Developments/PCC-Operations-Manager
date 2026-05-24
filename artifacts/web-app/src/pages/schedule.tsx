@@ -536,9 +536,9 @@ function WeekView({
   function groupByTeam(jobs: any[]): Map<string, any[]> {
     const map = new Map<string, any[]>();
     for (const job of jobs) {
-      const key = job.teamId ?? "__unassigned__";
-      if (!map.has(key)) map.set(key, []);
-      map.get(key)!.push(job);
+      if (!job.teamId) continue; // skip jobs with no team assignment
+      if (!map.has(job.teamId)) map.set(job.teamId, []);
+      map.get(job.teamId)!.push(job);
     }
     return map;
   }
