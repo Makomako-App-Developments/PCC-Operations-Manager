@@ -228,7 +228,7 @@ function ReactiveJobWizard({ teamsData, assetsData, onClose, onPublished }: Wiza
 
   const [step, setStep] = useState<1 | 2 | 3 | 4>(1);
 
-  const [locationType, setLocationType] = useState<"asset" | "other">("other");
+  const [locationType, setLocationType] = useState<"asset" | "other">("asset");
   const [selectedAssetId, setSelectedAssetId] = useState("");
   const [assetSearch, setAssetSearch] = useState("");
   const [assetDropdownOpen, setAssetDropdownOpen] = useState(false);
