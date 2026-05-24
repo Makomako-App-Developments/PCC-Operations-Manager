@@ -35,19 +35,25 @@ const REASON_TYPES = [
   "Other",
 ];
 
+function localDateStr(d: Date) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
 function mondayOf(dateStr: string) {
   const d = new Date(dateStr + "T00:00:00");
   const day = d.getDay();
   const diff = day === 0 ? -6 : 1 - day;
-  const m = new Date(d);
-  m.setDate(d.getDate() + diff);
-  return m.toISOString().split("T")[0];
+  d.setDate(d.getDate() + diff);
+  return localDateStr(d);
 }
 
 function addDaysStr(dateStr: string, days: number) {
   const d = new Date(dateStr + "T00:00:00");
   d.setDate(d.getDate() + days);
-  return d.toISOString().split("T")[0];
+  return localDateStr(d);
 }
 
 function fmtMins(m: number) {
@@ -224,7 +230,7 @@ interface WizardProps {
 function ReactiveJobWizard({ teamsData, assetsData, onClose, onPublished }: WizardProps) {
   const { toast } = useToast();
   const qc = useQueryClient();
-  const today = new Date().toISOString().split("T")[0];
+  const today = localDateStr(new Date());
 
   const [step, setStep] = useState<1 | 2 | 3 | 4>(1);
 
