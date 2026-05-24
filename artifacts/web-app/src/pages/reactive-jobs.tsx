@@ -537,35 +537,39 @@ function ReactiveJobWizard({ teamsData, assetsData, onClose, onPublished }: Wiza
                       </div>
                       {assetDropdownOpen && (
                         <div className="absolute z-50 mt-1 w-full bg-white border border-gray-200 rounded-xl shadow-lg max-h-56 overflow-y-auto">
-                          {assetsData
-                            .filter(a => {
-                              const q = assetSearch.toLowerCase();
-                              return !q || a.name.toLowerCase().includes(q) || (a.reference ?? "").toLowerCase().includes(q);
-                            })
-                            .slice(0, 50)
-                            .map(a => (
-                              <button
-                                key={a.id}
-                                type="button"
-                                className="w-full text-left px-4 py-2.5 text-sm hover:bg-gray-50 transition-colors flex items-center justify-between gap-2"
-                                onMouseDown={() => {
-                                  setSelectedAssetId(a.id);
-                                  setAssetSearch("");
-                                  setAssetDropdownOpen(false);
-                                  setCombineScheduled(false);
-                                  if (a.teamId) setSelectedTeamId(a.teamId);
-                                }}
-                              >
-                                <span className="font-medium text-gray-900 truncate">{a.name}</span>
-                                <span className="text-[10px] font-mono text-gray-400 flex-shrink-0">{a.reference}</span>
-                              </button>
-                            ))}
-                          {assetsData.filter(a => {
+                          {(() => {
                             const q = assetSearch.toLowerCase();
-                            return !q || a.name.toLowerCase().includes(q) || (a.reference ?? "").toLowerCase().includes(q);
-                          }).length === 0 && (
-                            <p className="px-4 py-3 text-sm text-gray-400 text-center">No assets found</p>
-                          )}
+                            const filtered = assetsData.filter(a =>
+                              !q ||
+                              a.name.toLowerCase().includes(q) ||
+                              (a.reference ?? "").toLowerCase().includes(q) ||
+                              ((a as any).description ?? "").toLowerCase().includes(q)
+                            );
+                            return filtered.length === 0
+                              ? <p className="px-4 py-3 text-sm text-gray-400 text-center">No assets found</p>
+                              : filtered.slice(0, 50).map(a => (
+                                <button
+                                  key={a.id}
+                                  type="button"
+                                  className="w-full text-left px-4 py-2.5 text-sm hover:bg-gray-50 transition-colors flex items-start justify-between gap-2"
+                                  onMouseDown={() => {
+                                    setSelectedAssetId(a.id);
+                                    setAssetSearch("");
+                                    setAssetDropdownOpen(false);
+                                    setCombineScheduled(false);
+                                    if (a.teamId) setSelectedTeamId(a.teamId);
+                                  }}
+                                >
+                                  <span className="flex flex-col min-w-0">
+                                    <span className="font-medium text-gray-900 truncate">{a.name}</span>
+                                    {(a as any).description && (
+                                      <span className="text-[11px] text-gray-400 truncate">{(a as any).description}</span>
+                                    )}
+                                  </span>
+                                  <span className="text-[10px] font-mono text-gray-400 flex-shrink-0 mt-0.5">{a.reference}</span>
+                                </button>
+                              ));
+                          })()}
                         </div>
                       )}
                     </div>
