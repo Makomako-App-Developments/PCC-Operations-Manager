@@ -14,7 +14,6 @@ import Assets from "@/pages/assets/index";
 import NewAsset from "@/pages/assets/new";
 import AssetDetail from "@/pages/assets/detail";
 import Schedule from "@/pages/schedule";
-import Jobs from "@/pages/jobs";
 import ReactiveJobs from "@/pages/reactive-jobs";
 import Audits from "@/pages/audits/index";
 import Programmes from "@/pages/programmes/index";
@@ -60,7 +59,6 @@ function Router() {
       <Route path="/assets/:id"><ProtectedRoute component={AssetDetail} /></Route>
       <Route path="/map"><ProtectedRoute component={MapPage} /></Route>
       <Route path="/schedule"><ProtectedRoute component={Schedule} /></Route>
-      <Route path="/jobs"><ProtectedRoute component={Jobs} /></Route>
       <Route path="/reactive-jobs"><ProtectedRoute component={ReactiveJobs} /></Route>
       <Route path="/audits"><ProtectedRoute component={Audits} /></Route>
       <Route path="/programmes"><ProtectedRoute component={Programmes} /></Route>

@@ -11,7 +11,7 @@ import {
   Layers,
   BarChart2,
   AlertTriangle,
-  ClipboardList,
+
   ClipboardCheck,
   Shield,
   Settings,
@@ -28,7 +28,6 @@ export function Layout({ children }: { children: React.ReactNode }) {
     { icon: List,            label: "Asset Register", href: "/assets",      managerOnly: false },
     { icon: Map,             label: "Map",           href: "/map",          managerOnly: false },
     { icon: CalendarDays,    label: "Schedule",      href: "/schedule",     managerOnly: false },
-    { icon: ClipboardList,   label: "Jobs",          href: "/jobs",         managerOnly: false },
     { icon: AlertTriangle,   label: "Reactive Jobs", href: "/reactive-jobs", managerOnly: false },
     { icon: ClipboardCheck,  label: "Audits",        href: "/audits",       managerOnly: false },
     { icon: Sprout,          label: "Programmes",    href: "/programmes",   managerOnly: false },
