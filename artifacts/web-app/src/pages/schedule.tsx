@@ -369,25 +369,22 @@ function DayView({
                         </span>
                       )}
                     </div>
-                    {/* Route dot-strip */}
-                    <div className="flex items-center gap-1">
-                      {teamJobs.map((j: any, i: number) => (
-                        <span key={j.id} className="flex items-center">
-                          <span
-                            className="w-2 h-2 rounded-full"
-                            style={{
-                              background: j.status === "completed" ? "#10b981"
-                                : j.status === "in_progress"  ? color
-                                : j.status === "overdue"      ? "#ef4444"
-                                : "#d1d5db"
-                            }}
-                          />
-                          {i < teamJobs.length - 1 && (
-                            <span className="w-3 h-px block" style={{ background: "#e5e7eb" }} />
-                          )}
-                        </span>
-                      ))}
-                      <span className="text-[11px] text-gray-400 ml-2">
+                    {/* Segmented progress bar */}
+                    <div className="flex items-center gap-2 min-w-0">
+                      <div className="flex h-1.5 rounded-full overflow-hidden w-36 flex-shrink-0 bg-gray-100">
+                        {(() => {
+                          const total = teamJobs.length;
+                          const donePct    = (teamJobs.filter((j: any) => j.status === "completed").length  / total) * 100;
+                          const inProgPct  = (teamJobs.filter((j: any) => j.status === "in_progress").length / total) * 100;
+                          const overduePct = (teamJobs.filter((j: any) => j.status === "overdue").length    / total) * 100;
+                          return (<>
+                            {donePct    > 0 && <div style={{ width: `${donePct}%`,    background: "#10b981" }} />}
+                            {inProgPct  > 0 && <div style={{ width: `${inProgPct}%`,  background: color }} />}
+                            {overduePct > 0 && <div style={{ width: `${overduePct}%`, background: "#ef4444" }} />}
+                          </>);
+                        })()}
+                      </div>
+                      <span className="text-[11px] text-gray-400 whitespace-nowrap">
                         {doneCount}/{teamJobs.length} done · {totalMin}m
                       </span>
                     </div>
