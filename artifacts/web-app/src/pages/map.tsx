@@ -1,6 +1,6 @@
 import { useState, useMemo } from "react";
-import { ChevronDown, ChevronUp, X, Filter, Tag } from "lucide-react";
-import { MapContainer, TileLayer, CircleMarker, Tooltip, Popup, ZoomControl } from "react-leaflet";
+import { ChevronDown, ChevronUp, X, Filter, Tag, Layers } from "lucide-react";
+import { MapContainer, TileLayer, Polygon, CircleMarker, Tooltip, Popup, ZoomControl } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
 import {
   useListAssets,
@@ -19,6 +19,35 @@ const BRAND = "#00AECD";
 type ScheduleState = "due-today" | "due-this-week" | "in-progress" | "just-completed" | "overdue" | "upcoming" | "no-jobs";
 type JobType = "Scheduled" | "Reactive" | "Mulching" | "Infill Planting";
 type ColorMode = "schedule" | "type";
+type LayerMode = "street" | "aerial";
+
+const TILE_LAYERS: Record<LayerMode, { url: string; attribution: string }> = {
+  street: {
+    url: "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+    attribution: "© OpenStreetMap contributors",
+  },
+  aerial: {
+    url: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+    attribution: "© Esri, Maxar, Earthstar Geographics",
+  },
+};
+
+// Convert GeoJSON ring ([lng,lat] pairs) → Leaflet LatLng tuples ([lat,lng])
+function geoRingToLeaflet(ring: number[][]): [number, number][] {
+  return ring.map(([lng, lat]) => [lat, lng]);
+}
+
+// Returns an array of rings (one per polygon) from a GeoJSON Polygon or MultiPolygon
+function boundaryToPolygons(boundary: any): [number, number][][] {
+  if (!boundary) return [];
+  if (boundary.type === "Polygon") {
+    return [geoRingToLeaflet(boundary.coordinates[0])];
+  }
+  if (boundary.type === "MultiPolygon") {
+    return boundary.coordinates.map((poly: number[][][]) => geoRingToLeaflet(poly[0]));
+  }
+  return [];
+}
 
 const SCHEDULE_CONFIG: Record<ScheduleState, { label: string; color: string; bg: string }> = {
   "due-today":      { label: "Due Today",      color: "#f59e0b", bg: "#fef3c7" },
@@ -197,6 +226,8 @@ export default function MapPage() {
   const [teamFilter,     setTeamFilter]     = useState<Set<string>>(new Set());
   const [colorMode,      setColorMode]      = useState<ColorMode>("schedule");
   const [showLabels,     setShowLabels]     = useState(false);
+  const [layerMode,      setLayerMode]      = useState<LayerMode>("street");
+  const [showOutlines,   setShowOutlines]   = useState(true);
   const [openSections,   setOpenSections]   = useState<Record<string, boolean>>({
     schedule: true, type: true, jobs: true, freq: false, team: false,
   });
@@ -300,6 +331,19 @@ export default function MapPage() {
             )}
           </div>
           <div className="flex items-center gap-2">
+            <button
+              onClick={() => setShowOutlines(v => !v)}
+              title={showOutlines ? "Hide outlines" : "Show outlines"}
+              className={`flex items-center gap-1.5 px-2 py-1 rounded-md border text-xs font-medium transition-colors ${
+                showOutlines
+                  ? "text-white border-transparent"
+                  : "border-gray-200 text-gray-500 hover:border-gray-300 hover:text-gray-700"
+              }`}
+              style={showOutlines ? { background: BRAND } : {}}
+            >
+              <Layers className="w-3 h-3" />
+              Outlines
+            </button>
             <button
               onClick={() => setShowLabels(v => !v)}
               title={showLabels ? "Hide labels" : "Show labels"}
@@ -455,6 +499,24 @@ export default function MapPage() {
           </div>
         </div>
 
+        {/* Layer switcher */}
+        <div className="absolute bottom-6 left-3 z-[500]">
+          <div className="flex rounded-lg overflow-hidden shadow border border-gray-200 bg-white">
+            {(["street", "aerial"] as LayerMode[]).map(m => (
+              <button
+                key={m}
+                onClick={() => setLayerMode(m)}
+                className={`px-3 py-1.5 text-xs font-semibold transition-colors ${
+                  layerMode === m ? "text-white" : "bg-white text-gray-600 hover:bg-gray-50"
+                }`}
+                style={layerMode === m ? { background: BRAND } : {}}
+              >
+                {m === "street" ? "Street" : "Aerial"}
+              </button>
+            ))}
+          </div>
+        </div>
+
         <MapContainer
           center={[-41.1280, 174.8520]}
           zoom={13}
@@ -463,7 +525,32 @@ export default function MapPage() {
           attributionControl={false}
         >
           <ZoomControl position="bottomright" />
-          <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+          <TileLayer
+            key={layerMode}
+            url={TILE_LAYERS[layerMode].url}
+            attribution={TILE_LAYERS[layerMode].attribution}
+          />
+
+          {/* Garden boundary outlines */}
+          {showOutlines && visible.map(({ asset, scheduleState }) => {
+            const boundary = (asset as any).boundary;
+            const rings = boundaryToPolygons(boundary);
+            if (rings.length === 0) return null;
+            const color = pinColor(asset, scheduleState, colorMode);
+            return rings.map((positions, i) => (
+              <Polygon
+                key={`${asset.id}-outline-${i}`}
+                positions={positions}
+                pathOptions={{
+                  color,
+                  weight: 2,
+                  fillColor: color,
+                  fillOpacity: 0.15,
+                  opacity: 0.8,
+                }}
+              />
+            ));
+          })}
 
           {visible.map(({ asset, scheduleState, jobTypes, teamName }) => {
             const color = pinColor(asset, scheduleState, colorMode);
