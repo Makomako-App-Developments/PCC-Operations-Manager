@@ -1,5 +1,5 @@
 import { useState, useMemo } from "react";
-import { ChevronDown, ChevronUp, X, Filter, Tag, Layers } from "lucide-react";
+import { ChevronDown, ChevronUp, X, Filter, Tag } from "lucide-react";
 import { MapContainer, TileLayer, Polygon, CircleMarker, Tooltip, Popup, ZoomControl } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
 import {
@@ -21,14 +21,16 @@ type JobType = "Scheduled" | "Reactive" | "Mulching" | "Infill Planting";
 type ColorMode = "schedule" | "type";
 type LayerMode = "street" | "aerial";
 
-const TILE_LAYERS: Record<LayerMode, { url: string; attribution: string }> = {
+const TILE_LAYERS: Record<LayerMode, { url: string; attribution: string; maxNativeZoom: number }> = {
   street: {
     url: "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
     attribution: "© OpenStreetMap contributors",
+    maxNativeZoom: 19,
   },
   aerial: {
     url: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
     attribution: "© Esri, Maxar, Earthstar Geographics",
+    maxNativeZoom: 20,
   },
 };
 
@@ -227,7 +229,6 @@ export default function MapPage() {
   const [colorMode,      setColorMode]      = useState<ColorMode>("schedule");
   const [showLabels,     setShowLabels]     = useState(false);
   const [layerMode,      setLayerMode]      = useState<LayerMode>("street");
-  const [showOutlines,   setShowOutlines]   = useState(true);
   const [openSections,   setOpenSections]   = useState<Record<string, boolean>>({
     schedule: true, type: true, jobs: true, freq: false, team: false,
   });
@@ -331,19 +332,6 @@ export default function MapPage() {
             )}
           </div>
           <div className="flex items-center gap-2">
-            <button
-              onClick={() => setShowOutlines(v => !v)}
-              title={showOutlines ? "Hide outlines" : "Show outlines"}
-              className={`flex items-center gap-1.5 px-2 py-1 rounded-md border text-xs font-medium transition-colors ${
-                showOutlines
-                  ? "text-white border-transparent"
-                  : "border-gray-200 text-gray-500 hover:border-gray-300 hover:text-gray-700"
-              }`}
-              style={showOutlines ? { background: BRAND } : {}}
-            >
-              <Layers className="w-3 h-3" />
-              Outlines
-            </button>
             <button
               onClick={() => setShowLabels(v => !v)}
               title={showLabels ? "Hide labels" : "Show labels"}
@@ -520,6 +508,7 @@ export default function MapPage() {
         <MapContainer
           center={[-41.1280, 174.8520]}
           zoom={13}
+          maxZoom={21}
           style={{ height: "100%", width: "100%" }}
           zoomControl={false}
           attributionControl={false}
@@ -529,10 +518,12 @@ export default function MapPage() {
             key={layerMode}
             url={TILE_LAYERS[layerMode].url}
             attribution={TILE_LAYERS[layerMode].attribution}
+            maxNativeZoom={TILE_LAYERS[layerMode].maxNativeZoom}
+            maxZoom={21}
           />
 
           {/* Garden boundary outlines */}
-          {showOutlines && visible.map(({ asset, scheduleState }) => {
+          {visible.map(({ asset, scheduleState }) => {
             const boundary = (asset as any).boundary;
             const rings = boundaryToPolygons(boundary);
             if (rings.length === 0) return null;
