@@ -18,6 +18,7 @@ const ASSET_FIELD_LABELS: Record<string, string> = {
   ward:            "Ward",
   suburb:          "Suburb",
   streetAddress:   "Street Address",
+  description:     "Description",
   notes:           "Notes",
   isActive:        "Active",
 };

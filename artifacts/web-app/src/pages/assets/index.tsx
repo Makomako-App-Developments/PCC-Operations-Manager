@@ -288,6 +288,7 @@ export default function Assets() {
                 <tr>
                   <SortTh label="Reference"     col="reference"      sortCol={sortCol} sortDir={sortDir} onSort={handleSort} />
                   <SortTh label="Site Name"     col="name"           sortCol={sortCol} sortDir={sortDir} onSort={handleSort} />
+                  <th className="px-4 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Description</th>
                   <SortTh label="Specification" col="gardenType"     sortCol={sortCol} sortDir={sortDir} onSort={handleSort} />
                   <SortTh label="Service Time"  col="serviceTimeMins" sortCol={sortCol} sortDir={sortDir} onSort={handleSort} />
                   <SortTh label="Garden Type"   col="siteType"       sortCol={sortCol} sortDir={sortDir} onSort={handleSort} />
@@ -305,6 +306,9 @@ export default function Assets() {
                   >
                     <td className="px-4 py-3 font-mono text-xs text-gray-500">{asset.reference}</td>
                     <td className="px-4 py-3 font-medium text-gray-900">{asset.name}</td>
+                    <td className="px-4 py-3 text-sm text-gray-500 max-w-[220px]">
+                      <span className="line-clamp-2" title={asset.description ?? undefined}>{asset.description || <span className="text-gray-300">—</span>}</span>
+                    </td>
                     <td className="px-4 py-3">
                       <Badge variant="secondary" className={`text-[10px] uppercase font-bold tracking-wider rounded border-0 ${TYPE_COLORS[asset.gardenType] || "bg-gray-100 text-gray-700"}`}>
                         {asset.gardenType.replace("_", " ")}
@@ -342,7 +346,7 @@ export default function Assets() {
 type EditForm = {
   name: string; gardenType: string; standard: string; areaM2: string;
   serviceTimeMins: string; frequency: string; siteType: string; ward: string;
-  teamId: string; suburb: string; streetAddress: string; notes: string;
+  teamId: string; suburb: string; streetAddress: string; description: string; notes: string;
 };
 
 interface HistoryEntry {
@@ -386,7 +390,7 @@ function AssetDetailDrawer({ assetId, onClose, teamName }: { assetId: string | n
   const [histLoading, setHistLoading] = useState(false);
   const [form, setForm] = useState<EditForm>({
     name: "", gardenType: "", standard: "", areaM2: "", serviceTimeMins: "",
-    frequency: "", siteType: "", ward: "", teamId: "", suburb: "", streetAddress: "", notes: "",
+    frequency: "", siteType: "", ward: "", teamId: "", suburb: "", streetAddress: "", description: "", notes: "",
   });
 
   const queryClient = useQueryClient();
@@ -414,6 +418,7 @@ function AssetDetailDrawer({ assetId, onClose, teamName }: { assetId: string | n
         teamId:          asset.teamId || "",
         suburb:          asset.suburb || "",
         streetAddress:   asset.streetAddress || "",
+        description:     asset.description || "",
         notes:           asset.notes || "",
       });
     }
@@ -455,6 +460,7 @@ function AssetDetailDrawer({ assetId, onClose, teamName }: { assetId: string | n
         teamId:          form.teamId        || null,
         suburb:          form.suburb        || null,
         streetAddress:   form.streetAddress || null,
+        description:     form.description   || null,
         notes:           form.notes         || null,
       };
       const r = await fetch(`/api/assets/${asset!.id}`, {
@@ -552,6 +558,7 @@ function AssetDetailDrawer({ assetId, onClose, teamName }: { assetId: string | n
                       <InfoRow label="Global ID"   value={(asset as any).globalId} mono />
                       <InfoRow label="Suburb"      value={asset.suburb} />
                       <InfoRow label="Address"     value={asset.streetAddress} />
+                      <InfoRow label="Description" value={asset.description} />
                       <InfoRow label="Coordinates" mono
                         value={asset.lat != null ? `${Number(asset.lat).toFixed(4)}, ${Number(asset.lng).toFixed(4)}` : null} />
                     </div>
@@ -663,6 +670,9 @@ function AssetDetailDrawer({ assetId, onClose, teamName }: { assetId: string | n
                     </FormField>
                     <FormField label="Street Address">
                       <Input value={form.streetAddress} onChange={e => f("streetAddress", e.target.value)} className="text-sm" />
+                    </FormField>
+                    <FormField label="Description">
+                      <Input value={form.description} onChange={e => f("description", e.target.value)} className="text-sm" placeholder="e.g. Corner of Karearea Ave and Bluff Rd" />
                     </FormField>
                     <FormField label="Notes">
                       <Textarea value={form.notes} onChange={e => f("notes", e.target.value)} className="text-sm" rows={3} />

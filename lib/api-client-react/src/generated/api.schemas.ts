@@ -180,6 +180,7 @@ export interface Asset {
   ward?: Ward | null;
   suburb?: string | null;
   streetAddress?: string | null;
+  description?: string | null;
   lat?: number | null;
   lng?: number | null;
   notes?: string | null;
@@ -201,6 +202,7 @@ export interface AssetCreate {
   ward?: Ward;
   suburb?: string;
   streetAddress?: string;
+  description?: string;
   lat?: number;
   lng?: number;
   notes?: string;
@@ -217,6 +219,7 @@ export interface AssetUpdate {
   ward?: Ward;
   suburb?: string;
   streetAddress?: string;
+  description?: string;
   lat?: number;
   lng?: number;
   notes?: string;
