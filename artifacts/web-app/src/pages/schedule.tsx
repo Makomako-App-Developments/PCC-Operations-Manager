@@ -876,7 +876,7 @@ export default function Schedule() {
             onClick={openUrgentJob}
           >
             <Zap className="w-4 h-4" />
-            Add Urgent Job
+            Add Reactive Job
           </Button>
           <Button
             size="sm"
