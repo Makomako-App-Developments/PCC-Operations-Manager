@@ -121,7 +121,7 @@ const STANDARD_COLORS: Record<string, string> = {
   low:    "bg-gray-100 text-gray-600",
 };
 
-type SortCol = "reference" | "name" | "gardenType" | "serviceTimeMins" | "siteType" | "frequency" | "team";
+type SortCol = "name" | "gardenType" | "serviceTimeMins" | "siteType" | "frequency" | "team";
 type SortDir = "asc" | "desc";
 
 function SortTh({ label, col, sortCol, sortDir, onSort, className }: {
@@ -149,7 +149,7 @@ export default function Assets() {
   const [gardenType, setGardenType] = useState<any>("all");
   const [ward, setWard] = useState<any>("all");
   const [teamId, setTeamId] = useState<any>("all");
-  const [sortCol, setSortCol] = useState<SortCol>("reference");
+  const [sortCol, setSortCol] = useState<SortCol>("name");
   const [sortDir, setSortDir] = useState<SortDir>("asc");
 
   const { data: teamsData } = useListTeams({ query: { queryKey: getListTeamsQueryKey() }});
@@ -178,8 +178,7 @@ export default function Assets() {
     const rows = [...(assetsData?.data ?? [])];
     rows.sort((a, b) => {
       let av: any, bv: any;
-      if (sortCol === "reference")      { av = a.reference;       bv = b.reference; }
-      else if (sortCol === "name")      { av = a.name;            bv = b.name; }
+      if (sortCol === "name")            { av = a.name;            bv = b.name; }
       else if (sortCol === "gardenType"){ av = a.gardenType;      bv = b.gardenType; }
       else if (sortCol === "serviceTimeMins") { av = a.serviceTimeMins ?? 0; bv = b.serviceTimeMins ?? 0; }
       else if (sortCol === "siteType")  { av = a.siteType || ""; bv = b.siteType || ""; }
@@ -286,7 +285,6 @@ export default function Assets() {
             <table className="w-full text-sm text-left">
               <thead className="bg-gray-50 border-b border-gray-200">
                 <tr>
-                  <SortTh label="Reference"     col="reference"      sortCol={sortCol} sortDir={sortDir} onSort={handleSort} />
                   <SortTh label="Site Name"     col="name"           sortCol={sortCol} sortDir={sortDir} onSort={handleSort} />
                   <th className="px-4 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Description</th>
                   <SortTh label="Specification" col="gardenType"     sortCol={sortCol} sortDir={sortDir} onSort={handleSort} />
@@ -304,7 +302,6 @@ export default function Assets() {
                     onClick={() => navigate("/assets/" + asset.id)}
                     data-testid={`row-asset-${asset.id}`}
                   >
-                    <td className="px-4 py-3 font-mono text-xs text-gray-500">{asset.reference}</td>
                     <td className="px-4 py-3 font-medium text-gray-900">{asset.name}</td>
                     <td className="px-4 py-3 text-sm text-gray-500 max-w-[220px]">
                       <span className="line-clamp-2" title={asset.description ?? undefined}>{asset.description || <span className="text-gray-300">—</span>}</span>
