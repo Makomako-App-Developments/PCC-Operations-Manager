@@ -517,11 +517,44 @@ function WeekView({
   getTeamName:  (id?: string | null) => string;
   onJobClick:   (job: any) => void;
 }) {
+  // Collapsed state keyed by teamId — collapsing a team folds it across all day columns
+  const [collapsedTeams, setCollapsedTeams] = useState<Set<string>>(new Set());
+  const toggleTeam = (teamId: string) =>
+    setCollapsedTeams(prev => {
+      const next = new Set(prev);
+      if (next.has(teamId)) next.delete(teamId); else next.add(teamId);
+      return next;
+    });
+
   if (isLoading) return <div className="p-8"><Skeleton className="w-full h-96 rounded-2xl" /></div>;
   if (!weekData?.days) return null;
 
   const productiveTimeMins: number = weekData?.settings?.productiveTimeMins ?? 390;
   const q = searchTerm.trim().toLowerCase();
+
+  /** Group jobs by teamId, preserving insertion order for first-seen team. */
+  function groupByTeam(jobs: any[]): Map<string, any[]> {
+    const map = new Map<string, any[]>();
+    for (const job of jobs) {
+      const key = job.teamId ?? "__unassigned__";
+      if (!map.has(key)) map.set(key, []);
+      map.get(key)!.push(job);
+    }
+    return map;
+  }
+
+  /**
+   * Sort jobs within a team cluster by routeOrder (geosequence).
+   * Nulls sort last; ties broken by assetRef.
+   */
+  function geoSort(jobs: any[]): any[] {
+    return [...jobs].sort((a, b) => {
+      const ro_a = a.routeOrder ?? 999999;
+      const ro_b = b.routeOrder ?? 999999;
+      if (ro_a !== ro_b) return ro_a - ro_b;
+      return (a.assetRef ?? "").localeCompare(b.assetRef ?? "");
+    });
+  }
 
   return (
     <div className="flex-1 overflow-auto p-5">
@@ -533,7 +566,6 @@ function WeekView({
                 j.assetRef?.toLowerCase().includes(q),
               )}
             : day;
-          // shadow original day with filtered version
           day = day_;
           const dateObj = new Date(day.date + "T00:00:00");
           const isToday = format(new Date(), "yyyy-MM-dd") === day.date;
@@ -542,12 +574,15 @@ function WeekView({
           const relevantJobs = selectedTeamId !== "all"
             ? day.jobs.filter((j: any) => j.teamId === selectedTeamId)
             : day.jobs;
-          const totalMins   = relevantJobs.reduce((s: number, j: any) => s + (j.estimatedTimeMins ?? j.serviceTimeMins ?? 0), 0);
+          const totalMins    = relevantJobs.reduce((s: number, j: any) => s + (j.estimatedTimeMins ?? j.serviceTimeMins ?? 0), 0);
           const capacityMins = selectedTeamId !== "all" ? productiveTimeMins : productiveTimeMins * teamsCount;
           const pct      = capacityMins > 0 ? Math.min((totalMins / capacityMins) * 100, 100) : 0;
           const isOver   = totalMins > capacityMins * 1.05;
           const isHigh   = totalMins > capacityMins * 0.9;
           const barColor = isOver ? "#ef4444" : isHigh ? "#f59e0b" : "#10b981";
+
+          // Build team clusters for this day
+          const teamGroups = groupByTeam(day.jobs);
 
           return (
             <div
@@ -555,6 +590,7 @@ function WeekView({
               className={`rounded-xl shadow-sm flex flex-col bg-white ${isToday ? "ring-2 ring-[#00AECD]" : "border border-gray-100"}`}
               style={{ minHeight: 480 }}
             >
+              {/* Day header */}
               <div className="px-3 pt-2.5 pb-2 border-b bg-gray-50/60 flex-shrink-0 rounded-t-xl">
                 <div className="flex items-center justify-between mb-1.5">
                   <div>
@@ -568,10 +604,7 @@ function WeekView({
                 {totalMins > 0 && (
                   <div className="flex items-center gap-1.5">
                     <div className="flex-1 h-1 bg-gray-200 rounded-full overflow-hidden">
-                      <div
-                        className="h-full rounded-full transition-all"
-                        style={{ width: `${pct}%`, background: barColor }}
-                      />
+                      <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, background: barColor }} />
                     </div>
                     <span style={{ color: barColor }} className="text-[9px] font-bold whitespace-nowrap leading-none">
                       {(totalMins / 60).toFixed(1)}h
@@ -579,53 +612,90 @@ function WeekView({
                   </div>
                 )}
               </div>
-              <div className="flex-1 overflow-y-auto p-2 space-y-1.5">
+
+              {/* Team clusters */}
+              <div className="flex-1 overflow-y-auto p-2 space-y-2">
                 {day.jobs.length === 0 ? (
                   <p className="text-center text-[11px] text-gray-400 py-6 italic">No jobs</p>
-                ) : day.jobs.map((job: any) => {
-                  const done        = job.status === "completed";
-                  const skipped     = job.status === "skipped";
-                  const overdue     = job.status === "overdue";
-                  const inProgress  = job.status === "in_progress";
-                  const crewNone    = job.crewStatus === "none";
-                  const crewReduced = job.crewStatus === "reduced";
-                  const displayTime = job.estimatedTimeMins ?? job.serviceTimeMins;
+                ) : Array.from(teamGroups.entries()).map(([teamKey, rawJobs]) => {
+                  const tidArg   = teamKey === "__unassigned__" ? null : teamKey;
+                  const color    = getTeamColor(tidArg);
+                  const name     = getTeamName(tidArg);
+                  const sorted   = geoSort(rawJobs);
+                  const teamMins = sorted.reduce((s: number, j: any) => s + (j.estimatedTimeMins ?? j.serviceTimeMins ?? 0), 0);
+                  const isCollapsed = collapsedTeams.has(teamKey);
+
                   return (
-                    <div
-                      key={job.id}
-                      onClick={() => onJobClick(job)}
-                      className={`p-2.5 rounded-lg border shadow-sm bg-white relative overflow-hidden cursor-pointer hover:shadow-md transition-shadow ${
-                        crewNone    ? "border-red-300 bg-red-50/50" :
-                        crewReduced ? "border-amber-200 bg-amber-50/40" :
-                        done        ? "opacity-60 border-gray-200" :
-                        skipped     ? "border-orange-200 bg-orange-50" :
-                        inProgress  ? "border-[#00AECD] ring-1 ring-[#00AECD]" :
-                        overdue     ? "border-red-200 bg-red-50" : "border-gray-200"
-                      }`}
-                    >
-                      <div className="absolute top-0 left-0 w-1 h-full" style={{ background: getTeamColor(job.teamId) }} />
-                      <div className="pl-2">
-                        <p className={`text-[11px] font-semibold truncate ${done || skipped ? "line-through text-gray-400" : "text-gray-900"}`} title={job.assetName}>
-                          {job.assetName}
-                        </p>
-                        <p className="text-[9px] text-gray-400 font-mono mb-1">{job.assetRef}</p>
-                        {crewNone && (
-                          <p className="text-[9px] text-red-600 font-semibold flex items-center gap-0.5 mb-1"><XCircle className="w-2.5 h-2.5" />No crew available</p>
-                        )}
-                        {crewReduced && (
-                          <p className="text-[9px] text-amber-600 font-semibold flex items-center gap-0.5 mb-1"><AlertTriangle className="w-2.5 h-2.5" />Reduced crew</p>
-                        )}
-                        <div className="flex items-center justify-between text-[10px] text-gray-400 border-t border-gray-100 pt-1.5">
-                          <span className="truncate max-w-[60px]">{getTeamName(job.teamId)}</span>
-                          <span className="flex items-center gap-0.5 flex-shrink-0">
-                            <Clock className="w-2.5 h-2.5" />
-                            {crewReduced || crewNone
-                              ? <><span className="line-through mr-0.5 text-[9px]">{job.serviceTimeMins}m</span><span className={crewNone ? "text-red-600 font-bold" : "text-amber-600 font-bold"}>{displayTime}m</span></>
-                              : <span>{displayTime}m</span>
-                            }
-                          </span>
+                    <div key={teamKey}>
+                      {/* Team cluster header */}
+                      <button
+                        onClick={() => toggleTeam(teamKey)}
+                        className="w-full flex items-center gap-1.5 px-2 py-1 rounded-md mb-1 hover:brightness-95 transition-all"
+                        style={{ background: color + "1a", borderLeft: `3px solid ${color}` }}
+                      >
+                        <span className="text-[10px] font-bold flex-1 text-left truncate" style={{ color }}>
+                          {name}
+                        </span>
+                        <span className="text-[9px] text-gray-400 whitespace-nowrap flex-shrink-0">
+                          {sorted.length} · {(teamMins / 60).toFixed(1)}h
+                        </span>
+                        {isCollapsed
+                          ? <ChevronRight className="w-3 h-3 text-gray-400 flex-shrink-0" />
+                          : <ChevronDown  className="w-3 h-3 text-gray-400 flex-shrink-0" />
+                        }
+                      </button>
+
+                      {/* Geosequenced job cards */}
+                      {!isCollapsed && (
+                        <div className="space-y-1.5">
+                          {sorted.map((job: any) => {
+                            const done       = job.status === "completed";
+                            const skipped    = job.status === "skipped";
+                            const overdue    = job.status === "overdue";
+                            const inProgress = job.status === "in_progress";
+                            const crewNone    = job.crewStatus === "none";
+                            const crewReduced = job.crewStatus === "reduced";
+                            const displayTime = job.estimatedTimeMins ?? job.serviceTimeMins;
+                            return (
+                              <div
+                                key={job.id}
+                                onClick={() => onJobClick(job)}
+                                className={`p-2.5 rounded-lg border shadow-sm bg-white relative overflow-hidden cursor-pointer hover:shadow-md transition-shadow ${
+                                  crewNone    ? "border-red-300 bg-red-50/50" :
+                                  crewReduced ? "border-amber-200 bg-amber-50/40" :
+                                  done        ? "opacity-60 border-gray-200" :
+                                  skipped     ? "border-orange-200 bg-orange-50" :
+                                  inProgress  ? "border-[#00AECD] ring-1 ring-[#00AECD]" :
+                                  overdue     ? "border-red-200 bg-red-50" : "border-gray-200"
+                                }`}
+                              >
+                                <div className="absolute top-0 left-0 w-1 h-full" style={{ background: color }} />
+                                <div className="pl-2">
+                                  <p className={`text-[11px] font-semibold truncate ${done || skipped ? "line-through text-gray-400" : "text-gray-900"}`} title={job.assetName}>
+                                    {job.assetName}
+                                  </p>
+                                  <p className="text-[9px] text-gray-400 font-mono mb-1">{job.assetRef}</p>
+                                  {crewNone && (
+                                    <p className="text-[9px] text-red-600 font-semibold flex items-center gap-0.5 mb-1"><XCircle className="w-2.5 h-2.5" />No crew available</p>
+                                  )}
+                                  {crewReduced && (
+                                    <p className="text-[9px] text-amber-600 font-semibold flex items-center gap-0.5 mb-1"><AlertTriangle className="w-2.5 h-2.5" />Reduced crew</p>
+                                  )}
+                                  <div className="flex items-center justify-end text-[10px] text-gray-400 border-t border-gray-100 pt-1.5">
+                                    <span className="flex items-center gap-0.5">
+                                      <Clock className="w-2.5 h-2.5" />
+                                      {crewReduced || crewNone
+                                        ? <><span className="line-through mr-0.5 text-[9px]">{job.serviceTimeMins}m</span><span className={crewNone ? "text-red-600 font-bold" : "text-amber-600 font-bold"}>{displayTime}m</span></>
+                                        : <span>{displayTime}m</span>
+                                      }
+                                    </span>
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })}
                         </div>
-                      </div>
+                      )}
                     </div>
                   );
                 })}
