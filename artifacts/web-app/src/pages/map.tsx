@@ -1,5 +1,5 @@
 import { useState, useMemo } from "react";
-import { ChevronDown, ChevronUp, X, Filter } from "lucide-react";
+import { ChevronDown, ChevronUp, X, Filter, Tag } from "lucide-react";
 import { MapContainer, TileLayer, CircleMarker, Tooltip, Popup, ZoomControl } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
 import {
@@ -196,6 +196,7 @@ export default function MapPage() {
   const [freqFilter,     setFreqFilter]     = useState<Set<string>>(new Set());
   const [teamFilter,     setTeamFilter]     = useState<Set<string>>(new Set());
   const [colorMode,      setColorMode]      = useState<ColorMode>("schedule");
+  const [showLabels,     setShowLabels]     = useState(false);
   const [openSections,   setOpenSections]   = useState<Record<string, boolean>>({
     schedule: true, type: true, jobs: true, freq: false, team: false,
   });
@@ -298,11 +299,26 @@ export default function MapPage() {
               </span>
             )}
           </div>
-          {activeFilterCount > 0 && (
-            <button onClick={clearAll} className="text-[11px] text-gray-400 hover:text-gray-700 font-medium transition-colors">
-              Clear all
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setShowLabels(v => !v)}
+              title={showLabels ? "Hide labels" : "Show labels"}
+              className={`flex items-center gap-1.5 px-2 py-1 rounded-md border text-xs font-medium transition-colors ${
+                showLabels
+                  ? "text-white border-transparent"
+                  : "border-gray-200 text-gray-500 hover:border-gray-300 hover:text-gray-700"
+              }`}
+              style={showLabels ? { background: BRAND } : {}}
+            >
+              <Tag className="w-3 h-3" />
+              Labels
             </button>
-          )}
+            {activeFilterCount > 0 && (
+              <button onClick={clearAll} className="text-[11px] text-gray-400 hover:text-gray-700 font-medium transition-colors">
+                Clear all
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Colour mode toggle */}
@@ -471,16 +487,18 @@ export default function MapPage() {
                   fillOpacity: 0.92,
                 }}
               >
-                <Tooltip permanent direction="top" offset={[0, -18]} opacity={1}>
-                  <div style={{ fontFamily: "system-ui, sans-serif", lineHeight: 1.3 }}>
-                    <div style={{ fontWeight: 700, fontSize: 11, color: "#0f2a36", whiteSpace: "nowrap" }}>
-                      {asset.name}
+                {showLabels && (
+                  <Tooltip permanent direction="top" offset={[0, -18]} opacity={1}>
+                    <div style={{ fontFamily: "system-ui, sans-serif", lineHeight: 1.3 }}>
+                      <div style={{ fontWeight: 700, fontSize: 11, color: "#0f2a36", whiteSpace: "nowrap" }}>
+                        {asset.name}
+                      </div>
+                      <div style={{ fontSize: 10, color: "#6b7280", marginTop: 1, whiteSpace: "nowrap" }}>
+                        {asset.serviceTimeMins} min · {FREQ_LABELS[asset.frequency] ?? asset.frequency}
+                      </div>
                     </div>
-                    <div style={{ fontSize: 10, color: "#6b7280", marginTop: 1, whiteSpace: "nowrap" }}>
-                      {asset.serviceTimeMins} min · {FREQ_LABELS[asset.frequency] ?? asset.frequency}
-                    </div>
-                  </div>
-                </Tooltip>
+                  </Tooltip>
+                )}
 
                 <Popup offset={[0, -16]} closeButton={false} className="garden-popup">
                   <div style={{ fontFamily: "system-ui, sans-serif", width: 220, padding: "4px 2px" }}>
