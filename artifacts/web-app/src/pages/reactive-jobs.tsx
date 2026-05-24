@@ -10,7 +10,7 @@ import {
   useUpdateJob,
 } from "@workspace/api-client-react";
 import type { JobWithAsset } from "@workspace/api-client-react";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQueryClient, useQuery } from "@tanstack/react-query";
 import {
   AlertTriangle, CheckCircle2, Clock, MapPin, Plus, ArrowRight,
   Trash2, Users, Bell, Calendar, X, AlertCircle, Zap,
