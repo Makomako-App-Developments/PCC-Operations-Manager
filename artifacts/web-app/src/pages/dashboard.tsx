@@ -20,7 +20,13 @@ const BRAND = "#00AECD";
 const NAVY  = "#0f2a36";
 const HOURLY_RATE = 35;
 
-type Period = "week" | "month";
+type Period = "week" | "month" | "year";
+
+const PERIOD_LABELS: Record<Period, string> = {
+  week:  "This Week",
+  month: "This Month",
+  year:  "This Year",
+};
 
 // ─── Stat Card ───────────────────────────────────────────────────────────────
 function StatCard({ icon: Icon, label, value, sub, trend, trendDir, color }: {
@@ -104,8 +110,17 @@ export default function Dashboard() {
   const [period, setPeriod] = useState<Period>("week");
 
   const today    = new Date();
-  const rangeStart = period === "week" ? startOfWeek(today, { weekStartsOn: 1 }) : startOfMonth(today);
-  const rangeEnd   = period === "week" ? endOfWeek(today, { weekStartsOn: 1 })   : endOfMonth(today);
+  // Council year: 1 July – 30 June
+  const councilYearStart = today.getMonth() >= 6
+    ? new Date(today.getFullYear(), 6, 1)
+    : new Date(today.getFullYear() - 1, 6, 1);
+  const councilYearEnd = new Date(councilYearStart.getFullYear() + 1, 5, 30);
+  const rangeStart = period === "week" ? startOfWeek(today, { weekStartsOn: 1 })
+    : period === "month" ? startOfMonth(today)
+    : councilYearStart;
+  const rangeEnd = period === "week" ? endOfWeek(today, { weekStartsOn: 1 })
+    : period === "month" ? endOfMonth(today)
+    : councilYearEnd;
 
   const inPeriod = (dateStr: string | null | undefined) => {
     if (!dateStr) return false;
@@ -192,19 +207,14 @@ export default function Dashboard() {
           <h1 className="text-xl font-black" style={{ color: NAVY }}>Dashboard</h1>
           <p className="text-xs text-gray-400">Operational performance · Porirua City Council Gardens</p>
         </div>
-        <div className="flex items-center gap-3">
-          <div className="flex rounded-xl overflow-hidden border border-gray-200 text-[12px] font-semibold">
-            {(["week", "month"] as Period[]).map(p => (
-              <button key={p} onClick={() => setPeriod(p)}
-                className="px-4 py-2 capitalize transition-colors"
-                style={period === p ? { background: BRAND, color: "#fff" } : { background: "#fff", color: "#6b7280" }}>
-                This {p}
-              </button>
-            ))}
-          </div>
-          <button className="flex items-center gap-2 border border-gray-200 rounded-xl px-3 py-2 text-[12px] text-gray-500 font-medium hover:bg-gray-50">
-            <Download className="w-3.5 h-3.5" />Export PDF
-          </button>
+        <div className="flex rounded-xl overflow-hidden border border-gray-200 text-[12px] font-semibold">
+          {(["week", "month", "year"] as Period[]).map(p => (
+            <button key={p} onClick={() => setPeriod(p)}
+              className="px-4 py-2 transition-colors"
+              style={period === p ? { background: BRAND, color: "#fff" } : { background: "#fff", color: "#6b7280" }}>
+              {PERIOD_LABELS[p]}
+            </button>
+          ))}
         </div>
       </header>
 
@@ -213,7 +223,7 @@ export default function Dashboard() {
         {/* ── Stat Cards ── */}
         <div>
           <p className="text-[11px] font-black uppercase tracking-widest text-gray-400 mb-3">
-            This {period === "week" ? "Week" : "Month"} at a Glance
+            {PERIOD_LABELS[period]} at a Glance
           </p>
           <div className="grid grid-cols-6 gap-4">
             <StatCard
