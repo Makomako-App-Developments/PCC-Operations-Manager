@@ -24,7 +24,7 @@ import {
   addMonths, startOfMonth, endOfMonth,
 } from "date-fns";
 import {
-  ChevronLeft, ChevronRight, Route, CheckCircle2, Clock,
+  ChevronLeft, ChevronRight, ChevronDown, Route, CheckCircle2, Clock,
   CalendarRange, CalendarDays, Calendar, LayoutGrid, CheckCircle, AlertTriangle, XCircle,
   Zap, RotateCcw, PlayCircle, Search, X,
 } from "lucide-react";
@@ -306,30 +306,33 @@ function DayView({
       )
     : rawJobs;
 
-  if (isLoading) return <div className="p-8"><Skeleton className="w-full h-96 rounded-2xl" /></div>;
-
-  // Group by team
+  // Group by team (preserve API geo-sequence order within each group)
   const teamGroups: Map<string | null, any[]> = new Map();
   for (const job of jobs) {
     const key = job.teamId ?? null;
     if (!teamGroups.has(key)) teamGroups.set(key, []);
     teamGroups.get(key)!.push(job);
   }
-  // Sort: named teams first (alpha), unassigned last
   const sortedGroups = [...teamGroups.entries()].sort(([aId], [bId]) => {
     if (aId === null) return 1;
     if (bId === null) return -1;
     return getTeamName(aId).localeCompare(getTeamName(bId));
   });
 
+  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
+  const toggleTeam = (key: string) => setCollapsed(s => ({ ...s, [key]: !s[key] }));
+
+  if (isLoading) return <div className="p-8"><Skeleton className="w-full h-96 rounded-2xl" /></div>;
+
   return (
-    <div className="p-6 overflow-auto h-full">
+    <div className="p-5 overflow-auto h-full">
       {jobs.length === 0 ? (
         <div className="text-center py-16 text-sm text-gray-400 italic bg-white rounded-2xl border border-gray-100 max-w-2xl">
           No jobs scheduled for {format(currentDate, "EEEE d MMMM yyyy")}
         </div>
       ) : (
-        <div className="space-y-6">
+        <div className="space-y-4 max-w-3xl">
+          {/* Summary row */}
           <div className="flex items-center gap-2 text-sm text-gray-500">
             <Route className="w-4 h-4" />
             <span className="font-medium text-gray-700">{jobs.length}</span> jobs across
@@ -337,75 +340,142 @@ function DayView({
           </div>
 
           {sortedGroups.map(([teamId, teamJobs]) => {
-            const color    = getTeamColor(teamId);
-            const name     = getTeamName(teamId);
-            const totalMin = teamJobs.reduce((s: number, j: any) => s + (j.estimatedTimeMins ?? j.serviceTimeMins ?? 0), 0);
-            const doneCount = teamJobs.filter((j: any) => j.status === "completed").length;
-            return (
-              <div key={teamId ?? "__unassigned__"}>
-                {/* Team header */}
-                <div className="flex items-center gap-3 mb-3">
-                  <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ background: color }} />
-                  <span className="text-sm font-bold text-gray-800">{name}</span>
-                  <span className="text-xs text-gray-400">{teamJobs.length} job{teamJobs.length !== 1 ? "s" : ""}</span>
-                  <span className="text-xs text-gray-400">·</span>
-                  <span className="text-xs text-gray-400 flex items-center gap-1">
-                    <Clock className="w-3 h-3" />{totalMin}m total
-                  </span>
-                  {doneCount > 0 && (
-                    <>
-                      <span className="text-xs text-gray-400">·</span>
-                      <span className="text-xs text-green-600 font-medium">{doneCount} done</span>
-                    </>
-                  )}
-                  <div className="flex-1 h-px bg-gray-100 ml-1" />
-                </div>
+            const groupKey    = teamId ?? "__unassigned__";
+            const color       = getTeamColor(teamId);
+            const name        = getTeamName(teamId);
+            const totalMin    = teamJobs.reduce((s: number, j: any) => s + (j.estimatedTimeMins ?? j.serviceTimeMins ?? 0), 0);
+            const doneMins    = teamJobs.filter((j: any) => j.status === "completed").reduce((s: number, j: any) => s + (j.estimatedTimeMins ?? j.serviceTimeMins ?? 0), 0);
+            const doneCount   = teamJobs.filter((j: any) => j.status === "completed").length;
+            const inProgCount = teamJobs.filter((j: any) => j.status === "in_progress").length;
+            const progress    = totalMin > 0 ? Math.round((doneMins / totalMin) * 100) : 0;
+            const isCollapsed = collapsed[groupKey];
 
-                {/* Job cards */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
-                  {teamJobs.map((job: any) => {
-                    const done        = job.status === "completed";
-                    const overdue     = job.status === "overdue";
-                    const crewNone    = job.crewStatus === "none";
-                    const crewReduced = job.crewStatus === "reduced";
-                    const displayTime = job.estimatedTimeMins ?? job.serviceTimeMins;
-                    return (
-                      <div
-                        key={job.id}
-                        onClick={() => onJobClick(job)}
-                        className={`p-4 rounded-xl border shadow-sm bg-white relative overflow-hidden cursor-pointer hover:shadow-md transition-shadow ${
-                          crewNone    ? "border-red-300 bg-red-50/40" :
-                          crewReduced ? "border-amber-200 bg-amber-50/30" :
-                          done        ? "opacity-60 border-gray-200" :
-                          overdue     ? "border-red-200 bg-red-50" : "border-gray-200"
-                        }`}
-                      >
-                        <div className="absolute top-0 left-0 w-1 h-full rounded-l-xl" style={{ background: color }} />
-                        <div className="pl-3 flex items-start justify-between">
-                          <div className="min-w-0 flex-1 pr-2">
-                            <p className={`text-sm font-semibold truncate ${done ? "line-through text-gray-400" : "text-gray-900"}`}>{job.assetName}</p>
-                            <p className="text-[11px] text-gray-400 font-mono mt-0.5">{job.assetRef}</p>
-                          </div>
-                          <div className="flex flex-col gap-1 items-end flex-shrink-0">
-                            {done        && <span className="text-[10px] px-2 py-0.5 rounded-full bg-green-100 text-green-700 font-medium">Done</span>}
-                            {overdue     && <span className="text-[10px] px-2 py-0.5 rounded-full bg-red-100 text-red-700 font-medium">Overdue</span>}
-                            {crewNone    && <span className="text-[10px] px-2 py-0.5 rounded-full bg-red-100 text-red-700 font-medium flex items-center gap-1"><XCircle className="w-2.5 h-2.5" />No crew</span>}
-                            {crewReduced && <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 font-medium flex items-center gap-1"><AlertTriangle className="w-2.5 h-2.5" />Reduced crew</span>}
-                          </div>
-                        </div>
-                        <div className="pl-3 flex items-center justify-end mt-2 text-[11px] text-gray-400">
-                          <span className="flex items-center gap-1">
-                            <Clock className="w-3 h-3" />
-                            {crewReduced || crewNone
-                              ? <><span className="line-through mr-0.5">{job.serviceTimeMins}m</span><span className={crewNone ? "text-red-600 font-semibold" : "text-amber-600 font-semibold"}>{displayTime}m</span></>
-                              : <span>{displayTime}m</span>
-                            }
-                          </span>
-                        </div>
+            return (
+              <div key={groupKey} className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+                {/* Team header — collapsible */}
+                <button
+                  onClick={() => toggleTeam(groupKey)}
+                  className="w-full flex items-center gap-3 px-5 py-3.5 hover:bg-gray-50/70 transition-colors text-left"
+                >
+                  <div className="w-1 h-9 rounded-full flex-shrink-0" style={{ background: color }} />
+
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-1.5">
+                      <span className="text-sm font-bold text-gray-800">{name}</span>
+                      {inProgCount > 0 && (
+                        <span className="text-[10px] px-1.5 py-0.5 rounded-full font-semibold"
+                          style={{ background: color + "22", color }}>
+                          In progress
+                        </span>
+                      )}
+                    </div>
+                    {/* Route dot-strip */}
+                    <div className="flex items-center gap-1">
+                      {teamJobs.map((j: any, i: number) => (
+                        <span key={j.id} className="flex items-center">
+                          <span
+                            className="w-2 h-2 rounded-full"
+                            style={{
+                              background: j.status === "completed" ? "#10b981"
+                                : j.status === "in_progress"  ? color
+                                : j.status === "overdue"      ? "#ef4444"
+                                : "#d1d5db"
+                            }}
+                          />
+                          {i < teamJobs.length - 1 && (
+                            <span className="w-3 h-px block" style={{ background: "#e5e7eb" }} />
+                          )}
+                        </span>
+                      ))}
+                      <span className="text-[11px] text-gray-400 ml-2">
+                        {doneCount}/{teamJobs.length} done · {totalMin}m
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Progress % */}
+                  <div className="flex-shrink-0 text-right mr-2">
+                    <div className="text-sm font-bold" style={{ color: progress === 100 ? "#10b981" : color }}>
+                      {progress}%
+                    </div>
+                    <div className="text-[10px] text-gray-400">complete</div>
+                  </div>
+
+                  <ChevronDown
+                    className="w-4 h-4 text-gray-400 flex-shrink-0 transition-transform"
+                    style={{ transform: isCollapsed ? "rotate(-90deg)" : "rotate(0deg)" }}
+                  />
+                </button>
+
+                {/* Timeline body */}
+                {!isCollapsed && (
+                  <div className="border-t border-gray-50 px-5 py-3">
+                    <div className="relative">
+                      {/* Vertical guide line */}
+                      <div className="absolute left-[13px] top-4 bottom-4 w-px bg-gray-100" />
+
+                      <div className="space-y-0">
+                        {teamJobs.map((job: any, idx: number) => {
+                          const done        = job.status === "completed";
+                          const overdue     = job.status === "overdue";
+                          const inProg      = job.status === "in_progress";
+                          const crewNone    = job.crewStatus === "none";
+                          const crewReduced = job.crewStatus === "reduced";
+                          const displayTime = job.estimatedTimeMins ?? job.serviceTimeMins;
+
+                          // Stop circle style
+                          const dotBg    = done    ? "#d1fae5" : inProg ? color + "22" : overdue ? "#fee2e2" : "#f1f5f9";
+                          const dotBorder = done   ? "#a7f3d0" : inProg ? color       : overdue ? "#fca5a5" : "#e2e8f0";
+                          const dotColor  = done   ? "#059669" : inProg ? color       : overdue ? "#ef4444" : "#94a3b8";
+
+                          return (
+                            <div
+                              key={job.id}
+                              onClick={() => onJobClick(job)}
+                              className={`flex items-start gap-4 py-2.5 px-2 -ml-2 rounded-xl cursor-pointer transition-colors hover:bg-gray-50 ${
+                                crewNone    ? "bg-red-50/40 hover:bg-red-50/60" :
+                                crewReduced ? "bg-amber-50/30 hover:bg-amber-50/50" :
+                                done        ? "opacity-50" : ""
+                              }`}
+                            >
+                              {/* Stop circle */}
+                              <div
+                                className="w-7 h-7 rounded-full flex-shrink-0 flex items-center justify-center text-[11px] font-bold border-2 z-10 bg-white"
+                                style={{ borderColor: dotBorder, background: dotBg, color: dotColor }}
+                              >
+                                {done ? <CheckCircle2 className="w-3.5 h-3.5" style={{ color: "#10b981" }} /> : idx + 1}
+                              </div>
+
+                              {/* Job info */}
+                              <div className="flex-1 min-w-0 pt-0.5">
+                                <div className="flex items-start justify-between gap-2">
+                                  <div className="min-w-0">
+                                    <p className={`text-sm font-semibold leading-tight ${done ? "line-through text-gray-400" : overdue ? "text-red-700" : "text-gray-800"}`}>
+                                      {job.assetName}
+                                    </p>
+                                    <p className="text-[11px] text-gray-400 font-mono mt-0.5">{job.assetRef}</p>
+                                  </div>
+                                  <div className="flex items-center gap-1.5 flex-shrink-0 pt-0.5 flex-wrap justify-end">
+                                    {overdue     && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-red-100 text-red-700 font-semibold">Overdue</span>}
+                                    {crewNone    && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-red-100 text-red-700 font-semibold flex items-center gap-0.5"><XCircle className="w-2.5 h-2.5" />No crew</span>}
+                                    {crewReduced && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 font-semibold flex items-center gap-0.5"><AlertTriangle className="w-2.5 h-2.5" />Reduced</span>}
+                                    <span className="text-[11px] text-gray-400 flex items-center gap-0.5">
+                                      <Clock className="w-3 h-3" />
+                                      {crewReduced || crewNone
+                                        ? <><span className="line-through mr-0.5">{job.serviceTimeMins}m</span><span className={crewNone ? "text-red-600 font-semibold" : "text-amber-600 font-semibold"}>{displayTime}m</span></>
+                                        : <span>{displayTime}m</span>
+                                      }
+                                    </span>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
                       </div>
-                    );
-                  })}
-                </div>
+                    </div>
+                  </div>
+                )}
               </div>
             );
           })}
