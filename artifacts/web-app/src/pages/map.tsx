@@ -582,7 +582,7 @@ export default function MapPage() {
                   <div style={{ fontFamily: "system-ui, sans-serif", width: 220, padding: "4px 2px" }}>
                     <div style={{ marginBottom: 8 }}>
                       <p style={{ fontWeight: 700, fontSize: 13, color: "#0f2a36", margin: 0 }}>{asset.name}</p>
-                      <p style={{ fontSize: 10, color: "#9ca3af", fontFamily: "monospace", margin: "2px 0 0" }}>{asset.reference}</p>
+                      {asset.description && <p style={{ fontSize: 10, color: "#9ca3af", margin: "2px 0 0" }}>{asset.description}</p>}
                     </div>
 
                     <div style={{
