@@ -419,7 +419,7 @@ function ReactiveJobWizard({ teamsData, assetsData, onClose, onPublished }: Wiza
     reactiveMin > 0;
 
   return (
-    <div className="fixed inset-0 z-50 bg-[#f5f7f9] flex flex-col overflow-hidden">
+    <div className="fixed inset-0 left-56 z-50 bg-[#f5f7f9] flex flex-col overflow-hidden">
       {/* Header */}
       <header
         className="bg-white border-b px-8 py-4 flex items-center justify-between flex-shrink-0"
