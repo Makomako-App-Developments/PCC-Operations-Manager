@@ -16,7 +16,7 @@ const jobQuerySchema = z.object({
   from:     z.string().optional(),
   to:       z.string().optional(),
   page:     z.coerce.number().int().min(1).default(1),
-  limit:    z.coerce.number().int().min(1).max(200).default(50),
+  limit:    z.coerce.number().int().min(1).max(5000).default(50),
 });
 
 type JobQuery = z.infer<typeof jobQuerySchema>;
@@ -189,7 +189,7 @@ router.get("/reactive-jobs", requireAuth, async (req, res) => {
     .select()
     .from(reactiveJobsTable)
     .where(conditions.length > 0 ? and(...conditions) : undefined)
-    .limit(200);
+    .limit(5000);
   res.json({ data: rows });
 });
 

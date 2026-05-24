@@ -235,7 +235,7 @@ export default function MapPage() {
 
   const { data: assetsResp }   = useListAssets({ limit: 2000 } as any);
   const { data: teamsData }    = useListTeams();
-  const { data: jobsResp }     = useListJobs({ limit: 2000 } as any);
+  const { data: jobsResp }     = useListJobs({ limit: 5000, status: "pending,in_progress,overdue,completed" } as any);
   const { data: reactiveResp } = useListReactiveJobs();
   const { data: mulchResp }    = useListMulchingRecords({ limit: 2000 } as any);
   const { data: infillResp }   = useListInfillOrders({ limit: 2000 } as any);
