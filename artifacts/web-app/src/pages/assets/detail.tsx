@@ -802,10 +802,8 @@ export default function AssetDetail() {
               <div className="px-5 py-5 flex-shrink-0" style={{ background: NAVY }}>
                 <p className="text-[10px] text-white/40 font-mono mb-0.5">{asset.reference}</p>
                 <h2 className="text-base font-bold text-white leading-snug">{asset.name}</h2>
-                {asset.streetAddress && (
-                  <p className="text-[11px] text-white/50 mt-0.5 flex items-center gap-1">
-                    <MapPin className="w-3 h-3 flex-shrink-0" />{asset.streetAddress}
-                  </p>
+                {asset.description && (
+                  <p className="text-[11px] text-white/60 mt-1 leading-snug">{asset.description}</p>
                 )}
                 <div className="flex flex-wrap gap-1.5 mt-3">
                   <Badge className={`text-[10px] border-0 capitalize ${TYPE_COLORS[asset.gardenType] ?? "bg-gray-100 text-gray-700"}`}>
