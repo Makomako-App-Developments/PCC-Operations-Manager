@@ -143,6 +143,11 @@ export default function Dashboard() {
   }, [teamsData]);
 
   const failedAudits  = useMemo(() => (auditsData?.data ?? []).filter(a => a.status === "failed"), [auditsData]);
+  const auditAvgScore = useMemo(() => {
+    const scored = (auditsData?.data ?? []).filter(a => a.overallScore != null);
+    if (scored.length === 0) return null;
+    return Math.round(scored.reduce((s, a) => s + Number(a.overallScore), 0) / scored.length);
+  }, [auditsData]);
   const completedJobs = useMemo(() => (completedJobsData?.data ?? []).filter(j => inPeriod(j.scheduledDate)), [completedJobsData, period]);
   const skippedJobs   = useMemo(() => (skippedJobsData?.data ?? []).filter(j => inPeriod(j.scheduledDate)), [skippedJobsData, period]);
 
@@ -226,10 +231,11 @@ export default function Dashboard() {
               color={completionRate >= 90 ? "#22c55e" : completionRate >= 72 ? BRAND : "#f97316"}
             />
             <StatCard
-              icon={AlertTriangle} label="Audit Fails"
-              value={String(failedAudits.length)}
-              sub="Sites below standard"
-              trendDir="flat" color="#ef4444"
+              icon={AlertTriangle} label="Audit Result"
+              value={auditAvgScore != null ? `${auditAvgScore}%` : "—"}
+              sub={auditAvgScore != null ? `avg across ${(auditsData?.data ?? []).filter(a => a.overallScore != null).length} audits` : "No scored audits"}
+              trendDir="flat"
+              color={auditAvgScore == null ? "#9ca3af" : auditAvgScore >= 80 ? "#22c55e" : auditAvgScore >= 60 ? "#f59e0b" : "#ef4444"}
             />
             <StatCard
               icon={SkipForward} label="Excuses / Skips"
