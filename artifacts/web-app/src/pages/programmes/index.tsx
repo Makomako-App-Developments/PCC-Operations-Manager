@@ -69,7 +69,7 @@ export default function Programmes() {
   const createInfill = useCreateInfillOrder({
     mutation: {
       onSuccess: () => {
-        toast({ title: "Infill order created" });
+        toast({ title: "Infill planting created" });
         queryClient.invalidateQueries({ queryKey: ["/api/infill-orders"] });
         setInfillOpen(false);
         setInfillForm({ assetId: "", speciesName: "", speciesCategory: "", quantity: "", orderDate: "", supplierRef: "", unitCostNzd: "", notes: "" });
@@ -159,14 +159,14 @@ export default function Programmes() {
         <Tabs defaultValue="infill">
           <TabsList className="mb-6 bg-white border shadow-sm h-10">
             <TabsTrigger value="infill" className="gap-1.5 text-sm data-[state=active]:bg-[#00AECD] data-[state=active]:text-white">
-              <Sprout className="w-3.5 h-3.5" /> Infill Orders ({infillOrders.length})
+              <Sprout className="w-3.5 h-3.5" /> Infill Planting ({infillOrders.length})
             </TabsTrigger>
             <TabsTrigger value="mulching" className="gap-1.5 text-sm data-[state=active]:bg-[#00AECD] data-[state=active]:text-white">
               <Layers className="w-3.5 h-3.5" /> Mulching Records ({mulchRecords.length})
             </TabsTrigger>
           </TabsList>
 
-          {/* ── Infill Orders ── */}
+          {/* ── Infill Planting ── */}
           <TabsContent value="infill">
             <div className="flex justify-end mb-4">
               <Button
@@ -174,7 +174,7 @@ export default function Programmes() {
                 onClick={() => setInfillOpen(true)}
                 data-testid="btn-new-infill"
               >
-                <Plus className="w-4 h-4" /> New Infill Order
+                <Plus className="w-4 h-4" /> New Infill Planting
               </Button>
             </div>
             {loadingInfill ? (
@@ -182,7 +182,7 @@ export default function Programmes() {
             ) : infillOrders.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-20 text-gray-400 bg-white rounded-xl border border-dashed">
                 <Sprout className="w-12 h-12 mb-3 opacity-30" />
-                <p className="text-sm font-medium">No infill orders yet</p>
+                <p className="text-sm font-medium">No infill planting yet</p>
               </div>
             ) : (
               <div className="rounded-xl border border-gray-200 bg-white overflow-hidden shadow-sm">
