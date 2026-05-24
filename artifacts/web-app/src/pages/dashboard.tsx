@@ -212,28 +212,10 @@ export default function Dashboard() {
           </p>
           <div className="grid grid-cols-6 gap-4">
             <StatCard
-              icon={AlertTriangle} label="Audit Fails"
-              value={String(failedAudits.length)}
-              sub="Sites below standard"
-              trendDir="flat" color="#ef4444"
-            />
-            <StatCard
-              icon={CheckCircle2} label="Completed Sites"
-              value={String(summary.completedThisWeek)}
-              sub={`of ${summary.jobsThisWeek} scheduled`}
-              trend={`${completionRate}% rate`} trendDir="flat" color="#22c55e"
-            />
-            <StatCard
               icon={Clock} label="Team Productivity"
               value={`${productivityPct > 0 ? productivityPct : completionRate}%`}
               sub={`${Math.round(totalEstMins / 60)}h est · ${Math.round(totalActualMins / 60)}h actual`}
               trendDir={totalActualMins > totalEstMins ? "up" : "down"} color={BRAND}
-            />
-            <StatCard
-              icon={SkipForward} label="Excuses / Skips"
-              value={String(skippedJobs.length)}
-              sub="Skipped this period"
-              trendDir="flat" color="#f59e0b"
             />
             <StatCard
               icon={Target} label="Schedule State"
@@ -244,11 +226,29 @@ export default function Dashboard() {
               color={completionRate >= 90 ? "#22c55e" : completionRate >= 72 ? BRAND : "#f97316"}
             />
             <StatCard
+              icon={AlertTriangle} label="Audit Fails"
+              value={String(failedAudits.length)}
+              sub="Sites below standard"
+              trendDir="flat" color="#ef4444"
+            />
+            <StatCard
+              icon={SkipForward} label="Excuses / Skips"
+              value={String(skippedJobs.length)}
+              sub="Skipped this period"
+              trendDir="flat" color="#f59e0b"
+            />
+            <StatCard
               icon={DollarSign} label="Labour Cost"
               value={labourCostNZD > 0 ? `$${labourCostNZD.toLocaleString()}` : "—"}
               sub={`@$${HOURLY_RATE}/hr est. rate`}
               trendDir="flat"
               color={labourCostNZD > 0 ? "#22c55e" : "#9ca3af"}
+            />
+            <StatCard
+              icon={CheckCircle2} label="Completed Sites"
+              value={String(summary.completedThisWeek)}
+              sub={`of ${summary.jobsThisWeek} scheduled`}
+              trend={`${completionRate}% rate`} trendDir="flat" color="#22c55e"
             />
           </div>
         </div>
