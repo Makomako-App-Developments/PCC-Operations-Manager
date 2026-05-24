@@ -308,66 +308,109 @@ function DayView({
 
   if (isLoading) return <div className="p-8"><Skeleton className="w-full h-96 rounded-2xl" /></div>;
 
+  // Group by team
+  const teamGroups: Map<string | null, any[]> = new Map();
+  for (const job of jobs) {
+    const key = job.teamId ?? null;
+    if (!teamGroups.has(key)) teamGroups.set(key, []);
+    teamGroups.get(key)!.push(job);
+  }
+  // Sort: named teams first (alpha), unassigned last
+  const sortedGroups = [...teamGroups.entries()].sort(([aId], [bId]) => {
+    if (aId === null) return 1;
+    if (bId === null) return -1;
+    return getTeamName(aId).localeCompare(getTeamName(bId));
+  });
+
   return (
-    <div className="p-8">
-      <div className="max-w-2xl space-y-3">
-        {jobs.length === 0 ? (
-          <div className="text-center py-16 text-sm text-gray-400 italic bg-white rounded-2xl border border-gray-100">
-            No jobs scheduled for {format(currentDate, "EEEE d MMMM yyyy")}
+    <div className="p-6 overflow-auto h-full">
+      {jobs.length === 0 ? (
+        <div className="text-center py-16 text-sm text-gray-400 italic bg-white rounded-2xl border border-gray-100 max-w-2xl">
+          No jobs scheduled for {format(currentDate, "EEEE d MMMM yyyy")}
+        </div>
+      ) : (
+        <div className="space-y-6">
+          <div className="flex items-center gap-2 text-sm text-gray-500">
+            <Route className="w-4 h-4" />
+            <span className="font-medium text-gray-700">{jobs.length}</span> jobs across
+            <span className="font-medium text-gray-700">{sortedGroups.length}</span> team{sortedGroups.length !== 1 ? "s" : ""}
           </div>
-        ) : (
-          <>
-            <div className="flex items-center gap-2 mb-4 text-sm text-gray-500">
-              <Route className="w-4 h-4" />
-              <span className="font-medium text-gray-700">{jobs.length}</span> jobs scheduled
-            </div>
-            {jobs.map((job: any) => {
-              const done       = job.status === "completed";
-              const overdue    = job.status === "overdue";
-              const crewNone   = job.crewStatus === "none";
-              const crewReduced = job.crewStatus === "reduced";
-              const color      = getTeamColor(job.teamId);
-              const displayTime = job.estimatedTimeMins ?? job.serviceTimeMins;
-              return (
-                <div
-                  key={job.id}
-                  onClick={() => onJobClick(job)}
-                  className={`p-4 rounded-xl border shadow-sm bg-white relative overflow-hidden cursor-pointer hover:shadow-md transition-shadow ${
-                    crewNone   ? "border-red-300 bg-red-50/40" :
-                    crewReduced ? "border-amber-200 bg-amber-50/30" :
-                    done       ? "opacity-60 border-gray-200" :
-                    overdue    ? "border-red-200 bg-red-50" : "border-gray-200"
-                  }`}
-                >
-                  <div className="absolute top-0 left-0 w-1 h-full rounded-l-xl" style={{ background: color }} />
-                  <div className="pl-3 flex items-start justify-between">
-                    <div>
-                      <p className={`text-sm font-semibold ${done ? "line-through text-gray-400" : "text-gray-900"}`}>{job.assetName}</p>
-                      <p className="text-[11px] text-gray-400 font-mono mt-0.5">{job.assetRef}</p>
-                    </div>
-                    <div className="flex flex-col gap-1 items-end">
-                      {done       && <span className="text-[10px] px-2 py-0.5 rounded-full bg-green-100 text-green-700 font-medium">Done</span>}
-                      {overdue    && <span className="text-[10px] px-2 py-0.5 rounded-full bg-red-100 text-red-700 font-medium">Overdue</span>}
-                      {crewNone   && <span className="text-[10px] px-2 py-0.5 rounded-full bg-red-100 text-red-700 font-medium flex items-center gap-1"><XCircle className="w-2.5 h-2.5" />No crew</span>}
-                      {crewReduced && <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 font-medium flex items-center gap-1"><AlertTriangle className="w-2.5 h-2.5" />Reduced crew</span>}
-                    </div>
-                  </div>
-                  <div className="pl-3 flex items-center justify-between mt-2 text-[11px] text-gray-400">
-                    <span>{getTeamName(job.teamId)}</span>
-                    <span className="flex items-center gap-1">
-                      <Clock className="w-3 h-3" />
-                      {crewReduced || crewNone
-                        ? <><span className="line-through mr-0.5">{job.serviceTimeMins}m</span><span className={crewNone ? "text-red-600 font-semibold" : "text-amber-600 font-semibold"}>{displayTime}m</span></>
-                        : <span>{displayTime}m</span>
-                      }
-                    </span>
-                  </div>
+
+          {sortedGroups.map(([teamId, teamJobs]) => {
+            const color    = getTeamColor(teamId);
+            const name     = getTeamName(teamId);
+            const totalMin = teamJobs.reduce((s: number, j: any) => s + (j.estimatedTimeMins ?? j.serviceTimeMins ?? 0), 0);
+            const doneCount = teamJobs.filter((j: any) => j.status === "completed").length;
+            return (
+              <div key={teamId ?? "__unassigned__"}>
+                {/* Team header */}
+                <div className="flex items-center gap-3 mb-3">
+                  <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ background: color }} />
+                  <span className="text-sm font-bold text-gray-800">{name}</span>
+                  <span className="text-xs text-gray-400">{teamJobs.length} job{teamJobs.length !== 1 ? "s" : ""}</span>
+                  <span className="text-xs text-gray-400">·</span>
+                  <span className="text-xs text-gray-400 flex items-center gap-1">
+                    <Clock className="w-3 h-3" />{totalMin}m total
+                  </span>
+                  {doneCount > 0 && (
+                    <>
+                      <span className="text-xs text-gray-400">·</span>
+                      <span className="text-xs text-green-600 font-medium">{doneCount} done</span>
+                    </>
+                  )}
+                  <div className="flex-1 h-px bg-gray-100 ml-1" />
                 </div>
-              );
-            })}
-          </>
-        )}
-      </div>
+
+                {/* Job cards */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
+                  {teamJobs.map((job: any) => {
+                    const done        = job.status === "completed";
+                    const overdue     = job.status === "overdue";
+                    const crewNone    = job.crewStatus === "none";
+                    const crewReduced = job.crewStatus === "reduced";
+                    const displayTime = job.estimatedTimeMins ?? job.serviceTimeMins;
+                    return (
+                      <div
+                        key={job.id}
+                        onClick={() => onJobClick(job)}
+                        className={`p-4 rounded-xl border shadow-sm bg-white relative overflow-hidden cursor-pointer hover:shadow-md transition-shadow ${
+                          crewNone    ? "border-red-300 bg-red-50/40" :
+                          crewReduced ? "border-amber-200 bg-amber-50/30" :
+                          done        ? "opacity-60 border-gray-200" :
+                          overdue     ? "border-red-200 bg-red-50" : "border-gray-200"
+                        }`}
+                      >
+                        <div className="absolute top-0 left-0 w-1 h-full rounded-l-xl" style={{ background: color }} />
+                        <div className="pl-3 flex items-start justify-between">
+                          <div className="min-w-0 flex-1 pr-2">
+                            <p className={`text-sm font-semibold truncate ${done ? "line-through text-gray-400" : "text-gray-900"}`}>{job.assetName}</p>
+                            <p className="text-[11px] text-gray-400 font-mono mt-0.5">{job.assetRef}</p>
+                          </div>
+                          <div className="flex flex-col gap-1 items-end flex-shrink-0">
+                            {done        && <span className="text-[10px] px-2 py-0.5 rounded-full bg-green-100 text-green-700 font-medium">Done</span>}
+                            {overdue     && <span className="text-[10px] px-2 py-0.5 rounded-full bg-red-100 text-red-700 font-medium">Overdue</span>}
+                            {crewNone    && <span className="text-[10px] px-2 py-0.5 rounded-full bg-red-100 text-red-700 font-medium flex items-center gap-1"><XCircle className="w-2.5 h-2.5" />No crew</span>}
+                            {crewReduced && <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 font-medium flex items-center gap-1"><AlertTriangle className="w-2.5 h-2.5" />Reduced crew</span>}
+                          </div>
+                        </div>
+                        <div className="pl-3 flex items-center justify-end mt-2 text-[11px] text-gray-400">
+                          <span className="flex items-center gap-1">
+                            <Clock className="w-3 h-3" />
+                            {crewReduced || crewNone
+                              ? <><span className="line-through mr-0.5">{job.serviceTimeMins}m</span><span className={crewNone ? "text-red-600 font-semibold" : "text-amber-600 font-semibold"}>{displayTime}m</span></>
+                              : <span>{displayTime}m</span>
+                            }
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
