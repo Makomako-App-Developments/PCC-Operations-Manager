@@ -230,6 +230,8 @@ function ReactiveJobWizard({ teamsData, assetsData, onClose, onPublished }: Wiza
 
   const [locationType, setLocationType] = useState<"asset" | "other">("other");
   const [selectedAssetId, setSelectedAssetId] = useState("");
+  const [assetSearch, setAssetSearch] = useState("");
+  const [assetDropdownOpen, setAssetDropdownOpen] = useState(false);
   const [freeTextLocation, setFreeTextLocation] = useState("");
   const [extraDescription, setExtraDescription] = useState("");
   const [combineScheduled, setCombineScheduled] = useState(false);
@@ -507,27 +509,65 @@ function ReactiveJobWizard({ teamsData, assetsData, onClose, onPublished }: Wiza
 
                 {locationType === "asset" ? (
                   <div className="space-y-3">
-                    <div>
+                    <div className="relative">
                       <label className="text-xs text-gray-500 font-medium block mb-1.5">
                         Select garden asset *
                       </label>
-                      <select
-                        value={selectedAssetId}
-                        onChange={e => {
-                          setSelectedAssetId(e.target.value);
-                          setCombineScheduled(false);
-                          const asset = assetsData.find(a => a.id === e.target.value);
-                          if (asset?.teamId) setSelectedTeamId(asset.teamId);
-                        }}
-                        className="w-full px-3 py-2 text-sm border border-gray-200 rounded-xl outline-none focus:border-[#00AECD] bg-white"
-                      >
-                        <option value="">— Select an asset —</option>
-                        {assetsData.map(a => (
-                          <option key={a.id} value={a.id}>
-                            {a.name} ({a.reference})
-                          </option>
-                        ))}
-                      </select>
+                      <div className="relative">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 pointer-events-none" />
+                        <input
+                          type="text"
+                          value={selectedAssetId
+                            ? (assetsData.find(a => a.id === selectedAssetId)?.name ?? assetSearch)
+                            : assetSearch}
+                          onChange={e => {
+                            setAssetSearch(e.target.value);
+                            setSelectedAssetId("");
+                            setCombineScheduled(false);
+                            setAssetDropdownOpen(true);
+                          }}
+                          onFocus={() => {
+                            if (selectedAssetId) setAssetSearch("");
+                            setAssetDropdownOpen(true);
+                          }}
+                          onBlur={() => setTimeout(() => setAssetDropdownOpen(false), 150)}
+                          placeholder="Search by name or reference…"
+                          className="w-full pl-8 pr-3 py-2 text-sm border border-gray-200 rounded-xl outline-none focus:border-[#00AECD] bg-white"
+                        />
+                      </div>
+                      {assetDropdownOpen && (
+                        <div className="absolute z-50 mt-1 w-full bg-white border border-gray-200 rounded-xl shadow-lg max-h-56 overflow-y-auto">
+                          {assetsData
+                            .filter(a => {
+                              const q = assetSearch.toLowerCase();
+                              return !q || a.name.toLowerCase().includes(q) || (a.reference ?? "").toLowerCase().includes(q);
+                            })
+                            .slice(0, 50)
+                            .map(a => (
+                              <button
+                                key={a.id}
+                                type="button"
+                                className="w-full text-left px-4 py-2.5 text-sm hover:bg-gray-50 transition-colors flex items-center justify-between gap-2"
+                                onMouseDown={() => {
+                                  setSelectedAssetId(a.id);
+                                  setAssetSearch("");
+                                  setAssetDropdownOpen(false);
+                                  setCombineScheduled(false);
+                                  if (a.teamId) setSelectedTeamId(a.teamId);
+                                }}
+                              >
+                                <span className="font-medium text-gray-900 truncate">{a.name}</span>
+                                <span className="text-[10px] font-mono text-gray-400 flex-shrink-0">{a.reference}</span>
+                              </button>
+                            ))}
+                          {assetsData.filter(a => {
+                            const q = assetSearch.toLowerCase();
+                            return !q || a.name.toLowerCase().includes(q) || (a.reference ?? "").toLowerCase().includes(q);
+                          }).length === 0 && (
+                            <p className="px-4 py-3 text-sm text-gray-400 text-center">No assets found</p>
+                          )}
+                        </div>
+                      )}
                     </div>
                     {selectedAsset && (
                       <div className="text-[11px] text-gray-400 flex items-center gap-3 px-1 flex-wrap">
