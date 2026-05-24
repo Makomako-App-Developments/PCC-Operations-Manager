@@ -26,7 +26,7 @@ import {
 import {
   ChevronLeft, ChevronRight, Route, CheckCircle2, Clock,
   CalendarRange, CalendarDays, Calendar, LayoutGrid, CheckCircle, AlertTriangle, XCircle,
-  Zap, RotateCcw, PlayCircle,
+  Zap, RotateCcw, PlayCircle, Search, X,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
@@ -109,11 +109,13 @@ function JobPill({ job, color }: { job: { scheduledDate: string; status: string 
 function GanttView({
   ganttStart,
   selectedTeamId,
+  searchTerm,
   getTeamColor,
   getTeamName,
 }: {
   ganttStart: Date;
   selectedTeamId: string;
+  searchTerm: string;
   getTeamColor: (id?: string | null) => string;
   getTeamName: (id?: string | null) => string;
 }) {
@@ -141,7 +143,14 @@ function GanttView({
     );
   }
 
-  const rows = data?.rows ?? [];
+  const allRows = data?.rows ?? [];
+  const q = searchTerm.trim().toLowerCase();
+  const rows = q
+    ? allRows.filter(r =>
+        r.assetName.toLowerCase().includes(q) ||
+        r.assetRef.toLowerCase().includes(q),
+      )
+    : allRows;
 
   // Team summary
   const teamJobMap   = new Map<string, number>();
@@ -274,6 +283,7 @@ function DayView({
   currentDate,
   weekData,
   isLoading,
+  searchTerm,
   getTeamColor,
   getTeamName,
   onJobClick,
@@ -281,12 +291,20 @@ function DayView({
   currentDate: Date;
   weekData: any;
   isLoading: boolean;
+  searchTerm: string;
   getTeamColor: (id?: string | null) => string;
   getTeamName:  (id?: string | null) => string;
   onJobClick:   (job: any) => void;
 }) {
   const dayStr = format(currentDate, "yyyy-MM-dd");
-  const jobs: any[] = weekData?.days?.find((d: any) => d.date === dayStr)?.jobs ?? [];
+  const rawJobs: any[] = weekData?.days?.find((d: any) => d.date === dayStr)?.jobs ?? [];
+  const q = searchTerm.trim().toLowerCase();
+  const jobs = q
+    ? rawJobs.filter((j: any) =>
+        j.assetName?.toLowerCase().includes(q) ||
+        j.assetRef?.toLowerCase().includes(q),
+      )
+    : rawJobs;
 
   if (isLoading) return <div className="p-8"><Skeleton className="w-full h-96 rounded-2xl" /></div>;
 
@@ -359,6 +377,7 @@ function WeekView({
   weekData,
   isLoading,
   selectedTeamId,
+  searchTerm,
   teamsCount,
   getTeamColor,
   getTeamName,
@@ -367,6 +386,7 @@ function WeekView({
   weekData: any;
   isLoading: boolean;
   selectedTeamId: string;
+  searchTerm: string;
   teamsCount: number;
   getTeamColor: (id?: string | null) => string;
   getTeamName:  (id?: string | null) => string;
@@ -376,11 +396,20 @@ function WeekView({
   if (!weekData?.days) return null;
 
   const productiveTimeMins: number = weekData?.settings?.productiveTimeMins ?? 390;
+  const q = searchTerm.trim().toLowerCase();
 
   return (
     <div className="flex-1 overflow-auto p-5">
       <div className="grid grid-cols-7 gap-3" style={{ minWidth: 840, minHeight: 520 }}>
         {weekData.days.map((day: any) => {
+          const day_ = q
+            ? { ...day, jobs: day.jobs.filter((j: any) =>
+                j.assetName?.toLowerCase().includes(q) ||
+                j.assetRef?.toLowerCase().includes(q),
+              )}
+            : day;
+          // shadow original day with filtered version
+          day = day_;
           const dateObj = new Date(day.date + "T00:00:00");
           const isToday = format(new Date(), "yyyy-MM-dd") === day.date;
 
@@ -706,6 +735,8 @@ export default function Schedule() {
     );
   };
 
+  const [search, setSearch] = useState("");
+
   const filteredAssets = (allAssets?.data ?? []).filter((a: any) =>
     urgentSearch.length < 2 ? false :
     a.name.toLowerCase().includes(urgentSearch.toLowerCase()) ||
@@ -820,6 +851,24 @@ export default function Schedule() {
 
       {/* Sub-toolbar */}
       <div className="bg-white border-b px-8 py-2.5 flex items-center gap-4 flex-shrink-0">
+        <div className="relative w-56">
+          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 pointer-events-none" />
+          <input
+            type="text"
+            placeholder="Search site name or ref…"
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            className="w-full pl-8 pr-7 py-1.5 text-sm border border-gray-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-[#00AECD]/30 focus:border-[#00AECD] placeholder:text-gray-400"
+          />
+          {search && (
+            <button
+              onClick={() => setSearch("")}
+              className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          )}
+        </div>
         <Select value={selectedTeamId} onValueChange={setSelectedTeamId}>
           <SelectTrigger className="w-44 text-sm" data-testid="select-team">
             <SelectValue placeholder="All Teams" />
@@ -866,6 +915,7 @@ export default function Schedule() {
               currentDate={currentDate}
               weekData={weekData}
               isLoading={weekLoading}
+              searchTerm={search}
               getTeamColor={getTeamColor}
               getTeamName={getTeamName}
               onJobClick={handleJobClick}
@@ -877,6 +927,7 @@ export default function Schedule() {
             weekData={weekData}
             isLoading={weekLoading}
             selectedTeamId={selectedTeamId}
+            searchTerm={search}
             teamsCount={teamsData?.length ?? 1}
             getTeamColor={getTeamColor}
             getTeamName={getTeamName}
@@ -887,6 +938,7 @@ export default function Schedule() {
           <GanttView
             ganttStart={ganttStart}
             selectedTeamId={selectedTeamId}
+            searchTerm={search}
             getTeamColor={getTeamColor}
             getTeamName={getTeamName}
           />
