@@ -13,7 +13,7 @@ router.get("/settings", requireAuth, async (_req, res) => {
   const [row] = await db.select().from(systemSettingsTable).limit(1);
   if (!row) {
     // Return defaults if not yet seeded
-    res.json({ id: 1, productiveTimeMins: 390, standardCrewSize: 2, routesLastOptimised: null });
+    res.json({ id: 1, productiveTimeMins: 390, standardCrewSize: 2, workStartHour: 8, workEndHour: 16, routesLastOptimised: null });
     return;
   }
   res.json(row);
@@ -22,6 +22,8 @@ router.get("/settings", requireAuth, async (_req, res) => {
 const patchSettingsSchema = z.object({
   productiveTimeMins: z.number().int().min(60).max(600).optional(),
   standardCrewSize:   z.number().int().min(1).max(10).optional(),
+  workStartHour:      z.number().int().min(5).max(12).optional(),
+  workEndHour:        z.number().int().min(12).max(22).optional(),
 });
 
 // PATCH /api/settings

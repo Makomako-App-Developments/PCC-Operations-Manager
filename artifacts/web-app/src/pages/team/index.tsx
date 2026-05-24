@@ -21,7 +21,7 @@ const PEOPLE = [
   { name: "Barry Lavakula",     team: "Specialist" },
 ];
 
-const HOURS = [8, 9, 10, 11, 12, 13, 14, 15, 16];
+const DEFAULT_HOURS = [8, 9, 10, 11, 12, 13, 14, 15, 16];
 
 const DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
 
@@ -140,6 +140,23 @@ export default function TeamPage() {
 
   const [weekMon, setWeekMon] = useState<Date>(() => getMondayOfWeek(new Date()));
   const [activeDay, setActiveDay] = useState(0);
+
+  const { data: settingsData } = useQuery<{ workStartHour: number; workEndHour: number }>({
+    queryKey: ["system-settings"],
+    queryFn: async () => {
+      const res = await fetch("/api/settings", { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to load settings");
+      return res.json();
+    },
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const HOURS = settingsData
+    ? Array.from(
+        { length: settingsData.workEndHour - settingsData.workStartHour + 1 },
+        (_, i) => settingsData.workStartHour + i,
+      )
+    : DEFAULT_HOURS;
 
   const weekStart = toDateStr(weekMon);
 

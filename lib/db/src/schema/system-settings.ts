@@ -10,6 +10,8 @@ export const systemSettingsTable = pgTable("system_settings", {
   id:                  integer("id").primaryKey().default(1),
   productiveTimeMins:  integer("productive_time_mins").notNull().default(390),  // 6.5h × 60
   standardCrewSize:    integer("standard_crew_size").notNull().default(2),
+  workStartHour:       integer("work_start_hour").notNull().default(8),   // 8am
+  workEndHour:         integer("work_end_hour").notNull().default(16),    // 4pm
   routesLastOptimised: timestamp("routes_last_optimised"),
   updatedAt:           timestamp("updated_at").notNull().defaultNow(),
 });
