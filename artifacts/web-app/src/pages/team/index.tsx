@@ -154,17 +154,19 @@ export default function TeamPage() {
     },
   });
 
+  const saveAvailability = async (body: { personName: string; date: string; hour: number; status: Status }) => {
+    const res = await fetch(`/api/team/availability`, {
+      method: "PUT",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) throw new Error("Failed to save");
+    return res.json();
+  };
+
   const mutation = useMutation({
-    mutationFn: async (body: { personName: string; date: string; hour: number; status: Status }) => {
-      const res = await fetch(`/api/team/availability`, {
-        method: "PUT",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
-      if (!res.ok) throw new Error("Failed to save");
-      return res.json();
-    },
+    mutationFn: saveAvailability,
     onSuccess: () => qc.invalidateQueries({ queryKey: ["team-avail", weekStart] }),
   });
 
@@ -183,10 +185,10 @@ export default function TeamPage() {
     mutation.mutate({ personName, date: dayDate, hour, status });
   };
 
-  const handleSetWholeDay = (personName: string, status: Status) => {
-    for (const h of HOURS) {
-      mutation.mutate({ personName, date: dayDate, hour: h, status });
-    }
+  const handleSetWholeDay = async (personName: string, status: Status) => {
+    // Fire all 9 hour updates in parallel, then invalidate once they all complete
+    await Promise.all(HOURS.map(h => saveAvailability({ personName, date: dayDate, hour: h, status })));
+    qc.invalidateQueries({ queryKey: ["team-avail", weekStart] });
   };
 
   const prevWeek = () => setWeekMon(d => addDays(d, -7));

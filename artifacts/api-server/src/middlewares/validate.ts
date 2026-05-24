@@ -15,7 +15,7 @@ export function validateBody(schema: Schema) {
       res.status(400).json({ error: "Validation failed", issues: result.error.issues });
       return;
     }
-    req.body = result.data;
+    res.locals.body = result.data;
     next();
   };
 }
