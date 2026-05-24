@@ -285,8 +285,8 @@ export default function Assets() {
             <table className="w-full text-sm text-left">
               <thead className="bg-gray-50 border-b border-gray-200">
                 <tr>
-                  <SortTh label="Site Name"     col="name"           sortCol={sortCol} sortDir={sortDir} onSort={handleSort} />
-                  <th className="px-4 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Description</th>
+                  <SortTh label="Site Name"     col="name"           sortCol={sortCol} sortDir={sortDir} onSort={handleSort} className="w-[25%]" />
+                  <th className="px-4 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider w-[25%]">Description</th>
                   <SortTh label="Specification" col="gardenType"     sortCol={sortCol} sortDir={sortDir} onSort={handleSort} />
                   <SortTh label="Service Time"  col="serviceTimeMins" sortCol={sortCol} sortDir={sortDir} onSort={handleSort} />
                   <SortTh label="Garden Type"   col="siteType"       sortCol={sortCol} sortDir={sortDir} onSort={handleSort} />
@@ -302,8 +302,8 @@ export default function Assets() {
                     onClick={() => navigate("/assets/" + asset.id)}
                     data-testid={`row-asset-${asset.id}`}
                   >
-                    <td className="px-4 py-3 font-medium text-gray-900">{asset.name}</td>
-                    <td className="px-4 py-3 text-sm text-gray-500 max-w-[220px]">
+                    <td className="px-4 py-3 font-medium text-gray-900 w-[25%]">{asset.name}</td>
+                    <td className="px-4 py-3 text-sm text-gray-500 w-[25%]">
                       <span className="line-clamp-2" title={asset.description ?? undefined}>{asset.description || <span className="text-gray-300">—</span>}</span>
                     </td>
                     <td className="px-4 py-3">
