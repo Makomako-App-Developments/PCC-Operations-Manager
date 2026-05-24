@@ -15,6 +15,7 @@ interface JobCardProps {
   serviceTimeMins: number;
   status: string;
   scheduledDate: string;
+  isAllTeams?: boolean;
 }
 
 const GARDEN_TYPE_LABEL: Record<string, string> = {
@@ -37,6 +38,7 @@ export function JobCard({
   suburb,
   serviceTimeMins,
   status,
+  isAllTeams,
 }: JobCardProps) {
   const colors = useColors();
   const router = useRouter();
@@ -73,6 +75,13 @@ export function JobCard({
         </View>
         <StatusBadge status={status as Parameters<typeof StatusBadge>[0]["status"]} small />
       </View>
+
+      {isAllTeams && (
+        <View style={[styles.allTeamsBadge, { backgroundColor: "#00AECD18", borderColor: "#00AECD40" }]}>
+          <Feather name="users" size={10} color="#00AECD" />
+          <Text style={[styles.allTeamsText, { color: "#00AECD" }]}>All Teams Job</Text>
+        </View>
+      )}
 
       <View style={styles.meta}>
         {suburb ? (
@@ -138,5 +147,20 @@ const styles = StyleSheet.create({
   metaText: {
     fontFamily: "Inter_400Regular",
     fontSize: 12,
+  },
+  allTeamsBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    alignSelf: "flex-start",
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+    marginBottom: 8,
+  },
+  allTeamsText: {
+    fontFamily: "Inter_600SemiBold",
+    fontSize: 11,
   },
 });

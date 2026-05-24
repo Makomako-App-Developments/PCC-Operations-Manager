@@ -26,7 +26,7 @@ import {
 import {
   ChevronLeft, ChevronRight, ChevronDown, Route, CheckCircle2, Clock,
   CalendarRange, CalendarDays, Calendar, LayoutGrid, CheckCircle, AlertTriangle, XCircle,
-  Zap, RotateCcw, PlayCircle, Search, X,
+  Zap, RotateCcw, PlayCircle, Search, X, Users,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
@@ -284,6 +284,7 @@ function DayView({
   weekData,
   isLoading,
   searchTerm,
+  teamsData,
   getTeamColor,
   getTeamName,
   onJobClick,
@@ -292,6 +293,7 @@ function DayView({
   weekData: any;
   isLoading: boolean;
   searchTerm: string;
+  teamsData: any[];
   getTeamColor: (id?: string | null) => string;
   getTeamName:  (id?: string | null) => string;
   onJobClick:   (job: any) => void;
@@ -306,18 +308,22 @@ function DayView({
       )
     : rawJobs;
 
-  // Group by team (preserve API geo-sequence order within each group)
-  const teamGroups: Map<string | null, any[]> = new Map();
+  // Group by team — All Teams jobs are fanned out into every team's bucket
+  const teamGroups: Map<string, any[]> = new Map();
   for (const job of jobs) {
-    const key = job.teamId ?? null;
-    if (!teamGroups.has(key)) teamGroups.set(key, []);
-    teamGroups.get(key)!.push(job);
+    if ((job as any).isAllTeams) {
+      for (const team of teamsData) {
+        if (!teamGroups.has(team.id)) teamGroups.set(team.id, []);
+        teamGroups.get(team.id)!.push(job);
+      }
+    } else if (job.teamId) {
+      if (!teamGroups.has(job.teamId)) teamGroups.set(job.teamId, []);
+      teamGroups.get(job.teamId)!.push(job);
+    }
   }
-  const sortedGroups = [...teamGroups.entries()].sort(([aId], [bId]) => {
-    if (aId === null) return 1;
-    if (bId === null) return -1;
-    return getTeamName(aId).localeCompare(getTeamName(bId));
-  });
+  const sortedGroups = [...teamGroups.entries()]
+    .filter(([, tjobs]) => tjobs.length > 0)
+    .sort(([aId], [bId]) => getTeamName(aId).localeCompare(getTeamName(bId)));
 
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const toggleTeam = (key: string) => setCollapsed(s => ({ ...s, [key]: !s[key] }));
@@ -340,13 +346,17 @@ function DayView({
           </div>
 
           {sortedGroups.map(([teamId, teamJobs]) => {
-            const groupKey    = teamId ?? "__unassigned__";
+            const groupKey    = teamId;
             const color       = getTeamColor(teamId);
             const name        = getTeamName(teamId);
+            const isJobDoneForTeam = (j: any) =>
+              j.isAllTeams
+                ? (j.teamCompletions ?? []).some((c: any) => c.teamId === teamId)
+                : j.status === "completed";
             const totalMin    = teamJobs.reduce((s: number, j: any) => s + (j.estimatedTimeMins ?? j.serviceTimeMins ?? 0), 0);
-            const doneMins    = teamJobs.filter((j: any) => j.status === "completed").reduce((s: number, j: any) => s + (j.estimatedTimeMins ?? j.serviceTimeMins ?? 0), 0);
-            const doneCount   = teamJobs.filter((j: any) => j.status === "completed").length;
-            const inProgCount = teamJobs.filter((j: any) => j.status === "in_progress").length;
+            const doneMins    = teamJobs.filter(isJobDoneForTeam).reduce((s: number, j: any) => s + (j.estimatedTimeMins ?? j.serviceTimeMins ?? 0), 0);
+            const doneCount   = teamJobs.filter(isJobDoneForTeam).length;
+            const inProgCount = teamJobs.filter((j: any) => !j.isAllTeams && j.status === "in_progress").length;
             const progress    = totalMin > 0 ? Math.round((doneMins / totalMin) * 100) : 0;
             const isCollapsed = collapsed[groupKey];
 
@@ -456,6 +466,11 @@ function DayView({
                                     {overdue     && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-red-100 text-red-700 font-semibold">Overdue</span>}
                                     {crewNone    && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-red-100 text-red-700 font-semibold flex items-center gap-0.5"><XCircle className="w-2.5 h-2.5" />No crew</span>}
                                     {crewReduced && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 font-semibold flex items-center gap-0.5"><AlertTriangle className="w-2.5 h-2.5" />Reduced</span>}
+                                    {(job as any).isAllTeams && (
+                                      <span className="text-[10px] px-1.5 py-0.5 rounded-full font-semibold flex items-center gap-0.5" style={{ background: "#00AECD20", color: "#00AECD" }}>
+                                        <Users className="w-2.5 h-2.5" />All Teams · {((job as any).teamCompletions ?? []).length}/{teamsData.length}✓
+                                      </span>
+                                    )}
                                     <span className="text-[11px] text-gray-400 flex items-center gap-0.5">
                                       <Clock className="w-3 h-3" />
                                       {crewReduced || crewNone
@@ -1026,6 +1041,7 @@ export default function Schedule() {
               weekData={weekData}
               isLoading={weekLoading}
               searchTerm={search}
+              teamsData={teamsData ?? []}
               getTeamColor={getTeamColor}
               getTeamName={getTeamName}
               onJobClick={handleJobClick}

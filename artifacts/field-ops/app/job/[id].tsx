@@ -139,6 +139,27 @@ function useJobPhotos(jobId: string) {
   });
 }
 
+function useTeamComplete(jobId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ actualTimeMins, notes }: { actualTimeMins?: number; notes?: string }) => {
+      const res = await fetch(getApiUrl(`/api/jobs/${jobId}/team-complete`), {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ actualTimeMins, notes }),
+      });
+      if (!res.ok) throw new Error("Sign-off failed");
+      return res.json();
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["job", jobId] });
+      qc.invalidateQueries({ queryKey: ["jobs"] });
+      qc.invalidateQueries({ queryKey: ["schedule"] });
+    },
+  });
+}
+
 function useUploadPhoto(jobId: string) {
   const qc = useQueryClient();
   return useMutation({
@@ -328,6 +349,8 @@ export default function JobDetailScreen() {
     { query: { enabled: !!job?.assetId } as any },
   );
   const updateJob = useUpdateJob();
+  const teamComplete = useTeamComplete(id ?? "");
+  const isAllTeams = !!(job as any)?.isAllTeams;
 
   const tasks =
     TASKS_BY_GARDEN_TYPE[asset?.gardenType ?? ""] ?? DEFAULT_TASKS;
@@ -360,22 +383,45 @@ export default function JobDetailScreen() {
 
   const handleComplete = () => {
     if (!id) return;
-    updateJob.mutate(
-      {
-        id,
-        data: {
-          status: "completed",
-          completedAt: new Date().toISOString(),
-          notes: notes.trim() || undefined,
+    if (isAllTeams) {
+      Alert.alert("Sign Off", "Record your team's completion for this job?", [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Sign Off",
+          onPress: () => {
+            teamComplete.mutate(
+              { notes: notes.trim() || undefined },
+              {
+                onSuccess: () => {
+                  Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                  router.back();
+                },
+                onError: (err: any) => {
+                  Alert.alert("Error", err?.message ?? "Sign-off failed");
+                },
+              },
+            );
+          },
         },
-      },
-      {
-        onSuccess: () => {
-          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-          router.back();
+      ]);
+    } else {
+      updateJob.mutate(
+        {
+          id,
+          data: {
+            status: "completed",
+            completedAt: new Date().toISOString(),
+            notes: notes.trim() || undefined,
+          },
         },
-      },
-    );
+        {
+          onSuccess: () => {
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+            router.back();
+          },
+        },
+      );
+    }
   };
 
   const handleSkip = () => {
@@ -407,6 +453,7 @@ export default function JobDetailScreen() {
   };
 
   const isLoading = jobLoading || assetLoading;
+  const isMutating = updateJob.isPending || teamComplete.isPending;
   const status = job?.status;
   const isActive = status === "in_progress";
   const isDone = status === "completed" || status === "skipped";
@@ -528,6 +575,18 @@ export default function JobDetailScreen() {
             </View>
           ))}
         </View>
+
+        {isAllTeams && (
+          <View style={[styles.allTeamsBanner, { backgroundColor: "#00AECD18", borderColor: "#00AECD40" }]}>
+            <Feather name="users" size={15} color="#00AECD" />
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.allTeamsBannerTitle, { color: "#00AECD" }]}>All Teams Job</Text>
+              <Text style={[styles.allTeamsBannerSub, { color: "#00AECD" }]}>
+                Every team works this site and signs off independently. Your sign-off records your team's completion.
+              </Text>
+            </View>
+          </View>
+        )}
 
         {(asset.boundary || asset.lat) && (
           <View
@@ -709,14 +768,14 @@ export default function JobDetailScreen() {
                 ]}
                 onPress={handleComplete}
                 activeOpacity={0.85}
-                disabled={updateJob.isPending}
+                disabled={isMutating}
               >
-                {updateJob.isPending ? (
+                {isMutating ? (
                   <ActivityIndicator color="#fff" />
                 ) : (
                   <>
-                    <Feather name="check-circle" size={18} color="#fff" />
-                    <Text style={styles.primaryBtnText}>Mark Complete</Text>
+                    <Feather name={isAllTeams ? "users" : "check-circle"} size={18} color="#fff" />
+                    <Text style={styles.primaryBtnText}>{isAllTeams ? "Sign Off" : "Mark Complete"}</Text>
                   </>
                 )}
               </TouchableOpacity>
@@ -729,6 +788,25 @@ export default function JobDetailScreen() {
 }
 
 const styles = StyleSheet.create({
+  allTeamsBanner: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 10,
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 12,
+  },
+  allTeamsBannerTitle: {
+    fontFamily: "Inter_600SemiBold",
+    fontSize: 13,
+    marginBottom: 2,
+  },
+  allTeamsBannerSub: {
+    fontFamily: "Inter_400Regular",
+    fontSize: 12,
+    opacity: 0.85,
+  },
   root: { flex: 1 },
   loadingRoot: {
     flex: 1,

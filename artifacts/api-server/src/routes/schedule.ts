@@ -1,9 +1,9 @@
 import { Router } from "express";
 import {
   db, assetsTable, jobsTable, teamMembersTable, teamAvailabilityTable,
-  systemSettingsTable,
+  systemSettingsTable, jobTeamCompletionsTable,
 } from "@workspace/db";
-import { eq, and, gte, lte, inArray, sql, notInArray } from "drizzle-orm";
+import { eq, and, gte, lte, inArray, sql, notInArray, or } from "drizzle-orm";
 import { z } from "zod";
 import { requireAuth, requireRole } from "../middlewares/auth";
 import { validateBody, validateQuery } from "../middlewares/validate";
@@ -295,6 +295,7 @@ router.post(
                 assetId: asset.id, jobType: "scheduled", teamId: tid,
                 scheduledDate: tryDate, status: "pending",
                 estimatedTimeMins: estTry, crewStatus: csTry,
+                isAllTeams: !tid,
               });
               jobsCreated++;
               placed = true;
@@ -310,6 +311,7 @@ router.post(
               assetId: asset.id, jobType: "scheduled", teamId: tid,
               scheduledDate: naturalDate, status: "pending",
               estimatedTimeMins: estNatural, crewStatus: csNatural,
+              isAllTeams: !tid,
             });
             jobsCreated++;
             carried = true; // was a conflict
@@ -352,7 +354,7 @@ router.get(
     const condition = and(
       gte(jobsTable.scheduledDate, weekStart),
       lte(jobsTable.scheduledDate, weekEnd),
-      ...(teamId ? [eq(jobsTable.teamId, teamId)] : []),
+      ...(teamId ? [or(eq(jobsTable.teamId, teamId), eq(jobsTable.isAllTeams, true))] : []),
     );
 
     const rows = await db
@@ -362,6 +364,7 @@ router.get(
         jobType:           jobsTable.jobType,
         status:            jobsTable.status,
         teamId:            jobsTable.teamId,
+        isAllTeams:        jobsTable.isAllTeams,
         assignedUserId:    jobsTable.assignedUserId,
         scheduledDate:     sql<string>`to_char(${jobsTable.scheduledDate}, 'YYYY-MM-DD')`,
         startedAt:         jobsTable.startedAt,
@@ -389,11 +392,35 @@ router.get(
         assetsTable.name,
       );
 
-    const dayMap = new Map<string, typeof rows>();
+    // Fetch per-team sign-off records for All Teams jobs
+    const allTeamsJobIds = rows.filter(r => r.isAllTeams).map(r => r.id);
+    const completionsByJobId = new Map<string, { teamId: string; completedAt: Date; actualTimeMins: number | null }[]>();
+    if (allTeamsJobIds.length > 0) {
+      const completions = await db
+        .select({
+          jobId:          jobTeamCompletionsTable.jobId,
+          teamId:         jobTeamCompletionsTable.teamId,
+          completedAt:    jobTeamCompletionsTable.completedAt,
+          actualTimeMins: jobTeamCompletionsTable.actualTimeMins,
+        })
+        .from(jobTeamCompletionsTable)
+        .where(inArray(jobTeamCompletionsTable.jobId, allTeamsJobIds));
+      for (const c of completions) {
+        if (!completionsByJobId.has(c.jobId)) completionsByJobId.set(c.jobId, []);
+        completionsByJobId.get(c.jobId)!.push({ teamId: c.teamId, completedAt: c.completedAt, actualTimeMins: c.actualTimeMins });
+      }
+    }
+
+    const enrichedRows = rows.map(r => ({
+      ...r,
+      teamCompletions: r.isAllTeams ? (completionsByJobId.get(r.id) ?? []) : [],
+    }));
+
+    const dayMap = new Map<string, typeof enrichedRows>();
     for (let i = 0; i < 7; i++) {
       dayMap.set(addDays(weekStart, i), []);
     }
-    for (const row of rows) {
+    for (const row of enrichedRows) {
       dayMap.get(row.scheduledDate)?.push(row);
     }
 

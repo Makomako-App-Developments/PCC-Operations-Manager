@@ -152,6 +152,7 @@ export default function TodayScreen() {
                     serviceTimeMins={job.serviceTimeMins}
                     status={job.status}
                     scheduledDate={job.scheduledDate}
+                    isAllTeams={(job as any).isAllTeams ?? false}
                   />
                 ))}
               </View>
@@ -178,6 +179,7 @@ export default function TodayScreen() {
                     serviceTimeMins={job.serviceTimeMins}
                     status={job.status}
                     scheduledDate={job.scheduledDate}
+                    isAllTeams={(job as any).isAllTeams ?? false}
                   />
                 ))}
               </View>

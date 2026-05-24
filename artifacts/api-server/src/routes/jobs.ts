@@ -1,6 +1,6 @@
 import { Router } from "express";
-import { db, jobsTable, reactiveJobsTable, insertJobSchema, insertReactiveJobSchema, assetsTable } from "@workspace/db";
-import { eq, and, inArray } from "drizzle-orm";
+import { db, jobsTable, reactiveJobsTable, insertJobSchema, insertReactiveJobSchema, assetsTable, teamsTable, usersTable, jobTeamCompletionsTable } from "@workspace/db";
+import { eq, and, inArray, or } from "drizzle-orm";
 import { z } from "zod";
 import { requireAuth, requireRole } from "../middlewares/auth";
 import { validateBody, validateQuery } from "../middlewares/validate";
@@ -34,7 +34,7 @@ router.get("/jobs", requireAuth, validateQuery(jobQuerySchema), async (req, res)
 
   const conditions = [];
   if (assetId) conditions.push(eq(jobsTable.assetId, assetId));
-  if (teamId)  conditions.push(eq(jobsTable.teamId, teamId));
+  if (teamId)  conditions.push(or(eq(jobsTable.teamId, teamId), eq(jobsTable.isAllTeams, true)));
   if (status) {
     const statuses = status.split(",").map(s => s.trim()).filter(Boolean);
     if (statuses.length === 1) {
@@ -145,6 +145,7 @@ router.patch("/jobs/:id", requireAuth, async (req, res) => {
             assetId:           before.assetId,
             jobType:           "scheduled",
             teamId:            asset.teamId ?? null,
+            isAllTeams:        !asset.teamId,
             scheduledDate:     nextDate,
             status:            "pending",
             crewStatus:        "full",          // will be refreshed on next generate
@@ -167,6 +168,62 @@ router.patch("/jobs/:id", requireAuth, async (req, res) => {
   }
 
   res.json(updated);
+});
+
+// POST /api/jobs/:id/team-complete — sign off a team's time on an All Teams job
+router.post("/jobs/:id/team-complete", requireAuth, async (req, res) => {
+  const id = String(req.params.id);
+  const userId = req.auth!.userId;
+  const { actualTimeMins, notes } = req.body as { actualTimeMins?: number; notes?: string };
+
+  const [job] = await db.select().from(jobsTable).where(eq(jobsTable.id, id)).limit(1);
+  if (!job)            { res.status(404).json({ error: "Job not found" }); return; }
+  if (!job.isAllTeams) { res.status(400).json({ error: "Not an All Teams job" }); return; }
+
+  const [userRow] = await db
+    .select({ teamId: usersTable.teamId })
+    .from(usersTable)
+    .where(eq(usersTable.id, userId))
+    .limit(1);
+  if (!userRow?.teamId) { res.status(400).json({ error: "User has no team assigned" }); return; }
+  const teamId = userRow.teamId;
+
+  const [existing] = await db
+    .select({ id: jobTeamCompletionsTable.id })
+    .from(jobTeamCompletionsTable)
+    .where(and(eq(jobTeamCompletionsTable.jobId, id), eq(jobTeamCompletionsTable.teamId, teamId)))
+    .limit(1);
+
+  let completion;
+  if (existing) {
+    [completion] = await db
+      .update(jobTeamCompletionsTable)
+      .set({ actualTimeMins: actualTimeMins ?? null, notes: notes ?? null, completedAt: new Date(), completedById: userId })
+      .where(and(eq(jobTeamCompletionsTable.jobId, id), eq(jobTeamCompletionsTable.teamId, teamId)))
+      .returning();
+  } else {
+    [completion] = await db
+      .insert(jobTeamCompletionsTable)
+      .values({ jobId: id, teamId, actualTimeMins: actualTimeMins ?? null, notes: notes ?? null, completedById: userId })
+      .returning();
+  }
+
+  if (job.status === "pending") {
+    await db.update(jobsTable).set({ status: "in_progress", startedAt: new Date(), updatedAt: new Date() }).where(eq(jobsTable.id, id));
+  }
+
+  const allTeams  = await db.select({ id: teamsTable.id }).from(teamsTable);
+  const allSigned = await db.select({ teamId: jobTeamCompletionsTable.teamId }).from(jobTeamCompletionsTable).where(eq(jobTeamCompletionsTable.jobId, id));
+  const signedIds = new Set(allSigned.map(r => r.teamId));
+  const allDone   = allTeams.every(t => signedIds.has(t.id));
+
+  if (allDone) {
+    await db.update(jobsTable)
+      .set({ status: "completed", completedAt: new Date(), updatedAt: new Date() })
+      .where(eq(jobsTable.id, id));
+  }
+
+  res.json({ completion, allDone, signedCount: signedIds.size, totalTeams: allTeams.length });
 });
 
 // ── Reactive jobs ────────────────────────────────────────────────────────────

@@ -1,5 +1,5 @@
 import {
-  pgTable, uuid, timestamp, integer, text, date, index
+  pgTable, uuid, timestamp, integer, text, date, index, boolean
 } from "drizzle-orm/pg-core";
 import { createInsertSchema, createSelectSchema } from "drizzle-zod";
 import { z } from "zod/v4";
@@ -22,6 +22,7 @@ export const jobsTable = pgTable("jobs", {
   actualTimeMins:   integer("actual_time_mins"),
   estimatedTimeMins: integer("estimated_time_mins"),
   crewStatus:       crewStatusEnum("crew_status").notNull().default("full"),
+  isAllTeams:       boolean("is_all_teams").notNull().default(false),
   notes:            text("notes"),
   createdAt:        timestamp("created_at").notNull().defaultNow(),
   updatedAt:        timestamp("updated_at").notNull().defaultNow(),
@@ -31,6 +32,22 @@ export const jobsTable = pgTable("jobs", {
   index("jobs_status_idx").on(t.status),
   index("jobs_scheduled_date_idx").on(t.scheduledDate),
   index("jobs_assigned_user_id_idx").on(t.assignedUserId),
+  index("jobs_is_all_teams_idx").on(t.isAllTeams),
+]);
+
+// Per-team sign-off records for "All Teams" collaborative jobs
+export const jobTeamCompletionsTable = pgTable("job_team_completions", {
+  id:             uuid("id").primaryKey().defaultRandom(),
+  jobId:          uuid("job_id").notNull().references(() => jobsTable.id, { onDelete: "cascade" }),
+  teamId:         uuid("team_id").notNull().references(() => teamsTable.id),
+  actualTimeMins: integer("actual_time_mins"),
+  completedAt:    timestamp("completed_at").notNull().defaultNow(),
+  completedById:  uuid("completed_by_id").references(() => usersTable.id),
+  notes:          text("notes"),
+  createdAt:      timestamp("created_at").notNull().defaultNow(),
+}, (t) => [
+  index("jtc_job_id_idx").on(t.jobId),
+  index("jtc_team_id_idx").on(t.teamId),
 ]);
 
 // Reactive jobs raised by field workers or managers
@@ -70,12 +87,16 @@ export const jobPhotosTable = pgTable("job_photos", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
-export const insertJobSchema         = createInsertSchema(jobsTable).omit({ id: true, createdAt: true, updatedAt: true });
-export const insertReactiveJobSchema = createInsertSchema(reactiveJobsTable).omit({ id: true, createdAt: true, updatedAt: true });
-export const selectJobSchema         = createSelectSchema(jobsTable);
-export const selectReactiveJobSchema = createSelectSchema(reactiveJobsTable);
+export const insertJobSchema                  = createInsertSchema(jobsTable).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertReactiveJobSchema          = createInsertSchema(reactiveJobsTable).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertJobTeamCompletionSchema    = createInsertSchema(jobTeamCompletionsTable).omit({ id: true, createdAt: true });
+export const selectJobSchema                  = createSelectSchema(jobsTable);
+export const selectReactiveJobSchema          = createSelectSchema(reactiveJobsTable);
+export const selectJobTeamCompletionSchema    = createSelectSchema(jobTeamCompletionsTable);
 
-export type InsertJob         = z.infer<typeof insertJobSchema>;
-export type Job               = typeof jobsTable.$inferSelect;
-export type InsertReactiveJob = z.infer<typeof insertReactiveJobSchema>;
-export type ReactiveJob       = typeof reactiveJobsTable.$inferSelect;
+export type InsertJob               = z.infer<typeof insertJobSchema>;
+export type Job                     = typeof jobsTable.$inferSelect;
+export type InsertReactiveJob       = z.infer<typeof insertReactiveJobSchema>;
+export type ReactiveJob             = typeof reactiveJobsTable.$inferSelect;
+export type InsertJobTeamCompletion = z.infer<typeof insertJobTeamCompletionSchema>;
+export type JobTeamCompletion       = typeof jobTeamCompletionsTable.$inferSelect;
