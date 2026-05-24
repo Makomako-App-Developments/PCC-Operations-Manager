@@ -100,11 +100,29 @@ function workingDaysBetween(from: string, to: string) {
 
 type JobAction = "none" | "push" | "defer" | "delete" | "reassign";
 
+interface ReactivePriority {
+  id: string;
+  emoji: string;
+  label: string;
+  responseTime: string;
+  description: string;
+  color: string;
+  bg: string;
+}
+
+const DEFAULT_PRIORITIES: ReactivePriority[] = [
+  { id: "urgent",   emoji: "🔴", label: "Urgent / High Priority",    responseTime: "1–2 hours",    description: "Emergencies that pose an immediate risk to public health, safety, or major property damage.",            color: "#dc2626", bg: "#fef2f2" },
+  { id: "standard", emoji: "🟡", label: "Standard / Medium Priority", responseTime: "2–5 days",     description: "Repairs that do not pose an immediate risk but require attention soon.",                               color: "#d97706", bg: "#fef3c7" },
+  { id: "routine",  emoji: "🟢", label: "Routine / Low Priority",     responseTime: "Up to 20 days", description: "Non-structural issues or routine maintenance, such as minor pothole repairs or aesthetic cleaning.", color: "#6b7280", bg: "#f3f4f6" },
+];
+
 const PRIORITY_CONFIG: Record<string, { label: string; color: string; bg: string }> = {
-  low: { label: "Low", color: "#6b7280", bg: "#f3f4f6" },
-  medium: { label: "Medium", color: "#d97706", bg: "#fef3c7" },
-  high: { label: "High", color: "#ea580c", bg: "#ffedd5" },
-  urgent: { label: "Urgent", color: "#dc2626", bg: "#fef2f2" },
+  low:      { label: "Low",      color: "#6b7280", bg: "#f3f4f6" },
+  medium:   { label: "Medium",   color: "#d97706", bg: "#fef3c7" },
+  high:     { label: "High",     color: "#ea580c", bg: "#ffedd5" },
+  urgent:   { label: "Urgent",   color: "#dc2626", bg: "#fef2f2" },
+  standard: { label: "Standard", color: "#d97706", bg: "#fef3c7" },
+  routine:  { label: "Routine",  color: "#6b7280", bg: "#f3f4f6" },
 };
 
 const STATUS_CONFIG: Record<
@@ -245,13 +263,24 @@ function ReactiveJobWizard({ teamsData, assetsData, onClose, onPublished }: Wiza
   const [selectedDate, setSelectedDate] = useState(today);
   const [selectedTeamId, setSelectedTeamId] = useState(teamsData[0]?.id ?? "");
   const [reactiveMin, setReactiveMin] = useState(90);
-  const [priority, setPriority] = useState<"urgent" | "normal">("urgent");
+  const [priority, setPriority] = useState<string>("urgent");
   const [notes, setNotes] = useState("");
 
   const [actions, setActions] = useState<Record<string, JobAction>>({});
   const [reassignTo, setReassignTo] = useState<Record<string, string>>({});
   const [contingencyApproved, setContingencyApproved] = useState(false);
   const [isPublishing, setIsPublishing] = useState(false);
+
+  const { data: settingsData } = useQuery<{ reactivePriorities?: ReactivePriority[] }>({
+    queryKey: ["system-settings"],
+    queryFn: async () => {
+      const r = await fetch("/api/settings", { credentials: "include" });
+      return r.json();
+    },
+    staleTime: 5 * 60 * 1000,
+  });
+  const priorities: ReactivePriority[] =
+    settingsData?.reactivePriorities?.length ? settingsData.reactivePriorities : DEFAULT_PRIORITIES;
 
   const selectedAsset = assetsData.find(a => a.id === selectedAssetId);
   const selectedTeam = teamsData.find(t => t.id === selectedTeamId);
@@ -712,23 +741,31 @@ function ReactiveJobWizard({ teamsData, assetsData, onClose, onPublished }: Wiza
                   </div>
                   <div className="col-span-2">
                     <label className="text-xs text-gray-500 font-medium block mb-1.5">Priority</label>
-                    <div className="flex gap-3">
-                      {(["urgent", "normal"] as const).map(p => (
+                    <div className="flex gap-2">
+                      {priorities.map(p => (
                         <button
-                          key={p}
-                          onClick={() => setPriority(p)}
-                          className={`flex-1 py-2.5 rounded-xl border-2 text-sm font-semibold transition-all ${
-                            priority === p
-                              ? p === "urgent"
-                                ? "border-red-400 bg-red-50 text-red-700"
-                                : "border-[#00AECD] text-[#00AECD] bg-[#f0fafe]"
-                              : "border-gray-200 text-gray-400 bg-white"
-                          }`}
+                          key={p.id}
+                          onClick={() => setPriority(p.id)}
+                          className="flex-1 py-2.5 rounded-xl border-2 text-sm font-semibold transition-all"
+                          style={
+                            priority === p.id
+                              ? { borderColor: p.color, background: p.bg, color: p.color }
+                              : { borderColor: "#e5e7eb", background: "white", color: "#9ca3af" }
+                          }
                         >
-                          {p === "urgent" ? "🔴 Urgent" : "🟡 Normal"}
+                          {p.emoji} {p.label.split(" / ")[0]}
                         </button>
                       ))}
                     </div>
+                    {priorities.find(p => p.id === priority) && (
+                      <p className="text-[11px] text-gray-400 mt-1.5 pl-1">
+                        <span className="font-semibold" style={{ color: priorities.find(p => p.id === priority)!.color }}>
+                          {priorities.find(p => p.id === priority)!.responseTime}
+                        </span>
+                        {" — "}
+                        {priorities.find(p => p.id === priority)!.description}
+                      </p>
+                    )}
                   </div>
                   <div className="col-span-2">
                     <label className="text-xs text-gray-500 font-medium block mb-1.5">
@@ -784,11 +821,11 @@ function ReactiveJobWizard({ teamsData, assetsData, onClose, onPublished }: Wiza
                 <span
                   className="text-[11px] font-bold px-3 py-1 rounded-full flex-shrink-0"
                   style={{
-                    background: PRIORITY_CONFIG[priority]?.bg,
-                    color: PRIORITY_CONFIG[priority]?.color,
+                    background: (priorities.find(p => p.id === priority) ?? PRIORITY_CONFIG[priority])?.bg,
+                    color: (priorities.find(p => p.id === priority) ?? PRIORITY_CONFIG[priority])?.color,
                   }}
                 >
-                  {priority === "urgent" ? "Urgent" : "Normal"}
+                  {priorities.find(p => p.id === priority)?.label.split(" / ")[0] ?? priority}
                 </span>
               </div>
 
@@ -1232,11 +1269,11 @@ function ReactiveJobWizard({ teamsData, assetsData, onClose, onPublished }: Wiza
                   <span
                     className="text-[11px] font-bold px-3 py-1 rounded-full flex-shrink-0"
                     style={{
-                      background: PRIORITY_CONFIG[priority]?.bg,
-                      color: PRIORITY_CONFIG[priority]?.color,
+                      background: (priorities.find(p => p.id === priority) ?? PRIORITY_CONFIG[priority])?.bg,
+                      color: (priorities.find(p => p.id === priority) ?? PRIORITY_CONFIG[priority])?.color,
                     }}
                   >
-                    {priority === "urgent" ? "Urgent" : "Normal"}
+                    {priorities.find(p => p.id === priority)?.label.split(" / ")[0] ?? priority}
                   </span>
                 </div>
               </div>
@@ -1401,6 +1438,16 @@ export default function ReactiveJobs() {
   const { data: jobsData, isLoading } = useListReactiveJobs({
     query: { queryKey: getListReactiveJobsQueryKey() },
   });
+  const { data: listSettingsData } = useQuery<{ reactivePriorities?: ReactivePriority[] }>({
+    queryKey: ["system-settings"],
+    queryFn: async () => {
+      const r = await fetch("/api/settings", { credentials: "include" });
+      return r.json();
+    },
+    staleTime: 5 * 60 * 1000,
+  });
+  const listPriorities: ReactivePriority[] =
+    listSettingsData?.reactivePriorities?.length ? listSettingsData.reactivePriorities : DEFAULT_PRIORITIES;
 
   const updateMutation = useUpdateReactiveJob({
     mutation: {
@@ -1550,16 +1597,17 @@ export default function ReactiveJobs() {
         ) : (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             {filteredJobs.map(job => {
-              const pConf = PRIORITY_CONFIG[job.priority as string] ?? PRIORITY_CONFIG.medium;
+              const pEntry = listPriorities.find(p => p.id === (job.priority as string));
+              const pConf = pEntry ?? PRIORITY_CONFIG[job.priority as string] ?? PRIORITY_CONFIG.medium;
               const sConf = STATUS_CONFIG[job.status as string] ?? STATUS_CONFIG.raised;
               const StatusIcon = sConf.icon;
-              const isUrgent = job.priority === "urgent";
+              const isHighest = job.priority === listPriorities[0]?.id || job.priority === "urgent";
 
               return (
                 <div
                   key={job.id as string}
                   onClick={() => setSelectedJob(job)}
-                  className={`bg-white rounded-2xl border shadow-sm overflow-hidden cursor-pointer hover:shadow-md transition-all ${isUrgent ? "border-orange-200 ring-1 ring-orange-100" : "border-gray-100"}`}
+                  className={`bg-white rounded-2xl border shadow-sm overflow-hidden cursor-pointer hover:shadow-md transition-all ${isHighest ? "border-orange-200 ring-1 ring-orange-100" : "border-gray-100"}`}
                 >
                   <div className="p-5 flex flex-col">
                     <div className="flex items-start justify-between mb-3 pb-3 border-b border-gray-50">

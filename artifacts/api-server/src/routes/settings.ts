@@ -13,17 +13,28 @@ router.get("/settings", requireAuth, async (_req, res) => {
   const [row] = await db.select().from(systemSettingsTable).limit(1);
   if (!row) {
     // Return defaults if not yet seeded
-    res.json({ id: 1, productiveTimeMins: 390, standardCrewSize: 2, workStartHour: 8, workEndHour: 16, routesLastOptimised: null });
+    res.json({ id: 1, productiveTimeMins: 390, standardCrewSize: 2, workStartHour: 8, workEndHour: 16, reactivePriorities: null, routesLastOptimised: null });
     return;
   }
   res.json(row);
 });
 
+const reactivePrioritySchema = z.object({
+  id:           z.string(),
+  emoji:        z.string(),
+  label:        z.string(),
+  responseTime: z.string(),
+  description:  z.string(),
+  color:        z.string(),
+  bg:           z.string(),
+});
+
 const patchSettingsSchema = z.object({
-  productiveTimeMins: z.number().int().min(60).max(600).optional(),
-  standardCrewSize:   z.number().int().min(1).max(10).optional(),
-  workStartHour:      z.number().int().min(5).max(12).optional(),
-  workEndHour:        z.number().int().min(12).max(22).optional(),
+  productiveTimeMins:  z.number().int().min(60).max(600).optional(),
+  standardCrewSize:    z.number().int().min(1).max(10).optional(),
+  workStartHour:       z.number().int().min(5).max(12).optional(),
+  workEndHour:         z.number().int().min(12).max(22).optional(),
+  reactivePriorities:  z.array(reactivePrioritySchema).optional(),
 });
 
 // PATCH /api/settings

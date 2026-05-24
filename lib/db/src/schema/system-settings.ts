@@ -1,4 +1,4 @@
-import { pgTable, integer, timestamp } from "drizzle-orm/pg-core";
+import { pgTable, integer, timestamp, jsonb } from "drizzle-orm/pg-core";
 import { createSelectSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 
@@ -12,6 +12,7 @@ export const systemSettingsTable = pgTable("system_settings", {
   standardCrewSize:    integer("standard_crew_size").notNull().default(2),
   workStartHour:       integer("work_start_hour").notNull().default(8),   // 8am
   workEndHour:         integer("work_end_hour").notNull().default(16),    // 4pm
+  reactivePriorities:  jsonb("reactive_priorities"),                       // ReactivePriority[]
   routesLastOptimised: timestamp("routes_last_optimised"),
   updatedAt:           timestamp("updated_at").notNull().defaultNow(),
 });
