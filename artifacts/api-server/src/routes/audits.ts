@@ -1,8 +1,8 @@
 import { Router } from "express";
 import multer from "multer";
 import path from "path";
-import { db, auditsTable, auditItemsTable, auditPhotosTable } from "@workspace/db";
-import { eq, and, desc } from "drizzle-orm";
+import { db, auditsTable, auditItemsTable, auditPhotosTable, teamsTable } from "@workspace/db";
+import { eq, and, desc, sql } from "drizzle-orm";
 import { requireAuth, requireRole } from "../middlewares/auth";
 import { auditLog } from "../lib/audit";
 
@@ -76,6 +76,35 @@ function calcScore(items: { result: string }[]) {
   const passes = scored.filter((i) => i.result === "pass").length;
   return Math.round((passes / scored.length) * 100);
 }
+
+// ── GET /api/audits/stats ─────────────────────────────────────────────────────
+router.get("/audits/stats", requireAuth, async (_req, res) => {
+  // Team average scores
+  const teamScores = await db
+    .select({
+      teamId:     auditsTable.teamId,
+      teamName:   teamsTable.name,
+      avgScore:   sql<number>`round(avg(${auditsTable.overallScore})::numeric, 1)`,
+      auditCount: sql<number>`cast(count(*) as int)`,
+    })
+    .from(auditsTable)
+    .innerJoin(teamsTable, eq(auditsTable.teamId, teamsTable.id))
+    .where(sql`${auditsTable.overallScore} is not null`)
+    .groupBy(auditsTable.teamId, teamsTable.name);
+
+  // Fail counts per criterion
+  const criterionFails = await db
+    .select({
+      criterion: auditItemsTable.criterion,
+      failCount: sql<number>`cast(count(*) as int)`,
+    })
+    .from(auditItemsTable)
+    .where(eq(auditItemsTable.result, "fail"))
+    .groupBy(auditItemsTable.criterion)
+    .orderBy(desc(sql`count(*)`));
+
+  res.json({ teamScores, criterionFails });
+});
 
 // ── GET /api/audits ───────────────────────────────────────────────────────────
 router.get("/audits", requireAuth, async (_req, res) => {
