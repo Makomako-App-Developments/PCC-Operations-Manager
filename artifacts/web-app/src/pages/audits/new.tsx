@@ -1,9 +1,9 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 import { useLocation } from "wouter";
-import { useListAssets, useListUsers, useListTeams, useCreateAudit, useSaveAuditResponses } from "@workspace/api-client-react";
+import { useListAssets, useListTeams, useCreateAudit, useSaveAuditResponses } from "@workspace/api-client-react";
+import { useAuth } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
@@ -232,14 +232,13 @@ export default function NewAudit() {
   const { toast } = useToast();
   const qc = useQueryClient();
 
+  const { user } = useAuth();
   const { data: assetsData } = useListAssets({ limit: 2000 });
-  const { data: usersData } = useListUsers();
   const { data: teamsData } = useListTeams();
 
   const [assetSearch, setAssetSearch] = useState("");
   const [assetOpen, setAssetOpen] = useState(false);
   const [assetId, setAssetId] = useState("");
-  const [auditorId, setAuditorId] = useState("");
   const [conductedAt, setConductedAt] = useState(() => format(new Date(), "yyyy-MM-dd'T'HH:mm"));
   const [responses, setResponses] = useState<Record<string, ResponseState>>(() =>
     Object.fromEntries(ALL_KPIS.map((k) => [k.key, emptyResponse()])),
@@ -248,7 +247,6 @@ export default function NewAudit() {
   const [submitting, setSubmitting] = useState(false);
 
   const assets = (assetsData?.data ?? []) as Record<string, any>[];
-  const users = (usersData?.data ?? []) as Record<string, any>[];
   const teams = (teamsData ?? []) as { id: string; name: string }[];
 
   const selectedAsset = assets.find((a) => a.id === assetId);
@@ -266,7 +264,6 @@ export default function NewAudit() {
 
   const handleSubmit = async () => {
     if (!assetId) { toast({ title: "Please select a site", variant: "destructive" }); return; }
-    if (!auditorId) { toast({ title: "Please select an auditor", variant: "destructive" }); return; }
 
     // Check all KPIs answered
     const unanswered = ALL_KPIS.filter((k) => responses[k.key]?.result == null);
@@ -433,19 +430,16 @@ export default function NewAudit() {
               </div>
             )}
 
-            {/* Auditor */}
+            {/* Auditor (auto-set to logged-in user) */}
             <div>
-              <label className="text-sm font-medium text-gray-700 block mb-1.5">Auditor <span className="text-red-500">*</span></label>
-              <Select value={auditorId} onValueChange={setAuditorId}>
-                <SelectTrigger className="w-full">
-                  <SelectValue placeholder="Select auditor..." />
-                </SelectTrigger>
-                <SelectContent>
-                  {users.map((u) => (
-                    <SelectItem key={u.id} value={u.id}>{u.name ?? u.email}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <label className="text-sm font-medium text-gray-700 block mb-1.5">Auditor</label>
+              <div className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm bg-gray-50 text-gray-700 flex items-center gap-2">
+                <span className="w-6 h-6 rounded-full bg-[#00AECD] text-white text-xs font-bold flex items-center justify-center flex-shrink-0">
+                  {(user?.name ?? user?.email ?? "?")[0].toUpperCase()}
+                </span>
+                {user?.name ?? user?.email ?? "You"}
+                <span className="ml-auto text-xs text-gray-400 italic">auto-assigned</span>
+              </div>
             </div>
 
             {/* Date */}

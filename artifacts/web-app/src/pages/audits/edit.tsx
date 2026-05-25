@@ -1,10 +1,10 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 import { useParams, useLocation } from "wouter";
 import { useGetAudit, useUpdateAudit, useSaveAuditResponses, useDeleteAuditItemPhoto, getListAuditsQueryKey } from "@workspace/api-client-react";
-import { useListAssets, useListUsers, useListTeams } from "@workspace/api-client-react";
+import { useListAssets, useListTeams } from "@workspace/api-client-react";
+import { useAuth } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
@@ -210,10 +210,8 @@ export default function EditAudit() {
   const { toast } = useToast();
   const qc = useQueryClient();
 
+  const { user } = useAuth();
   const { data: auditData, isLoading } = useGetAudit(id!, { query: { queryKey: [`/api/audits/${id}`] } });
-  const { data: usersData } = useListUsers();
-
-  const [auditorId, setAuditorId] = useState("");
   const [conductedAt, setConductedAt] = useState("");
   const [responses, setResponses] = useState<Record<string, ResponseState>>(() =>
     Object.fromEntries(ALL_KPIS.map((k) => [k.key, emptyResponse()])),
@@ -222,8 +220,6 @@ export default function EditAudit() {
   const [showErrors, setShowErrors] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
-  const users = (usersData?.data ?? []) as Record<string, any>[];
-
   const updateMutation = useUpdateAudit();
   const saveMutation = useSaveAuditResponses();
 
@@ -231,7 +227,6 @@ export default function EditAudit() {
   useEffect(() => {
     if (!auditData || initialized) return;
     const a = auditData as any;
-    setAuditorId(a.auditorId ?? "");
     setConductedAt(a.conductedAt ? format(new Date(a.conductedAt), "yyyy-MM-dd'T'HH:mm") : format(new Date(), "yyyy-MM-dd'T'HH:mm"));
     const items: any[] = a.items ?? [];
     const newResponses: Record<string, ResponseState> = Object.fromEntries(ALL_KPIS.map((k) => [k.key, emptyResponse()]));
@@ -256,7 +251,6 @@ export default function EditAudit() {
   const getItemId = (key: string) => audit?.items?.find((i: any) => i.criterion === key)?.id ?? null;
 
   const handleUpdate = async () => {
-    if (!auditorId) { toast({ title: "Please select an auditor", variant: "destructive" }); return; }
     const unanswered = ALL_KPIS.filter((k) => responses[k.key]?.result == null);
     if (unanswered.length > 0) { toast({ title: `${unanswered.length} KPI${unanswered.length > 1 ? "s" : ""} not yet answered`, variant: "destructive" }); setShowErrors(true); return; }
     const failsWithoutPhotos = ALL_KPIS.filter((k) => responses[k.key]?.result === "fail" && responses[k.key]?.photos.length === 0 && responses[k.key]?.existingPhotos.length === 0);
@@ -331,10 +325,13 @@ export default function EditAudit() {
             <h2 className="text-base font-semibold text-gray-900">Audit Details</h2>
             <div>
               <label className="text-sm font-medium text-gray-700 block mb-1.5">Auditor</label>
-              <Select value={auditorId} onValueChange={setAuditorId}>
-                <SelectTrigger><SelectValue placeholder="Select auditor..." /></SelectTrigger>
-                <SelectContent>{users.map((u) => <SelectItem key={u.id} value={u.id}>{u.name ?? u.email}</SelectItem>)}</SelectContent>
-              </Select>
+              <div className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm bg-gray-50 text-gray-700 flex items-center gap-2">
+                <span className="w-6 h-6 rounded-full bg-[#00AECD] text-white text-xs font-bold flex items-center justify-center flex-shrink-0">
+                  {(user?.name ?? user?.email ?? "?")[0].toUpperCase()}
+                </span>
+                {user?.name ?? user?.email ?? "You"}
+                <span className="ml-auto text-xs text-gray-400 italic">auto-assigned</span>
+              </div>
             </div>
             <div>
               <label className="text-sm font-medium text-gray-700 block mb-1.5">Date & Time</label>
