@@ -638,7 +638,7 @@ paths:
     get:
       operationId: getAudit
       tags: [audits]
-      summary: Get an audit with its items
+      summary: Get an audit with its items and photos
       responses:
         "200":
           description: Audit with items
@@ -663,30 +663,128 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Audit"
+    delete:
+      operationId: deleteAudit
+      tags: [audits]
+      summary: Delete an audit
+      responses:
+        "204":
+          description: Deleted
 
-  /audits/{id}/items:
+  /audits/{id}/responses:
     parameters:
       - name: id
         in: path
         required: true
         schema: { type: string, format: uuid }
-    post:
-      operationId: addAuditItem
+    put:
+      operationId: saveAuditResponses
       tags: [audits]
-      summary: Add an item to an audit
+      summary: Bulk-save all KPI responses for an audit
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/AuditItemCreate"
+              $ref: "#/components/schemas/AuditResponsesBulk"
       responses:
-        "201":
-          description: Created item
+        "200":
+          description: Saved responses
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/AuditItem"
+                $ref: "#/components/schemas/AuditDetail"
+
+  /audits/{id}/items/{itemId}/photos:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+      - name: itemId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      operationId: listAuditItemPhotos
+      tags: [audits]
+      summary: List photos for an audit item
+      responses:
+        "200":
+          description: Photos
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/AuditPhoto"
+                required: [data]
+    post:
+      operationId: uploadAuditItemPhoto
+      tags: [audits]
+      summary: Upload a photo for an audit item (multipart)
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                photo:
+                  type: string
+                  format: binary
+              required: [photo]
+      responses:
+        "201":
+          description: Uploaded photo
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuditPhoto"
+
+  /audits/{id}/items/{itemId}/photos/{photoId}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+      - name: itemId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+      - name: photoId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    delete:
+      operationId: deleteAuditItemPhoto
+      tags: [audits]
+      summary: Delete a photo from an audit item
+      responses:
+        "204":
+          description: Deleted
+
+  /audits/{id}/pdf:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      operationId: downloadAuditPdf
+      tags: [audits]
+      summary: Download PDF report for an audit
+      responses:
+        "200":
+          description: PDF file
+          content:
+            application/pdf:
+              schema:
+                type: string
+                format: binary
 
   # ─── Health (extended) ──────────────────────────────────────────────────────
   /health/live:
@@ -1247,7 +1345,9 @@ components:
         id:            { type: string, format: uuid }
         assetId:       { type: string, format: uuid }
         auditorId:     { type: string, format: uuid }
-        scheduledDate: { type: string, format: date }
+        teamId:        { type: string, format: uuid, nullable: true }
+        scheduledDate: { type: string, format: date, nullable: true }
+        conductedAt:   { type: string, format: date-time }
         completedDate: { type: string, format: date, nullable: true }
         overallScore:  { type: number, minimum: 0, maximum: 100, nullable: true }
         status:
@@ -1259,7 +1359,7 @@ components:
         - id
         - assetId
         - auditorId
-        - scheduledDate
+        - conductedAt
         - status
         - createdAt
         - updatedAt
@@ -1267,19 +1367,22 @@ components:
     AuditCreate:
       type: object
       properties:
-        assetId:       { type: string, format: uuid }
-        scheduledDate: { type: string, format: date }
-        notes:         { type: string }
-      required: [assetId, scheduledDate]
+        assetId:    { type: string, format: uuid }
+        teamId:     { type: string, format: uuid }
+        conductedAt: { type: string, format: date-time }
+        notes:      { type: string }
+      required: [assetId]
 
     AuditUpdate:
       type: object
       properties:
+        teamId:       { type: string, format: uuid }
+        conductedAt:  { type: string, format: date-time }
         completedDate: { type: string, format: date }
-        overallScore:  { type: number, minimum: 0, maximum: 100 }
+        overallScore: { type: number, minimum: 0, maximum: 100 }
         status:
           $ref: "#/components/schemas/AuditStatus"
-        notes:         { type: string }
+        notes:        { type: string }
 
     AuditItem:
       type: object
@@ -1290,17 +1393,45 @@ components:
         result:
           $ref: "#/components/schemas/AuditResult"
         notes:     { type: string, nullable: true }
+        failLat:   { type: number, nullable: true }
+        failLng:   { type: number, nullable: true }
         createdAt: { type: string, format: date-time }
-      required: [id, auditId, criterion, result, createdAt]
+        updatedAt: { type: string, format: date-time }
+        photos:
+          type: array
+          items:
+            $ref: "#/components/schemas/AuditPhoto"
+      required: [id, auditId, criterion, result, createdAt, updatedAt]
 
-    AuditItemCreate:
+    AuditItemResponse:
       type: object
       properties:
         criterion: { type: string }
         result:
           $ref: "#/components/schemas/AuditResult"
         notes:     { type: string }
+        failLat:   { type: number }
+        failLng:   { type: number }
       required: [criterion, result]
+
+    AuditResponsesBulk:
+      type: object
+      properties:
+        responses:
+          type: array
+          items:
+            $ref: "#/components/schemas/AuditItemResponse"
+      required: [responses]
+
+    AuditPhoto:
+      type: object
+      properties:
+        id:          { type: string, format: uuid }
+        auditItemId: { type: string, format: uuid }
+        uploadedBy:  { type: string, format: uuid }
+        blobUrl:     { type: string }
+        createdAt:   { type: string, format: date-time }
+      required: [id, auditItemId, uploadedBy, blobUrl, createdAt]
 
     AuditDetail:
       allOf:

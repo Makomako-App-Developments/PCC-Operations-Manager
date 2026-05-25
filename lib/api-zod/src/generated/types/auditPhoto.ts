@@ -5,10 +5,11 @@
  * Porirua City Council – Garden Asset Management API
  * OpenAPI spec version: 0.1.0
  */
-import type { AuditResult } from "./auditResult";
 
-export interface AuditItemCreate {
-  criterion: string;
-  result: AuditResult;
-  notes?: string;
+export interface AuditPhoto {
+  id: string;
+  auditItemId: string;
+  uploadedBy: string;
+  blobUrl: string;
+  createdAt: Date;
 }

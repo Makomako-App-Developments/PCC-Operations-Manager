@@ -6,9 +6,6 @@
  * OpenAPI spec version: 0.1.0
  */
 
-export interface AuditCreate {
-  assetId: string;
-  teamId?: string;
-  conductedAt?: Date;
-  notes?: string;
-}
+export type UploadAuditItemPhotoBody = {
+  photo: Blob;
+};

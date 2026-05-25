@@ -846,7 +846,9 @@ export const ListAuditsResponse = zod.object({
       id: zod.string().uuid(),
       assetId: zod.string().uuid(),
       auditorId: zod.string().uuid(),
-      scheduledDate: zod.date(),
+      teamId: zod.string().uuid().nullish(),
+      scheduledDate: zod.date().nullish(),
+      conductedAt: zod.date(),
       completedDate: zod.date().nullish(),
       overallScore: zod
         .number()
@@ -866,12 +868,13 @@ export const ListAuditsResponse = zod.object({
  */
 export const CreateAuditBody = zod.object({
   assetId: zod.string().uuid(),
-  scheduledDate: zod.date(),
+  teamId: zod.string().uuid().optional(),
+  conductedAt: zod.date().optional(),
   notes: zod.string().optional(),
 });
 
 /**
- * @summary Get an audit with its items
+ * @summary Get an audit with its items and photos
  */
 export const GetAuditParams = zod.object({
   id: zod.coerce.string().uuid(),
@@ -885,7 +888,9 @@ export const GetAuditResponse = zod
     id: zod.string().uuid(),
     assetId: zod.string().uuid(),
     auditorId: zod.string().uuid(),
-    scheduledDate: zod.date(),
+    teamId: zod.string().uuid().nullish(),
+    scheduledDate: zod.date().nullish(),
+    conductedAt: zod.date(),
     completedDate: zod.date().nullish(),
     overallScore: zod
       .number()
@@ -906,7 +911,21 @@ export const GetAuditResponse = zod
           criterion: zod.string(),
           result: zod.enum(["pass", "fail", "na"]),
           notes: zod.string().nullish(),
+          failLat: zod.number().nullish(),
+          failLng: zod.number().nullish(),
           createdAt: zod.date(),
+          updatedAt: zod.date(),
+          photos: zod
+            .array(
+              zod.object({
+                id: zod.string().uuid(),
+                auditItemId: zod.string().uuid(),
+                uploadedBy: zod.string().uuid(),
+                blobUrl: zod.string(),
+                createdAt: zod.date(),
+              }),
+            )
+            .optional(),
         }),
       ),
     }),
@@ -923,6 +942,8 @@ export const updateAuditBodyOverallScoreMin = 0;
 export const updateAuditBodyOverallScoreMax = 100;
 
 export const UpdateAuditBody = zod.object({
+  teamId: zod.string().uuid().optional(),
+  conductedAt: zod.date().optional(),
   completedDate: zod.date().optional(),
   overallScore: zod
     .number()
@@ -940,7 +961,9 @@ export const UpdateAuditResponse = zod.object({
   id: zod.string().uuid(),
   assetId: zod.string().uuid(),
   auditorId: zod.string().uuid(),
-  scheduledDate: zod.date(),
+  teamId: zod.string().uuid().nullish(),
+  scheduledDate: zod.date().nullish(),
+  conductedAt: zod.date(),
   completedDate: zod.date().nullish(),
   overallScore: zod
     .number()
@@ -954,16 +977,128 @@ export const UpdateAuditResponse = zod.object({
 });
 
 /**
- * @summary Add an item to an audit
+ * @summary Delete an audit
  */
-export const AddAuditItemParams = zod.object({
+export const DeleteAuditParams = zod.object({
   id: zod.coerce.string().uuid(),
 });
 
-export const AddAuditItemBody = zod.object({
-  criterion: zod.string(),
-  result: zod.enum(["pass", "fail", "na"]),
-  notes: zod.string().optional(),
+/**
+ * @summary Bulk-save all KPI responses for an audit
+ */
+export const SaveAuditResponsesParams = zod.object({
+  id: zod.coerce.string().uuid(),
+});
+
+export const SaveAuditResponsesBody = zod.object({
+  responses: zod.array(
+    zod.object({
+      criterion: zod.string(),
+      result: zod.enum(["pass", "fail", "na"]),
+      notes: zod.string().optional(),
+      failLat: zod.number().optional(),
+      failLng: zod.number().optional(),
+    }),
+  ),
+});
+
+export const saveAuditResponsesResponseOneOverallScoreMin = 0;
+export const saveAuditResponsesResponseOneOverallScoreMax = 100;
+
+export const SaveAuditResponsesResponse = zod
+  .object({
+    id: zod.string().uuid(),
+    assetId: zod.string().uuid(),
+    auditorId: zod.string().uuid(),
+    teamId: zod.string().uuid().nullish(),
+    scheduledDate: zod.date().nullish(),
+    conductedAt: zod.date(),
+    completedDate: zod.date().nullish(),
+    overallScore: zod
+      .number()
+      .min(saveAuditResponsesResponseOneOverallScoreMin)
+      .max(saveAuditResponsesResponseOneOverallScoreMax)
+      .nullish(),
+    status: zod.enum(["pending", "passed", "failed", "overdue"]),
+    notes: zod.string().nullish(),
+    createdAt: zod.date(),
+    updatedAt: zod.date(),
+  })
+  .and(
+    zod.object({
+      items: zod.array(
+        zod.object({
+          id: zod.string().uuid(),
+          auditId: zod.string().uuid(),
+          criterion: zod.string(),
+          result: zod.enum(["pass", "fail", "na"]),
+          notes: zod.string().nullish(),
+          failLat: zod.number().nullish(),
+          failLng: zod.number().nullish(),
+          createdAt: zod.date(),
+          updatedAt: zod.date(),
+          photos: zod
+            .array(
+              zod.object({
+                id: zod.string().uuid(),
+                auditItemId: zod.string().uuid(),
+                uploadedBy: zod.string().uuid(),
+                blobUrl: zod.string(),
+                createdAt: zod.date(),
+              }),
+            )
+            .optional(),
+        }),
+      ),
+    }),
+  );
+
+/**
+ * @summary List photos for an audit item
+ */
+export const ListAuditItemPhotosParams = zod.object({
+  id: zod.coerce.string().uuid(),
+  itemId: zod.coerce.string().uuid(),
+});
+
+export const ListAuditItemPhotosResponse = zod.object({
+  data: zod.array(
+    zod.object({
+      id: zod.string().uuid(),
+      auditItemId: zod.string().uuid(),
+      uploadedBy: zod.string().uuid(),
+      blobUrl: zod.string(),
+      createdAt: zod.date(),
+    }),
+  ),
+});
+
+/**
+ * @summary Upload a photo for an audit item (multipart)
+ */
+export const UploadAuditItemPhotoParams = zod.object({
+  id: zod.coerce.string().uuid(),
+  itemId: zod.coerce.string().uuid(),
+});
+
+export const UploadAuditItemPhotoBody = zod.object({
+  photo: zod.instanceof(File),
+});
+
+/**
+ * @summary Delete a photo from an audit item
+ */
+export const DeleteAuditItemPhotoParams = zod.object({
+  id: zod.coerce.string().uuid(),
+  itemId: zod.coerce.string().uuid(),
+  photoId: zod.coerce.string().uuid(),
+});
+
+/**
+ * @summary Download PDF report for an audit
+ */
+export const DownloadAuditPdfParams = zod.object({
+  id: zod.coerce.string().uuid(),
 });
 
 /**

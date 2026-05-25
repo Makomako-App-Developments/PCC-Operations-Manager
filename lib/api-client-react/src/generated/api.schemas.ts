@@ -164,11 +164,8 @@ export interface TeamCreate {
   name: string;
 }
 
-export type SiteType = "park" | "street";
-
 export interface Asset {
   id: string;
-  globalId?: string | null;
   reference: string;
   name: string;
   gardenType: GardenType;
@@ -180,11 +177,9 @@ export interface Asset {
   ward?: Ward | null;
   suburb?: string | null;
   streetAddress?: string | null;
-  description?: string | null;
   lat?: number | null;
   lng?: number | null;
   notes?: string | null;
-  siteType?: SiteType | null;
   isActive: boolean;
   createdAt: string;
   updatedAt: string;
@@ -202,7 +197,6 @@ export interface AssetCreate {
   ward?: Ward;
   suburb?: string;
   streetAddress?: string;
-  description?: string;
   lat?: number;
   lng?: number;
   notes?: string;
@@ -219,7 +213,6 @@ export interface AssetUpdate {
   ward?: Ward;
   suburb?: string;
   streetAddress?: string;
-  description?: string;
   lat?: number;
   lng?: number;
   notes?: string;
@@ -319,7 +312,9 @@ export interface Audit {
   id: string;
   assetId: string;
   auditorId: string;
-  scheduledDate: string;
+  teamId?: string | null;
+  scheduledDate?: string | null;
+  conductedAt: string;
   completedDate?: string | null;
   /**
    * @minimum 0
@@ -334,11 +329,14 @@ export interface Audit {
 
 export interface AuditCreate {
   assetId: string;
-  scheduledDate: string;
+  teamId?: string;
+  conductedAt?: string;
   notes?: string;
 }
 
 export interface AuditUpdate {
+  teamId?: string;
+  conductedAt?: string;
   completedDate?: string;
   /**
    * @minimum 0
@@ -349,19 +347,37 @@ export interface AuditUpdate {
   notes?: string;
 }
 
+export interface AuditPhoto {
+  id: string;
+  auditItemId: string;
+  uploadedBy: string;
+  blobUrl: string;
+  createdAt: string;
+}
+
 export interface AuditItem {
   id: string;
   auditId: string;
   criterion: string;
   result: AuditResult;
   notes?: string | null;
+  failLat?: number | null;
+  failLng?: number | null;
   createdAt: string;
+  updatedAt: string;
+  photos?: AuditPhoto[];
 }
 
-export interface AuditItemCreate {
+export interface AuditItemResponse {
   criterion: string;
   result: AuditResult;
   notes?: string;
+  failLat?: number;
+  failLng?: number;
+}
+
+export interface AuditResponsesBulk {
+  responses: AuditItemResponse[];
 }
 
 export type AuditDetail = Audit & {
@@ -700,6 +716,14 @@ export type ListInfillOrdersParams = {
 export type ListMulchingRecordsParams = {
   assetId?: string;
   status?: MulchingStatus;
+};
+
+export type ListAuditItemPhotos200 = {
+  data: AuditPhoto[];
+};
+
+export type UploadAuditItemPhotoBody = {
+  photo: Blob;
 };
 
 export type ListAuditLogParams = {

@@ -11,7 +11,9 @@ export interface Audit {
   id: string;
   assetId: string;
   auditorId: string;
-  scheduledDate: Date;
+  teamId?: string | null;
+  scheduledDate?: Date | null;
+  conductedAt: Date;
   completedDate?: Date | null;
   /**
    * @minimum 0

@@ -24,10 +24,10 @@ import type {
   Audit,
   AuditCreate,
   AuditDetail,
-  AuditItem,
-  AuditItemCreate,
   AuditListResponse,
   AuditLogListResponse,
+  AuditPhoto,
+  AuditResponsesBulk,
   AuditUpdate,
   DashboardSummary,
   GetScheduleWeekParams,
@@ -44,6 +44,7 @@ import type {
   JobPhotoListResponse,
   JobUpdate,
   ListAssetsParams,
+  ListAuditItemPhotos200,
   ListAuditLogParams,
   ListInfillOrdersParams,
   ListJobsParams,
@@ -67,6 +68,7 @@ import type {
   Team,
   TeamCreate,
   UnauthorisedResponse,
+  UploadAuditItemPhotoBody,
   UploadJobPhotoBody,
   User,
   UserCreate,
@@ -2615,7 +2617,7 @@ export const useCreateAudit = <
 };
 
 /**
- * @summary Get an audit with its items
+ * @summary Get an audit with its items and photos
  */
 export const getGetAuditUrl = (id: string) => {
   return `/api/audits/${id}`;
@@ -2673,7 +2675,7 @@ export type GetAuditQueryResult = NonNullable<
 export type GetAuditQueryError = ErrorType<unknown>;
 
 /**
- * @summary Get an audit with its items
+ * @summary Get an audit with its items and photos
  */
 
 export function useGetAudit<
@@ -2787,43 +2789,40 @@ export const useUpdateAudit = <
 };
 
 /**
- * @summary Add an item to an audit
+ * @summary Delete an audit
  */
-export const getAddAuditItemUrl = (id: string) => {
-  return `/api/audits/${id}/items`;
+export const getDeleteAuditUrl = (id: string) => {
+  return `/api/audits/${id}`;
 };
 
-export const addAuditItem = async (
+export const deleteAudit = async (
   id: string,
-  auditItemCreate: AuditItemCreate,
   options?: RequestInit,
-): Promise<AuditItem> => {
-  return customFetch<AuditItem>(getAddAuditItemUrl(id), {
+): Promise<void> => {
+  return customFetch<void>(getDeleteAuditUrl(id), {
     ...options,
-    method: "POST",
-    headers: { "Content-Type": "application/json", ...options?.headers },
-    body: JSON.stringify(auditItemCreate),
+    method: "DELETE",
   });
 };
 
-export const getAddAuditItemMutationOptions = <
+export const getDeleteAuditMutationOptions = <
   TError = ErrorType<unknown>,
   TContext = unknown,
 >(options?: {
   mutation?: UseMutationOptions<
-    Awaited<ReturnType<typeof addAuditItem>>,
+    Awaited<ReturnType<typeof deleteAudit>>,
     TError,
-    { id: string; data: BodyType<AuditItemCreate> },
+    { id: string },
     TContext
   >;
   request?: SecondParameter<typeof customFetch>;
 }): UseMutationOptions<
-  Awaited<ReturnType<typeof addAuditItem>>,
+  Awaited<ReturnType<typeof deleteAudit>>,
   TError,
-  { id: string; data: BodyType<AuditItemCreate> },
+  { id: string },
   TContext
 > => {
-  const mutationKey = ["addAuditItem"];
+  const mutationKey = ["deleteAudit"];
   const { mutation: mutationOptions, request: requestOptions } = options
     ? options.mutation &&
       "mutationKey" in options.mutation &&
@@ -2833,45 +2832,495 @@ export const getAddAuditItemMutationOptions = <
     : { mutation: { mutationKey }, request: undefined };
 
   const mutationFn: MutationFunction<
-    Awaited<ReturnType<typeof addAuditItem>>,
-    { id: string; data: BodyType<AuditItemCreate> }
+    Awaited<ReturnType<typeof deleteAudit>>,
+    { id: string }
   > = (props) => {
-    const { id, data } = props ?? {};
+    const { id } = props ?? {};
 
-    return addAuditItem(id, data, requestOptions);
+    return deleteAudit(id, requestOptions);
   };
 
   return { mutationFn, ...mutationOptions };
 };
 
-export type AddAuditItemMutationResult = NonNullable<
-  Awaited<ReturnType<typeof addAuditItem>>
+export type DeleteAuditMutationResult = NonNullable<
+  Awaited<ReturnType<typeof deleteAudit>>
 >;
-export type AddAuditItemMutationBody = BodyType<AuditItemCreate>;
-export type AddAuditItemMutationError = ErrorType<unknown>;
+
+export type DeleteAuditMutationError = ErrorType<unknown>;
 
 /**
- * @summary Add an item to an audit
+ * @summary Delete an audit
  */
-export const useAddAuditItem = <
+export const useDeleteAudit = <
   TError = ErrorType<unknown>,
   TContext = unknown,
 >(options?: {
   mutation?: UseMutationOptions<
-    Awaited<ReturnType<typeof addAuditItem>>,
+    Awaited<ReturnType<typeof deleteAudit>>,
     TError,
-    { id: string; data: BodyType<AuditItemCreate> },
+    { id: string },
     TContext
   >;
   request?: SecondParameter<typeof customFetch>;
 }): UseMutationResult<
-  Awaited<ReturnType<typeof addAuditItem>>,
+  Awaited<ReturnType<typeof deleteAudit>>,
   TError,
-  { id: string; data: BodyType<AuditItemCreate> },
+  { id: string },
   TContext
 > => {
-  return useMutation(getAddAuditItemMutationOptions(options));
+  return useMutation(getDeleteAuditMutationOptions(options));
 };
+
+/**
+ * @summary Bulk-save all KPI responses for an audit
+ */
+export const getSaveAuditResponsesUrl = (id: string) => {
+  return `/api/audits/${id}/responses`;
+};
+
+export const saveAuditResponses = async (
+  id: string,
+  auditResponsesBulk: AuditResponsesBulk,
+  options?: RequestInit,
+): Promise<AuditDetail> => {
+  return customFetch<AuditDetail>(getSaveAuditResponsesUrl(id), {
+    ...options,
+    method: "PUT",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(auditResponsesBulk),
+  });
+};
+
+export const getSaveAuditResponsesMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof saveAuditResponses>>,
+    TError,
+    { id: string; data: BodyType<AuditResponsesBulk> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof saveAuditResponses>>,
+  TError,
+  { id: string; data: BodyType<AuditResponsesBulk> },
+  TContext
+> => {
+  const mutationKey = ["saveAuditResponses"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof saveAuditResponses>>,
+    { id: string; data: BodyType<AuditResponsesBulk> }
+  > = (props) => {
+    const { id, data } = props ?? {};
+
+    return saveAuditResponses(id, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type SaveAuditResponsesMutationResult = NonNullable<
+  Awaited<ReturnType<typeof saveAuditResponses>>
+>;
+export type SaveAuditResponsesMutationBody = BodyType<AuditResponsesBulk>;
+export type SaveAuditResponsesMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Bulk-save all KPI responses for an audit
+ */
+export const useSaveAuditResponses = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof saveAuditResponses>>,
+    TError,
+    { id: string; data: BodyType<AuditResponsesBulk> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof saveAuditResponses>>,
+  TError,
+  { id: string; data: BodyType<AuditResponsesBulk> },
+  TContext
+> => {
+  return useMutation(getSaveAuditResponsesMutationOptions(options));
+};
+
+/**
+ * @summary List photos for an audit item
+ */
+export const getListAuditItemPhotosUrl = (id: string, itemId: string) => {
+  return `/api/audits/${id}/items/${itemId}/photos`;
+};
+
+export const listAuditItemPhotos = async (
+  id: string,
+  itemId: string,
+  options?: RequestInit,
+): Promise<ListAuditItemPhotos200> => {
+  return customFetch<ListAuditItemPhotos200>(
+    getListAuditItemPhotosUrl(id, itemId),
+    {
+      ...options,
+      method: "GET",
+    },
+  );
+};
+
+export const getListAuditItemPhotosQueryKey = (id: string, itemId: string) => {
+  return [`/api/audits/${id}/items/${itemId}/photos`] as const;
+};
+
+export const getListAuditItemPhotosQueryOptions = <
+  TData = Awaited<ReturnType<typeof listAuditItemPhotos>>,
+  TError = ErrorType<unknown>,
+>(
+  id: string,
+  itemId: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listAuditItemPhotos>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getListAuditItemPhotosQueryKey(id, itemId);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof listAuditItemPhotos>>
+  > = ({ signal }) =>
+    listAuditItemPhotos(id, itemId, { signal, ...requestOptions });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!(id && itemId),
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof listAuditItemPhotos>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListAuditItemPhotosQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listAuditItemPhotos>>
+>;
+export type ListAuditItemPhotosQueryError = ErrorType<unknown>;
+
+/**
+ * @summary List photos for an audit item
+ */
+
+export function useListAuditItemPhotos<
+  TData = Awaited<ReturnType<typeof listAuditItemPhotos>>,
+  TError = ErrorType<unknown>,
+>(
+  id: string,
+  itemId: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listAuditItemPhotos>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListAuditItemPhotosQueryOptions(id, itemId, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Upload a photo for an audit item (multipart)
+ */
+export const getUploadAuditItemPhotoUrl = (id: string, itemId: string) => {
+  return `/api/audits/${id}/items/${itemId}/photos`;
+};
+
+export const uploadAuditItemPhoto = async (
+  id: string,
+  itemId: string,
+  uploadAuditItemPhotoBody: UploadAuditItemPhotoBody,
+  options?: RequestInit,
+): Promise<AuditPhoto> => {
+  const formData = new FormData();
+  formData.append(`photo`, uploadAuditItemPhotoBody.photo);
+
+  return customFetch<AuditPhoto>(getUploadAuditItemPhotoUrl(id, itemId), {
+    ...options,
+    method: "POST",
+    body: formData,
+  });
+};
+
+export const getUploadAuditItemPhotoMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof uploadAuditItemPhoto>>,
+    TError,
+    { id: string; itemId: string; data: BodyType<UploadAuditItemPhotoBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof uploadAuditItemPhoto>>,
+  TError,
+  { id: string; itemId: string; data: BodyType<UploadAuditItemPhotoBody> },
+  TContext
+> => {
+  const mutationKey = ["uploadAuditItemPhoto"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof uploadAuditItemPhoto>>,
+    { id: string; itemId: string; data: BodyType<UploadAuditItemPhotoBody> }
+  > = (props) => {
+    const { id, itemId, data } = props ?? {};
+
+    return uploadAuditItemPhoto(id, itemId, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type UploadAuditItemPhotoMutationResult = NonNullable<
+  Awaited<ReturnType<typeof uploadAuditItemPhoto>>
+>;
+export type UploadAuditItemPhotoMutationBody =
+  BodyType<UploadAuditItemPhotoBody>;
+export type UploadAuditItemPhotoMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Upload a photo for an audit item (multipart)
+ */
+export const useUploadAuditItemPhoto = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof uploadAuditItemPhoto>>,
+    TError,
+    { id: string; itemId: string; data: BodyType<UploadAuditItemPhotoBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof uploadAuditItemPhoto>>,
+  TError,
+  { id: string; itemId: string; data: BodyType<UploadAuditItemPhotoBody> },
+  TContext
+> => {
+  return useMutation(getUploadAuditItemPhotoMutationOptions(options));
+};
+
+/**
+ * @summary Delete a photo from an audit item
+ */
+export const getDeleteAuditItemPhotoUrl = (
+  id: string,
+  itemId: string,
+  photoId: string,
+) => {
+  return `/api/audits/${id}/items/${itemId}/photos/${photoId}`;
+};
+
+export const deleteAuditItemPhoto = async (
+  id: string,
+  itemId: string,
+  photoId: string,
+  options?: RequestInit,
+): Promise<void> => {
+  return customFetch<void>(getDeleteAuditItemPhotoUrl(id, itemId, photoId), {
+    ...options,
+    method: "DELETE",
+  });
+};
+
+export const getDeleteAuditItemPhotoMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof deleteAuditItemPhoto>>,
+    TError,
+    { id: string; itemId: string; photoId: string },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof deleteAuditItemPhoto>>,
+  TError,
+  { id: string; itemId: string; photoId: string },
+  TContext
+> => {
+  const mutationKey = ["deleteAuditItemPhoto"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof deleteAuditItemPhoto>>,
+    { id: string; itemId: string; photoId: string }
+  > = (props) => {
+    const { id, itemId, photoId } = props ?? {};
+
+    return deleteAuditItemPhoto(id, itemId, photoId, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type DeleteAuditItemPhotoMutationResult = NonNullable<
+  Awaited<ReturnType<typeof deleteAuditItemPhoto>>
+>;
+
+export type DeleteAuditItemPhotoMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Delete a photo from an audit item
+ */
+export const useDeleteAuditItemPhoto = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof deleteAuditItemPhoto>>,
+    TError,
+    { id: string; itemId: string; photoId: string },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof deleteAuditItemPhoto>>,
+  TError,
+  { id: string; itemId: string; photoId: string },
+  TContext
+> => {
+  return useMutation(getDeleteAuditItemPhotoMutationOptions(options));
+};
+
+/**
+ * @summary Download PDF report for an audit
+ */
+export const getDownloadAuditPdfUrl = (id: string) => {
+  return `/api/audits/${id}/pdf`;
+};
+
+export const downloadAuditPdf = async (
+  id: string,
+  options?: RequestInit,
+): Promise<Blob> => {
+  return customFetch<Blob>(getDownloadAuditPdfUrl(id), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getDownloadAuditPdfQueryKey = (id: string) => {
+  return [`/api/audits/${id}/pdf`] as const;
+};
+
+export const getDownloadAuditPdfQueryOptions = <
+  TData = Awaited<ReturnType<typeof downloadAuditPdf>>,
+  TError = ErrorType<unknown>,
+>(
+  id: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof downloadAuditPdf>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getDownloadAuditPdfQueryKey(id);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof downloadAuditPdf>>
+  > = ({ signal }) => downloadAuditPdf(id, { signal, ...requestOptions });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!id,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof downloadAuditPdf>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type DownloadAuditPdfQueryResult = NonNullable<
+  Awaited<ReturnType<typeof downloadAuditPdf>>
+>;
+export type DownloadAuditPdfQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Download PDF report for an audit
+ */
+
+export function useDownloadAuditPdf<
+  TData = Awaited<ReturnType<typeof downloadAuditPdf>>,
+  TError = ErrorType<unknown>,
+>(
+  id: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof downloadAuditPdf>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getDownloadAuditPdfQueryOptions(id, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
 
 /**
  * @summary Liveness probe

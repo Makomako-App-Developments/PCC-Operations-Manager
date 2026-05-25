@@ -8,6 +8,8 @@
 import type { AuditStatus } from "./auditStatus";
 
 export interface AuditUpdate {
+  teamId?: string;
+  conductedAt?: Date;
   completedDate?: Date;
   /**
    * @minimum 0
