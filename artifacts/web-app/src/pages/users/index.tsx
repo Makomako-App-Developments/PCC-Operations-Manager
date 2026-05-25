@@ -38,7 +38,7 @@ interface UserSafe {
   email:     string;
   name:      string;
   initials:  string;
-  role:      "manager" | "supervisor" | "field_worker";
+  role:      "administrator" | "manager" | "supervisor" | "field_worker";
   teamId:    string | null;
   isActive:  boolean;
   createdAt: string;
@@ -51,15 +51,17 @@ interface Team {
 }
 
 const ROLE_LABELS: Record<string, string> = {
-  manager:      "Manager",
-  supervisor:   "Supervisor",
-  field_worker: "Field Worker",
+  administrator: "Administrator",
+  manager:       "Manager",
+  supervisor:    "Supervisor",
+  field_worker:  "Field Worker",
 };
 
 const ROLE_COLOURS: Record<string, { bg: string; text: string }> = {
-  manager:      { bg: "#e0f2fe", text: "#0369a1" },
-  supervisor:   { bg: "#ede9fe", text: "#7c3aed" },
-  field_worker: { bg: "#dcfce7", text: "#16a34a" },
+  administrator: { bg: "#fef3c7", text: "#92400e" },
+  manager:       { bg: "#e0f2fe", text: "#0369a1" },
+  supervisor:    { bg: "#ede9fe", text: "#7c3aed" },
+  field_worker:  { bg: "#dcfce7", text: "#16a34a" },
 };
 
 interface CrewMember {
@@ -258,6 +260,7 @@ function CreateUserDialog({ open, onClose, teams }: { open: boolean; onClose: ()
                   <SelectItem value="field_worker">Field Worker</SelectItem>
                   <SelectItem value="supervisor">Supervisor</SelectItem>
                   <SelectItem value="manager">Manager</SelectItem>
+                  <SelectItem value="administrator">Administrator</SelectItem>
                 </SelectContent>
               </Select>
             </div>

@@ -26,14 +26,14 @@ const createUserSchema = z.object({
   name:     z.string().min(1).max(200),
   initials: z.string().min(1).max(4),
   password: z.string().min(8),
-  role:     z.enum(["manager", "supervisor", "field_worker"]),
+  role:     z.enum(["administrator", "manager", "supervisor", "field_worker"]),
   teamId:   z.string().uuid().optional(),
 });
 
 const updateUserSchema = z.object({
   name:     z.string().min(1).max(200).optional(),
   initials: z.string().min(1).max(4).optional(),
-  role:     z.enum(["manager", "supervisor", "field_worker"]).optional(),
+  role:     z.enum(["administrator", "manager", "supervisor", "field_worker"]).optional(),
   teamId:   z.string().uuid().nullable().optional(),
   isActive: z.boolean().optional(),
   password: z.string().min(8).optional(),
@@ -43,7 +43,7 @@ const updateUserSchema = z.object({
 router.get(
   "/users",
   requireAuth,
-  requireRole("manager", "supervisor"),
+  requireRole("administrator", "manager", "supervisor"),
   async (_req, res) => {
     const users = await db
       .select(SAFE_COLS)
@@ -57,7 +57,7 @@ router.get(
 router.post(
   "/users",
   requireAuth,
-  requireRole("manager"),
+  requireRole("administrator", "manager"),
   validateBody(createUserSchema),
   async (req, res) => {
     const { password, ...rest } = req.body as z.infer<typeof createUserSchema>;
@@ -82,7 +82,7 @@ router.post(
 router.patch(
   "/users/:id",
   requireAuth,
-  requireRole("manager"),
+  requireRole("administrator", "manager"),
   validateBody(updateUserSchema),
   async (req, res) => {
     const id = String(req.params.id);
