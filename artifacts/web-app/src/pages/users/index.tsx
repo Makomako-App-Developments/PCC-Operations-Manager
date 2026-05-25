@@ -219,6 +219,7 @@ function CreateUserDialog({ open, onClose, teams }: { open: boolean; onClose: ()
     e.preventDefault();
     try {
       const payload: Record<string, string> = { ...form };
+      if (payload.teamId === "__none__") payload.teamId = "";
       if (!payload.teamId) delete payload.teamId;
       await createUser.mutateAsync(payload as Parameters<typeof createUser.mutateAsync>[0]);
       toast({ title: "Account created", description: `${form.name} can now sign in.` });
@@ -266,7 +267,7 @@ function CreateUserDialog({ open, onClose, teams }: { open: boolean; onClose: ()
                 <Select value={form.teamId} onValueChange={set("teamId")}>
                   <SelectTrigger><SelectValue placeholder="Unassigned" /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">Unassigned</SelectItem>
+                    <SelectItem value="__none__">Unassigned</SelectItem>
                     {teams.map(t => <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>)}
                   </SelectContent>
                 </Select>
