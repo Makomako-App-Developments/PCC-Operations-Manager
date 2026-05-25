@@ -238,7 +238,8 @@ export default function NewAudit() {
 
   const [assetSearch, setAssetSearch] = useState("");
   const [assetOpen, setAssetOpen] = useState(false);
-  const [assetId, setAssetId] = useState("");
+  const prefilledAssetId = new URLSearchParams(window.location.search).get("assetId") ?? "";
+  const [assetId, setAssetId] = useState(prefilledAssetId);
   const [conductedAt, setConductedAt] = useState(() => format(new Date(), "yyyy-MM-dd'T'HH:mm"));
   const [responses, setResponses] = useState<Record<string, ResponseState>>(() =>
     Object.fromEntries(ALL_KPIS.map((k) => [k.key, emptyResponse()])),

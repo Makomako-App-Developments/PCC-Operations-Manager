@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { useParams, Link } from "wouter";
+import { useParams, Link, useLocation } from "wouter";
 import { useGetAsset, useListTeams, getGetAssetQueryKey, getListTeamsQueryKey } from "@workspace/api-client-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -14,7 +14,7 @@ import {
   ArrowLeft, MapPin, Clock, CalendarDays, Ruler, Tag,
   CheckCircle2, AlertTriangle, ChevronDown, ChevronRight,
   Camera, History, Wrench, Pencil, CalendarCheck, Zap,
-  User, ImageIcon, Leaf, Info, Loader2, X,
+  User, ImageIcon, Leaf, Info, Loader2, X, ClipboardCheck,
 } from "lucide-react";
 import { MapContainer, TileLayer, CircleMarker, Polygon, Tooltip, useMap } from "react-leaflet";
 import L from "leaflet";
@@ -724,6 +724,7 @@ function EditPanel({
 
 export default function AssetDetail() {
   const { id } = useParams<{ id: string }>();
+  const [, navigate] = useLocation();
   const [editing, setEditing] = useState(false);
   const [activeTab, setActiveTab] = useState<"scheduled" | "history" | "changes">("history");
 
@@ -883,14 +884,22 @@ export default function AssetDetail() {
               )}
 
               {/* Action buttons */}
-              <div className="px-5 py-4 mt-auto flex-shrink-0 space-y-2 border-t bg-gray-50 sticky bottom-0">
+              <div className="px-5 py-4 mt-auto flex-shrink-0 border-t bg-gray-50 sticky bottom-0 flex items-center gap-2">
                 <Button
-                  className="w-full flex items-center gap-2 text-white"
+                  variant="outline"
                   size="sm"
                   onClick={() => setEditing(true)}
+                  className="flex items-center gap-1.5 text-gray-500 border-gray-300 hover:bg-gray-100 text-xs px-3 h-8"
+                >
+                  <Pencil className="w-3 h-3" />Edit
+                </Button>
+                <Button
+                  size="sm"
+                  onClick={() => navigate(`/audits/new?assetId=${asset.id}`)}
+                  className="flex items-center gap-1.5 text-white text-xs px-3 h-8 flex-1"
                   style={{ background: BRAND }}
                 >
-                  <Pencil className="w-3.5 h-3.5" />Edit Asset Details
+                  <ClipboardCheck className="w-3.5 h-3.5" />Audit Asset
                 </Button>
               </div>
             </div>
