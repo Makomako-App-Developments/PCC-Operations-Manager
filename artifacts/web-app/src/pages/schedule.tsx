@@ -62,6 +62,7 @@ interface GanttAssetRow {
   assetId: string;
   assetName: string;
   assetRef: string;
+  assetDesc: string | null;
   gardenType: string;
   standard: string;
   frequency: string;
@@ -237,7 +238,7 @@ function GanttView({
                     </td>
                     <td className="py-2 px-3">
                       <p className="font-semibold text-gray-800 truncate max-w-[185px]" title={row.assetName}>{row.assetName}</p>
-                      <p className="text-gray-400 font-mono text-[10px]">{row.assetRef}</p>
+                      <p className="text-gray-400 text-[10px] truncate max-w-[185px]">{row.assetDesc ?? row.assetRef}</p>
                     </td>
                     <td className="py-2 px-3">
                       <span className={`px-1.5 py-0.5 rounded text-[9px] font-semibold capitalize ${TYPE_BADGES[row.gardenType] ?? "bg-gray-100 text-gray-600"}`}>
@@ -462,7 +463,7 @@ function DayView({
                                     <p className={`text-sm font-semibold leading-tight ${done ? "line-through text-gray-400" : overdue ? "text-red-700" : "text-gray-800"}`}>
                                       {job.assetName}
                                     </p>
-                                    <p className="text-[11px] text-gray-400 font-mono mt-0.5">{job.assetRef}</p>
+                                    <p className="text-[11px] text-gray-400 mt-0.5 truncate">{(job as any).assetDesc ?? job.assetRef}</p>
                                   </div>
                                   <div className="flex items-center gap-1.5 flex-shrink-0 pt-0.5 flex-wrap justify-end">
                                     {overdue     && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-red-100 text-red-700 font-semibold">Overdue</span>}
@@ -676,7 +677,7 @@ function WeekView({
                                   <p className={`text-[11px] font-semibold truncate ${done || skipped ? "line-through text-gray-400" : "text-gray-900"}`} title={job.assetName}>
                                     {job.assetName}
                                   </p>
-                                  <p className="text-[9px] text-gray-400 font-mono mb-1">{job.assetRef}</p>
+                                  <p className="text-[9px] text-gray-400 mb-1 truncate">{(job as any).assetDesc ?? job.assetRef}</p>
                                   {crewNone && (
                                     <p className="text-[9px] text-red-600 font-semibold flex items-center gap-0.5 mb-1"><XCircle className="w-2.5 h-2.5" />No crew available</p>
                                   )}
@@ -1460,7 +1461,7 @@ export default function Schedule() {
                           />
                           <div className="flex-1 min-w-0">
                             <p className={`text-sm font-medium truncate ${isPushed ? "line-through text-gray-400" : "text-gray-900"}`}>{j.assetName}</p>
-                            <p className="text-[10px] text-gray-400 font-mono">{j.assetRef}</p>
+                            <p className="text-[10px] text-gray-400 truncate">{(j as any).assetDesc ?? j.assetRef}</p>
                           </div>
                           <span className="text-xs text-gray-500 flex-shrink-0">{(mins / 60).toFixed(1)}h</span>
                           {isPushed && (

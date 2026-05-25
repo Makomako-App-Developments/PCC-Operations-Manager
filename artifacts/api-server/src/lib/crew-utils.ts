@@ -44,23 +44,29 @@ export function calcCrewAdjustment(
 ): { estimatedTimeMins: number; crewStatus: CrewStatus } {
   if (!teamId) return { estimatedTimeMins: baseTimeMins, crewStatus: "full" };
 
-  const members  = membersByTeam.get(teamId) ?? [];
-  const absentToday = absenceMap.get(dateStr) ?? new Set<string>();
-  const availCount  = members.filter(n => !absentToday.has(n)).length;
+  const members       = membersByTeam.get(teamId) ?? [];
+  const normalSize    = members.length;              // how many people this team normally has
+  const absentToday   = absenceMap.get(dateStr) ?? new Set<string>();
+  const availCount    = members.filter(n => !absentToday.has(n)).length;
 
   if (availCount === 0) {
     // No one available — job flagged, time stays at base (will be rescheduled by capacity logic)
     return { estimatedTimeMins: baseTimeMins, crewStatus: "none" };
   }
 
+  // Time always scales against the system standard crew size (service times are calibrated for that)
   const adjusted = Math.ceil(baseTimeMins * (standardCrewSize / availCount));
 
-  if (availCount >= standardCrewSize) {
-    // Full standard crew (or more) — no scaling needed
-    return { estimatedTimeMins: baseTimeMins, crewStatus: "full" };
+  // Crew status is "reduced" only when someone who is NORMALLY on this team is absent today.
+  // A team whose normal complement is 1 person is never "reduced" just because standardCrewSize = 2.
+  const someoneAbsent = availCount < normalSize;
+
+  if (someoneAbsent) {
+    return { estimatedTimeMins: adjusted, crewStatus: "reduced" };
   }
 
-  return { estimatedTimeMins: adjusted, crewStatus: "reduced" };
+  // All normal members present — crew is "full" from this team's perspective
+  return { estimatedTimeMins: adjusted, crewStatus: "full" };
 }
 
 /**
