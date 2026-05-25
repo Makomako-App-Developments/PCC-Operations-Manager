@@ -552,8 +552,9 @@ function WeekView({
   const totalJobs = allJobs.length;
 
   return (
-    <div className="p-5 overflow-auto h-full">
-      <div className="flex items-center justify-between mb-4">
+    <div className="flex flex-col h-full min-h-0">
+      {/* Toolbar */}
+      <div className="flex items-center justify-between px-5 pt-4 pb-3 flex-shrink-0">
         <div className="flex items-center gap-2 text-sm text-gray-500">
           <Route className="w-4 h-4" />
           <span className="font-medium text-gray-700">{totalJobs}</span> jobs across&nbsp;
@@ -573,11 +574,14 @@ function WeekView({
       </div>
 
       {totalJobs === 0 ? (
-        <div className="text-center py-16 text-sm text-gray-400 italic bg-white rounded-2xl border border-gray-100 max-w-2xl">
-          No jobs scheduled for this week
+        <div className="flex-1 flex items-center justify-center">
+          <div className="text-center py-16 text-sm text-gray-400 italic bg-white rounded-2xl border border-gray-100 max-w-2xl px-8">
+            No jobs scheduled for this week
+          </div>
         </div>
       ) : (
-        <div className="space-y-4 max-w-3xl">
+        /* Horizontal team columns — each scrolls independently */
+        <div className="flex-1 min-h-0 flex gap-3 overflow-x-auto overflow-y-hidden px-5 pb-4">
           {sortedGroups.map(([teamKey, teamJobs]) => {
             const teamId      = teamKey === "__unassigned__" ? null : teamKey;
             const color       = getTeamColor(teamId);
@@ -587,7 +591,6 @@ function WeekView({
             const doneCount   = teamJobs.filter((j: any) => j.status === "completed").length;
             const inProgCount = teamJobs.filter((j: any) => j.status === "in_progress").length;
             const progress    = totalMin > 0 ? Math.round((doneMins / totalMin) * 100) : 0;
-            const isCollapsed = collapsed[teamKey];
 
             // Sub-group by date, each day's jobs sorted by routeOrder
             const byDate = new Map<string, any[]>();
@@ -598,148 +601,135 @@ function WeekView({
             const sortedDays = [...byDate.entries()].sort(([a], [b]) => a.localeCompare(b));
 
             return (
-              <div key={teamKey} className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-                {/* Team header */}
-                <button
-                  onClick={() => toggleTeam(teamKey)}
-                  className="w-full flex items-center gap-3 px-5 py-3.5 hover:bg-gray-50/70 transition-colors text-left"
-                >
-                  <div className="w-1 h-9 rounded-full flex-shrink-0" style={{ background: color }} />
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-1.5">
-                      <span className="text-sm font-bold text-gray-800">{name}</span>
+              <div
+                key={teamKey}
+                className="flex-shrink-0 flex flex-col bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden"
+                style={{ width: 300, borderTop: `3px solid ${color}` }}
+              >
+                {/* Team header — sticky within column */}
+                <div className="px-4 pt-3 pb-2.5 border-b border-gray-100 flex-shrink-0">
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className="text-sm font-bold text-gray-800 truncate">{name}</span>
                       {inProgCount > 0 && (
-                        <span className="text-[10px] px-1.5 py-0.5 rounded-full font-semibold"
+                        <span className="text-[10px] px-1.5 py-0.5 rounded-full font-semibold flex-shrink-0"
                           style={{ background: color + "22", color }}>
-                          In progress
+                          Active
                         </span>
                       )}
                     </div>
-                    <div className="flex items-center gap-2 min-w-0">
-                      <div className="flex h-1.5 rounded-full overflow-hidden w-36 flex-shrink-0 bg-gray-100">
-                        {(() => {
-                          const total      = teamJobs.length;
-                          const donePct    = (teamJobs.filter((j: any) => j.status === "completed").length  / total) * 100;
-                          const inProgPct  = (teamJobs.filter((j: any) => j.status === "in_progress").length / total) * 100;
-                          const overduePct = (teamJobs.filter((j: any) => j.status === "overdue").length    / total) * 100;
-                          return (<>
-                            {donePct    > 0 && <div style={{ width: `${donePct}%`,    background: "#10b981" }} />}
-                            {inProgPct  > 0 && <div style={{ width: `${inProgPct}%`,  background: color }} />}
-                            {overduePct > 0 && <div style={{ width: `${overduePct}%`, background: "#ef4444" }} />}
-                          </>);
-                        })()}
-                      </div>
-                      <span className="text-[11px] text-gray-400 whitespace-nowrap">
-                        {doneCount}/{teamJobs.length} done · {totalMin}m
-                      </span>
-                    </div>
-                  </div>
-                  <div className="flex-shrink-0 text-right mr-2">
-                    <div className="text-sm font-bold" style={{ color: progress === 100 ? "#10b981" : color }}>
+                    <span
+                      className="text-sm font-bold flex-shrink-0 ml-2"
+                      style={{ color: progress === 100 ? "#10b981" : color }}
+                    >
                       {progress}%
-                    </div>
-                    <div className="text-[10px] text-gray-400">complete</div>
+                    </span>
                   </div>
-                  <ChevronDown
-                    className="w-4 h-4 text-gray-400 flex-shrink-0 transition-transform"
-                    style={{ transform: isCollapsed ? "rotate(-90deg)" : "rotate(0deg)" }}
-                  />
-                </button>
+                  {/* Progress bar */}
+                  <div className="flex h-1.5 rounded-full overflow-hidden bg-gray-100 mb-1.5">
+                    {(() => {
+                      const total      = teamJobs.length;
+                      const donePct    = (teamJobs.filter((j: any) => j.status === "completed").length  / total) * 100;
+                      const inProgPct  = (teamJobs.filter((j: any) => j.status === "in_progress").length / total) * 100;
+                      const overduePct = (teamJobs.filter((j: any) => j.status === "overdue").length    / total) * 100;
+                      return (<>
+                        {donePct    > 0 && <div style={{ width: `${donePct}%`,    background: "#10b981" }} />}
+                        {inProgPct  > 0 && <div style={{ width: `${inProgPct}%`,  background: color }} />}
+                        {overduePct > 0 && <div style={{ width: `${overduePct}%`, background: "#ef4444" }} />}
+                      </>);
+                    })()}
+                  </div>
+                  <p className="text-[10px] text-gray-400">
+                    {doneCount}/{teamJobs.length} done · {(totalMin / 60).toFixed(1)}h
+                  </p>
+                </div>
 
-                {/* Day sections */}
-                {!isCollapsed && (
-                  <div className="border-t border-gray-50">
-                    {sortedDays.map(([date, dayJobs]) => {
-                      const sorted = [...dayJobs].sort((a, b) => {
-                        const ra = a.routeOrder ?? 999999;
-                        const rb = b.routeOrder ?? 999999;
-                        if (ra !== rb) return ra - rb;
-                        return (a.assetRef ?? "").localeCompare(b.assetRef ?? "");
-                      });
-                      const dateObj = new Date(date + "T00:00:00");
-                      const isToday = format(new Date(), "yyyy-MM-dd") === date;
+                {/* Scrollable job list */}
+                <div className="flex-1 overflow-y-auto min-h-0">
+                  {sortedDays.map(([date, dayJobs]) => {
+                    const sorted = [...dayJobs].sort((a, b) => {
+                      const ra = a.routeOrder ?? 999999;
+                      const rb = b.routeOrder ?? 999999;
+                      if (ra !== rb) return ra - rb;
+                      return (a.assetRef ?? "").localeCompare(b.assetRef ?? "");
+                    });
+                    const dateObj = new Date(date + "T00:00:00");
+                    const isToday = format(new Date(), "yyyy-MM-dd") === date;
 
-                      return (
-                        <div key={date}>
-                          {/* Day sub-header */}
-                          <div className={`px-5 py-2 flex items-center gap-2 border-b border-gray-50 ${isToday ? "bg-[#00AECD]/5" : "bg-gray-50/50"}`}>
-                            <span className={`text-xs font-bold uppercase tracking-wide ${isToday ? "text-[#00AECD]" : "text-gray-500"}`}>
-                              {format(dateObj, "EEEE d MMM")}
-                            </span>
-                            <Badge variant="outline" className="text-[10px] bg-white border-gray-200 font-medium">
-                              {sorted.length}
-                            </Badge>
-                          </div>
+                    return (
+                      <div key={date}>
+                        {/* Day sub-header */}
+                        <div className={`px-4 py-1.5 flex items-center gap-2 border-b border-gray-50 sticky top-0 z-10 ${isToday ? "bg-[#00AECD]/5" : "bg-gray-50/60"}`}>
+                          <span className={`text-[11px] font-bold uppercase tracking-wide ${isToday ? "text-[#00AECD]" : "text-gray-500"}`}>
+                            {format(dateObj, "EEE d MMM")}
+                          </span>
+                          <Badge variant="outline" className="text-[10px] bg-white border-gray-200 font-medium ml-auto">
+                            {sorted.length}
+                          </Badge>
+                        </div>
 
-                          {/* Geosequenced job rows */}
-                          <div className="px-5 py-3">
-                            <div className="relative">
-                              <div className="absolute left-[13px] top-4 bottom-4 w-px bg-gray-100" />
-                              <div className="space-y-0">
-                                {sorted.map((job: any, idx: number) => {
-                                  const done        = job.status === "completed";
-                                  const overdue     = job.status === "overdue";
-                                  const inProg      = job.status === "in_progress";
-                                  const crewNone    = job.crewStatus === "none";
-                                  const crewReduced = job.crewStatus === "reduced";
-                                  const displayTime = job.estimatedTimeMins ?? job.serviceTimeMins;
+                        {/* Geosequenced job rows */}
+                        <div className="px-3 py-2 relative">
+                          <div className="absolute left-[22px] top-6 bottom-2 w-px bg-gray-100" />
+                          <div className="space-y-0">
+                            {sorted.map((job: any, idx: number) => {
+                              const done        = job.status === "completed";
+                              const overdue     = job.status === "overdue";
+                              const inProg      = job.status === "in_progress";
+                              const crewNone    = job.crewStatus === "none";
+                              const crewReduced = job.crewStatus === "reduced";
+                              const displayTime = job.estimatedTimeMins ?? job.serviceTimeMins;
 
-                                  const dotBg     = done   ? "#d1fae5" : inProg ? color + "22" : overdue ? "#fee2e2" : "#f1f5f9";
-                                  const dotBorder = done   ? "#a7f3d0" : inProg ? color        : overdue ? "#fca5a5" : "#e2e8f0";
-                                  const dotColor  = done   ? "#059669" : inProg ? color        : overdue ? "#ef4444" : "#94a3b8";
+                              const dotBg     = done   ? "#d1fae5" : inProg ? color + "22" : overdue ? "#fee2e2" : "#f1f5f9";
+                              const dotBorder = done   ? "#a7f3d0" : inProg ? color        : overdue ? "#fca5a5" : "#e2e8f0";
+                              const dotColor  = done   ? "#059669" : inProg ? color        : overdue ? "#ef4444" : "#94a3b8";
 
-                                  return (
-                                    <div
-                                      key={job.id}
-                                      onClick={() => onJobClick(job)}
-                                      className={`flex items-start gap-4 py-2.5 px-2 -ml-2 rounded-xl cursor-pointer transition-colors hover:bg-gray-50 ${
-                                        crewNone    ? "bg-red-50/40 hover:bg-red-50/60" :
-                                        crewReduced ? "bg-amber-50/30 hover:bg-amber-50/50" :
-                                        done        ? "opacity-50" : ""
-                                      }`}
-                                    >
-                                      {/* Stop circle */}
-                                      <div
-                                        className="w-7 h-7 rounded-full flex-shrink-0 flex items-center justify-center text-[11px] font-bold border-2 z-10"
-                                        style={{ borderColor: dotBorder, background: dotBg, color: dotColor }}
-                                      >
-                                        {done ? <CheckCircle2 className="w-3.5 h-3.5" style={{ color: "#10b981" }} /> : idx + 1}
-                                      </div>
+                              return (
+                                <div
+                                  key={job.id}
+                                  onClick={() => onJobClick(job)}
+                                  className={`flex items-start gap-3 py-2 px-1 rounded-xl cursor-pointer transition-colors hover:bg-gray-50 ${
+                                    crewNone    ? "bg-red-50/40 hover:bg-red-50/60" :
+                                    crewReduced ? "bg-amber-50/30 hover:bg-amber-50/50" :
+                                    done        ? "opacity-50" : ""
+                                  }`}
+                                >
+                                  {/* Stop circle */}
+                                  <div
+                                    className="w-6 h-6 rounded-full flex-shrink-0 flex items-center justify-center text-[10px] font-bold border-2 z-10"
+                                    style={{ borderColor: dotBorder, background: dotBg, color: dotColor }}
+                                  >
+                                    {done ? <CheckCircle2 className="w-3 h-3" style={{ color: "#10b981" }} /> : idx + 1}
+                                  </div>
 
-                                      {/* Job info */}
-                                      <div className="flex-1 min-w-0 pt-0.5">
-                                        <div className="flex items-start justify-between gap-2">
-                                          <div className="min-w-0">
-                                            <p className={`text-sm font-semibold leading-tight ${done ? "line-through text-gray-400" : overdue ? "text-red-700" : "text-gray-800"}`}>
-                                              {job.assetName}
-                                            </p>
-                                            <p className="text-[11px] text-gray-400 mt-0.5 truncate">{(job as any).assetDesc ?? job.assetRef}</p>
-                                          </div>
-                                          <div className="flex items-center gap-1.5 flex-shrink-0 pt-0.5 flex-wrap justify-end">
-                                            {overdue     && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-red-100 text-red-700 font-semibold">Overdue</span>}
-                                            {crewNone    && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-red-100 text-red-700 font-semibold flex items-center gap-0.5"><XCircle className="w-2.5 h-2.5" />No crew</span>}
-                                            {crewReduced && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 font-semibold flex items-center gap-0.5"><AlertTriangle className="w-2.5 h-2.5" />Reduced</span>}
-                                            <span className="text-[11px] text-gray-400 flex items-center gap-0.5">
-                                              <Clock className="w-3 h-3" />
-                                              {crewReduced || crewNone
-                                                ? <><span className="line-through mr-0.5">{job.serviceTimeMins}m</span><span className={crewNone ? "text-red-600 font-semibold" : "text-amber-600 font-semibold"}>{displayTime}m</span></>
-                                                : <span>{displayTime}m</span>
-                                              }
-                                            </span>
-                                          </div>
-                                        </div>
-                                      </div>
+                                  {/* Job info */}
+                                  <div className="flex-1 min-w-0 pt-0.5">
+                                    <p className={`text-[12px] font-semibold leading-tight truncate ${done ? "line-through text-gray-400" : overdue ? "text-red-700" : "text-gray-800"}`}>
+                                      {job.assetName}
+                                    </p>
+                                    <p className="text-[10px] text-gray-400 mt-0.5 truncate">{(job as any).assetDesc ?? job.assetRef}</p>
+                                    <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+                                      {overdue     && <span className="text-[9px] px-1 py-0.5 rounded bg-red-100 text-red-700 font-semibold">Overdue</span>}
+                                      {crewNone    && <span className="text-[9px] px-1 py-0.5 rounded bg-red-100 text-red-700 font-semibold flex items-center gap-0.5"><XCircle className="w-2 h-2" />No crew</span>}
+                                      {crewReduced && <span className="text-[9px] px-1 py-0.5 rounded bg-amber-100 text-amber-700 font-semibold flex items-center gap-0.5"><AlertTriangle className="w-2 h-2" />Reduced</span>}
+                                      <span className="text-[10px] text-gray-400 flex items-center gap-0.5 ml-auto">
+                                        <Clock className="w-2.5 h-2.5" />
+                                        {crewReduced || crewNone
+                                          ? <><span className="line-through mr-0.5">{job.serviceTimeMins}m</span><span className={crewNone ? "text-red-600 font-semibold" : "text-amber-600 font-semibold"}>{displayTime}m</span></>
+                                          : <span>{displayTime}m</span>
+                                        }
+                                      </span>
                                     </div>
-                                  );
-                                })}
-                              </div>
-                            </div>
+                                  </div>
+                                </div>
+                              );
+                            })}
                           </div>
                         </div>
-                      );
-                    })}
-                  </div>
-                )}
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
             );
           })}
