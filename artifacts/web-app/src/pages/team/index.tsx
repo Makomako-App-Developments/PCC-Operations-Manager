@@ -12,14 +12,43 @@ import { useAuth } from "@/lib/auth";
 
 const BRAND = "#00AECD";
 
-const PEOPLE = [
-  { name: "June Rameka",        team: "CBD" },
-  { name: "Tana Tanielu-Dick",  team: "CBD" },
-  { name: "Felise Maiava",      team: "Mobile 1" },
-  { name: "Joe Daish",          team: "Mobile 2" },
-  { name: "David Wos",          team: "Mobile 2" },
-  { name: "Barry Lavakula",     team: "Specialist" },
-];
+interface LivePerson {
+  id:     string;
+  name:   string;
+  teamId: string | null;
+  team:   string;
+}
+
+function useLivePeople(): LivePerson[] {
+  const { data: users = [] } = useQuery<{ data: Array<{ id: string; name: string; teamId: string | null; isActive: boolean }> }>({
+    queryKey: ["users"],
+    queryFn: async () => {
+      const res = await fetch("/api/users", { credentials: "include" });
+      if (!res.ok) throw new Error("Failed");
+      return res.json();
+    },
+    staleTime: 60_000,
+  });
+  const { data: teams = [] } = useQuery<Array<{ id: string; name: string }>>({
+    queryKey: ["teams"],
+    queryFn: async () => {
+      const res = await fetch("/api/teams", { credentials: "include" });
+      if (!res.ok) throw new Error("Failed");
+      return res.json();
+    },
+    staleTime: 60_000,
+  });
+
+  const teamMap = Object.fromEntries(teams.map(t => [t.id, t.name]));
+  return (users.data ?? [])
+    .filter(u => u.isActive)
+    .map(u => ({
+      id:     u.id,
+      name:   u.name,
+      teamId: u.teamId,
+      team:   u.teamId ? (teamMap[u.teamId] ?? "—") : "—",
+    }));
+}
 
 const DEFAULT_HOURS = [8, 9, 10, 11, 12, 13, 14, 15, 16];
 
@@ -137,6 +166,7 @@ export default function TeamPage() {
   const { user } = useAuth();
   const qc = useQueryClient();
   const canEdit = user?.role === "manager" || user?.role === "supervisor";
+  const PEOPLE = useLivePeople();
 
   const [weekMon, setWeekMon] = useState<Date>(() => getMondayOfWeek(new Date()));
   const [activeDay, setActiveDay] = useState(0);

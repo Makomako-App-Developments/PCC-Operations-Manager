@@ -1,19 +1,21 @@
 import { useState } from "react";
-import { Shield, Users, Clock, Route, Sunrise, Zap } from "lucide-react";
+import { Shield, Users, Clock, Route, Sunrise, Zap, UsersRound } from "lucide-react";
 import UsersPage from "@/pages/users/index";
 import AuditLogPage from "@/pages/audit-log/index";
 import ProductiveTimePage from "./ProductiveTimePage";
 import RouteOptimisationPage from "./RouteOptimisationPage";
 import WorkHoursPage from "./WorkHoursPage";
 import ReactivePrioritiesPage from "./ReactivePrioritiesPage";
+import TeamsPage from "./TeamsPage";
 
 const TABS = [
-  { id: "users",                label: "Users",                icon: Users    },
-  { id: "audit-log",            label: "Audit Log",            icon: Shield   },
-  { id: "work-hours",           label: "Work Hours",           icon: Sunrise  },
-  { id: "reactive-priorities",  label: "Reactive Priorities",  icon: Zap      },
-  { id: "productive-time",      label: "Productive Time",      icon: Clock    },
-  { id: "route-optimisation",   label: "Route Optimisation",   icon: Route    },
+  { id: "users",                label: "Users",                icon: Users       },
+  { id: "teams",                label: "Teams",                icon: UsersRound  },
+  { id: "audit-log",            label: "Audit Log",            icon: Shield      },
+  { id: "work-hours",           label: "Work Hours",           icon: Sunrise     },
+  { id: "reactive-priorities",  label: "Reactive Priorities",  icon: Zap         },
+  { id: "productive-time",      label: "Productive Time",      icon: Clock       },
+  { id: "route-optimisation",   label: "Route Optimisation",   icon: Route       },
 ];
 
 export default function SettingsPage() {
@@ -23,7 +25,7 @@ export default function SettingsPage() {
     <div className="flex flex-col min-h-full bg-[#f5f7f9]">
       <div className="bg-white border-b border-gray-200 px-8 py-5">
         <h1 className="text-2xl font-bold text-gray-900">Settings</h1>
-        <p className="text-sm text-gray-500 mt-0.5">Manage users and system audit log</p>
+        <p className="text-sm text-gray-500 mt-0.5">Manage users, teams and system configuration</p>
       </div>
 
       <div className="bg-white border-b border-gray-100 px-8">
@@ -47,8 +49,9 @@ export default function SettingsPage() {
 
       <div className="flex-1">
         {tab === "users"              && <UsersPage embedded />}
+        {tab === "teams"              && <TeamsPage />}
         {tab === "audit-log"          && <AuditLogPage embedded />}
-        {tab === "work-hours"          && <WorkHoursPage />}
+        {tab === "work-hours"         && <WorkHoursPage />}
         {tab === "reactive-priorities" && <ReactivePrioritiesPage />}
         {tab === "productive-time"    && <ProductiveTimePage />}
         {tab === "route-optimisation" && <RouteOptimisationPage />}

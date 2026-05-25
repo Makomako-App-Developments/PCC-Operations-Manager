@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { format } from "date-fns";
-import { Users as UsersIcon, Plus, ToggleLeft, ToggleRight, Loader2, Search } from "lucide-react";
+import { Users as UsersIcon, Plus, ToggleLeft, ToggleRight, Loader2, Search, ChevronDown } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -20,6 +20,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 
@@ -36,6 +43,11 @@ interface UserSafe {
   isActive:  boolean;
   createdAt: string;
   updatedAt: string;
+}
+
+interface Team {
+  id:   string;
+  name: string;
 }
 
 const ROLE_LABELS: Record<string, string> = {
@@ -57,6 +69,37 @@ function useUsers() {
       const res = await fetch("/api/users", { credentials: "include" });
       if (!res.ok) throw new Error("Failed to load users");
       return res.json();
+    },
+  });
+}
+
+function useTeams() {
+  return useQuery<Team[]>({
+    queryKey: ["teams"],
+    queryFn: async () => {
+      const res = await fetch("/api/teams", { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to load teams");
+      return res.json();
+    },
+  });
+}
+
+function useUpdateUser() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, ...body }: Partial<UserSafe> & { id: string; password?: string }) => {
+      const res = await fetch(`/api/users/${id}`, {
+        method: "PATCH",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) throw new Error("Failed to update user");
+      return res.json();
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["users"] });
+      qc.invalidateQueries({ queryKey: ["teams-with-counts"] });
     },
   });
 }
@@ -84,30 +127,70 @@ function useCreateUser() {
       }
       return res.json();
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["users"] }),
-  });
-}
-
-function useUpdateUser() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: async ({ id, ...body }: Partial<UserSafe> & { id: string; password?: string }) => {
-      const res = await fetch(`/api/users/${id}`, {
-        method: "PATCH",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
-      if (!res.ok) throw new Error("Failed to update user");
-      return res.json();
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["users"] });
+      qc.invalidateQueries({ queryKey: ["teams-with-counts"] });
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["users"] }),
   });
 }
 
-const EMPTY_FORM = { name: "", email: "", initials: "", password: "", role: "field_worker" };
+function TeamCell({ user, teams }: { user: UserSafe; teams: Team[] }) {
+  const updateUser = useUpdateUser();
+  const { toast } = useToast();
+  const currentTeam = teams.find(t => t.id === user.teamId);
 
-function CreateUserDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const assign = async (teamId: string | null) => {
+    try {
+      await updateUser.mutateAsync({ id: user.id, teamId });
+      toast({
+        title: teamId ? "Team assigned" : "Removed from team",
+        description: teamId ? `${user.name} → ${teams.find(t => t.id === teamId)?.name}` : user.name,
+      });
+    } catch {
+      toast({ title: "Error", description: "Could not update team.", variant: "destructive" });
+    }
+  };
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button
+          className="flex items-center gap-1 text-xs rounded px-2 py-1 hover:bg-gray-100 transition-colors max-w-[140px] group"
+          title="Change team"
+        >
+          <span className={`truncate ${currentTeam ? "text-gray-700 font-medium" : "text-gray-400 italic"}`}>
+            {currentTeam?.name ?? "Unassigned"}
+          </span>
+          <ChevronDown className="w-3 h-3 text-gray-400 flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity" />
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start" className="w-44">
+        {teams.map(t => (
+          <DropdownMenuItem
+            key={t.id}
+            onClick={() => assign(t.id)}
+            className={t.id === user.teamId ? "font-semibold text-[#00AECD]" : ""}
+          >
+            {t.name}
+            {t.id === user.teamId && <span className="ml-auto text-[10px] text-[#00AECD]">current</span>}
+          </DropdownMenuItem>
+        ))}
+        {user.teamId && (
+          <>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={() => assign(null)} className="text-gray-400">
+              Remove from team
+            </DropdownMenuItem>
+          </>
+        )}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+const EMPTY_FORM = { name: "", email: "", initials: "", password: "", role: "field_worker", teamId: "" };
+
+function CreateUserDialog({ open, onClose, teams }: { open: boolean; onClose: () => void; teams: Team[] }) {
   const [form, setForm] = useState(EMPTY_FORM);
   const createUser = useCreateUser();
   const { toast } = useToast();
@@ -117,7 +200,9 @@ function CreateUserDialog({ open, onClose }: { open: boolean; onClose: () => voi
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      await createUser.mutateAsync(form);
+      const payload: Record<string, string> = { ...form };
+      if (!payload.teamId) delete payload.teamId;
+      await createUser.mutateAsync(payload as Parameters<typeof createUser.mutateAsync>[0]);
       toast({ title: "Account created", description: `${form.name} can now sign in.` });
       setForm(EMPTY_FORM);
       onClose();
@@ -157,6 +242,18 @@ function CreateUserDialog({ open, onClose }: { open: boolean; onClose: () => voi
                 </SelectContent>
               </Select>
             </div>
+            {teams.length > 0 && (
+              <div className="col-span-2 space-y-1">
+                <Label>Team <span className="text-gray-400 font-normal">(optional)</span></Label>
+                <Select value={form.teamId} onValueChange={set("teamId")}>
+                  <SelectTrigger><SelectValue placeholder="Unassigned" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="">Unassigned</SelectItem>
+                    {teams.map(t => <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
             <div className="col-span-2 space-y-1">
               <Label>Temporary password</Label>
               <Input required minLength={8} type="password" value={form.password} onChange={e => set("password")(e.target.value)} placeholder="Min 8 characters" />
@@ -177,6 +274,7 @@ function CreateUserDialog({ open, onClose }: { open: boolean; onClose: () => voi
 
 export default function UsersPage({ embedded }: { embedded?: boolean } = {}) {
   const { data, isLoading } = useUsers();
+  const { data: teams = [] } = useTeams();
   const updateUser = useUpdateUser();
   const { toast } = useToast();
   const [search, setSearch] = useState("");
@@ -276,6 +374,7 @@ export default function UsersPage({ embedded }: { embedded?: boolean } = {}) {
                   <th className="px-5 py-3 text-left text-[10px] font-bold uppercase tracking-wider text-gray-500">Staff Member</th>
                   <th className="px-4 py-3 text-left text-[10px] font-bold uppercase tracking-wider text-gray-500">Email</th>
                   <th className="px-4 py-3 text-left text-[10px] font-bold uppercase tracking-wider text-gray-500">Role</th>
+                  <th className="px-4 py-3 text-left text-[10px] font-bold uppercase tracking-wider text-gray-500">Team</th>
                   <th className="px-4 py-3 text-left text-[10px] font-bold uppercase tracking-wider text-gray-500">Since</th>
                   <th className="px-4 py-3 text-left text-[10px] font-bold uppercase tracking-wider text-gray-500">Status</th>
                   <th className="px-4 py-3" />
@@ -305,6 +404,9 @@ export default function UsersPage({ embedded }: { embedded?: boolean } = {}) {
                         >
                           {ROLE_LABELS[user.role] ?? user.role}
                         </span>
+                      </td>
+                      <td className="px-4 py-3.5">
+                        <TeamCell user={user} teams={teams} />
                       </td>
                       <td className="px-4 py-3.5 text-xs text-gray-400">
                         {format(new Date(user.createdAt), "d MMM yyyy")}
@@ -349,7 +451,7 @@ export default function UsersPage({ embedded }: { embedded?: boolean } = {}) {
         )}
       </div>
 
-      {creating && <CreateUserDialog open onClose={() => setCreating(false)} />}
+      {creating && <CreateUserDialog open onClose={() => setCreating(false)} teams={teams} />}
     </div>
   );
 }
