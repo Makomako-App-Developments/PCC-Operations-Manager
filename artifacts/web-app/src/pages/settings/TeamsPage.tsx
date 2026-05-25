@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Pencil, Trash2, Plus, Check, X, Users, Loader2 } from "lucide-react";
+import { Pencil, Trash2, Plus, Check, X, Users, Loader2, ChevronDown, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
@@ -15,6 +15,13 @@ interface TeamWithCount {
   memberCount: number;
 }
 
+interface CrewMember {
+  id:         string;
+  personName: string;
+  teamId:     string;
+  hasAccount: boolean;
+}
+
 function useTeams() {
   return useQuery<TeamWithCount[]>({
     queryKey: ["teams-with-counts"],
@@ -26,15 +33,35 @@ function useTeams() {
   });
 }
 
+function useCrewMembers() {
+  return useQuery<CrewMember[]>({
+    queryKey: ["crew-members"],
+    queryFn: async () => {
+      const res = await fetch("/api/team-members", { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to load crew members");
+      return res.json();
+    },
+  });
+}
+
 export default function TeamsPage() {
   const qc = useQueryClient();
   const { data: teams = [], isLoading } = useTeams();
+  const { data: crewMembers = [] } = useCrewMembers();
   const { toast } = useToast();
 
   const [editingId, setEditingId]     = useState<string | null>(null);
   const [editName, setEditName]       = useState("");
   const [creating, setCreating]       = useState(false);
   const [newName, setNewName]         = useState("");
+  const [expandedTeams, setExpandedTeams] = useState<Set<string>>(new Set());
+
+  const toggleExpand = (id: string) =>
+    setExpandedTeams(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
 
   const rename = useMutation({
     mutationFn: async ({ id, name }: { id: string; name: string }) => {
@@ -163,61 +190,105 @@ export default function TeamsPage() {
           </div>
         ) : (
           <>
-            {teams.map(team => (
-              <div key={team.id} className="flex items-center gap-3 px-5 py-3.5 group">
-                {editingId === team.id ? (
-                  <>
-                    <Input
-                      autoFocus
-                      value={editName}
-                      onChange={e => setEditName(e.target.value)}
-                      onKeyDown={handleEditKeyDown}
-                      className="h-8 text-sm flex-1 max-w-xs"
-                    />
-                    <button
-                      onClick={saveEdit}
-                      disabled={rename.isPending || !editName.trim()}
-                      className="p-1.5 rounded-md hover:bg-emerald-50 text-emerald-600 disabled:opacity-40 transition-colors"
-                      title="Save"
-                    >
-                      {rename.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
-                    </button>
-                    <button
-                      onClick={cancelEdit}
-                      className="p-1.5 rounded-md hover:bg-gray-100 text-gray-400 transition-colors"
-                      title="Cancel"
-                    >
-                      <X className="w-4 h-4" />
-                    </button>
-                  </>
-                ) : (
-                  <>
-                    <span className="flex-1 text-sm font-medium text-gray-800">{team.name}</span>
-                    <span className="text-xs text-gray-400 mr-2">
-                      {team.memberCount} active member{team.memberCount !== 1 ? "s" : ""}
-                    </span>
-                    <button
-                      onClick={() => startEdit(team)}
-                      className="p-1.5 rounded-md opacity-0 group-hover:opacity-100 hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-all"
-                      title="Rename"
-                    >
-                      <Pencil className="w-3.5 h-3.5" />
-                    </button>
-                    <button
-                      onClick={() => remove.mutate(team.id)}
-                      disabled={remove.isPending}
-                      className="p-1.5 rounded-md opacity-0 group-hover:opacity-100 hover:bg-red-50 text-gray-400 hover:text-red-500 transition-all disabled:opacity-40"
-                      title={team.memberCount > 0 ? "Cannot delete — has members" : "Delete team"}
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
-                  </>
-                )}
-              </div>
-            ))}
+            {teams.map(team => {
+              const members = crewMembers.filter(m => m.teamId === team.id);
+              const isExpanded = expandedTeams.has(team.id);
+              return (
+                <div key={team.id} className="divide-y divide-gray-50">
+                  <div className="flex items-center gap-3 px-5 py-3.5 group">
+                    {editingId === team.id ? (
+                      <>
+                        <Input
+                          autoFocus
+                          value={editName}
+                          onChange={e => setEditName(e.target.value)}
+                          onKeyDown={handleEditKeyDown}
+                          className="h-8 text-sm flex-1 max-w-xs"
+                        />
+                        <button
+                          onClick={saveEdit}
+                          disabled={rename.isPending || !editName.trim()}
+                          className="p-1.5 rounded-md hover:bg-emerald-50 text-emerald-600 disabled:opacity-40 transition-colors"
+                          title="Save"
+                        >
+                          {rename.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+                        </button>
+                        <button
+                          onClick={cancelEdit}
+                          className="p-1.5 rounded-md hover:bg-gray-100 text-gray-400 transition-colors"
+                          title="Cancel"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        {members.length > 0 ? (
+                          <button
+                            onClick={() => toggleExpand(team.id)}
+                            className="p-0.5 rounded text-gray-400 hover:text-gray-600 transition-colors flex-shrink-0"
+                          >
+                            {isExpanded
+                              ? <ChevronDown className="w-3.5 h-3.5" />
+                              : <ChevronRight className="w-3.5 h-3.5" />}
+                          </button>
+                        ) : (
+                          <div className="w-5 flex-shrink-0" />
+                        )}
+                        <span className="flex-1 text-sm font-medium text-gray-800">{team.name}</span>
+                        <span className="text-xs text-gray-400 mr-2">
+                          {team.memberCount} active member{team.memberCount !== 1 ? "s" : ""}
+                        </span>
+                        <button
+                          onClick={() => startEdit(team)}
+                          className="p-1.5 rounded-md opacity-0 group-hover:opacity-100 hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-all"
+                          title="Rename"
+                        >
+                          <Pencil className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          onClick={() => remove.mutate(team.id)}
+                          disabled={remove.isPending}
+                          className="p-1.5 rounded-md opacity-0 group-hover:opacity-100 hover:bg-red-50 text-gray-400 hover:text-red-500 transition-all disabled:opacity-40"
+                          title={team.memberCount > 0 ? "Cannot delete — has members" : "Delete team"}
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </>
+                    )}
+                  </div>
+
+                  {isExpanded && members.length > 0 && (
+                    <div className="bg-gray-50/60 px-5 py-2 space-y-1.5">
+                      {members.map(m => (
+                        <div key={m.id} className="flex items-center gap-2.5">
+                          <div
+                            className="w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-bold text-white flex-shrink-0"
+                            style={{ backgroundColor: m.hasAccount ? BRAND : "#9ca3af" }}
+                          >
+                            {m.personName.split(" ").map(n => n[0]).join("").slice(0, 2).toUpperCase()}
+                          </div>
+                          <span className="text-xs text-gray-700 flex-1">{m.personName}</span>
+                          {m.hasAccount ? (
+                            <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-teal-50 text-teal-700 border border-teal-100">
+                              Has account
+                            </span>
+                          ) : (
+                            <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-gray-100 text-gray-400 border border-gray-200">
+                              Crew only
+                            </span>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
 
             {creating && (
               <div className="flex items-center gap-3 px-5 py-3.5">
+                <div className="w-5 flex-shrink-0" />
                 <Input
                   id="new-team-input"
                   autoFocus

@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { format } from "date-fns";
-import { Users as UsersIcon, Plus, ToggleLeft, ToggleRight, Loader2, Search, ChevronDown } from "lucide-react";
+import { Users as UsersIcon, Plus, ToggleLeft, ToggleRight, Loader2, Search, ChevronDown, HardHat } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -62,12 +62,30 @@ const ROLE_COLOURS: Record<string, { bg: string; text: string }> = {
   field_worker: { bg: "#dcfce7", text: "#16a34a" },
 };
 
+interface CrewMember {
+  id:         string;
+  personName: string;
+  teamId:     string;
+  hasAccount: boolean;
+}
+
 function useUsers() {
   return useQuery<{ data: UserSafe[]; total: number }>({
     queryKey: ["users"],
     queryFn: async () => {
       const res = await fetch("/api/users", { credentials: "include" });
       if (!res.ok) throw new Error("Failed to load users");
+      return res.json();
+    },
+  });
+}
+
+function useCrewMembers() {
+  return useQuery<CrewMember[]>({
+    queryKey: ["crew-members"],
+    queryFn: async () => {
+      const res = await fetch("/api/team-members", { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to load crew members");
       return res.json();
     },
   });
@@ -275,6 +293,7 @@ function CreateUserDialog({ open, onClose, teams }: { open: boolean; onClose: ()
 export default function UsersPage({ embedded }: { embedded?: boolean } = {}) {
   const { data, isLoading } = useUsers();
   const { data: teams = [] } = useTeams();
+  const { data: crewMembers = [] } = useCrewMembers();
   const updateUser = useUpdateUser();
   const { toast } = useToast();
   const [search, setSearch] = useState("");
@@ -288,6 +307,11 @@ export default function UsersPage({ embedded }: { embedded?: boolean } = {}) {
         u.role.includes(search.toLowerCase())
       )
     : users;
+
+  // Crew-only members: no system account
+  const crewOnly = crewMembers.filter(m => !m.hasAccount && (
+    !search || m.personName.toLowerCase().includes(search.toLowerCase())
+  ));
 
   const toggleActive = async (user: UserSafe) => {
     try {
@@ -439,6 +463,52 @@ export default function UsersPage({ embedded }: { embedded?: boolean } = {}) {
                     </tr>
                   );
                 })}
+
+                {/* Crew-only members — no system account */}
+                {crewOnly.length > 0 && (
+                  <>
+                    <tr>
+                      <td colSpan={7} className="px-5 pt-4 pb-1.5">
+                        <div className="flex items-center gap-2">
+                          <HardHat className="w-3.5 h-3.5 text-gray-400" />
+                          <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400">
+                            Crew members — no system account
+                          </span>
+                        </div>
+                      </td>
+                    </tr>
+                    {crewOnly.map(m => {
+                      const team = teams.find(t => t.id === m.teamId);
+                      const initials = m.personName.split(" ").map(n => n[0]).join("").slice(0, 2).toUpperCase();
+                      return (
+                        <tr key={m.id} className="border-b border-gray-100 bg-gray-50/40 opacity-70">
+                          <td className="px-5 py-3">
+                            <div className="flex items-center gap-3">
+                              <div className="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold flex-shrink-0 bg-gray-300">
+                                {initials}
+                              </div>
+                              <span className="font-medium text-gray-500">{m.personName}</span>
+                            </div>
+                          </td>
+                          <td className="px-4 py-3 text-gray-400 text-xs italic">No PCC account</td>
+                          <td className="px-4 py-3">
+                            <span className="text-[11px] font-semibold px-2.5 py-1 rounded-full bg-gray-100 text-gray-400">
+                              Field Worker
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 text-xs text-gray-400">{team?.name ?? "—"}</td>
+                          <td className="px-4 py-3 text-xs text-gray-300">—</td>
+                          <td className="px-4 py-3">
+                            <span className="text-[11px] font-semibold px-2.5 py-1 rounded-full bg-gray-100 text-gray-400">
+                              Crew only
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 text-xs text-gray-400 text-right italic">No login</td>
+                        </tr>
+                      );
+                    })}
+                  </>
+                )}
               </tbody>
             </table>
           )}
@@ -446,7 +516,8 @@ export default function UsersPage({ embedded }: { embedded?: boolean } = {}) {
 
         {!isLoading && data && (
           <p className="text-xs text-gray-400 mt-3 text-right">
-            {data.total} staff account{data.total !== 1 ? "s" : ""} total
+            {data.total} staff account{data.total !== 1 ? "s" : ""}
+            {crewOnly.length > 0 && ` · ${crewOnly.length} crew-only`}
           </p>
         )}
       </div>

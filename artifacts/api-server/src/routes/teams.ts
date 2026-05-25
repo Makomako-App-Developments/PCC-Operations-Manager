@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { db, teamsTable, usersTable, insertTeamSchema } from "@workspace/db";
+import { db, teamsTable, teamMembersTable, usersTable, insertTeamSchema } from "@workspace/db";
 import { eq, sql } from "drizzle-orm";
 import { requireAuth, requireRole } from "../middlewares/auth";
 import { validateBody } from "../middlewares/validate";
@@ -26,6 +26,30 @@ router.get("/teams/with-counts", requireAuth, async (_req, res) => {
     .leftJoin(usersTable, eq(usersTable.teamId, teamsTable.id))
     .groupBy(teamsTable.id, teamsTable.name, teamsTable.createdAt);
   res.json(rows);
+});
+
+// GET /api/team-members — all crew members with hasAccount flag
+router.get("/team-members", requireAuth, async (_req, res) => {
+  const members = await db
+    .select({
+      id:         teamMembersTable.id,
+      personName: teamMembersTable.personName,
+      teamId:     teamMembersTable.teamId,
+    })
+    .from(teamMembersTable);
+
+  const userNames = await db
+    .select({ name: usersTable.name })
+    .from(usersTable);
+
+  const accountNameSet = new Set(userNames.map(u => u.name.toLowerCase().trim()));
+
+  const result = members.map(m => ({
+    ...m,
+    hasAccount: accountNameSet.has(m.personName.toLowerCase().trim()),
+  }));
+
+  res.json(result);
 });
 
 // GET /api/teams/:id/members
