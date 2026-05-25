@@ -529,11 +529,18 @@ function WeekView({
       return next;
     });
 
+  const [showWeekend, setShowWeekend] = useState(false);
+
   if (isLoading) return <div className="p-8"><Skeleton className="w-full h-96 rounded-2xl" /></div>;
   if (!weekData?.days) return null;
 
   const productiveTimeMins: number = weekData?.settings?.productiveTimeMins ?? 390;
   const q = searchTerm.trim().toLowerCase();
+
+  const visibleDays: any[] = weekData.days.filter((d: any) => {
+    const dow = new Date(d.date + "T00:00:00").getDay(); // 0=Sun, 6=Sat
+    return showWeekend || (dow !== 0 && dow !== 6);
+  });
 
   /** Group jobs by teamId, preserving insertion order for first-seen team. */
   function groupByTeam(jobs: any[]): Map<string, any[]> {
@@ -559,10 +566,33 @@ function WeekView({
     });
   }
 
+  const colCount = visibleDays.length;
+
   return (
     <div className="flex-1 overflow-auto p-5">
-      <div className="grid grid-cols-7 gap-3" style={{ minWidth: 840, minHeight: 520 }}>
-        {weekData.days.map((day: any) => {
+      <div className="flex items-center justify-end mb-3">
+        <button
+          onClick={() => setShowWeekend(v => !v)}
+          className={`flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border transition-colors ${
+            showWeekend
+              ? "bg-[#00AECD]/10 border-[#00AECD]/30 text-[#00AECD] font-semibold"
+              : "bg-white border-gray-200 text-gray-400 hover:text-gray-600 hover:border-gray-300"
+          }`}
+        >
+          <CalendarDays className="w-3.5 h-3.5" />
+          {showWeekend ? "Hide weekend" : "Show weekend"}
+        </button>
+      </div>
+      <div
+        className="gap-3"
+        style={{
+          display: "grid",
+          gridTemplateColumns: `repeat(${colCount}, minmax(0, 1fr))`,
+          minWidth: colCount === 7 ? 840 : 600,
+          minHeight: 520,
+        }}
+      >
+        {visibleDays.map((day: any) => {
           const day_ = q
             ? { ...day, jobs: day.jobs.filter((j: any) =>
                 j.assetName?.toLowerCase().includes(q) ||
