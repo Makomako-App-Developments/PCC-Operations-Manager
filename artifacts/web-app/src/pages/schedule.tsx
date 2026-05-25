@@ -200,15 +200,14 @@ function GanttView({
         </div>
       ) : (
         <div className="flex-1 overflow-auto">
-          <table className="text-xs border-collapse" style={{ minWidth: 605 + GANTT_WEEK_COUNT * 85 }}>
+          <table className="text-xs border-collapse" style={{ minWidth: 510 + GANTT_WEEK_COUNT * 85 }}>
             <thead className="sticky top-0 z-30 bg-white shadow-sm">
               <tr className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">
                 <th className="text-left py-2.5 px-3 border-b border-gray-200 sticky bg-white z-30" style={{ left: 0,   minWidth: 190, width: 190 }}>Site</th>
                 <th className="text-left py-2.5 px-3 border-b border-gray-200 sticky bg-white z-30" style={{ left: 190, minWidth: 80,  width: 80 }}>Type</th>
-                <th className="text-left py-2.5 px-3 border-b border-gray-200 sticky bg-white z-30" style={{ left: 270, minWidth: 90,  width: 90 }}>Standard</th>
-                <th className="text-left py-2.5 px-3 border-b border-gray-200 sticky bg-white z-30" style={{ left: 360, minWidth: 70,  width: 70 }}>Freq</th>
-                <th className="text-left py-2.5 px-3 border-b border-gray-200 sticky bg-white z-30" style={{ left: 430, minWidth: 55,  width: 55 }}>Time</th>
-                <th className="text-left py-2.5 px-3 border-b border-gray-200 sticky bg-white z-30 border-r border-gray-200" style={{ left: 485, minWidth: 115, width: 115 }}>Team</th>
+                <th className="text-left py-2.5 px-3 border-b border-gray-200 sticky bg-white z-30" style={{ left: 270, minWidth: 70,  width: 70 }}>Freq</th>
+                <th className="text-left py-2.5 px-3 border-b border-gray-200 sticky bg-white z-30" style={{ left: 340, minWidth: 55,  width: 55 }}>Time</th>
+                <th className="text-left py-2.5 px-3 border-b border-gray-200 sticky bg-white z-30 border-r border-gray-200" style={{ left: 395, minWidth: 115, width: 115 }}>Team</th>
                 {weeks.map(w => (
                   <th key={w.key} className="text-left py-2.5 px-3 border-b border-gray-200 border-l border-l-gray-100" style={{ minWidth: 85 }}>
                     {w.label}
@@ -241,14 +240,9 @@ function GanttView({
                         {row.gardenType.replace(/_/g, " ")}
                       </span>
                     </td>
-                    <td className="py-2 px-3 sticky z-10" style={{ left: 270, background: rowBg, width: 90 }}>
-                      <span className={`px-1.5 py-0.5 rounded text-[9px] font-semibold capitalize ${STANDARD_BADGES[row.standard] ?? "bg-gray-100 text-gray-600"}`}>
-                        {row.standard}
-                      </span>
-                    </td>
-                    <td className="py-2 px-3 sticky z-10 text-gray-600 capitalize" style={{ left: 360, background: rowBg, width: 70 }}>{row.frequency}</td>
-                    <td className="py-2 px-3 sticky z-10 text-gray-600"            style={{ left: 430, background: rowBg, width: 55 }}>{row.serviceTimeMins}m</td>
-                    <td className="py-2 px-3 sticky z-10 border-r border-gray-200" style={{ left: 485, background: rowBg, width: 115 }}>
+                    <td className="py-2 px-3 sticky z-10 text-gray-600 capitalize" style={{ left: 270, background: rowBg, width: 70 }}>{row.frequency}</td>
+                    <td className="py-2 px-3 sticky z-10 text-gray-600"            style={{ left: 340, background: rowBg, width: 55 }}>{row.serviceTimeMins}m</td>
+                    <td className="py-2 px-3 sticky z-10 border-r border-gray-200" style={{ left: 395, background: rowBg, width: 115 }}>
                       <div className="flex items-center gap-1.5">
                         <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: color }} />
                         <span className="text-gray-600 truncate max-w-[90px]">{name}</span>
