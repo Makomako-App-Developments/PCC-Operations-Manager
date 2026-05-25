@@ -175,13 +175,13 @@ function TeamCell({ user, teams }: { user: UserSafe; teams: Team[] }) {
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <button
-          className="flex items-center gap-1 text-xs rounded px-2 py-1 hover:bg-gray-100 transition-colors max-w-[140px] group"
+          className="flex items-center gap-1 text-xs rounded px-2 py-1 hover:bg-gray-100 transition-colors max-w-[140px] border border-transparent hover:border-gray-200"
           title="Change team"
         >
           <span className={`truncate ${currentTeam ? "text-gray-700 font-medium" : "text-gray-400 italic"}`}>
             {currentTeam?.name ?? "Unassigned"}
           </span>
-          <ChevronDown className="w-3 h-3 text-gray-400 flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity" />
+          <ChevronDown className="w-3 h-3 text-gray-400 flex-shrink-0" />
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" className="w-44">
