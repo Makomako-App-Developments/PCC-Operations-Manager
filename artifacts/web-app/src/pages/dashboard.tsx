@@ -8,7 +8,7 @@ import {
 } from "@workspace/api-client-react";
 import {
   AlertTriangle, CheckCircle2, Clock, SkipForward, Target, DollarSign,
-  TrendingUp, TrendingDown, Minus, Leaf, Download, Users, TriangleAlert,
+  TrendingUp, TrendingDown, Minus, Leaf, Download, Users, TriangleAlert, HardHat,
 } from "lucide-react";
 import {
   format, startOfWeek, endOfWeek, startOfMonth, endOfMonth,
@@ -173,6 +173,23 @@ export default function Dashboard() {
   const productivityPct  = totalEstMins > 0 ? Math.round((totalEstMins / Math.max(totalActualMins, 1)) * 100) : 0;
   const periodLabel      = period === "week" ? "week" : "month";
 
+  const labourRequirementFte = useMemo(() => {
+    const VISITS_PER_YEAR: Record<string, number> = {
+      weekly:      52,
+      fortnightly: 26,
+      monthly:     12,
+      bimonthly:   6,
+      quarterly:   4,
+    };
+    const MINS_PER_FTE_YEAR = 52 * 5 * 8 * 60; // 124,800
+    const assets = assetsData?.data ?? [];
+    const totalAnnualMins = assets.reduce((sum, a) => {
+      const visits = VISITS_PER_YEAR[(a as any).frequency] ?? 12;
+      return sum + ((a as any).serviceTimeMins ?? 0) * visits;
+    }, 0);
+    return totalAnnualMins > 0 ? (totalAnnualMins / MINS_PER_FTE_YEAR) : 0;
+  }, [assetsData]);
+
   if (isLoading || !summary) {
     return (
       <div className="flex-1 flex flex-col min-h-0 bg-[#f5f7f9]">
@@ -261,10 +278,11 @@ export default function Dashboard() {
               color={labourCostNZD > 0 ? "#22c55e" : "#9ca3af"}
             />
             <StatCard
-              icon={CheckCircle2} label="Completed Sites"
-              value={String(summary.completedThisWeek)}
-              sub={`of ${summary.jobsThisWeek} scheduled`}
-              trend={`${completionRate}% rate`} trendDir="flat" color="#22c55e"
+              icon={HardHat} label="Labour Requirement"
+              value={labourRequirementFte > 0 ? `${labourRequirementFte.toFixed(1)} FTE` : "—"}
+              sub={`${(assetsData?.data ?? []).length} assets · annualised`}
+              trendDir="flat"
+              color={labourRequirementFte > 0 ? BRAND : "#9ca3af"}
             />
           </div>
         </div>
