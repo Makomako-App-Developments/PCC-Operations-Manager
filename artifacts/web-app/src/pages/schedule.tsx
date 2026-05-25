@@ -28,6 +28,8 @@ import {
   CalendarRange, CalendarDays, Calendar, LayoutGrid, CheckCircle, AlertTriangle, XCircle,
   Zap, RotateCcw, PlayCircle, Search, X, Users,
 } from "lucide-react";
+import { ReactiveJobWizard } from "@/components/reactive-job-wizard";
+import type { AssetStub, TeamStub } from "@/components/reactive-job-wizard";
 import { useToast } from "@/hooks/use-toast";
 
 const BRAND = "#00AECD";
@@ -752,6 +754,7 @@ export default function Schedule() {
   const [jobNotes, setJobNotes]         = useState("");
 
   // Urgent job dialog
+  const [wizardOpen, setWizardOpen]     = useState(false);
   const [urgentOpen, setUrgentOpen]     = useState(false);
   const [urgentSearch, setUrgentSearch] = useState("");
   const [urgentAsset, setUrgentAsset]   = useState<any | null>(null);
@@ -836,8 +839,8 @@ export default function Schedule() {
 
   // ── Urgent job ──────────────────────────────────────────────────────────────
   const { data: allAssets } = useListAssets(
-    { limit: 500 },
-    { query: { enabled: urgentOpen } },
+    { limit: 2000 },
+    { query: { enabled: urgentOpen || wizardOpen } },
   );
 
   const createJob = useCreateJob({
@@ -1025,7 +1028,7 @@ export default function Schedule() {
             size="sm"
             variant="outline"
             className="gap-2 border-orange-200 text-orange-700 hover:bg-orange-50"
-            onClick={openUrgentJob}
+            onClick={() => setWizardOpen(true)}
           >
             <Zap className="w-4 h-4" />
             Add Reactive Job
@@ -1510,6 +1513,16 @@ export default function Schedule() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* ── Reactive Job Wizard ─────────────────────────────────────────────── */}
+      {wizardOpen && (
+        <ReactiveJobWizard
+          teamsData={(teamsData ?? []) as TeamStub[]}
+          assetsData={(allAssets?.data ?? []) as AssetStub[]}
+          onClose={() => setWizardOpen(false)}
+          onPublished={() => setWizardOpen(false)}
+        />
+      )}
     </div>
   );
 }
