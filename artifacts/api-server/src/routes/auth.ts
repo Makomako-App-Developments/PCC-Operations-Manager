@@ -42,6 +42,39 @@ router.post("/auth/login", validateBody(loginSchema), async (req, res) => {
     });
 });
 
+// POST /api/auth/refresh
+router.post("/auth/refresh", async (req, res) => {
+  const token = req.cookies?.["refresh_token"];
+  if (!token) {
+    res.status(401).json({ error: "No refresh token" });
+    return;
+  }
+  let payload: import("../middlewares/auth").AuthPayload;
+  try {
+    const jwt = await import("jsonwebtoken");
+    const JWT_SECRET = process.env.JWT_SECRET ?? "dev-secret-change-in-production";
+    payload = jwt.default.verify(token, JWT_SECRET) as import("../middlewares/auth").AuthPayload;
+  } catch {
+    res.status(401).json({ error: "Invalid or expired refresh token" });
+    return;
+  }
+  // Check user still active
+  const [user] = await db.select().from(usersTable).where(eq(usersTable.id, payload.userId)).limit(1);
+  if (!user || !user.isActive) {
+    res.status(403).json({ error: "Account disabled" });
+    return;
+  }
+  const { accessToken, refreshToken } = signTokens({
+    userId: user.id,
+    role:   user.role,
+    teamId: user.teamId,
+  });
+  res
+    .cookie("access_token",  accessToken,  { httpOnly: true, secure: true, sameSite: "strict", maxAge: 15 * 60 * 1000 })
+    .cookie("refresh_token", refreshToken, { httpOnly: true, secure: true, sameSite: "strict", maxAge: 7 * 24 * 60 * 60 * 1000 })
+    .json({ ok: true });
+});
+
 // POST /api/auth/logout
 router.post("/auth/logout", (_req, res) => {
   res.clearCookie("access_token").clearCookie("refresh_token").json({ ok: true });

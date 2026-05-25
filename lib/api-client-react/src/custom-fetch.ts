@@ -279,9 +279,25 @@ async function parseSuccessBody(
   }
 }
 
+let _refreshing: Promise<boolean> | null = null;
+
+async function tryRefreshToken(baseUrl: string): Promise<boolean> {
+  try {
+    const refreshUrl = baseUrl ? `${baseUrl}/api/auth/refresh` : "/api/auth/refresh";
+    const res = await fetch(refreshUrl, {
+      method: "POST",
+      credentials: "include",
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
 export async function customFetch<T = unknown>(
   input: RequestInfo | URL,
   options: CustomFetchOptions = {},
+  _retry = false,
 ): Promise<T> {
   const { responseType = "auto", headers: headersInit, ...init } = options;
 
@@ -325,6 +341,16 @@ export async function customFetch<T = unknown>(
   const response = await fetch(input, { ...init, method, headers, credentials });
 
   if (!response.ok) {
+    // On 401, attempt a single silent token refresh then retry
+    if (response.status === 401 && !_retry && !resolvedUrl.includes("/api/auth/")) {
+      if (!_refreshing) {
+        _refreshing = tryRefreshToken(_baseUrl).finally(() => { _refreshing = null; });
+      }
+      const refreshed = await _refreshing;
+      if (refreshed) {
+        return customFetch<T>(input, options, true);
+      }
+    }
     const errorData = await parseErrorBody(response, method);
     throw new ApiError(response, errorData, requestInfo);
   }
