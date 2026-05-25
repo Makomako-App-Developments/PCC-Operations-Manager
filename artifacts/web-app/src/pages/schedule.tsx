@@ -21,7 +21,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription, SheetFo
 import { Textarea } from "@/components/ui/textarea";
 import {
   format, addWeeks, subWeeks, addDays, startOfWeek,
-  addMonths, startOfMonth, endOfMonth,
+  addMonths, startOfMonth, endOfMonth, parseISO,
 } from "date-fns";
 import {
   ChevronLeft, ChevronRight, ChevronDown, Route, CheckCircle2, Clock,
@@ -108,6 +108,8 @@ function JobPill({ job, color }: { job: { scheduledDate: string; status: string 
   );
 }
 
+const GANTT_WEEK_COUNT = 13;
+
 // ── Gantt View ────────────────────────────────────────────────────────────────
 function GanttView({
   ganttStart,
@@ -122,18 +124,17 @@ function GanttView({
   getTeamColor: (id?: string | null) => string;
   getTeamName: (id?: string | null) => string;
 }) {
-  const MONTH_COUNT = 4;
   const ganttFrom = format(ganttStart, "yyyy-MM-dd");
-  const ganttTo   = format(endOfMonth(addMonths(ganttStart, MONTH_COUNT - 1)), "yyyy-MM-dd");
+  const ganttTo   = format(addWeeks(ganttStart, GANTT_WEEK_COUNT), "yyyy-MM-dd");
 
   const { data, isLoading } = useQuery<GanttData>({
     queryKey: ["/api/schedule/range", ganttFrom, ganttTo, selectedTeamId],
     queryFn:  () => fetchScheduleRange(ganttFrom, ganttTo, selectedTeamId),
   });
 
-  const months = Array.from({ length: MONTH_COUNT }, (_, i) => {
-    const d = addMonths(ganttStart, i);
-    return { key: format(d, "yyyy-MM"), label: format(d, "MMM").toUpperCase() };
+  const weeks = Array.from({ length: GANTT_WEEK_COUNT }, (_, i) => {
+    const monday = addWeeks(ganttStart, i);
+    return { key: format(monday, "yyyy-MM-dd"), label: format(monday, "d MMM") };
   });
 
   if (isLoading) {
@@ -197,19 +198,18 @@ function GanttView({
         </div>
       ) : (
         <div className="flex-1 overflow-auto">
-          <table className="w-full text-xs border-collapse" style={{ minWidth: 860 + MONTH_COUNT * 100 }}>
+          <table className="w-full text-xs border-collapse" style={{ minWidth: 700 + GANTT_WEEK_COUNT * 85 }}>
             <thead className="sticky top-0 z-20 bg-white shadow-sm">
               <tr className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">
-                <th className="text-left py-2.5 px-3 w-8 border-b border-gray-200">#</th>
                 <th className="text-left py-2.5 px-3 border-b border-gray-200" style={{ minWidth: 190 }}>Site</th>
                 <th className="text-left py-2.5 px-3 border-b border-gray-200">Type</th>
                 <th className="text-left py-2.5 px-3 border-b border-gray-200">Standard</th>
                 <th className="text-left py-2.5 px-3 border-b border-gray-200">Freq</th>
                 <th className="text-left py-2.5 px-3 border-b border-gray-200">Time</th>
                 <th className="text-left py-2.5 px-3 border-b border-gray-200" style={{ minWidth: 100 }}>Team</th>
-                {months.map(m => (
-                  <th key={m.key} className="text-left py-2.5 px-3 border-b border-gray-200 border-l border-l-gray-100" style={{ minWidth: 100 }}>
-                    {m.label}
+                {weeks.map(w => (
+                  <th key={w.key} className="text-left py-2.5 px-3 border-b border-gray-200 border-l border-l-gray-100" style={{ minWidth: 85 }}>
+                    {w.label}
                   </th>
                 ))}
               </tr>
@@ -218,24 +218,17 @@ function GanttView({
               {rows.map((row, idx) => {
                 const color = getTeamColor(row.teamId);
                 const name  = getTeamName(row.teamId);
-                const jobsByMonth = new Map<string, typeof row.jobs>(months.map(m => [m.key, []]));
+                const jobsByWeek = new Map<string, typeof row.jobs>(weeks.map(w => [w.key, []]));
                 for (const job of row.jobs) {
-                  const mk = job.scheduledDate.slice(0, 7);
-                  jobsByMonth.get(mk)?.push(job);
+                  const monday = startOfWeek(parseISO(job.scheduledDate), { weekStartsOn: 1 });
+                  const wk = format(monday, "yyyy-MM-dd");
+                  jobsByWeek.get(wk)?.push(job);
                 }
                 return (
                   <tr
                     key={row.assetId}
                     className={`border-b border-gray-100 hover:bg-blue-50/30 transition-colors ${idx % 2 === 0 ? "" : "bg-gray-50/40"}`}
                   >
-                    <td className="py-2 px-3">
-                      <div
-                        className="w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-bold text-white"
-                        style={{ background: color }}
-                      >
-                        {idx + 1}
-                      </div>
-                    </td>
                     <td className="py-2 px-3">
                       <p className="font-semibold text-gray-800 truncate max-w-[185px]" title={row.assetName}>{row.assetName}</p>
                       <p className="text-gray-400 text-[10px] truncate max-w-[185px]">{row.assetDesc ?? row.assetRef}</p>
@@ -258,10 +251,10 @@ function GanttView({
                         <span className="text-gray-600 truncate max-w-[90px]">{name}</span>
                       </div>
                     </td>
-                    {months.map(m => (
-                      <td key={m.key} className="py-2 px-2 border-l border-l-gray-100 align-top">
+                    {weeks.map(w => (
+                      <td key={w.key} className="py-2 px-2 border-l border-l-gray-100 align-top">
                         <div className="flex flex-col gap-0.5">
-                          {(jobsByMonth.get(m.key) ?? []).map(job => (
+                          {(jobsByWeek.get(w.key) ?? []).map(job => (
                             <JobPill key={job.id} job={job} color={color} />
                           ))}
                         </div>
@@ -772,7 +765,7 @@ const STATUS_OPTIONS = [
 export default function Schedule() {
   const [view, setView]                 = useState<ViewType>("week");
   const [currentDate, setCurrentDate]   = useState(new Date());
-  const [ganttStart, setGanttStart]     = useState(() => startOfMonth(new Date()));
+  const [ganttStart, setGanttStart]     = useState(() => startOfWeek(new Date(), { weekStartsOn: 1 }));
   const [selectedTeamId, setSelectedTeamId] = useState("all");
   const [dialogOpen, setDialogOpen]     = useState(false);
   const [genFrom, setGenFrom]           = useState("");
@@ -984,19 +977,19 @@ export default function Schedule() {
   };
 
   const handleSetView = (v: ViewType) => {
-    if (v === "gantt") setGanttStart(startOfMonth(currentDate));
+    if (v === "gantt") setGanttStart(startOfWeek(currentDate, { weekStartsOn: 1 }));
     setView(v);
   };
 
   const prevPeriod = () => {
     if (view === "day")   setCurrentDate(d => addDays(d, -1));
     if (view === "week")  setCurrentDate(d => subWeeks(d, 1));
-    if (view === "gantt") setGanttStart(d => addMonths(d, -4));
+    if (view === "gantt") setGanttStart(d => addWeeks(d, -GANTT_WEEK_COUNT));
   };
   const nextPeriod = () => {
     if (view === "day")   setCurrentDate(d => addDays(d, 1));
     if (view === "week")  setCurrentDate(d => addWeeks(d, 1));
-    if (view === "gantt") setGanttStart(d => addMonths(d, 4));
+    if (view === "gantt") setGanttStart(d => addWeeks(d, GANTT_WEEK_COUNT));
   };
 
   const periodLabel = () => {
@@ -1005,8 +998,8 @@ export default function Schedule() {
       if (!weekData) return "...";
       return `${format(new Date(weekData.weekStart + "T00:00:00"), "d MMM")} – ${format(new Date(weekData.weekEnd + "T00:00:00"), "d MMM yyyy")}`;
     }
-    const ganttEnd = addMonths(ganttStart, 3);
-    return `${format(ganttStart, "MMM")} – ${format(ganttEnd, "MMM yyyy")}`;
+    const ganttEnd = addWeeks(ganttStart, GANTT_WEEK_COUNT - 1);
+    return `${format(ganttStart, "d MMM")} – ${format(ganttEnd, "d MMM yyyy")}`;
   };
 
   const getTeamColor = (teamId?: string | null) => {
@@ -1027,7 +1020,7 @@ export default function Schedule() {
           <h1 className="text-lg font-semibold text-gray-900">Maintenance Scheduler</h1>
           <p className="text-xs text-gray-400">
             {view === "gantt"
-              ? `${format(ganttStart, "MMM")} – ${format(addMonths(ganttStart, 3), "MMM yyyy")} · Porirua City Gardens`
+              ? `${format(ganttStart, "d MMM")} – ${format(addWeeks(ganttStart, GANTT_WEEK_COUNT - 1), "d MMM yyyy")} · Porirua City Gardens`
               : weekData
                 ? `Week of ${format(new Date(weekData.weekStart + "T00:00:00"), "d MMM")} – ${format(new Date(weekData.weekEnd + "T00:00:00"), "d MMM yyyy")}`
                 : "Loading..."}

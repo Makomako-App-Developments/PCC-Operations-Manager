@@ -226,32 +226,41 @@ router.post(
       for (const { asset } of candidates) {
         const tid = asset.teamId ?? null;
 
-        // Check for an existing scheduled job on the natural date
-        const [existingOnNatural] = await db
-          .select({ id: jobsTable.id, status: jobsTable.status })
+        // Check for an existing scheduled job within the interval window
+        // (prevents duplicate jobs when re-generating with a different fromDate)
+        const intervalDays = (FREQ_DAYS as Record<string, number>)[asset.frequency] ?? 28;
+        const windowStart  = addDays(naturalDate, -(intervalDays - 1));
+        const [existingInWindow] = await db
+          .select({
+            id:            jobsTable.id,
+            status:        jobsTable.status,
+            scheduledDate: sql<string>`to_char(${jobsTable.scheduledDate}, 'YYYY-MM-DD')`,
+          })
           .from(jobsTable)
           .where(
             and(
               eq(jobsTable.assetId, asset.id),
-              eq(jobsTable.scheduledDate, naturalDate),
+              gte(jobsTable.scheduledDate, windowStart),
+              lte(jobsTable.scheduledDate, naturalDate),
               eq(jobsTable.jobType, "scheduled"),
+              notInArray(jobsTable.status, ["completed", "skipped"]),
             ),
           )
           .limit(1);
 
-        if (existingOnNatural) {
-          if (existingOnNatural.status === "pending") {
-            // Refresh crew status in place — don't move existing jobs
+        if (existingInWindow) {
+          if (existingInWindow.scheduledDate === naturalDate && existingInWindow.status === "pending") {
+            // Exact match on natural date — refresh crew status in place
             const { estimatedTimeMins, crewStatus } = calcCrewAdjustment(
               tid, naturalDate, membersByTeam, absenceMap, asset.serviceTimeMins, standardCrewSize,
             );
             await db
               .update(jobsTable)
               .set({ estimatedTimeMins, crewStatus, updatedAt: new Date() })
-              .where(eq(jobsTable.id, existingOnNatural.id));
+              .where(eq(jobsTable.id, existingInWindow.id));
             jobsRefreshed++;
           }
-          // Non-pending — leave completely untouched
+          // Job already exists within interval window — skip to avoid duplicates
           continue;
         }
 
