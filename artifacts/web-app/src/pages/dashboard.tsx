@@ -1,4 +1,5 @@
 import { useState, useMemo } from "react";
+import { useLocation } from "wouter";
 import {
   useGetDashboardSummary, getGetDashboardSummaryQueryKey,
   useListAudits,          getListAuditsQueryKey,
@@ -29,14 +30,17 @@ const PERIOD_LABELS: Record<Period, string> = {
 };
 
 // ─── Stat Card ───────────────────────────────────────────────────────────────
-function StatCard({ icon: Icon, label, value, sub, trend, trendDir, color }: {
+function StatCard({ icon: Icon, label, value, sub, trend, trendDir, color, onClick }: {
   icon: React.ElementType; label: string; value: string; sub: string;
-  trend?: string; trendDir?: "up" | "down" | "flat"; color?: string;
+  trend?: string; trendDir?: "up" | "down" | "flat"; color?: string; onClick?: () => void;
 }) {
   const tc = trendDir === "up" ? "text-red-500" : trendDir === "down" ? "text-green-500" : "text-gray-400";
   const TrendIcon = trendDir === "up" ? TrendingUp : trendDir === "down" ? TrendingDown : Minus;
   return (
-    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 flex flex-col gap-3">
+    <div
+      className={`bg-white rounded-2xl border border-gray-100 shadow-sm p-5 flex flex-col gap-3${onClick ? " cursor-pointer hover:border-[#00AECD] hover:shadow-md transition-all" : ""}`}
+      onClick={onClick}
+    >
       <div className="flex items-center justify-between">
         <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ background: (color || BRAND) + "18" }}>
           <Icon className="w-5 h-5" style={{ color: color || BRAND }} />
@@ -107,6 +111,7 @@ function ScheduleStateChart({ completionPct }: { completionPct: number }) {
 
 // ─── Main Dashboard ───────────────────────────────────────────────────────────
 export default function Dashboard() {
+  const [, navigate] = useLocation();
   const [period, setPeriod] = useState<Period>("week");
 
   const today    = new Date();
@@ -263,6 +268,7 @@ export default function Dashboard() {
               sub={auditAvgScore != null ? `avg across ${(auditsData?.data ?? []).filter(a => a.overallScore != null).length} audits` : "No scored audits"}
               trendDir="flat"
               color={auditAvgScore == null ? "#9ca3af" : auditAvgScore >= 80 ? "#22c55e" : auditAvgScore >= 60 ? "#f59e0b" : "#ef4444"}
+              onClick={() => navigate("/audits")}
             />
             <StatCard
               icon={SkipForward} label="Excuses / Skips"
