@@ -93,13 +93,15 @@ async function fetchScheduleRange(from: string, to: string, teamId?: string): Pr
 }
 
 // ── Job pill (Gantt) ──────────────────────────────────────────────────────────
-function JobPill({ job, color }: { job: { scheduledDate: string; status: string }; color: string }) {
-  const done    = job.status === "completed";
-  const overdue = job.status === "overdue";
+function JobPill({ job }: { job: { scheduledDate: string; status: string } }) {
+  const done       = job.status === "completed";
+  const overdue    = job.status === "overdue";
+  const inProgress = job.status === "in_progress";
+  const bg = done ? "#10b981" : overdue ? "#ef4444" : inProgress ? "#00AECD" : "#64748b";
   return (
     <div
       className="inline-flex items-center gap-0.5 text-[10px] font-semibold px-1.5 py-0.5 rounded text-white whitespace-nowrap leading-none"
-      style={{ background: done ? "#10b981" : overdue ? "#ef4444" : color, opacity: done ? 0.8 : 1 }}
+      style={{ background: bg, opacity: done ? 0.8 : 1 }}
       title={`${format(new Date(job.scheduledDate + "T00:00:00"), "d MMM yyyy")} — ${job.status}`}
     >
       {done && <CheckCircle className="w-2.5 h-2.5 flex-shrink-0" />}
@@ -198,15 +200,15 @@ function GanttView({
         </div>
       ) : (
         <div className="flex-1 overflow-auto">
-          <table className="w-full text-xs border-collapse" style={{ minWidth: 700 + GANTT_WEEK_COUNT * 85 }}>
-            <thead className="sticky top-0 z-20 bg-white shadow-sm">
+          <table className="text-xs border-collapse" style={{ minWidth: 605 + GANTT_WEEK_COUNT * 85 }}>
+            <thead className="sticky top-0 z-30 bg-white shadow-sm">
               <tr className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">
-                <th className="text-left py-2.5 px-3 border-b border-gray-200" style={{ minWidth: 190 }}>Site</th>
-                <th className="text-left py-2.5 px-3 border-b border-gray-200">Type</th>
-                <th className="text-left py-2.5 px-3 border-b border-gray-200">Standard</th>
-                <th className="text-left py-2.5 px-3 border-b border-gray-200">Freq</th>
-                <th className="text-left py-2.5 px-3 border-b border-gray-200">Time</th>
-                <th className="text-left py-2.5 px-3 border-b border-gray-200" style={{ minWidth: 100 }}>Team</th>
+                <th className="text-left py-2.5 px-3 border-b border-gray-200 sticky bg-white z-30" style={{ left: 0,   minWidth: 190, width: 190 }}>Site</th>
+                <th className="text-left py-2.5 px-3 border-b border-gray-200 sticky bg-white z-30" style={{ left: 190, minWidth: 80,  width: 80 }}>Type</th>
+                <th className="text-left py-2.5 px-3 border-b border-gray-200 sticky bg-white z-30" style={{ left: 270, minWidth: 90,  width: 90 }}>Standard</th>
+                <th className="text-left py-2.5 px-3 border-b border-gray-200 sticky bg-white z-30" style={{ left: 360, minWidth: 70,  width: 70 }}>Freq</th>
+                <th className="text-left py-2.5 px-3 border-b border-gray-200 sticky bg-white z-30" style={{ left: 430, minWidth: 55,  width: 55 }}>Time</th>
+                <th className="text-left py-2.5 px-3 border-b border-gray-200 sticky bg-white z-30 border-r border-gray-200" style={{ left: 485, minWidth: 115, width: 115 }}>Team</th>
                 {weeks.map(w => (
                   <th key={w.key} className="text-left py-2.5 px-3 border-b border-gray-200 border-l border-l-gray-100" style={{ minWidth: 85 }}>
                     {w.label}
@@ -216,8 +218,9 @@ function GanttView({
             </thead>
             <tbody>
               {rows.map((row, idx) => {
-                const color = getTeamColor(row.teamId);
-                const name  = getTeamName(row.teamId);
+                const color  = getTeamColor(row.teamId);
+                const name   = getTeamName(row.teamId);
+                const rowBg  = idx % 2 === 0 ? "#ffffff" : "#f9fafb";
                 const jobsByWeek = new Map<string, typeof row.jobs>(weeks.map(w => [w.key, []]));
                 for (const job of row.jobs) {
                   const monday = startOfWeek(parseISO(job.scheduledDate), { weekStartsOn: 1 });
@@ -229,23 +232,23 @@ function GanttView({
                     key={row.assetId}
                     className={`border-b border-gray-100 hover:bg-blue-50/30 transition-colors ${idx % 2 === 0 ? "" : "bg-gray-50/40"}`}
                   >
-                    <td className="py-2 px-3">
+                    <td className="py-2 px-3 sticky z-10" style={{ left: 0,   background: rowBg, width: 190 }}>
                       <p className="font-semibold text-gray-800 truncate max-w-[185px]" title={row.assetName}>{row.assetName}</p>
                       <p className="text-gray-400 text-[10px] truncate max-w-[185px]">{row.assetDesc ?? row.assetRef}</p>
                     </td>
-                    <td className="py-2 px-3">
+                    <td className="py-2 px-3 sticky z-10" style={{ left: 190, background: rowBg, width: 80 }}>
                       <span className={`px-1.5 py-0.5 rounded text-[9px] font-semibold capitalize ${TYPE_BADGES[row.gardenType] ?? "bg-gray-100 text-gray-600"}`}>
                         {row.gardenType.replace(/_/g, " ")}
                       </span>
                     </td>
-                    <td className="py-2 px-3">
+                    <td className="py-2 px-3 sticky z-10" style={{ left: 270, background: rowBg, width: 90 }}>
                       <span className={`px-1.5 py-0.5 rounded text-[9px] font-semibold capitalize ${STANDARD_BADGES[row.standard] ?? "bg-gray-100 text-gray-600"}`}>
                         {row.standard}
                       </span>
                     </td>
-                    <td className="py-2 px-3 text-gray-600 capitalize">{row.frequency}</td>
-                    <td className="py-2 px-3 text-gray-600">{row.serviceTimeMins}m</td>
-                    <td className="py-2 px-3">
+                    <td className="py-2 px-3 sticky z-10 text-gray-600 capitalize" style={{ left: 360, background: rowBg, width: 70 }}>{row.frequency}</td>
+                    <td className="py-2 px-3 sticky z-10 text-gray-600"            style={{ left: 430, background: rowBg, width: 55 }}>{row.serviceTimeMins}m</td>
+                    <td className="py-2 px-3 sticky z-10 border-r border-gray-200" style={{ left: 485, background: rowBg, width: 115 }}>
                       <div className="flex items-center gap-1.5">
                         <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: color }} />
                         <span className="text-gray-600 truncate max-w-[90px]">{name}</span>
@@ -255,7 +258,7 @@ function GanttView({
                       <td key={w.key} className="py-2 px-2 border-l border-l-gray-100 align-top">
                         <div className="flex flex-col gap-0.5">
                           {(jobsByWeek.get(w.key) ?? []).map(job => (
-                            <JobPill key={job.id} job={job} color={color} />
+                            <JobPill key={job.id} job={job} />
                           ))}
                         </div>
                       </td>
