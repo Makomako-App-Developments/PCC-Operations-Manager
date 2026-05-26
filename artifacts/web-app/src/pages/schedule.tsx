@@ -511,6 +511,17 @@ function WeekView({
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const toggleTeam = (key: string) => setCollapsed(s => ({ ...s, [key]: !s[key] }));
   const [showWeekend, setShowWeekend] = useState(false);
+  const todayStr = format(new Date(), "yyyy-MM-dd");
+  const [collapsedDays, setCollapsedDays] = useState<Record<string, boolean>>({});
+  const isDayCollapsed = (teamKey: string, date: string) => {
+    const key = `${teamKey}::${date}`;
+    if (key in collapsedDays) return collapsedDays[key];
+    return date !== todayStr; // default: today expanded, all others collapsed
+  };
+  const toggleDay = (teamKey: string, date: string) => {
+    const key = `${teamKey}::${date}`;
+    setCollapsedDays(s => ({ ...s, [key]: !isDayCollapsed(teamKey, date) }));
+  };
 
   if (isLoading) return <div className="p-8"><Skeleton className="w-full h-96 rounded-2xl" /></div>;
   if (!weekData?.days) return null;
@@ -654,21 +665,38 @@ function WeekView({
                       return (a.assetRef ?? "").localeCompare(b.assetRef ?? "");
                     });
                     const dateObj = new Date(date + "T00:00:00");
-                    const isToday = format(new Date(), "yyyy-MM-dd") === date;
+                    const isToday = todayStr === date;
+                    const dayCollapsed = isDayCollapsed(teamKey, date);
+                    const dayDoneMins = sorted.filter((j: any) => j.status === "completed").reduce((s: number, j: any) => s + (j.estimatedTimeMins ?? j.serviceTimeMins ?? 0), 0);
+                    const dayTotalMins = sorted.reduce((s: number, j: any) => s + (j.estimatedTimeMins ?? j.serviceTimeMins ?? 0), 0);
 
                     return (
                       <div key={date}>
-                        {/* Day sub-header */}
-                        <div className={`px-4 py-1.5 flex items-center gap-2 border-b border-gray-50 sticky top-0 z-10 ${isToday ? "bg-[#00AECD]/5" : "bg-gray-50/60"}`}>
+                        {/* Day sub-header — clickable to collapse/expand */}
+                        <button
+                          onClick={() => toggleDay(teamKey, date)}
+                          className={`w-full px-4 py-1.5 flex items-center gap-2 border-b border-gray-50 sticky top-0 z-10 text-left transition-colors ${
+                            isToday ? "bg-[#00AECD]/5 hover:bg-[#00AECD]/10" : "bg-gray-50/60 hover:bg-gray-100/80"
+                          }`}
+                        >
+                          <ChevronDown
+                            className={`w-3 h-3 flex-shrink-0 transition-transform ${dayCollapsed ? "-rotate-90" : ""} ${isToday ? "text-[#00AECD]" : "text-gray-400"}`}
+                          />
                           <span className={`text-[11px] font-bold uppercase tracking-wide ${isToday ? "text-[#00AECD]" : "text-gray-500"}`}>
                             {format(dateObj, "EEE d MMM")}
                           </span>
                           <Badge variant="outline" className="text-[10px] bg-white border-gray-200 font-medium ml-auto">
                             {sorted.length}
                           </Badge>
-                        </div>
+                          {dayCollapsed && dayTotalMins > 0 && (
+                            <span className="text-[10px] text-gray-400 flex-shrink-0">
+                              {dayDoneMins > 0 ? `${sorted.filter((j: any) => j.status === "completed").length}/` : ""}{sorted.length} · {(dayTotalMins / 60).toFixed(1)}h
+                            </span>
+                          )}
+                        </button>
 
-                        {/* Geosequenced job rows */}
+                        {/* Geosequenced job rows — hidden when collapsed */}
+                        {!dayCollapsed && (
                         <div className="px-3 py-2 relative">
                           <div className="absolute left-[22px] top-6 bottom-2 w-px bg-gray-100" />
                           <div className="space-y-0">
@@ -726,6 +754,7 @@ function WeekView({
                             })}
                           </div>
                         </div>
+                        )}
                       </div>
                     );
                   })}
