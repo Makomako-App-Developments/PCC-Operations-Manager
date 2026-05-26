@@ -12,8 +12,9 @@ import { FREQ_DAYS, calcCrewAdjustment, type CrewStatus } from "../lib/crew-util
 const router = Router();
 
 const ABSENT_HOUR_THRESHOLD = 5;
-const MAX_CARRY_FORWARD_DAYS = 5;   // max working-day lookahead before placing anyway
-const CAPACITY_TOLERANCE = 1.05;    // accept up to 105% of productive time
+// A job is started today if remaining capacity >= 50% of job time (team finishes it on-site).
+// Otherwise it spills to the next working day.
+const SPILL_THRESHOLD = 0.5;
 
 // ── Date helpers ──────────────────────────────────────────────────────────────
 
@@ -107,7 +108,10 @@ async function buildAbsenceMap(
 
 // ─────────────────────────────────────────────────────────────────────────────
 // POST /api/schedule/generate
-// Capacity-aware generator with geosequenced carry-forward.
+// Geosequenced scheduler — jobs placed on natural due dates in routeOrder.
+// Over-capacity rule: if remaining capacity >= 50% of job time, start today
+// (team finishes on-site, day may run slightly over). Otherwise spill to the
+// next working day.
 // ─────────────────────────────────────────────────────────────────────────────
 const generateBodySchema = z.object({
   fromDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
@@ -127,9 +131,8 @@ router.post(
     const [settings] = await db.select().from(systemSettingsTable).limit(1);
     const productiveTimeMins = settings?.productiveTimeMins ?? 390;
     const standardCrewSize   = settings?.standardCrewSize   ?? 2;
-    const capacityLimit      = Math.round(productiveTimeMins * CAPACITY_TOLERANCE);
 
-    // Load assets (with routeOrder for carry-forward tie-breaking)
+    // Load assets ordered by geosequence
     const assets = await db
       .select()
       .from(assetsTable)
@@ -193,13 +196,12 @@ router.post(
       }
     }
 
-    // ── Step 2: Process dates in order, smallest jobs first per day ──────────
+    // ── Step 2: Process dates in order, geosequence order per day ───────────
     const sortedDates = Array.from(candidatesByDate.keys()).sort();
 
     let jobsCreated = 0;
     let jobsRefreshed = 0;
-    let jobsCarriedForward = 0;
-    let capacityConflicts = 0;
+    let jobsSpilled = 0;       // jobs moved to next day due to <50% capacity remaining
 
     const insertRows: {
       assetId: string;
@@ -209,21 +211,31 @@ router.post(
       status: "pending";
       estimatedTimeMins: number;
       crewStatus: CrewStatus;
+      isAllTeams?: boolean;
     }[] = [];
+
+    // spillQueue holds jobs bumped to the next working day from the previous date
+    const spillQueue = new Map<string, { asset: typeof assets[number] }[]>();
+
+    const allDatesToProcess = new Set(sortedDates);
 
     for (const naturalDate of sortedDates) {
       const candidates = candidatesByDate.get(naturalDate)!;
 
-      // Sort: smallest serviceTimeMins first; ties broken by routeOrder (nulls last)
+      // Geosequence order (routeOrder), service time as secondary tiebreaker
       candidates.sort((a, b) => {
-        const timeDiff = a.asset.serviceTimeMins - b.asset.serviceTimeMins;
-        if (timeDiff !== 0) return timeDiff;
         const ro_a = a.asset.routeOrder ?? 999999;
         const ro_b = b.asset.routeOrder ?? 999999;
-        return ro_a - ro_b;
+        if (ro_a !== ro_b) return ro_a - ro_b;
+        return a.asset.serviceTimeMins - b.asset.serviceTimeMins;
       });
 
-      for (const { asset } of candidates) {
+      // Prepend any spill-overs from the previous day (preserve their geo order)
+      const spills = spillQueue.get(naturalDate) ?? [];
+      spillQueue.delete(naturalDate);
+      const toPlace = [...spills.map(s => ({ asset: s.asset })), ...candidates];
+
+      for (const { asset } of toPlace) {
         const tid = asset.teamId ?? null;
 
         // Check for an existing scheduled job within the interval window
@@ -250,7 +262,7 @@ router.post(
 
         if (existingInWindow) {
           if (existingInWindow.scheduledDate === naturalDate && existingInWindow.status === "pending") {
-            // Exact match on natural date — refresh crew status in place
+            // Exact match — refresh crew status in place
             const { estimatedTimeMins, crewStatus } = calcCrewAdjustment(
               tid, naturalDate, membersByTeam, absenceMap, asset.serviceTimeMins, standardCrewSize,
             );
@@ -260,74 +272,68 @@ router.post(
               .where(eq(jobsTable.id, existingInWindow.id));
             jobsRefreshed++;
           }
-          // Job already exists within interval window — skip to avoid duplicates
           continue;
         }
 
-        // New job — find best placement date with capacity check
-        let placementDate = naturalDate;
-        let carried = false;
-
-        const { estimatedTimeMins: estNatural, crewStatus: csNatural } = calcCrewAdjustment(
+        // Capacity check using 50% spill rule
+        const { estimatedTimeMins: estMins, crewStatus: cs } = calcCrewAdjustment(
           tid, naturalDate, membersByTeam, absenceMap, asset.serviceTimeMins, standardCrewSize,
         );
 
-        const usedOnNatural = tid ? getMins(minutesUsed, tid, naturalDate) : 0;
-        const fitsOnNatural = !tid || usedOnNatural + estNatural <= capacityLimit;
+        const usedToday  = tid ? getMins(minutesUsed, tid, naturalDate) : 0;
+        const remaining  = productiveTimeMins - usedToday;
 
-        if (fitsOnNatural) {
-          placementDate = naturalDate;
-          if (tid) addMins(minutesUsed, tid, naturalDate, estNatural);
+        // Fits comfortably, OR remaining >= 50% of job time → place today
+        const startToday = !tid || remaining >= estMins || remaining >= estMins * SPILL_THRESHOLD;
+
+        if (startToday) {
+          if (tid) addMins(minutesUsed, tid, naturalDate, estMins);
           insertRows.push({
             assetId: asset.id, jobType: "scheduled", teamId: tid,
             scheduledDate: naturalDate, status: "pending",
-            estimatedTimeMins: estNatural, crewStatus: csNatural,
+            estimatedTimeMins: estMins, crewStatus: cs,
+            isAllTeams: !tid,
           });
           jobsCreated++;
         } else {
-          // Try carry-forward: next working days, up to MAX_CARRY_FORWARD_DAYS
-          let placed = false;
-          for (let attempt = 1; attempt <= MAX_CARRY_FORWARD_DAYS; attempt++) {
-            const tryDate = addWorkingDays(naturalDate, attempt);
-            if (tryDate > toDate) break;
-
-            const { estimatedTimeMins: estTry, crewStatus: csTry } = calcCrewAdjustment(
-              tid, tryDate, membersByTeam, absenceMap, asset.serviceTimeMins, standardCrewSize,
-            );
-            const usedOnTry = tid ? getMins(minutesUsed, tid, tryDate) : 0;
-
-            if (!tid || usedOnTry + estTry <= capacityLimit) {
-              placementDate = tryDate;
-              carried = true;
-              if (tid) addMins(minutesUsed, tid, tryDate, estTry);
-              insertRows.push({
-                assetId: asset.id, jobType: "scheduled", teamId: tid,
-                scheduledDate: tryDate, status: "pending",
-                estimatedTimeMins: estTry, crewStatus: csTry,
-                isAllTeams: !tid,
-              });
-              jobsCreated++;
-              placed = true;
-              break;
-            }
-          }
-
-          if (!placed) {
-            // Couldn't fit within 5 working days — place on natural date regardless
-            capacityConflicts++;
-            if (tid) addMins(minutesUsed, tid, naturalDate, estNatural);
+          // Remaining < 50% of job — spill to next working day
+          const nextDay = addWorkingDays(naturalDate, 1);
+          if (nextDay <= toDate) {
+            if (!spillQueue.has(nextDay)) spillQueue.set(nextDay, []);
+            spillQueue.get(nextDay)!.push({ asset });
+            allDatesToProcess.add(nextDay);
+            jobsSpilled++;
+          } else {
+            // No next day in range — place today regardless
+            if (tid) addMins(minutesUsed, tid, naturalDate, estMins);
             insertRows.push({
               assetId: asset.id, jobType: "scheduled", teamId: tid,
               scheduledDate: naturalDate, status: "pending",
-              estimatedTimeMins: estNatural, crewStatus: csNatural,
+              estimatedTimeMins: estMins, crewStatus: cs,
               isAllTeams: !tid,
             });
             jobsCreated++;
-            carried = true; // was a conflict
           }
-
-          if (carried) jobsCarriedForward++;
         }
+      }
+    }
+
+    // Place any remaining spill-overs that landed beyond the last natural date
+    for (const [spillDate, spills] of spillQueue) {
+      if (spillDate > toDate) continue;
+      for (const { asset } of spills) {
+        const tid = asset.teamId ?? null;
+        const { estimatedTimeMins: estMins, crewStatus: cs } = calcCrewAdjustment(
+          tid, spillDate, membersByTeam, absenceMap, asset.serviceTimeMins, standardCrewSize,
+        );
+        if (tid) addMins(minutesUsed, tid, spillDate, estMins);
+        insertRows.push({
+          assetId: asset.id, jobType: "scheduled", teamId: tid,
+          scheduledDate: spillDate, status: "pending",
+          estimatedTimeMins: estMins, crewStatus: cs,
+          isAllTeams: !tid,
+        });
+        jobsCreated++;
       }
     }
 
@@ -335,7 +341,7 @@ router.post(
       await db.insert(jobsTable).values(insertRows);
     }
 
-    res.json({ jobsCreated, jobsRefreshed, jobsCarriedForward, capacityConflicts, fromDate, toDate });
+    res.json({ jobsCreated, jobsRefreshed, jobsSpilled, fromDate, toDate });
   },
 );
 
