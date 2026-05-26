@@ -282,3 +282,14 @@
     inset: -1px;
   }
 }
+/* ── Leaflet: geosequence number overlay on circle markers ────────────────── */
+.route-seq-label {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  padding: 0 !important;
+  pointer-events: none !important;
+}
+.route-seq-label::before {
+  display: none !important;
+}

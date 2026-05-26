@@ -297,6 +297,9 @@ export default function MapPage() {
 
   const visibleKey = visible.map(e => e.asset.id).join("|");
 
+  // Show geosequence number on markers when exactly one team is filtered
+  const showRouteOrder = teamFilter.size === 1;
+
   const uniqueTeams = useMemo(() => teams, [teams]);
   const presentTypes = useMemo(
     () => GARDEN_TYPES.filter(t => enriched.some(e => e.asset.gardenType === t)),
@@ -575,6 +578,14 @@ export default function MapPage() {
                         {asset.serviceTimeMins} min · {FREQ_LABELS[asset.frequency] ?? asset.frequency}
                       </div>
                     </div>
+                  </Tooltip>
+                )}
+
+                {showRouteOrder && asset.routeOrder != null && (
+                  <Tooltip permanent direction="center" offset={[0, 0]} opacity={1} className="route-seq-label">
+                    <span style={{ fontWeight: 700, fontSize: 10, color: "#fff", lineHeight: 1, display: "block", textAlign: "center" }}>
+                      {asset.routeOrder}
+                    </span>
                   </Tooltip>
                 )}
 
