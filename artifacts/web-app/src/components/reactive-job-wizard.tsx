@@ -987,7 +987,7 @@ export function ReactiveJobWizard({ teamsData, assetsData, onClose, onPublished 
                   ← Back
                 </button>
                 <button
-                  onClick={() => setStep(3)}
+                  onClick={() => setStep(totalWithReactive > MAX_CAP ? 3 : 4)}
                   disabled={weekLoading}
                   className="flex items-center gap-2 px-6 py-2.5 rounded-xl text-sm font-semibold text-white hover:opacity-90 disabled:opacity-50"
                   style={{ background: BRAND }}
@@ -1389,7 +1389,7 @@ export function ReactiveJobWizard({ teamsData, assetsData, onClose, onPublished 
 
               <div className="flex items-center justify-between pb-8">
                 <button
-                  onClick={() => setStep(3)}
+                  onClick={() => setStep(totalWithReactive > MAX_CAP ? 3 : 2)}
                   className="text-sm text-gray-400 hover:text-gray-600"
                 >
                   ← Back
