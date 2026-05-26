@@ -1,6 +1,6 @@
 import { Router } from "express";
-import { db, teamsTable, teamMembersTable, usersTable, insertTeamSchema } from "@workspace/db";
-import { eq, sql } from "drizzle-orm";
+import { db, teamsTable, teamMembersTable, usersTable, assetsTable, systemSettingsTable, insertTeamSchema } from "@workspace/db";
+import { eq, sql, isNull } from "drizzle-orm";
 import { requireAuth, requireRole } from "../middlewares/auth";
 import { validateBody } from "../middlewares/validate";
 import { z } from "zod";
@@ -11,6 +11,70 @@ const router = Router();
 router.get("/teams", requireAuth, async (_req, res) => {
   const rows = await db.select().from(teamsTable);
   res.json(rows);
+});
+
+// GET /api/teams/workload
+// Must be before /teams/:id to avoid wildcard conflict.
+// Returns per-team asset stats: site count, area m², annual service hours, FTE requirement.
+// Includes a synthetic "All Teams" row for null-teamId (full-team) assets.
+router.get("/teams/workload", requireAuth, async (_req, res) => {
+  const WORKING_DAYS_PER_YEAR = 261; // 52 × 5 – ~9 public holidays
+
+  // System settings for productive time
+  const [settings] = await db.select({ productiveTimeMins: systemSettingsTable.productiveTimeMins })
+    .from(systemSettingsTable).limit(1);
+  const productiveTimeMins = settings?.productiveTimeMins ?? 390;
+  const annualFteHours = (productiveTimeMins / 60) * WORKING_DAYS_PER_YEAR;
+
+  // Aggregate per-team stats using SQL CASE for freq → annual visits
+  const freqCase = sql<number>`
+    CASE ${assetsTable.frequency}
+      WHEN 'weekly'      THEN 365.0 / 7
+      WHEN 'fortnightly' THEN 365.0 / 14
+      WHEN 'monthly'     THEN 365.0 / 28
+      WHEN 'bimonthly'   THEN 365.0 / 56
+      WHEN 'quarterly'   THEN 365.0 / 91
+      ELSE                    365.0 / 28
+    END
+  `;
+
+  const teamRows = await db
+    .select({
+      teamId:      assetsTable.teamId,
+      siteCount:   sql<number>`cast(count(*) as int)`,
+      totalAreaM2: sql<number>`cast(coalesce(sum(${assetsTable.areaM2}), 0) as numeric)`,
+      annualHours: sql<number>`cast(coalesce(sum(${assetsTable.serviceTimeMins} / 60.0 * (${freqCase})), 0) as numeric)`,
+    })
+    .from(assetsTable)
+    .where(sql`${assetsTable.isActive} = true`)
+    .groupBy(assetsTable.teamId);
+
+  const teams = await db.select({ id: teamsTable.id, name: teamsTable.name }).from(teamsTable);
+  const teamNameMap = Object.fromEntries(teams.map(t => [t.id, t.name]));
+
+  const result = teamRows.map(row => {
+    const annualHours = Number(row.annualHours);
+    return {
+      teamId:       row.teamId,
+      teamName:     row.teamId ? (teamNameMap[row.teamId] ?? "Unknown") : "All Teams",
+      siteCount:    Number(row.siteCount),
+      totalAreaM2:  Math.round(Number(row.totalAreaM2)),
+      annualHours:  Math.round(annualHours),
+      ftesRequired: annualFteHours > 0 ? Math.round((annualHours / annualFteHours) * 100) / 100 : 0,
+    };
+  });
+
+  // Sort: named teams first (alphabetically), "All Teams" last
+  result.sort((a, b) => {
+    if (a.teamId === null) return 1;
+    if (b.teamId === null) return -1;
+    return a.teamName.localeCompare(b.teamName);
+  });
+
+  res.json({
+    rows: result,
+    meta: { productiveTimeMins, annualFteHours: Math.round(annualFteHours * 10) / 10, workingDaysPerYear: WORKING_DAYS_PER_YEAR },
+  });
 });
 
 // GET /api/teams/with-counts
