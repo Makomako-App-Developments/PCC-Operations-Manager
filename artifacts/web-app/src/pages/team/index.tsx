@@ -215,6 +215,7 @@ function WorkloadTab() {
                 <th className="text-left text-[10px] font-bold uppercase tracking-wider text-gray-500 px-6 py-3">Team</th>
                 <th className="text-right text-[10px] font-bold uppercase tracking-wider text-gray-500 px-4 py-3">Sites</th>
                 <th className="text-right text-[10px] font-bold uppercase tracking-wider text-gray-500 px-4 py-3">Area (m²)</th>
+                <th className="text-right text-[10px] font-bold uppercase tracking-wider text-gray-500 px-4 py-3">Weekly Hrs</th>
                 <th className="text-right text-[10px] font-bold uppercase tracking-wider text-gray-500 px-4 py-3">Annual Hrs</th>
                 <th className="text-right text-[10px] font-bold uppercase tracking-wider text-gray-500 px-6 py-3">FTEs Required</th>
               </tr>
@@ -244,6 +245,9 @@ function WorkloadTab() {
                     </td>
                     <td className="px-4 py-4 text-right">
                       <span className="text-sm font-semibold text-gray-800">{fmt(row.totalAreaM2)}</span>
+                    </td>
+                    <td className="px-4 py-4 text-right">
+                      <span className="text-sm font-semibold text-gray-800">{(row.annualHours / 52).toFixed(1)}</span>
                     </td>
                     <td className="px-4 py-4 text-right">
                       <span className="text-sm font-semibold text-gray-800">{fmt(row.annualHours)}</span>
@@ -283,6 +287,9 @@ function WorkloadTab() {
                   </td>
                   <td className="px-4 py-3 text-right">
                     <span className="text-sm font-bold" style={{ color: NAVY }}>{fmt(totals.totalAreaM2)} m²</span>
+                  </td>
+                  <td className="px-4 py-3 text-right">
+                    <span className="text-sm font-bold" style={{ color: NAVY }}>{(totals.annualHours / 52).toFixed(1)} hrs</span>
                   </td>
                   <td className="px-4 py-3 text-right">
                     <span className="text-sm font-bold" style={{ color: NAVY }}>{fmt(totals.annualHours)} hrs</span>
