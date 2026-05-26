@@ -141,33 +141,6 @@ router.post(
   },
 );
 
-// GET /api/assets/by-team-route?teamId=xxx
-// Returns active assets for a team ordered by route_order for the drag-reorder UI.
-router.get(
-  "/assets/by-team-route",
-  requireAuth,
-  async (req, res) => {
-    const teamId = req.query.teamId as string | undefined;
-    if (!teamId) { res.status(400).json({ error: "teamId required" }); return; }
-
-    const assets = await db
-      .select({
-        id:         assetsTable.id,
-        name:       assetsTable.name,
-        suburb:     assetsTable.suburb,
-        gardenType: assetsTable.gardenType,
-        routeOrder: assetsTable.routeOrder,
-        lat:        assetsTable.lat,
-        lng:        assetsTable.lng,
-      })
-      .from(assetsTable)
-      .where(and(eq(assetsTable.teamId, teamId), eq(assetsTable.isActive, true)))
-      .orderBy(sql`${assetsTable.routeOrder} NULLS LAST`, assetsTable.name);
-
-    res.json(assets);
-  },
-);
-
 // PATCH /api/assets/route-order
 // Body: { updates: [{ id: string, routeOrder: number }] }
 // Batch-updates route_order for the supplied asset IDs in one query.

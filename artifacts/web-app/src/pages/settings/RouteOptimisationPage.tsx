@@ -204,7 +204,7 @@ export default function RouteOptimisationPage() {
     setIsDirty(false);
     apiFetch(`/api/assets/by-team-route?teamId=${selectedTeamId}`)
       .then(r => r.json())
-      .then((data: RouteAsset[]) => { setAssets(data); })
+      .then((data: unknown) => { setAssets(Array.isArray(data) ? data : []); })
       .catch(() => toast({ title: "Failed to load route assets", variant: "destructive" }))
       .finally(() => setLoadingAssets(false));
   }, [selectedTeamId]);

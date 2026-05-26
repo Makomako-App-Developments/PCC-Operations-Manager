@@ -76,6 +76,29 @@ router.get("/assets", requireAuth, validateQuery(listQuerySchema), async (req, r
   res.json({ data: rows, total: Number(count), page, limit });
 });
 
+// GET /api/assets/by-team-route?teamId=xxx
+// Must be registered BEFORE /assets/:id to avoid Express matching "by-team-route" as an id.
+router.get("/assets/by-team-route", requireAuth, async (req, res) => {
+  const teamId = req.query.teamId as string | undefined;
+  if (!teamId) { res.status(400).json({ error: "teamId required" }); return; }
+
+  const rows = await db
+    .select({
+      id:         assetsTable.id,
+      name:       assetsTable.name,
+      suburb:     assetsTable.suburb,
+      gardenType: assetsTable.gardenType,
+      routeOrder: assetsTable.routeOrder,
+      lat:        assetsTable.lat,
+      lng:        assetsTable.lng,
+    })
+    .from(assetsTable)
+    .where(and(eq(assetsTable.teamId, teamId), eq(assetsTable.isActive, true)))
+    .orderBy(sql`${assetsTable.routeOrder} NULLS LAST`, assetsTable.name);
+
+  res.json(rows);
+});
+
 // GET /api/assets/:id
 router.get("/assets/:id", requireAuth, async (req, res) => {
   const id = String(req.params.id);
