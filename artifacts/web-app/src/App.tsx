@@ -27,6 +27,7 @@ import Specification from "@/pages/specification/index";
 import Team from "@/pages/team/index";
 import Settings from "@/pages/settings/index";
 import MapPage from "@/pages/map";
+import CompletedWorks from "@/pages/completed-works/index";
 
 const queryClient = new QueryClient();
 
@@ -74,6 +75,7 @@ function Router() {
       <Route path="/settings"><ProtectedRoute component={Settings} /></Route>
       <Route path="/team"><ProtectedRoute component={Team} /></Route>
       <Route path="/specification"><ProtectedRoute component={Specification} /></Route>
+      <Route path="/completed-works"><ProtectedRoute component={CompletedWorks} /></Route>
       <Route path="/">
         <ProtectedRoute component={() => {
           window.location.href = "/dashboard";

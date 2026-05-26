@@ -24,16 +24,17 @@ export function Layout({ children }: { children: React.ReactNode }) {
   const { user, logout } = useAuth();
 
   const allNav = [
-    { icon: LayoutDashboard, label: "Dashboard",    href: "/dashboard",     managerOnly: false },
-    { icon: List,            label: "Asset Register", href: "/assets",      managerOnly: false },
-    { icon: Map,             label: "Map",           href: "/map",          managerOnly: false },
-    { icon: CalendarDays,    label: "Schedule",      href: "/schedule",     managerOnly: false },
-    { icon: AlertTriangle,   label: "Reactive Jobs", href: "/reactive-jobs", managerOnly: false },
-    { icon: Sprout,          label: "Programmes",    href: "/programmes",   managerOnly: false },
-    { icon: ClipboardCheck,  label: "Audits",        href: "/audits",       managerOnly: false },
-    { icon: BarChart2,       label: "Reports",       href: "/reports",      managerOnly: false },
-    { icon: FileText,        label: "Specification", href: "/specification", managerOnly: false },
-    { icon: UsersRound,      label: "Team",          href: "/team",         managerOnly: false },
+    { icon: LayoutDashboard, label: "Dashboard",       href: "/dashboard",        managerOnly: false },
+    { icon: List,            label: "Asset Register",  href: "/assets",           managerOnly: false },
+    { icon: Map,             label: "Map",             href: "/map",              managerOnly: false },
+    { icon: CalendarDays,    label: "Schedule",        href: "/schedule",         managerOnly: false },
+    { icon: AlertTriangle,   label: "Reactive Jobs",   href: "/reactive-jobs",    managerOnly: false },
+    { icon: Layers,          label: "Completed Works", href: "/completed-works",  managerOnly: false },
+    { icon: Sprout,          label: "Programmes",      href: "/programmes",       managerOnly: false },
+    { icon: ClipboardCheck,  label: "Audits",          href: "/audits",           managerOnly: false },
+    { icon: BarChart2,       label: "Reports",         href: "/reports",          managerOnly: false },
+    { icon: FileText,        label: "Specification",   href: "/specification",    managerOnly: false },
+    { icon: UsersRound,      label: "Team",            href: "/team",             managerOnly: false },
   ];
   const isPrivileged = user?.role === "manager" || user?.role === "supervisor";
   const nav = allNav.filter(item => !item.managerOnly || isPrivileged);

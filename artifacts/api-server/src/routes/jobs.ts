@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db, jobsTable, reactiveJobsTable, insertJobSchema, insertReactiveJobSchema, assetsTable, teamsTable, usersTable, jobTeamCompletionsTable } from "@workspace/db";
-import { eq, and, inArray, or } from "drizzle-orm";
+import { eq, and, inArray, or, gte, lte, ilike, desc } from "drizzle-orm";
 import { z } from "zod";
 import { requireAuth, requireRole } from "../middlewares/auth";
 import { validateBody, validateQuery } from "../middlewares/validate";
@@ -51,6 +51,66 @@ router.get("/jobs", requireAuth, validateQuery(jobQuerySchema), async (req, res)
     .limit(limit)
     .offset(offset);
   res.json({ data: rows, page, limit });
+});
+
+// GET /api/completed-works  — enriched view joining jobs + assets + teams
+const completedWorksQuerySchema = z.object({
+  teamId:     z.string().uuid().optional(),
+  ward:       z.string().optional(),
+  gardenType: z.string().optional(),
+  from:       z.string().optional(),
+  to:         z.string().optional(),
+  search:     z.string().optional(),
+  page:       z.coerce.number().int().min(1).default(1),
+  limit:      z.coerce.number().int().min(1).max(1000).default(100),
+});
+
+router.get("/completed-works", requireAuth, validateQuery(completedWorksQuerySchema), async (req, res) => {
+  const q = res.locals.query as z.infer<typeof completedWorksQuerySchema>;
+
+  const conditions: ReturnType<typeof eq>[] = [eq(jobsTable.status, "completed")];
+  if (q.teamId)     conditions.push(eq(jobsTable.teamId, q.teamId) as any);
+  if (q.from)       conditions.push(gte(jobsTable.scheduledDate, q.from) as any);
+  if (q.to)         conditions.push(lte(jobsTable.scheduledDate, q.to) as any);
+  if (q.ward)       conditions.push(eq(assetsTable.ward, q.ward as any) as any);
+  if (q.gardenType) conditions.push(eq(assetsTable.gardenType, q.gardenType as any) as any);
+  if (q.search) {
+    const term = `%${q.search}%`;
+    conditions.push(or(ilike(assetsTable.name, term), ilike(assetsTable.reference, term)) as any);
+  }
+
+  const offset = (q.page - 1) * q.limit;
+
+  const rows = await db
+    .select({
+      id:               jobsTable.id,
+      jobType:          jobsTable.jobType,
+      scheduledDate:    jobsTable.scheduledDate,
+      completedAt:      jobsTable.completedAt,
+      actualTimeMins:   jobsTable.actualTimeMins,
+      estimatedTimeMins: jobsTable.estimatedTimeMins,
+      notes:            jobsTable.notes,
+      crewStatus:       jobsTable.crewStatus,
+      isAllTeams:       jobsTable.isAllTeams,
+      teamId:           jobsTable.teamId,
+      teamName:         teamsTable.name,
+      assetId:          assetsTable.id,
+      assetName:        assetsTable.name,
+      assetReference:   assetsTable.reference,
+      gardenType:       assetsTable.gardenType,
+      ward:             assetsTable.ward,
+      suburb:           assetsTable.suburb,
+      areaM2:           assetsTable.areaM2,
+    })
+    .from(jobsTable)
+    .leftJoin(assetsTable, eq(jobsTable.assetId, assetsTable.id))
+    .leftJoin(teamsTable, eq(jobsTable.teamId, teamsTable.id))
+    .where(and(...conditions))
+    .orderBy(desc(jobsTable.scheduledDate))
+    .limit(q.limit)
+    .offset(offset);
+
+  res.json({ data: rows, page: q.page, limit: q.limit });
 });
 
 // GET /api/jobs/:id
