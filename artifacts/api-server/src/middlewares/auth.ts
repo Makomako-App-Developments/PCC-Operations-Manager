@@ -37,7 +37,8 @@ export function requireAuth(req: Request, res: Response, next: NextFunction) {
 
 export function requireRole(...roles: string[]) {
   return (req: Request, res: Response, next: NextFunction) => {
-    if (!req.auth || !roles.includes(req.auth.role)) {
+    // administrator is always allowed — they supersede all role restrictions
+    if (!req.auth || (req.auth.role !== "administrator" && !roles.includes(req.auth.role))) {
       res.status(403).json({ error: "Forbidden" });
       return;
     }
