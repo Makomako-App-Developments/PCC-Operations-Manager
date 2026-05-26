@@ -12,9 +12,18 @@ import { MapContainer, TileLayer, Polyline, CircleMarker, Tooltip } from "react-
 import { useListTeams } from "@workspace/api-client-react";
 import "leaflet/dist/leaflet.css";
 
-const API_BASE = "";
-const apiFetch = (path: string, opts?: RequestInit) =>
-  fetch(`${API_BASE}${path}`, { credentials: "include", ...opts });
+// apiFetch with silent 401 → token-refresh → retry, matching the shared API client behaviour.
+// Without this, saves fail silently after the 15-min access token expires mid-session.
+async function apiFetch(path: string, opts?: RequestInit): Promise<Response> {
+  let r = await fetch(path, { credentials: "include", ...opts });
+  if (r.status === 401) {
+    const refreshed = await fetch("/api/auth/refresh", { method: "POST", credentials: "include" });
+    if (refreshed.ok) {
+      r = await fetch(path, { credentials: "include", ...opts });
+    }
+  }
+  return r;
+}
 
 interface SystemSettings {
   id: number;
