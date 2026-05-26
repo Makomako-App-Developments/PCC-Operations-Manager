@@ -141,35 +141,4 @@ router.post(
   },
 );
 
-// PATCH /api/assets/route-order
-// Body: { updates: [{ id: string, routeOrder: number }] }
-// Batch-updates route_order for the supplied asset IDs in one query.
-router.patch(
-  "/assets/route-order",
-  requireAuth,
-  requireRole("manager", "supervisor"),
-  async (req, res) => {
-    const { updates } = req.body as { updates: { id: string; routeOrder: number }[] };
-    if (!Array.isArray(updates) || updates.length === 0) {
-      res.status(400).json({ error: "updates array required" }); return;
-    }
-
-    const ids    = updates.map(u => u.id);
-    const orders = updates.map(u => u.routeOrder);
-
-    await db.execute(sql`
-      UPDATE assets
-      SET route_order = v.ord,
-          updated_at  = NOW()
-      FROM (
-        SELECT unnest(${sql.raw(`ARRAY[${ids.map(id => `'${id}'`).join(",")}]::uuid[]`)}) AS id,
-               unnest(${sql.raw(`ARRAY[${orders.join(",")}]::int[]`)})                    AS ord
-      ) v
-      WHERE assets.id = v.id
-    `);
-
-    res.json({ updated: updates.length });
-  },
-);
-
 export default router;
