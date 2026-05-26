@@ -19,8 +19,10 @@ interface LivePerson {
   team:   string;
 }
 
+const OFFICE_ROLES = new Set(["administrator", "manager"]);
+
 function useLivePeople(): LivePerson[] {
-  const { data: users = [] } = useQuery<{ data: Array<{ id: string; name: string; teamId: string | null; isActive: boolean }> }>({
+  const { data: users = [] } = useQuery<{ data: Array<{ id: string; name: string; role: string; teamId: string | null; isActive: boolean }> }>({
     queryKey: ["users"],
     queryFn: async () => {
       const res = await fetch("/api/users", { credentials: "include" });
@@ -41,7 +43,7 @@ function useLivePeople(): LivePerson[] {
 
   const teamMap = Object.fromEntries(teams.map(t => [t.id, t.name]));
   return (users.data ?? [])
-    .filter(u => u.isActive)
+    .filter(u => u.isActive && !OFFICE_ROLES.has(u.role))
     .map(u => ({
       id:     u.id,
       name:   u.name,
