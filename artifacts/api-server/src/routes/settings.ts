@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { db, assetsTable, systemSettingsTable, teamsTable, teamMembersTable } from "@workspace/db";
 import { eq, isNotNull, and } from "drizzle-orm";
+import { sql } from "drizzle-orm";
 import { z } from "zod";
 import { requireAuth, requireRole } from "../middlewares/auth";
 import { validateBody } from "../middlewares/validate";
@@ -100,24 +101,24 @@ router.post(
         .filter(a => a.lat == null || a.lng == null)
         .map(a => a.id);
 
-      // Compute nearest-neighbour route for assets with coordinates
+      // Compute 2-opt optimised route for assets with coordinates
       const orderedIds = nearestNeighbourRoute(withCoords);
 
-      // Update route_order: 1-based sequence
-      let order = 1;
-      for (const id of orderedIds) {
-        await db
-          .update(assetsTable)
-          .set({ routeOrder: order++, updatedAt: new Date() })
-          .where(eq(assetsTable.id, id));
-      }
+      // Batch-update route_order in a single query using unnest
+      const allIds    = [...orderedIds, ...withoutCoords];
+      const allOrders = allIds.map((_, i) => i + 1);
 
-      // Assets without coordinates go to the end
-      for (const id of withoutCoords) {
-        await db
-          .update(assetsTable)
-          .set({ routeOrder: order++, updatedAt: new Date() })
-          .where(eq(assetsTable.id, id));
+      if (allIds.length > 0) {
+        await db.execute(sql`
+          UPDATE assets
+          SET route_order = v.ord,
+              updated_at  = NOW()
+          FROM (
+            SELECT unnest(${sql.raw(`ARRAY[${allIds.map(id => `'${id}'`).join(",")}]::uuid[]`)} ) AS id,
+                   unnest(${sql.raw(`ARRAY[${allOrders.join(",")}]::int[]`)}               ) AS ord
+          ) v
+          WHERE assets.id = v.id
+        `);
       }
 
       totalAssetsUpdated += assets.length;
