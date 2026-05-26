@@ -1037,13 +1037,15 @@ export default function Schedule() {
   };
 
   const getTeamColor = (teamId?: string | null) => {
-    if (!teamId || !teamsData) return "#94a3b8";
+    if (!teamId) return "#00AECD";
+    if (!teamsData) return "#94a3b8";
     const idx = teamsData.findIndex(t => t.id === teamId);
     return TEAM_COLORS[idx % TEAM_COLORS.length] ?? "#94a3b8";
   };
   const getTeamName = (teamId?: string | null) => {
-    if (!teamId || !teamsData) return "Unassigned";
-    return teamsData.find(t => t.id === teamId)?.name ?? "Unassigned";
+    if (!teamId) return "All Teams";
+    if (!teamsData) return "All Teams";
+    return teamsData.find(t => t.id === teamId)?.name ?? "All Teams";
   };
 
   return (

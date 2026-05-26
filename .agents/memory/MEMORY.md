@@ -1,0 +1,1 @@
+- [Master data source](master-data-source.md) — the Excel spreadsheet is the authoritative asset list for this client; all null-team assets are "Full team" by design.
