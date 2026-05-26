@@ -318,10 +318,40 @@ router.post(
         }
         if (eligible.length === 0) continue;
 
-        // ── Pass: place in geosequence; defer what doesn't fit ──────────────
-        const deferred: AssetRow[] = [];
+        // ── Place in geosequence; max 1-job look-ahead when slot is tight ──────
+        //
+        // When job[i] doesn't fit:
+        //   • Peek at job[i+1] only.
+        //   • If job[i+1] fits → place it today (fills the slot), then start
+        //     job[i] today as an overrun (crew finishes it tomorrow morning),
+        //     and spill job[i+2 …] to the next working day.
+        //   • If job[i+1] doesn't fit (or doesn't exist) → start job[i] today
+        //     as an overrun, spill job[i+1 …] to the next working day.
+        //
+        // In both cases the day is closed for this team after the overrun.
+        // ─────────────────────────────────────────────────────────────────────
+        const nextDay = addWorkingDays(naturalDate, 1);
 
-        for (const asset of eligible) {
+        const spillAssets = (from: number) => {
+          for (let k = from; k < eligible.length; k++) {
+            if (nextDay <= toDate) {
+              if (!spillQueue.has(nextDay)) spillQueue.set(nextDay, []);
+              spillQueue.get(nextDay)!.push(eligible[k]);
+              jobsSpilled++;
+            } else {
+              const { estimatedTimeMins: e, crewStatus: c } = calcCrewAdjustment(
+                tid, naturalDate, membersByTeam, absenceMap, eligible[k].serviceTimeMins, standardCrewSize,
+              );
+              placeJob(eligible[k], naturalDate, e, c);
+            }
+          }
+        };
+
+        let dayDone = false;
+        for (let i = 0; i < eligible.length; i++) {
+          if (dayDone) break;
+
+          const asset = eligible[i];
           const usedToday = tid ? getMins(minutesUsed, tid, naturalDate) : 0;
           const remaining = productiveTimeMins - usedToday;
           const { estimatedTimeMins: estMins, crewStatus: cs } = calcCrewAdjustment(
@@ -329,42 +359,32 @@ router.post(
           );
 
           if (!tid || remaining >= estMins) {
-            // Fits — place today
+            // Fits — place today and continue
             placeJob(asset, naturalDate, estMins, cs);
           } else {
-            // Doesn't fit this slot — defer; the loop continues to find a smaller
-            // job later in geosequence that might fill the gap
-            deferred.push(asset);
-          }
-        }
-
-        // ── Handle deferred jobs ─────────────────────────────────────────────
-        // First deferred job: start it today even though it overruns (the crew
-        // begins the work and returns to finish it first thing tomorrow).
-        // All subsequent deferred jobs spill to the next working day.
-        if (deferred.length > 0) {
-          const nextDay = addWorkingDays(naturalDate, 1);
-
-          // Start the first deferred job today (overrun — marks day as full)
-          const first = deferred[0];
-          const { estimatedTimeMins: estFirst, crewStatus: csFirst } = calcCrewAdjustment(
-            tid, naturalDate, membersByTeam, absenceMap, first.serviceTimeMins, standardCrewSize,
-          );
-          placeJob(first, naturalDate, estFirst, csFirst);
-
-          // Remaining deferred jobs spill to next working day
-          for (const asset of deferred.slice(1)) {
-            if (nextDay <= toDate) {
-              if (!spillQueue.has(nextDay)) spillQueue.set(nextDay, []);
-              spillQueue.get(nextDay)!.push(asset);
-              jobsSpilled++;
-            } else {
-              // End of range — place today regardless
-              const { estimatedTimeMins: estMins, crewStatus: cs } = calcCrewAdjustment(
-                tid, naturalDate, membersByTeam, absenceMap, asset.serviceTimeMins, standardCrewSize,
+            // Doesn't fit — peek at the immediately next job only
+            const nextAsset = eligible[i + 1];
+            if (nextAsset) {
+              const usedAfter = tid ? getMins(minutesUsed, tid, naturalDate) : 0;
+              const remAfter  = productiveTimeMins - usedAfter;
+              const { estimatedTimeMins: estNext, crewStatus: csNext } = calcCrewAdjustment(
+                tid, naturalDate, membersByTeam, absenceMap, nextAsset.serviceTimeMins, standardCrewSize,
               );
+
+              if (!tid || remAfter >= estNext) {
+                // Next job fits the remaining slot — place it today
+                placeJob(nextAsset, naturalDate, estNext, csNext);
+              }
+              // Whether or not the next job fit, start the current job today (overrun)
+              placeJob(asset, naturalDate, estMins, cs);
+              // Spill everything from i+2 onwards (or i+1 if next didn't fit)
+              const spillFrom = (!tid || remAfter >= estNext) ? i + 2 : i + 1;
+              spillAssets(spillFrom);
+            } else {
+              // No next job — start current today as overrun; nothing to spill
               placeJob(asset, naturalDate, estMins, cs);
             }
+            dayDone = true;
           }
         }
       }
