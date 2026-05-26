@@ -15,6 +15,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription, SheetFooter } from "@/components/ui/sheet";
@@ -116,14 +117,14 @@ const GANTT_DAY_COUNT  = 14; // 2 weeks shown in daily Gantt
 // ── Daily Gantt View ──────────────────────────────────────────────────────────
 function DailyGanttView({
   ganttDayStart,
-  selectedTeamId,
+  selectedTeamIds,
   searchTerm,
   getTeamColor,
   getTeamName,
   onJobClick,
 }: {
   ganttDayStart: Date;
-  selectedTeamId: string;
+  selectedTeamIds: string[];
   searchTerm: string;
   getTeamColor: (id?: string | null) => string;
   getTeamName: (id?: string | null) => string;
@@ -132,6 +133,7 @@ function DailyGanttView({
   const from = format(ganttDayStart, "yyyy-MM-dd");
   const to   = format(addDays(ganttDayStart, GANTT_DAY_COUNT - 1), "yyyy-MM-dd");
   const todayStr = format(new Date(), "yyyy-MM-dd");
+  const apiTeamId = selectedTeamIds.length === 1 ? selectedTeamIds[0] : undefined;
 
   const days = Array.from({ length: GANTT_DAY_COUNT }, (_, i) => {
     const d = addDays(ganttDayStart, i);
@@ -146,8 +148,8 @@ function DailyGanttView({
   });
 
   const { data, isLoading } = useQuery<GanttData>({
-    queryKey: ["/api/schedule/range", from, to, selectedTeamId],
-    queryFn:  () => fetchScheduleRange(from, to, selectedTeamId),
+    queryKey: ["/api/schedule/range", from, to, selectedTeamIds.join(",")],
+    queryFn:  () => fetchScheduleRange(from, to, apiTeamId),
   });
 
   if (isLoading) {
@@ -162,12 +164,15 @@ function DailyGanttView({
 
   const allRows = data?.rows ?? [];
   const q = searchTerm.trim().toLowerCase();
+  const teamFiltered = selectedTeamIds.length > 1
+    ? allRows.filter(r => selectedTeamIds.includes(r.teamId ?? ""))
+    : allRows;
   const rows = q
-    ? allRows.filter(r =>
+    ? teamFiltered.filter(r =>
         r.assetName.toLowerCase().includes(q) ||
         r.assetRef.toLowerCase().includes(q),
       )
-    : allRows;
+    : teamFiltered;
 
   // Index jobs by date for fast lookup
   const jobsByAssetDay = new Map<string, typeof rows[0]["jobs"]>();
@@ -311,23 +316,24 @@ function DailyGanttView({
 // ── Gantt View ────────────────────────────────────────────────────────────────
 function GanttView({
   ganttStart,
-  selectedTeamId,
+  selectedTeamIds,
   searchTerm,
   getTeamColor,
   getTeamName,
 }: {
   ganttStart: Date;
-  selectedTeamId: string;
+  selectedTeamIds: string[];
   searchTerm: string;
   getTeamColor: (id?: string | null) => string;
   getTeamName: (id?: string | null) => string;
 }) {
   const ganttFrom = format(ganttStart, "yyyy-MM-dd");
   const ganttTo   = format(addWeeks(ganttStart, GANTT_WEEK_COUNT), "yyyy-MM-dd");
+  const apiTeamId = selectedTeamIds.length === 1 ? selectedTeamIds[0] : undefined;
 
   const { data, isLoading } = useQuery<GanttData>({
-    queryKey: ["/api/schedule/range", ganttFrom, ganttTo, selectedTeamId],
-    queryFn:  () => fetchScheduleRange(ganttFrom, ganttTo, selectedTeamId),
+    queryKey: ["/api/schedule/range", ganttFrom, ganttTo, selectedTeamIds.join(",")],
+    queryFn:  () => fetchScheduleRange(ganttFrom, ganttTo, apiTeamId),
   });
 
   const weeks = Array.from({ length: GANTT_WEEK_COUNT }, (_, i) => {
@@ -347,12 +353,15 @@ function GanttView({
 
   const allRows = data?.rows ?? [];
   const q = searchTerm.trim().toLowerCase();
+  const teamFiltered = selectedTeamIds.length > 1
+    ? allRows.filter(r => selectedTeamIds.includes(r.teamId ?? ""))
+    : allRows;
   const rows = q
-    ? allRows.filter(r =>
+    ? teamFiltered.filter(r =>
         r.assetName.toLowerCase().includes(q) ||
         r.assetRef.toLowerCase().includes(q),
       )
-    : allRows;
+    : teamFiltered;
 
   // Team summary
   const teamJobMap   = new Map<string, number>();
@@ -697,7 +706,6 @@ function WeekView({
 }: {
   weekData: any;
   isLoading: boolean;
-  selectedTeamId: string;
   searchTerm: string;
   teamsCount: number;
   getTeamColor: (id?: string | null) => string;
@@ -997,7 +1005,8 @@ export default function Schedule() {
   const [currentDate, setCurrentDate]   = useState(new Date());
   const [ganttStart, setGanttStart]     = useState(() => startOfWeek(new Date(), { weekStartsOn: 1 }));
   const [ganttDayStart, setGanttDayStart] = useState(() => startOfWeek(new Date(), { weekStartsOn: 1 }));
-  const [selectedTeamId, setSelectedTeamId] = useState("all");
+  const [selectedTeamIds, setSelectedTeamIds] = useState<string[]>([]);
+  const [teamPickerOpen, setTeamPickerOpen] = useState(false);
   const [dialogOpen, setDialogOpen]     = useState(false);
   const [genFrom, setGenFrom]           = useState("");
   const [genTo, setGenTo]               = useState("");
@@ -1030,9 +1039,11 @@ export default function Schedule() {
 
   const { data: teamsData } = useListTeams({ query: { queryKey: getListTeamsQueryKey() } });
 
+  const apiTeamId = selectedTeamIds.length === 1 ? selectedTeamIds[0] : undefined;
+
   const { data: weekData, isLoading: weekLoading } = useGetScheduleWeek(
-    { week: weekStr, ...(selectedTeamId !== "all" ? { teamId: selectedTeamId } : {}) },
-    { query: { queryKey: getGetScheduleWeekQueryKey({ week: weekStr, teamId: selectedTeamId !== "all" ? selectedTeamId : undefined }) } },
+    { week: weekStr, ...(apiTeamId ? { teamId: apiTeamId } : {}) },
+    { query: { queryKey: getGetScheduleWeekQueryKey({ week: weekStr, teamId: apiTeamId }) } },
   );
 
   const generateSchedule = useGenerateSchedule({
@@ -1334,17 +1345,61 @@ export default function Schedule() {
             </button>
           )}
         </div>
-        <Select value={selectedTeamId} onValueChange={setSelectedTeamId}>
-          <SelectTrigger className="w-44 text-sm" data-testid="select-team">
-            <SelectValue placeholder="All Teams" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All Teams</SelectItem>
-            {teamsData?.map(t => (
-              <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        {/* Multi-select team picker */}
+        <Popover open={teamPickerOpen} onOpenChange={setTeamPickerOpen}>
+          <PopoverTrigger asChild>
+            <button
+              data-testid="select-team"
+              className="flex items-center gap-2 h-9 px-3 py-1.5 rounded-lg border border-gray-200 bg-white text-sm text-gray-700 hover:bg-gray-50 transition-colors min-w-[11rem] max-w-[14rem]"
+            >
+              <Users className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />
+              <span className="truncate flex-1 text-left">
+                {selectedTeamIds.length === 0
+                  ? "All Teams"
+                  : selectedTeamIds.length === 1
+                  ? (teamsData?.find(t => t.id === selectedTeamIds[0])?.name ?? "1 team")
+                  : `${selectedTeamIds.length} teams`}
+              </span>
+              <ChevronDown className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />
+            </button>
+          </PopoverTrigger>
+          <PopoverContent align="start" className="p-1.5 w-52">
+            {/* All Teams toggle */}
+            <button
+              onClick={() => setSelectedTeamIds([])}
+              className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-md text-sm transition-colors ${
+                selectedTeamIds.length === 0
+                  ? "bg-[#00AECD]/10 text-[#00AECD] font-semibold"
+                  : "text-gray-700 hover:bg-gray-50"
+              }`}
+            >
+              <span className={`w-4 h-4 rounded border flex items-center justify-center flex-shrink-0 ${selectedTeamIds.length === 0 ? "bg-[#00AECD] border-[#00AECD]" : "border-gray-300"}`}>
+                {selectedTeamIds.length === 0 && <svg className="w-2.5 h-2.5 text-white" viewBox="0 0 10 8" fill="none"><path d="M1 4l3 3 5-6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>}
+              </span>
+              All Teams
+            </button>
+            <div className="my-1 border-t border-gray-100" />
+            {teamsData?.map(t => {
+              const checked = selectedTeamIds.includes(t.id);
+              return (
+                <button
+                  key={t.id}
+                  onClick={() => setSelectedTeamIds(prev =>
+                    checked ? prev.filter(id => id !== t.id) : [...prev, t.id]
+                  )}
+                  className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-md text-sm transition-colors ${
+                    checked ? "bg-[#00AECD]/10 text-[#00AECD] font-semibold" : "text-gray-700 hover:bg-gray-50"
+                  }`}
+                >
+                  <span className={`w-4 h-4 rounded border flex items-center justify-center flex-shrink-0 ${checked ? "bg-[#00AECD] border-[#00AECD]" : "border-gray-300"}`}>
+                    {checked && <svg className="w-2.5 h-2.5 text-white" viewBox="0 0 10 8" fill="none"><path d="M1 4l3 3 5-6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>}
+                  </span>
+                  {t.name}
+                </button>
+              );
+            })}
+          </PopoverContent>
+        </Popover>
 
         {view !== "gantt" && weekData && (
           <div className="flex items-center gap-3 text-xs text-gray-500">
@@ -1392,7 +1447,6 @@ export default function Schedule() {
           <WeekView
             weekData={weekData}
             isLoading={weekLoading}
-            selectedTeamId={selectedTeamId}
             searchTerm={search}
             teamsCount={teamsData?.length ?? 1}
             getTeamColor={getTeamColor}
@@ -1403,7 +1457,7 @@ export default function Schedule() {
         {view === "gantt-day" && (
           <DailyGanttView
             ganttDayStart={ganttDayStart}
-            selectedTeamId={selectedTeamId}
+            selectedTeamIds={selectedTeamIds}
             searchTerm={search}
             getTeamColor={getTeamColor}
             getTeamName={getTeamName}
@@ -1413,7 +1467,7 @@ export default function Schedule() {
         {view === "gantt" && (
           <GanttView
             ganttStart={ganttStart}
-            selectedTeamId={selectedTeamId}
+            selectedTeamIds={selectedTeamIds}
             searchTerm={search}
             getTeamColor={getTeamColor}
             getTeamName={getTeamName}
