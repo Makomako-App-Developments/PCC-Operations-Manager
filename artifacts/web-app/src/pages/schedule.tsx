@@ -56,7 +56,7 @@ const STANDARD_BADGES: Record<string, string> = {
   low:    "bg-slate-100 text-slate-600",
 };
 
-type ViewType = "day" | "week" | "gantt";
+type ViewType = "day" | "week" | "gantt" | "gantt-day";
 
 interface GanttAssetRow {
   assetId: string;
@@ -111,6 +111,197 @@ function JobPill({ job }: { job: { scheduledDate: string; status: string } }) {
 }
 
 const GANTT_WEEK_COUNT = 13;
+const GANTT_DAY_COUNT  = 14; // 2 weeks shown in daily Gantt
+
+// ── Daily Gantt View ──────────────────────────────────────────────────────────
+function DailyGanttView({
+  ganttDayStart,
+  selectedTeamId,
+  searchTerm,
+  getTeamColor,
+  getTeamName,
+  onJobClick,
+}: {
+  ganttDayStart: Date;
+  selectedTeamId: string;
+  searchTerm: string;
+  getTeamColor: (id?: string | null) => string;
+  getTeamName: (id?: string | null) => string;
+  onJobClick: (job: any) => void;
+}) {
+  const from = format(ganttDayStart, "yyyy-MM-dd");
+  const to   = format(addDays(ganttDayStart, GANTT_DAY_COUNT - 1), "yyyy-MM-dd");
+  const todayStr = format(new Date(), "yyyy-MM-dd");
+
+  const days = Array.from({ length: GANTT_DAY_COUNT }, (_, i) => {
+    const d = addDays(ganttDayStart, i);
+    return {
+      key:       format(d, "yyyy-MM-dd"),
+      dayLabel:  format(d, "EEE"),
+      dateLabel: format(d, "d"),
+      monthLabel:format(d, "MMM"),
+      isWeekend: d.getDay() === 0 || d.getDay() === 6,
+      isToday:   format(d, "yyyy-MM-dd") === todayStr,
+    };
+  });
+
+  const { data, isLoading } = useQuery<GanttData>({
+    queryKey: ["/api/schedule/range", from, to, selectedTeamId],
+    queryFn:  () => fetchScheduleRange(from, to, selectedTeamId),
+  });
+
+  if (isLoading) {
+    return (
+      <div className="p-6 space-y-3">
+        {Array.from({ length: 10 }).map((_, i) => (
+          <Skeleton key={i} className="w-full h-10 rounded-xl" />
+        ))}
+      </div>
+    );
+  }
+
+  const allRows = data?.rows ?? [];
+  const q = searchTerm.trim().toLowerCase();
+  const rows = q
+    ? allRows.filter(r =>
+        r.assetName.toLowerCase().includes(q) ||
+        r.assetRef.toLowerCase().includes(q),
+      )
+    : allRows;
+
+  // Index jobs by date for fast lookup
+  const jobsByAssetDay = new Map<string, typeof rows[0]["jobs"]>();
+  for (const row of rows) {
+    for (const job of row.jobs) {
+      const key = `${row.assetId}|${job.scheduledDate}`;
+      if (!jobsByAssetDay.has(key)) jobsByAssetDay.set(key, []);
+      jobsByAssetDay.get(key)!.push(job);
+    }
+  }
+
+  const COL_W  = 58; // px per day column
+  const FIXED  = 510; // fixed left cols total width
+
+  return (
+    <div className="flex flex-col h-full min-h-0">
+      {rows.length === 0 ? (
+        <div className="flex-1 flex items-center justify-center text-sm text-gray-400 italic">
+          No scheduled jobs in this period — click "Generate Schedule" to create jobs.
+        </div>
+      ) : (
+        <div className="flex-1 overflow-auto">
+          <table className="text-xs border-collapse" style={{ minWidth: FIXED + GANTT_DAY_COUNT * COL_W }}>
+            <thead className="sticky top-0 z-30 bg-white shadow-sm">
+              {/* Month / week grouping row */}
+              <tr className="text-[10px] font-bold text-gray-400 uppercase tracking-wider border-b border-gray-100">
+                <th colSpan={5} className="sticky bg-white z-30" style={{ left: 0, minWidth: FIXED }} />
+                {days.map((d, i) => {
+                  const showMonth = i === 0 || d.key.slice(8) === "01" || days[i - 1].key.slice(5, 7) !== d.key.slice(5, 7);
+                  return (
+                    <th
+                      key={d.key}
+                      className={`py-1 px-1 text-center ${d.isWeekend ? "bg-gray-50" : ""} ${d.isToday ? "bg-teal-50" : ""}`}
+                      style={{ minWidth: COL_W, width: COL_W }}
+                    >
+                      {showMonth ? <span className="text-gray-400">{d.monthLabel}</span> : ""}
+                    </th>
+                  );
+                })}
+              </tr>
+              {/* Day header row */}
+              <tr className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">
+                <th className="text-left py-2 px-3 border-b border-gray-200 sticky bg-white z-30" style={{ left: 0,   minWidth: 190, width: 190 }}>Site</th>
+                <th className="text-left py-2 px-3 border-b border-gray-200 sticky bg-white z-30" style={{ left: 190, minWidth: 80,  width: 80  }}>Type</th>
+                <th className="text-left py-2 px-3 border-b border-gray-200 sticky bg-white z-30" style={{ left: 270, minWidth: 70,  width: 70  }}>Freq</th>
+                <th className="text-left py-2 px-3 border-b border-gray-200 sticky bg-white z-30" style={{ left: 340, minWidth: 55,  width: 55  }}>Mins</th>
+                <th className="text-left py-2 px-3 border-b border-gray-200 sticky bg-white z-30 border-r border-gray-200" style={{ left: 395, minWidth: 115, width: 115 }}>Team</th>
+                {days.map(d => (
+                  <th
+                    key={d.key}
+                    className={`py-2 px-1 border-b border-l border-gray-200 text-center leading-tight ${d.isWeekend ? "bg-gray-50 text-gray-300" : ""} ${d.isToday ? "bg-teal-50 text-teal-600" : ""}`}
+                    style={{ minWidth: COL_W, width: COL_W }}
+                  >
+                    <div className="font-semibold">{d.dayLabel}</div>
+                    <div className={`text-[11px] font-bold ${d.isToday ? "text-teal-600" : "text-gray-700"}`}>{d.dateLabel}</div>
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((row, idx) => {
+                const color = getTeamColor(row.teamId);
+                const name  = getTeamName(row.teamId);
+                const rowBg = idx % 2 === 0 ? "#ffffff" : "#f9fafb";
+                return (
+                  <tr
+                    key={row.assetId}
+                    className={`border-b border-gray-100 hover:bg-blue-50/30 transition-colors`}
+                  >
+                    <td className="py-1.5 px-3 sticky z-10" style={{ left: 0,   background: rowBg, width: 190 }}>
+                      <p className="font-semibold text-gray-800 truncate max-w-[185px]" title={row.assetName}>{row.assetName}</p>
+                      <p className="text-gray-400 text-[10px] truncate max-w-[185px]">{row.assetDesc ?? row.assetRef}</p>
+                    </td>
+                    <td className="py-1.5 px-3 sticky z-10" style={{ left: 190, background: rowBg, width: 80 }}>
+                      <span className={`px-1.5 py-0.5 rounded text-[9px] font-semibold capitalize ${TYPE_BADGES[row.gardenType] ?? "bg-gray-100 text-gray-600"}`}>
+                        {row.gardenType.replace(/_/g, " ")}
+                      </span>
+                    </td>
+                    <td className="py-1.5 px-3 sticky z-10 text-gray-600 capitalize" style={{ left: 270, background: rowBg, width: 70 }}>{row.frequency}</td>
+                    <td className="py-1.5 px-3 sticky z-10 text-gray-600"            style={{ left: 340, background: rowBg, width: 55 }}>{row.serviceTimeMins}m</td>
+                    <td className="py-1.5 px-3 sticky z-10 border-r border-gray-200" style={{ left: 395, background: rowBg, width: 115 }}>
+                      <div className="flex items-center gap-1.5">
+                        <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: color }} />
+                        <span className="text-gray-600 truncate max-w-[90px]">{name}</span>
+                      </div>
+                    </td>
+                    {days.map(d => {
+                      const cellJobs = jobsByAssetDay.get(`${row.assetId}|${d.key}`) ?? [];
+                      return (
+                        <td
+                          key={d.key}
+                          className={`py-1 px-1 border-l border-gray-100 align-middle text-center ${d.isWeekend ? "bg-gray-50/60" : ""} ${d.isToday ? "bg-teal-50/40" : ""}`}
+                          style={{ minWidth: COL_W, width: COL_W }}
+                        >
+                          {cellJobs.length > 0 && (
+                            <div className="flex flex-col gap-0.5 items-center">
+                              {cellJobs.map(job => {
+                                const done       = job.status === "completed";
+                                const inProgress = job.status === "in_progress";
+                                const overdue    = job.status === "overdue";
+                                const bg = done ? "#10b981" : overdue ? "#ef4444" : inProgress ? "#00AECD" : "#64748b";
+                                return (
+                                  <button
+                                    key={job.id}
+                                    onClick={() => onJobClick({ ...job, assetName: row.assetName, assetRef: row.assetRef, teamId: row.teamId })}
+                                    className="w-6 h-6 rounded-full flex items-center justify-center text-white hover:opacity-80 transition-opacity flex-shrink-0"
+                                    style={{ background: bg }}
+                                    title={`${row.assetName} — ${job.status.replace("_", " ")}`}
+                                  >
+                                    {done
+                                      ? <CheckCircle className="w-3.5 h-3.5" />
+                                      : <span className="text-[9px] font-bold">{row.serviceTimeMins}m</span>
+                                    }
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+          <p className="text-center text-[10px] text-gray-400 py-3">
+            {rows.length} assets · {rows.reduce((s, r) => s + r.jobs.length, 0)} jobs in this period
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
 
 // ── Gantt View ────────────────────────────────────────────────────────────────
 function GanttView({
@@ -800,6 +991,7 @@ export default function Schedule() {
   const [view, setView]                 = useState<ViewType>("week");
   const [currentDate, setCurrentDate]   = useState(new Date());
   const [ganttStart, setGanttStart]     = useState(() => startOfWeek(new Date(), { weekStartsOn: 1 }));
+  const [ganttDayStart, setGanttDayStart] = useState(() => startOfWeek(new Date(), { weekStartsOn: 1 }));
   const [selectedTeamId, setSelectedTeamId] = useState("all");
   const [dialogOpen, setDialogOpen]     = useState(false);
   const [genFrom, setGenFrom]           = useState("");
@@ -1011,19 +1203,22 @@ export default function Schedule() {
   };
 
   const handleSetView = (v: ViewType) => {
-    if (v === "gantt") setGanttStart(startOfWeek(currentDate, { weekStartsOn: 1 }));
+    if (v === "gantt")     setGanttStart(startOfWeek(currentDate, { weekStartsOn: 1 }));
+    if (v === "gantt-day") setGanttDayStart(startOfWeek(currentDate, { weekStartsOn: 1 }));
     setView(v);
   };
 
   const prevPeriod = () => {
-    if (view === "day")   setCurrentDate(d => addDays(d, -1));
-    if (view === "week")  setCurrentDate(d => subWeeks(d, 1));
-    if (view === "gantt") setGanttStart(d => addWeeks(d, -GANTT_WEEK_COUNT));
+    if (view === "day")       setCurrentDate(d => addDays(d, -1));
+    if (view === "week")      setCurrentDate(d => subWeeks(d, 1));
+    if (view === "gantt")     setGanttStart(d => addWeeks(d, -GANTT_WEEK_COUNT));
+    if (view === "gantt-day") setGanttDayStart(d => addWeeks(d, -1));
   };
   const nextPeriod = () => {
-    if (view === "day")   setCurrentDate(d => addDays(d, 1));
-    if (view === "week")  setCurrentDate(d => addWeeks(d, 1));
-    if (view === "gantt") setGanttStart(d => addWeeks(d, GANTT_WEEK_COUNT));
+    if (view === "day")       setCurrentDate(d => addDays(d, 1));
+    if (view === "week")      setCurrentDate(d => addWeeks(d, 1));
+    if (view === "gantt")     setGanttStart(d => addWeeks(d, GANTT_WEEK_COUNT));
+    if (view === "gantt-day") setGanttDayStart(d => addWeeks(d, 1));
   };
 
   const periodLabel = () => {
@@ -1031,6 +1226,10 @@ export default function Schedule() {
     if (view === "week") {
       if (!weekData) return "...";
       return `${format(new Date(weekData.weekStart + "T00:00:00"), "d MMM")} – ${format(new Date(weekData.weekEnd + "T00:00:00"), "d MMM yyyy")}`;
+    }
+    if (view === "gantt-day") {
+      const end = addDays(ganttDayStart, GANTT_DAY_COUNT - 1);
+      return `${format(ganttDayStart, "d MMM")} – ${format(end, "d MMM yyyy")}`;
     }
     const ganttEnd = addWeeks(ganttStart, GANTT_WEEK_COUNT - 1);
     return `${format(ganttStart, "d MMM")} – ${format(ganttEnd, "d MMM yyyy")}`;
@@ -1057,6 +1256,8 @@ export default function Schedule() {
           <p className="text-xs text-gray-400">
             {view === "gantt"
               ? `${format(ganttStart, "d MMM")} – ${format(addWeeks(ganttStart, GANTT_WEEK_COUNT - 1), "d MMM yyyy")} · Porirua City Gardens`
+              : view === "gantt-day"
+              ? `${format(ganttDayStart, "d MMM")} – ${format(addDays(ganttDayStart, GANTT_DAY_COUNT - 1), "d MMM yyyy")} · Porirua City Gardens`
               : weekData
                 ? `Week of ${format(new Date(weekData.weekStart + "T00:00:00"), "d MMM")} – ${format(new Date(weekData.weekEnd + "T00:00:00"), "d MMM yyyy")}`
                 : "Loading..."}
@@ -1066,22 +1267,23 @@ export default function Schedule() {
         <div className="flex items-center gap-3">
           {/* View toggle */}
           <div className="flex rounded-lg overflow-hidden border border-gray-200 text-xs font-medium shadow-sm">
-            {(["day", "week", "gantt"] as ViewType[]).map(v => {
-              const Icon  = { day: CalendarDays, week: LayoutGrid, gantt: Calendar }[v];
-              const label = { day: "Day", week: "Week", gantt: "Gantt" }[v];
-              return (
-                <button
-                  key={v}
-                  onClick={() => handleSetView(v)}
-                  className={`px-3 py-1.5 flex items-center gap-1.5 transition-colors border-r border-gray-200 last:border-r-0 ${
-                    view === v ? "bg-[#00AECD] text-white" : "bg-white text-gray-600 hover:bg-gray-50"
-                  }`}
-                >
-                  <Icon className="w-3.5 h-3.5" />
-                  {label}
-                </button>
-              );
-            })}
+            {([
+              { v: "day",       Icon: CalendarDays, label: "Day"       },
+              { v: "week",      Icon: LayoutGrid,   label: "Week"      },
+              { v: "gantt-day", Icon: CalendarDays, label: "Daily"     },
+              { v: "gantt",     Icon: Calendar,     label: "Weekly"    },
+            ] as { v: ViewType; Icon: React.ElementType; label: string }[]).map(({ v, Icon, label }) => (
+              <button
+                key={v}
+                onClick={() => handleSetView(v)}
+                className={`px-3 py-1.5 flex items-center gap-1.5 transition-colors border-r border-gray-200 last:border-r-0 ${
+                  view === v ? "bg-[#00AECD] text-white" : "bg-white text-gray-600 hover:bg-gray-50"
+                }`}
+              >
+                <Icon className="w-3.5 h-3.5" />
+                {label}
+              </button>
+            ))}
           </div>
 
           <Button
@@ -1188,6 +1390,16 @@ export default function Schedule() {
             selectedTeamId={selectedTeamId}
             searchTerm={search}
             teamsCount={teamsData?.length ?? 1}
+            getTeamColor={getTeamColor}
+            getTeamName={getTeamName}
+            onJobClick={handleJobClick}
+          />
+        )}
+        {view === "gantt-day" && (
+          <DailyGanttView
+            ganttDayStart={ganttDayStart}
+            selectedTeamId={selectedTeamId}
+            searchTerm={search}
             getTeamColor={getTeamColor}
             getTeamName={getTeamName}
             onJobClick={handleJobClick}
