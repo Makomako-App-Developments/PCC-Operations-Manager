@@ -18,7 +18,7 @@ router.get("/teams", requireAuth, async (_req, res) => {
 // Returns per-team asset stats: site count, area m², annual service hours, FTE requirement.
 // Includes a synthetic "All Teams" row for null-teamId (full-team) assets.
 router.get("/teams/workload", requireAuth, async (_req, res) => {
-  const WORKING_DAYS_PER_YEAR = 261; // 52 × 5 – ~9 public holidays
+  const WORKING_DAYS_PER_YEAR = 251; // NZ standard: 52 × 5 – 11 public holidays – ~8 annual leave days
 
   // System settings for productive time
   const [settings] = await db.select({ productiveTimeMins: systemSettingsTable.productiveTimeMins })
