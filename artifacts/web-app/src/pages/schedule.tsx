@@ -239,7 +239,7 @@ function DailyGanttView({
                   >
                     <td className="py-1.5 px-3 sticky z-10" style={{ left: 0,   background: rowBg, width: 190 }}>
                       <p className="font-semibold text-gray-800 truncate max-w-[185px]" title={row.assetName}>{row.assetName}</p>
-                      <p className="text-gray-400 text-[10px] truncate max-w-[185px]">{row.assetDesc ?? row.assetRef}</p>
+                      {row.assetDesc && <p className="text-gray-400 text-[10px] truncate max-w-[185px]">{row.assetDesc}</p>}
                     </td>
                     <td className="py-1.5 px-3 sticky z-10" style={{ left: 190, background: rowBg, width: 80 }}>
                       <span className={`px-1.5 py-0.5 rounded text-[9px] font-semibold capitalize ${TYPE_BADGES[row.gardenType] ?? "bg-gray-100 text-gray-600"}`}>
@@ -256,11 +256,16 @@ function DailyGanttView({
                     </td>
                     {days.map(d => {
                       const cellJobs = jobsByAssetDay.get(`${row.assetId}|${d.key}`) ?? [];
+                      const cellBg = d.isToday
+                        ? (rowBg === "#f9fafb" ? "#e2f7f3" : "#edfaf6")
+                        : d.isWeekend
+                        ? (rowBg === "#f9fafb" ? "#f1f2f4" : "#f5f6f8")
+                        : rowBg;
                       return (
                         <td
                           key={d.key}
-                          className={`py-1 px-1 border-l border-gray-100 align-middle text-center ${d.isWeekend ? "bg-gray-50/60" : ""} ${d.isToday ? "bg-teal-50/40" : ""}`}
-                          style={{ minWidth: COL_W, width: COL_W }}
+                          className="py-1 px-1 border-l border-gray-100 align-middle text-center"
+                          style={{ minWidth: COL_W, width: COL_W, background: cellBg }}
                         >
                           {cellJobs.length > 0 && (
                             <div className="flex flex-col gap-0.5 items-center">
@@ -424,7 +429,7 @@ function GanttView({
                   >
                     <td className="py-2 px-3 sticky z-10" style={{ left: 0,   background: rowBg, width: 190 }}>
                       <p className="font-semibold text-gray-800 truncate max-w-[185px]" title={row.assetName}>{row.assetName}</p>
-                      <p className="text-gray-400 text-[10px] truncate max-w-[185px]">{row.assetDesc ?? row.assetRef}</p>
+                      {row.assetDesc && <p className="text-gray-400 text-[10px] truncate max-w-[185px]">{row.assetDesc}</p>}
                     </td>
                     <td className="py-2 px-3 sticky z-10" style={{ left: 190, background: rowBg, width: 80 }}>
                       <span className={`px-1.5 py-0.5 rounded text-[9px] font-semibold capitalize ${TYPE_BADGES[row.gardenType] ?? "bg-gray-100 text-gray-600"}`}>
@@ -440,7 +445,7 @@ function GanttView({
                       </div>
                     </td>
                     {weeks.map(w => (
-                      <td key={w.key} className="py-2 px-2 border-l border-l-gray-100 align-top">
+                      <td key={w.key} className="py-2 px-2 border-l border-l-gray-100 align-top" style={{ background: rowBg }}>
                         <div className="flex flex-col gap-0.5">
                           {(jobsByWeek.get(w.key) ?? []).map(job => (
                             <JobPill key={job.id} job={job} />
