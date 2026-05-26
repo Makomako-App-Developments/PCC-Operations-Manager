@@ -196,12 +196,23 @@ router.post(
       }
     }
 
-    // ── Step 2: Process dates in order, geosequence order per day ───────────
+    // ── Step 2: Process dates in order, per-team geosequence with look-ahead ─
+    //
+    // For each team's day:
+    //   • Place jobs in routeOrder (geosequence).
+    //   • When a job doesn't fit in remaining time, keep scanning forward for a
+    //     smaller job that does fit (filling the slot efficiently).
+    //   • After exhausting all fitting options, start the first deferred job
+    //     today anyway — the crew begins it and finishes it first thing tomorrow.
+    //     Any remaining deferred jobs spill to the next working day.
+    // ─────────────────────────────────────────────────────────────────────────
     const sortedDates = Array.from(candidatesByDate.keys()).sort();
 
     let jobsCreated = 0;
     let jobsRefreshed = 0;
-    let jobsSpilled = 0;       // jobs moved to next day due to <50% capacity remaining
+    let jobsSpilled = 0;
+
+    type AssetRow = typeof assets[number];
 
     const insertRows: {
       assetId: string;
@@ -214,126 +225,162 @@ router.post(
       isAllTeams?: boolean;
     }[] = [];
 
-    // spillQueue holds jobs bumped to the next working day from the previous date
-    const spillQueue = new Map<string, { asset: typeof assets[number] }[]>();
+    // spillQueue: date → assets to prepend to that day (geosequence order preserved)
+    const spillQueue = new Map<string, AssetRow[]>();
 
-    const allDatesToProcess = new Set(sortedDates);
+    // Helper: dedup-check one asset against DB; returns true if should skip
+    async function existsInWindow(asset: AssetRow, refDate: string): Promise<boolean> {
+      const intervalDays = (FREQ_DAYS as Record<string, number>)[asset.frequency] ?? 28;
+      const windowStart  = addDays(refDate, -(intervalDays - 1));
+      const [row] = await db
+        .select({
+          id:            jobsTable.id,
+          status:        jobsTable.status,
+          scheduledDate: sql<string>`to_char(${jobsTable.scheduledDate}, 'YYYY-MM-DD')`,
+        })
+        .from(jobsTable)
+        .where(
+          and(
+            eq(jobsTable.assetId, asset.id),
+            gte(jobsTable.scheduledDate, windowStart),
+            lte(jobsTable.scheduledDate, refDate),
+            eq(jobsTable.jobType, "scheduled"),
+            notInArray(jobsTable.status, ["completed", "skipped"]),
+          ),
+        )
+        .limit(1);
+
+      if (!row) return false;
+
+      // Exact-date pending match → refresh crew status
+      if (row.scheduledDate === refDate && row.status === "pending") {
+        const tid = asset.teamId ?? null;
+        const { estimatedTimeMins, crewStatus } = calcCrewAdjustment(
+          tid, refDate, membersByTeam, absenceMap, asset.serviceTimeMins, standardCrewSize,
+        );
+        await db
+          .update(jobsTable)
+          .set({ estimatedTimeMins, crewStatus, updatedAt: new Date() })
+          .where(eq(jobsTable.id, row.id));
+        jobsRefreshed++;
+      }
+      return true;
+    }
+
+    // Helper: emit a job row and update minutesUsed
+    function placeJob(asset: AssetRow, date: string, estMins: number, cs: CrewStatus) {
+      const tid = asset.teamId ?? null;
+      if (tid) addMins(minutesUsed, tid, date, estMins);
+      insertRows.push({
+        assetId: asset.id, jobType: "scheduled", teamId: tid,
+        scheduledDate: date, status: "pending",
+        estimatedTimeMins: estMins, crewStatus: cs,
+        isAllTeams: !tid,
+      });
+      jobsCreated++;
+    }
 
     for (const naturalDate of sortedDates) {
-      const candidates = candidatesByDate.get(naturalDate)!;
+      const dayCandidates = candidatesByDate.get(naturalDate)!;
 
-      // Geosequence order (routeOrder), service time as secondary tiebreaker
-      candidates.sort((a, b) => {
+      // Geosequence order; service time is tiebreaker
+      dayCandidates.sort((a, b) => {
         const ro_a = a.asset.routeOrder ?? 999999;
         const ro_b = b.asset.routeOrder ?? 999999;
         if (ro_a !== ro_b) return ro_a - ro_b;
         return a.asset.serviceTimeMins - b.asset.serviceTimeMins;
       });
 
-      // Prepend any spill-overs from the previous day (preserve their geo order)
+      // Collect assets for this day: spill-overs first, then natural candidates
       const spills = spillQueue.get(naturalDate) ?? [];
       spillQueue.delete(naturalDate);
-      const toPlace = [...spills.map(s => ({ asset: s.asset })), ...candidates];
+      const allAssets: AssetRow[] = [
+        ...spills,
+        ...dayCandidates.map(c => c.asset),
+      ];
 
-      for (const { asset } of toPlace) {
-        const tid = asset.teamId ?? null;
+      // Group by team so look-ahead operates within each team's queue independently
+      const byTeam = new Map<string, AssetRow[]>();
+      for (const asset of allAssets) {
+        const key = asset.teamId ?? "__none__";
+        if (!byTeam.has(key)) byTeam.set(key, []);
+        byTeam.get(key)!.push(asset);
+      }
 
-        // Check for an existing scheduled job within the interval window
-        // (prevents duplicate jobs when re-generating with a different fromDate)
-        const intervalDays = (FREQ_DAYS as Record<string, number>)[asset.frequency] ?? 28;
-        const windowStart  = addDays(naturalDate, -(intervalDays - 1));
-        const [existingInWindow] = await db
-          .select({
-            id:            jobsTable.id,
-            status:        jobsTable.status,
-            scheduledDate: sql<string>`to_char(${jobsTable.scheduledDate}, 'YYYY-MM-DD')`,
-          })
-          .from(jobsTable)
-          .where(
-            and(
-              eq(jobsTable.assetId, asset.id),
-              gte(jobsTable.scheduledDate, windowStart),
-              lte(jobsTable.scheduledDate, naturalDate),
-              eq(jobsTable.jobType, "scheduled"),
-              notInArray(jobsTable.status, ["completed", "skipped"]),
-            ),
-          )
-          .limit(1);
+      for (const [teamKey, teamAssets] of byTeam) {
+        const tid = teamKey === "__none__" ? null : teamKey;
 
-        if (existingInWindow) {
-          if (existingInWindow.scheduledDate === naturalDate && existingInWindow.status === "pending") {
-            // Exact match — refresh crew status in place
-            const { estimatedTimeMins, crewStatus } = calcCrewAdjustment(
-              tid, naturalDate, membersByTeam, absenceMap, asset.serviceTimeMins, standardCrewSize,
-            );
-            await db
-              .update(jobsTable)
-              .set({ estimatedTimeMins, crewStatus, updatedAt: new Date() })
-              .where(eq(jobsTable.id, existingInWindow.id));
-            jobsRefreshed++;
+        // Filter out assets that already have a job in their interval window
+        const eligible: AssetRow[] = [];
+        for (const asset of teamAssets) {
+          const skip = await existsInWindow(asset, naturalDate);
+          if (!skip) eligible.push(asset);
+        }
+        if (eligible.length === 0) continue;
+
+        // ── Pass: place in geosequence; defer what doesn't fit ──────────────
+        const deferred: AssetRow[] = [];
+
+        for (const asset of eligible) {
+          const usedToday = tid ? getMins(minutesUsed, tid, naturalDate) : 0;
+          const remaining = productiveTimeMins - usedToday;
+          const { estimatedTimeMins: estMins, crewStatus: cs } = calcCrewAdjustment(
+            tid, naturalDate, membersByTeam, absenceMap, asset.serviceTimeMins, standardCrewSize,
+          );
+
+          if (!tid || remaining >= estMins) {
+            // Fits — place today
+            placeJob(asset, naturalDate, estMins, cs);
+          } else {
+            // Doesn't fit this slot — defer; the loop continues to find a smaller
+            // job later in geosequence that might fill the gap
+            deferred.push(asset);
           }
-          continue;
         }
 
-        // Capacity check using 50% spill rule
-        const { estimatedTimeMins: estMins, crewStatus: cs } = calcCrewAdjustment(
-          tid, naturalDate, membersByTeam, absenceMap, asset.serviceTimeMins, standardCrewSize,
-        );
-
-        const usedToday  = tid ? getMins(minutesUsed, tid, naturalDate) : 0;
-        const remaining  = productiveTimeMins - usedToday;
-
-        // Fits comfortably, OR remaining >= 50% of job time → place today
-        const startToday = !tid || remaining >= estMins || remaining >= estMins * SPILL_THRESHOLD;
-
-        if (startToday) {
-          if (tid) addMins(minutesUsed, tid, naturalDate, estMins);
-          insertRows.push({
-            assetId: asset.id, jobType: "scheduled", teamId: tid,
-            scheduledDate: naturalDate, status: "pending",
-            estimatedTimeMins: estMins, crewStatus: cs,
-            isAllTeams: !tid,
-          });
-          jobsCreated++;
-        } else {
-          // Remaining < 50% of job — spill to next working day
+        // ── Handle deferred jobs ─────────────────────────────────────────────
+        // First deferred job: start it today even though it overruns (the crew
+        // begins the work and returns to finish it first thing tomorrow).
+        // All subsequent deferred jobs spill to the next working day.
+        if (deferred.length > 0) {
           const nextDay = addWorkingDays(naturalDate, 1);
-          if (nextDay <= toDate) {
-            if (!spillQueue.has(nextDay)) spillQueue.set(nextDay, []);
-            spillQueue.get(nextDay)!.push({ asset });
-            allDatesToProcess.add(nextDay);
-            jobsSpilled++;
-          } else {
-            // No next day in range — place today regardless
-            if (tid) addMins(minutesUsed, tid, naturalDate, estMins);
-            insertRows.push({
-              assetId: asset.id, jobType: "scheduled", teamId: tid,
-              scheduledDate: naturalDate, status: "pending",
-              estimatedTimeMins: estMins, crewStatus: cs,
-              isAllTeams: !tid,
-            });
-            jobsCreated++;
+
+          // Start the first deferred job today (overrun — marks day as full)
+          const first = deferred[0];
+          const { estimatedTimeMins: estFirst, crewStatus: csFirst } = calcCrewAdjustment(
+            tid, naturalDate, membersByTeam, absenceMap, first.serviceTimeMins, standardCrewSize,
+          );
+          placeJob(first, naturalDate, estFirst, csFirst);
+
+          // Remaining deferred jobs spill to next working day
+          for (const asset of deferred.slice(1)) {
+            if (nextDay <= toDate) {
+              if (!spillQueue.has(nextDay)) spillQueue.set(nextDay, []);
+              spillQueue.get(nextDay)!.push(asset);
+              jobsSpilled++;
+            } else {
+              // End of range — place today regardless
+              const { estimatedTimeMins: estMins, crewStatus: cs } = calcCrewAdjustment(
+                tid, naturalDate, membersByTeam, absenceMap, asset.serviceTimeMins, standardCrewSize,
+              );
+              placeJob(asset, naturalDate, estMins, cs);
+            }
           }
         }
       }
     }
 
-    // Place any remaining spill-overs that landed beyond the last natural date
-    for (const [spillDate, spills] of spillQueue) {
+    // Flush any remaining spill-overs (dates added by spilling beyond sortedDates)
+    const pendingSpillDates = [...spillQueue.keys()].sort();
+    for (const spillDate of pendingSpillDates) {
       if (spillDate > toDate) continue;
-      for (const { asset } of spills) {
+      const spills = spillQueue.get(spillDate)!;
+      for (const asset of spills) {
         const tid = asset.teamId ?? null;
         const { estimatedTimeMins: estMins, crewStatus: cs } = calcCrewAdjustment(
           tid, spillDate, membersByTeam, absenceMap, asset.serviceTimeMins, standardCrewSize,
         );
-        if (tid) addMins(minutesUsed, tid, spillDate, estMins);
-        insertRows.push({
-          assetId: asset.id, jobType: "scheduled", teamId: tid,
-          scheduledDate: spillDate, status: "pending",
-          estimatedTimeMins: estMins, crewStatus: cs,
-          isAllTeams: !tid,
-        });
-        jobsCreated++;
+        placeJob(asset, spillDate, estMins, cs);
       }
     }
 
