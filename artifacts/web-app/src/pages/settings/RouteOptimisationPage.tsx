@@ -237,8 +237,10 @@ export default function RouteOptimisationPage() {
       setIsDirty(false);
       setMapKey(k => k + 1);
       toast({ title: "Route order saved", description: `${updates.length} sites updated.` });
-    } catch {
-      toast({ title: "Save failed", variant: "destructive" });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error("[RouteOptimisation] save failed:", msg);
+      toast({ title: "Save failed", description: msg.slice(0, 120), variant: "destructive" });
     } finally {
       setSaving(false);
     }
