@@ -146,7 +146,7 @@ export default function TodayScreen() {
                     key={job.id}
                     id={job.id}
                     assetName={job.assetName}
-                    assetRef={job.assetRef}
+                    assetDesc={(job as any).assetDesc}
                     gardenType={job.gardenType}
                     suburb={(job as { suburb?: string | null }).suburb}
                     serviceTimeMins={job.serviceTimeMins}
@@ -173,7 +173,7 @@ export default function TodayScreen() {
                     key={job.id}
                     id={job.id}
                     assetName={job.assetName}
-                    assetRef={job.assetRef}
+                    assetDesc={(job as any).assetDesc}
                     gardenType={job.gardenType}
                     suburb={(job as { suburb?: string | null }).suburb}
                     serviceTimeMins={job.serviceTimeMins}

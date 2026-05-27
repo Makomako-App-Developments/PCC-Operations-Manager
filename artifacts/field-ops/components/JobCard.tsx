@@ -9,7 +9,7 @@ import { StatusBadge } from "./StatusBadge";
 interface JobCardProps {
   id: string;
   assetName: string;
-  assetRef: string;
+  assetDesc?: string | null;
   gardenType: string;
   suburb?: string | null;
   serviceTimeMins: number;
@@ -33,7 +33,7 @@ const GARDEN_TYPE_LABEL: Record<string, string> = {
 export function JobCard({
   id,
   assetName,
-  assetRef,
+  assetDesc,
   gardenType,
   suburb,
   serviceTimeMins,
@@ -69,9 +69,11 @@ export function JobCard({
           >
             {assetName}
           </Text>
-          <Text style={[styles.ref, { color: colors.mutedForeground }]}>
-            {assetRef}
-          </Text>
+          {assetDesc ? (
+            <Text style={[styles.ref, { color: colors.mutedForeground }]} numberOfLines={1}>
+              {assetDesc}
+            </Text>
+          ) : null}
         </View>
         <StatusBadge status={status as Parameters<typeof StatusBadge>[0]["status"]} small />
       </View>
