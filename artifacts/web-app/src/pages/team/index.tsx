@@ -111,9 +111,19 @@ function useLivePeople(): LivePerson[] {
     },
     staleTime: 60_000,
   });
+  const { data: crewMembers = [] } = useQuery<Array<{ id: string; personName: string; teamId: string }>>({
+    queryKey: ["crew-members"],
+    queryFn: async () => {
+      const res = await fetch("/api/team-members", { credentials: "include" });
+      if (!res.ok) throw new Error("Failed");
+      return res.json();
+    },
+    staleTime: 60_000,
+  });
 
   const teamMap = Object.fromEntries(teams.map(t => [t.id, t.name]));
-  return (users.data ?? [])
+
+  const accountPeople: LivePerson[] = (users.data ?? [])
     .filter(u => u.isActive && !OFFICE_ROLES.has(u.role))
     .map(u => ({
       id:     u.id,
@@ -121,6 +131,19 @@ function useLivePeople(): LivePerson[] {
       teamId: u.teamId,
       team:   u.teamId ? (teamMap[u.teamId] ?? "—") : "—",
     }));
+
+  const accountNames = new Set(accountPeople.map(p => p.name));
+
+  const crewOnlyPeople: LivePerson[] = crewMembers
+    .filter(m => !accountNames.has(m.personName))
+    .map(m => ({
+      id:     m.id,
+      name:   m.personName,
+      teamId: m.teamId,
+      team:   m.teamId ? (teamMap[m.teamId] ?? "—") : "—",
+    }));
+
+  return [...accountPeople, ...crewOnlyPeople].sort((a, b) => a.name.localeCompare(b.name));
 }
 
 // ─── Workload Tab ─────────────────────────────────────────────────────────────
