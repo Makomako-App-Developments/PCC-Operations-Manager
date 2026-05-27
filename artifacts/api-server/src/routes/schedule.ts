@@ -3,7 +3,7 @@ import {
   db, assetsTable, jobsTable, teamMembersTable, teamAvailabilityTable,
   systemSettingsTable, jobTeamCompletionsTable,
 } from "@workspace/db";
-import { eq, and, gte, lte, inArray, sql, notInArray, or } from "drizzle-orm";
+import { eq, and, gte, lte, inArray, sql, notInArray, or, isNull } from "drizzle-orm";
 import { z } from "zod";
 import { requireAuth, requireRole } from "../middlewares/auth";
 import { validateBody, validateQuery } from "../middlewares/validate";
@@ -144,6 +144,23 @@ router.post(
     const [settings] = await db.select().from(systemSettingsTable).limit(1);
     const productiveTimeMins = settings?.productiveTimeMins ?? 390;
     const standardCrewSize   = settings?.standardCrewSize   ?? 2;
+
+    // ── Clear existing pending scheduled jobs in the range before regenerating ─
+    // Completed and skipped jobs are preserved; only pending/in-progress ones
+    // are wiped so the new geosequence-first algorithm can place them cleanly.
+    await db
+      .delete(jobsTable)
+      .where(
+        and(
+          gte(jobsTable.scheduledDate, fromDate),
+          lte(jobsTable.scheduledDate, toDate),
+          eq(jobsTable.jobType, "scheduled"),
+          inArray(jobsTable.status, ["pending", "in_progress"]),
+          ...(teamId
+            ? [eq(jobsTable.teamId, teamId)]
+            : []),
+        ),
+      );
 
     // Load assets in geosequence order (routeOrder ASC, nulls last)
     const assets = await db
