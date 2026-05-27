@@ -148,7 +148,10 @@ export default function TodayScreen() {
                     assetName={job.assetName}
                     assetDesc={(job as any).assetDesc}
                     gardenType={job.gardenType}
-                    suburb={(job as { suburb?: string | null }).suburb}
+                    suburb={(job as any).suburb}
+                    streetAddress={(job as any).streetAddress}
+                    lat={(job as any).lat}
+                    lng={(job as any).lng}
                     serviceTimeMins={job.serviceTimeMins}
                     status={job.status}
                     scheduledDate={job.scheduledDate}
@@ -175,7 +178,10 @@ export default function TodayScreen() {
                     assetName={job.assetName}
                     assetDesc={(job as any).assetDesc}
                     gardenType={job.gardenType}
-                    suburb={(job as { suburb?: string | null }).suburb}
+                    suburb={(job as any).suburb}
+                    streetAddress={(job as any).streetAddress}
+                    lat={(job as any).lat}
+                    lng={(job as any).lng}
                     serviceTimeMins={job.serviceTimeMins}
                     status={job.status}
                     scheduledDate={job.scheduledDate}
