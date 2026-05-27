@@ -420,18 +420,6 @@ export default function MapPage() {
           </FilterGroup>
 
           <FilterGroup title="Team" open={openSections.team} onToggle={() => toggleSection("team")}>
-            <ToggleChip
-              label="Full Team"
-              active={uniqueTeams.length > 0 && uniqueTeams.every(t => teamFilter.has(t.id))}
-              onToggle={() => {
-                const allSelected = uniqueTeams.every(t => teamFilter.has(t.id));
-                if (allSelected) {
-                  setTeamFilter(new Set());
-                } else {
-                  setTeamFilter(new Set(uniqueTeams.map(t => t.id)));
-                }
-              }}
-            />
             {uniqueTeams.map(t => (
               <ToggleChip key={t.id}
                 label={t.name}
