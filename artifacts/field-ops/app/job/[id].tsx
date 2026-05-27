@@ -632,9 +632,20 @@ export default function JobDetailScreen() {
         contentContainerStyle={{ padding: 16, paddingBottom: bottomPad + 120 }}
         showsVerticalScrollIndicator={false}
       >
-        {/* Info tiles — Location, Specification (tappable), Time Allocated */}
+        {/* Info tiles */}
         <View style={styles.infoGrid}>
-          {/* Location */}
+          {/* Description — full width, first */}
+          {(asset as any).description ? (
+            <View style={[styles.infoTile, styles.infoTileWide, { backgroundColor: colors.card, borderColor: colors.border, borderRadius: colors.radius }]}>
+              <View style={styles.infoTileHeader}>
+                <Feather name="info" size={13} color={colors.primary} />
+                <Text style={[styles.infoTileLabel, { color: colors.mutedForeground }]}>Description</Text>
+              </View>
+              <Text style={[styles.infoTileValue, { color: colors.foreground }]}>{(asset as any).description}</Text>
+            </View>
+          ) : null}
+
+          {/* Suburb */}
           <View style={[styles.infoTile, { backgroundColor: colors.card, borderColor: colors.border, borderRadius: colors.radius }]}>
             <View style={styles.infoTileHeader}>
               <Feather name="map-pin" size={13} color={colors.primary} />
@@ -669,17 +680,6 @@ export default function JobDetailScreen() {
             </View>
             <Text style={[styles.infoTileValue, { color: colors.foreground }]}>{timeLabel}</Text>
           </View>
-
-          {/* Description */}
-          {(asset as any).description ? (
-            <View style={[styles.infoTile, styles.infoTileWide, { backgroundColor: colors.card, borderColor: colors.border, borderRadius: colors.radius }]}>
-              <View style={styles.infoTileHeader}>
-                <Feather name="info" size={13} color={colors.primary} />
-                <Text style={[styles.infoTileLabel, { color: colors.mutedForeground }]}>Description</Text>
-              </View>
-              <Text style={[styles.infoTileValue, { color: colors.foreground }]}>{(asset as any).description}</Text>
-            </View>
-          ) : null}
         </View>
 
         {/* All Teams banner */}
