@@ -5,6 +5,7 @@ import {
   useUpdateJob,
   getGetJobQueryKey,
   getListJobsQueryKey,
+  getGetScheduleWeekQueryKey,
 } from "@workspace/api-client-react";
 import * as Haptics from "expo-haptics";
 import * as ImagePicker from "expo-image-picker";
@@ -396,6 +397,8 @@ function TaskSkipReasonModal({ tasks, onConfirm, onCancel }: SkipReasonModalProp
   );
 }
 
+const TODAY = new Date().toISOString().split("T")[0]!;
+
 // ─── Main Screen ─────────────────────────────────────────────────────────────
 
 export default function JobDetailScreen() {
@@ -429,6 +432,8 @@ export default function JobDetailScreen() {
     if (id) {
       queryClient.invalidateQueries({ queryKey: getGetJobQueryKey(id) });
       queryClient.invalidateQueries({ queryKey: getListJobsQueryKey() });
+      // Invalidate the schedule week so the Today screen reflects the new status
+      queryClient.invalidateQueries({ queryKey: getGetScheduleWeekQueryKey({ week: TODAY }) });
     }
   };
 

@@ -57,7 +57,7 @@ export default function TodayScreen() {
   }, [data]);
 
   const pendingJobs = todayJobs.filter(
-    (j) => j.status === "pending" || j.status === "in_progress" || j.status === "overdue",
+    (j) => j.status === "pending" || j.status === "in_progress" || j.status === "paused" || j.status === "overdue",
   );
   const doneJobs = todayJobs.filter(
     (j) => j.status === "completed" || j.status === "skipped",
