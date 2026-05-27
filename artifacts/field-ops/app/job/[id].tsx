@@ -405,7 +405,6 @@ export default function JobDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
 
   const [checkedTasks, setCheckedTasks] = useState<Record<number, boolean>>({});
-  const [notes, setNotes] = useState("");
   const [specModalOpen, setSpecModalOpen] = useState(false);
   const [pendingAction, setPendingAction] = useState<"start" | "complete" | "pause" | "resume" | "skip" | null>(null);
   const [skipTasks, setSkipTasks] = useState<{ index: number; label: string }[] | null>(null);
@@ -524,7 +523,7 @@ export default function JobDetailScreen() {
       execMutate("paused");
     } else if (pendingAction === "skip") {
       updateJob.mutate(
-        { id, data: { status: "skipped", notes: notes.trim() || undefined } as any },
+        { id, data: { status: "skipped" } as any },
         {
           onSuccess: () => {
             Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
@@ -538,7 +537,7 @@ export default function JobDetailScreen() {
     } else if (pendingAction === "complete") {
       if (isAllTeams) {
         teamComplete.mutate(
-          { notes: notes.trim() || undefined },
+          {},
           {
             onSuccess: () => {
               Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -551,7 +550,7 @@ export default function JobDetailScreen() {
         );
       } else {
         updateJob.mutate(
-          { id, data: { status: "completed", notes: notes.trim() || undefined } as any },
+          { id, data: { status: "completed" } as any },
           {
             onSuccess: () => {
               Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -754,25 +753,16 @@ export default function JobDetailScreen() {
           })}
         </View>
 
-        {/* Notes */}
-        {!isDone && (
+        {/* Asset Notes — read-only, sourced from asset record */}
+        {(asset as any).notes ? (
           <View style={[styles.section, { backgroundColor: colors.card, borderColor: colors.border, borderRadius: colors.radius }]}>
             <View style={styles.sectionHeader}>
-              <Feather name="edit-3" size={16} color={colors.primary} />
+              <Feather name="file-text" size={16} color={colors.primary} />
               <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Notes</Text>
             </View>
-            <TextInput
-              style={[styles.notesInput, { color: colors.foreground, borderColor: colors.border, borderRadius: colors.radius, backgroundColor: colors.background }]}
-              value={notes}
-              onChangeText={setNotes}
-              placeholder="Any observations or issues to note…"
-              placeholderTextColor={colors.mutedForeground}
-              multiline
-              numberOfLines={3}
-              textAlignVertical="top"
-            />
+            <Text style={[styles.notesText, { color: colors.foreground }]}>{(asset as any).notes}</Text>
           </View>
-        )}
+        ) : null}
 
         {/* Photo evidence — only shown while active or done */}
         {(isActive || isPaused || isDone) && id && (
@@ -996,10 +986,9 @@ const styles = StyleSheet.create({
     padding: 12, borderRadius: 8, borderWidth: 1, marginBottom: 12,
   },
   photoErrorText: { fontFamily: "Inter_500Medium", fontSize: 13, flex: 1 },
-  notesInput: {
-    borderWidth: 1, margin: 14, marginTop: 0,
-    paddingHorizontal: 12, paddingVertical: 10,
-    fontSize: 14, fontFamily: "Inter_400Regular", minHeight: 80,
+  notesText: {
+    fontFamily: "Inter_400Regular", fontSize: 14,
+    lineHeight: 20, paddingHorizontal: 14, paddingBottom: 14,
   },
   actionBar: { padding: 16, paddingTop: 12, borderTopWidth: 1 },
   actionRow: { flexDirection: "row", gap: 10 },
