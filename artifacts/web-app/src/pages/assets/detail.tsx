@@ -133,14 +133,6 @@ function AssetMap({ asset }: { asset: any }) {
           style={layer === "street" ? { background: BRAND } : {}}
         >Street</button>
       </div>
-      {asset.suburb && (
-        <div className="absolute bottom-2 left-2 z-[500] bg-white/90 backdrop-blur-sm rounded-lg px-2 py-1 shadow-sm flex items-center gap-1">
-          <MapPin className="w-3 h-3" style={{ color: BRAND }} />
-          <span className="text-[10px] font-medium text-gray-700">
-            {asset.suburb}{asset.ward ? ` · ${asset.ward} Ward` : ""}
-          </span>
-        </div>
-      )}
     </div>
   );
 }
