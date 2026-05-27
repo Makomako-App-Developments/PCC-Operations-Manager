@@ -1,6 +1,5 @@
 import { customFetch } from "@workspace/api-client-react";
 import * as Haptics from "expo-haptics";
-import { useRouter } from "expo-router";
 import React, { useState } from "react";
 import {
   ActivityIndicator,
@@ -31,7 +30,6 @@ interface LoginResponse {
 export default function LoginScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
-  const router = useRouter();
   const { login } = useAuth();
 
   const [email, setEmail] = useState("");
@@ -53,7 +51,6 @@ export default function LoginScreen() {
       });
       await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       await login(result.accessToken, result.user);
-      router.replace("/(tabs)");
     } catch {
       await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       setError("Invalid email or password. Please try again.");

@@ -25,7 +25,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       onSuccess: (data: any) => {
         queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
         const role = data?.user?.role ?? "";
-        setLocation(role === "field_worker" ? "/specification" : "/dashboard");
+        if (role === "field_worker") {
+          window.location.href = "/field-ops/";
+        } else {
+          setLocation("/dashboard");
+        }
       }
     }
   });

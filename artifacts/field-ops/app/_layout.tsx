@@ -7,7 +7,7 @@ import {
 } from "@expo-google-fonts/inter";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { setBaseUrl } from "@workspace/api-client-react";
-import { Stack } from "expo-router";
+import { useRouter, useSegments, Stack } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import React, { useEffect } from "react";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
@@ -15,7 +15,7 @@ import { KeyboardProvider } from "react-native-keyboard-controller";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import { ErrorBoundary } from "@/components/ErrorBoundary";
-import { AuthProvider } from "@/context/auth";
+import { AuthProvider, useAuth } from "@/context/auth";
 
 setBaseUrl(`https://${process.env.EXPO_PUBLIC_DOMAIN ?? ""}`);
 
@@ -29,6 +29,26 @@ const queryClient = new QueryClient({
     },
   },
 });
+
+function AuthGuard() {
+  const { user, isLoading } = useAuth();
+  const segments = useSegments();
+  const router = useRouter();
+
+  useEffect(() => {
+    if (isLoading) return;
+
+    const inTabsGroup = segments[0] === "(tabs)";
+
+    if (!user && inTabsGroup) {
+      router.replace("/login");
+    } else if (user && !inTabsGroup) {
+      router.replace("/(tabs)");
+    }
+  }, [user, isLoading, segments]);
+
+  return null;
+}
 
 function RootLayoutNav() {
   return (
@@ -67,6 +87,7 @@ export default function RootLayout() {
           <AuthProvider>
             <GestureHandlerRootView>
               <KeyboardProvider>
+                <AuthGuard />
                 <RootLayoutNav />
               </KeyboardProvider>
             </GestureHandlerRootView>
