@@ -156,7 +156,13 @@ function useUploadPhoto(jobId: string) {
       const form = new FormData();
       const filename = uri.split("/").pop() ?? "photo.jpg";
       const mimeType = filename.endsWith(".png") ? "image/png" : "image/jpeg";
-      form.append("photo", { uri, name: filename, type: mimeType } as any);
+      if (Platform.OS === "web") {
+        // On web, ImagePicker gives a blob: URL — fetch it and convert to a File
+        const blob = await fetch(uri).then(r => r.blob());
+        form.append("photo", new File([blob], filename, { type: mimeType }));
+      } else {
+        form.append("photo", { uri, name: filename, type: mimeType } as any);
+      }
       if (caption) form.append("caption", caption);
       const res = await fetch(getApiUrl(`/api/jobs/${jobId}/photos`), {
         method: "POST",
