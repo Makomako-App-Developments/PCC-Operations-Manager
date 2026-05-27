@@ -552,7 +552,7 @@ function FieldChangesTab({ assetId }: { assetId: string }) {
 // ─── Edit form ────────────────────────────────────────────────────────────────
 
 type EditForm = {
-  name: string; gardenType: string; standard: string; areaM2: string;
+  name: string; description: string; gardenType: string; standard: string; areaM2: string;
   serviceTimeMins: string; frequency: string; siteType: string; ward: string;
   teamId: string; suburb: string; streetAddress: string; notes: string;
 };
@@ -570,6 +570,7 @@ function EditPanel({
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState<EditForm>({
     name:            asset.name || "",
+    description:     asset.description || "",
     gardenType:      asset.gardenType || "",
     standard:        asset.standard || "",
     areaM2:          String(asset.areaM2 ?? ""),
@@ -595,6 +596,7 @@ function EditPanel({
         siteType:        form.siteType      || null,
         ward:            form.ward          || null,
         teamId:          form.teamId        || null,
+        description:     form.description    || null,
         suburb:          form.suburb        || null,
         streetAddress:   form.streetAddress || null,
         notes:           form.notes         || null,
@@ -625,6 +627,9 @@ function EditPanel({
       <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
         <FormField label="Site Name">
           <Input value={form.name} onChange={e => f("name", e.target.value)} className="text-sm" />
+        </FormField>
+        <FormField label="Description">
+          <Input value={form.description} onChange={e => f("description", e.target.value)} className="text-sm" placeholder="e.g. Carpark garden, Playground garden…" />
         </FormField>
         <div className="grid grid-cols-2 gap-3">
           <FormField label="Specification">
