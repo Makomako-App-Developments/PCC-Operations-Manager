@@ -1025,7 +1025,7 @@ const STATUS_OPTIONS = [
 
 // ── Main Schedule Page ────────────────────────────────────────────────────────
 export default function Schedule() {
-  const [view, setView]                 = useState<ViewType>("week");
+  const [view, setView]                 = useState<ViewType>("gantt-day");
   const [currentDate, setCurrentDate]   = useState(new Date());
   const [ganttStart, setGanttStart]     = useState(() => startOfWeek(new Date(), { weekStartsOn: 1 }));
   const [ganttDayStart, setGanttDayStart] = useState(() => startOfWeek(new Date(), { weekStartsOn: 1 }));
