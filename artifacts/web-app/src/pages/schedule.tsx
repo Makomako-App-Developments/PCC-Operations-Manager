@@ -257,7 +257,7 @@ function DailyGanttView({
                     </td>
                     <td className="py-1.5 px-3 sticky z-10" style={{ left: 40,  background: rowBg, width: 190 }}>
                       <p className="font-semibold text-gray-800 truncate max-w-[185px]" title={row.assetName}>{row.assetName}</p>
-                      {row.assetDesc && <p className="text-gray-400 text-[10px] truncate max-w-[185px]">{row.assetDesc}</p>}
+                      <p className="text-gray-400 text-[10px] truncate max-w-[185px]">{row.assetDesc || row.assetRef}</p>
                     </td>
                     <td className="py-1.5 px-3 sticky z-10" style={{ left: 230, background: rowBg, width: 80 }}>
                       <span className={`px-1.5 py-0.5 rounded text-[9px] font-semibold capitalize ${TYPE_BADGES[row.gardenType] ?? "bg-gray-100 text-gray-600"}`}>
@@ -462,7 +462,7 @@ function GanttView({
                     </td>
                     <td className="py-2 px-3 sticky z-10" style={{ left: 40,  background: rowBg, width: 190 }}>
                       <p className="font-semibold text-gray-800 truncate max-w-[185px]" title={row.assetName}>{row.assetName}</p>
-                      {row.assetDesc && <p className="text-gray-400 text-[10px] truncate max-w-[185px]">{row.assetDesc}</p>}
+                      <p className="text-gray-400 text-[10px] truncate max-w-[185px]">{row.assetDesc || row.assetRef}</p>
                     </td>
                     <td className="py-2 px-3 sticky z-10" style={{ left: 230, background: rowBg, width: 80 }}>
                       <span className={`px-1.5 py-0.5 rounded text-[9px] font-semibold capitalize ${TYPE_BADGES[row.gardenType] ?? "bg-gray-100 text-gray-600"}`}>
