@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useSearch } from "wouter";
-import { Search, X, Clock, Camera, FileText, ChevronRight, CheckCircle2, ArrowUpRight, ArrowDownRight, Minus } from "lucide-react";
+import { Search, X, Clock, Camera, FileText, ChevronRight, CheckCircle2, ArrowUpRight, ArrowDownRight, Minus, ChevronsUpDown, ChevronUp, ChevronDown } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -259,6 +259,8 @@ export default function CompletedWorks() {
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
   const [selectedJob, setSelectedJob] = useState<CompletedWork | null>(null);
+  const [sortKey, setSortKey] = useState<string>("scheduledDate");
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
 
   // Build query string from filters (debounce search client-side)
   const params = new URLSearchParams({ limit: "500" });
@@ -297,17 +299,54 @@ export default function CompletedWorks() {
 
   const teams = teamsData ?? [];
 
+  function toggleSort(key: string) {
+    if (sortKey === key) {
+      setSortDir(d => d === "asc" ? "desc" : "asc");
+    } else {
+      setSortKey(key);
+      setSortDir("asc");
+    }
+  }
+
   const rows = useMemo(() => {
     const all = data?.data ?? [];
-    if (!search.trim()) return all;
-    const q = search.toLowerCase();
-    return all.filter(r =>
-      r.assetName?.toLowerCase().includes(q) ||
-      r.suburb?.toLowerCase().includes(q) ||
-      r.teamName?.toLowerCase().includes(q) ||
-      r.notes?.toLowerCase().includes(q)
-    );
-  }, [data, search]);
+    const filtered = search.trim()
+      ? (() => {
+          const q = search.toLowerCase();
+          return all.filter(r =>
+            r.assetName?.toLowerCase().includes(q) ||
+            r.assetDescription?.toLowerCase().includes(q) ||
+            r.suburb?.toLowerCase().includes(q) ||
+            r.teamName?.toLowerCase().includes(q) ||
+            r.notes?.toLowerCase().includes(q)
+          );
+        })()
+      : all;
+
+    return [...filtered].sort((a, b) => {
+      let av: string | number | null = null;
+      let bv: string | number | null = null;
+      if (sortKey === "scheduledDate")      { av = a.scheduledDate; bv = b.scheduledDate; }
+      else if (sortKey === "assetName")     { av = a.assetName; bv = b.assetName; }
+      else if (sortKey === "assetDescription") { av = a.assetDescription; bv = b.assetDescription; }
+      else if (sortKey === "gardenType")    { av = a.gardenType; bv = b.gardenType; }
+      else if (sortKey === "ward")          { av = a.ward; bv = b.ward; }
+      else if (sortKey === "teamName")      { av = a.isAllTeams ? "All Teams" : (a.teamName ?? ""); bv = b.isAllTeams ? "All Teams" : (b.teamName ?? ""); }
+      else if (sortKey === "estimatedTimeMins") { av = a.estimatedTimeMins; bv = b.estimatedTimeMins; }
+      else if (sortKey === "actualTimeMins")    { av = a.actualTimeMins; bv = b.actualTimeMins; }
+      else if (sortKey === "variance") {
+        av = a.actualTimeMins != null && a.estimatedTimeMins != null ? a.actualTimeMins - a.estimatedTimeMins : null;
+        bv = b.actualTimeMins != null && b.estimatedTimeMins != null ? b.actualTimeMins - b.estimatedTimeMins : null;
+      }
+      if (av == null && bv == null) return 0;
+      if (av == null) return 1;
+      if (bv == null) return -1;
+      const cmp = typeof av === "number" && typeof bv === "number"
+        ? av - bv
+        : String(av).localeCompare(String(bv));
+      return sortDir === "asc" ? cmp : -cmp;
+    });
+  }, [data, search, sortKey, sortDir]);
 
   function clearFilters() {
     setSearch("");
@@ -428,15 +467,32 @@ export default function CompletedWorks() {
             <table className="w-full text-sm border-collapse">
               <thead className="sticky top-0 z-10">
                 <tr className="bg-gray-50 border-b border-gray-200">
-                  <th className="text-left px-4 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap">Date</th>
-                  <th className="text-left px-4 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">Site</th>
-                  <th className="text-left px-4 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">Description</th>
-                  <th className="text-left px-4 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap">Type</th>
-                  <th className="text-left px-4 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">Ward</th>
-                  <th className="text-left px-4 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">Team</th>
-                  <th className="text-right px-4 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap">Scheduled</th>
-                  <th className="text-right px-4 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap">Actual</th>
-                  <th className="text-right px-4 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap">+/−</th>
+                  {[
+                    { key: "scheduledDate", label: "Date", align: "left", nowrap: true },
+                    { key: "assetName", label: "Site", align: "left", nowrap: false },
+                    { key: "assetDescription", label: "Description", align: "left", nowrap: false },
+                    { key: "gardenType", label: "Type", align: "left", nowrap: true },
+                    { key: "ward", label: "Ward", align: "left", nowrap: false },
+                    { key: "teamName", label: "Team", align: "left", nowrap: false },
+                    { key: "estimatedTimeMins", label: "Scheduled", align: "right", nowrap: true },
+                    { key: "actualTimeMins", label: "Actual", align: "right", nowrap: true },
+                    { key: "variance", label: "+/−", align: "right", nowrap: true },
+                  ].map(col => {
+                    const active = sortKey === col.key;
+                    const Icon = active ? (sortDir === "asc" ? ChevronUp : ChevronDown) : ChevronsUpDown;
+                    return (
+                      <th
+                        key={col.key}
+                        onClick={() => toggleSort(col.key)}
+                        className={`px-4 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wide cursor-pointer select-none hover:text-gray-800 hover:bg-gray-100 transition-colors ${col.nowrap ? "whitespace-nowrap" : ""} ${col.align === "right" ? "text-right" : "text-left"}`}
+                      >
+                        <span className={`inline-flex items-center gap-1 ${col.align === "right" ? "flex-row-reverse" : ""}`}>
+                          {col.label}
+                          <Icon className={`w-3 h-3 flex-shrink-0 ${active ? "text-[#00AECD]" : "text-gray-300"}`} />
+                        </span>
+                      </th>
+                    );
+                  })}
                   <th className="px-4 py-2.5 w-10"></th>
                 </tr>
               </thead>
