@@ -20,6 +20,10 @@ function NativeTabLayout() {
         <Icon sf={{ default: "leaf", selected: "leaf.fill" }} />
         <Label>Assets</Label>
       </NativeTabs.Trigger>
+      <NativeTabs.Trigger name="spec">
+        <Icon sf={{ default: "doc.text", selected: "doc.text.fill" }} />
+        <Label>Spec</Label>
+      </NativeTabs.Trigger>
       <NativeTabs.Trigger name="report">
         <Icon sf={{ default: "exclamationmark.circle", selected: "exclamationmark.circle.fill" }} />
         <Label>Report</Label>
@@ -88,6 +92,18 @@ function ClassicTabLayout() {
               <SymbolView name="leaf" tintColor={color} size={24} />
             ) : (
               <Feather name="layers" size={22} color={color} />
+            ),
+        }}
+      />
+      <Tabs.Screen
+        name="spec"
+        options={{
+          title: "Spec",
+          tabBarIcon: ({ color }) =>
+            isIOS ? (
+              <SymbolView name="doc.text" tintColor={color} size={24} />
+            ) : (
+              <Feather name="file-text" size={22} color={color} />
             ),
         }}
       />

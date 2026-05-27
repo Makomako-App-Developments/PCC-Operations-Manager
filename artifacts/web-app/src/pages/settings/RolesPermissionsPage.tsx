@@ -1,4 +1,5 @@
-import { Check, Minus, Pencil, Eye, Smartphone } from "lucide-react";
+import React from "react";
+import { Minus, Pencil, Eye, Smartphone } from "lucide-react";
 
 const BRAND = "#00AECD";
 const NAVY  = "#0f2a36";
@@ -31,6 +32,7 @@ const ROWS: Row[] = [
   { group: "Mobile",  screen: "My Jobs",                       admin: "mobile", manager: "mobile", leader: "mobile", worker: "mobile" },
   { group: "Mobile",  screen: "Job Detail",                    admin: "mobile", manager: "mobile", leader: "mobile", worker: "mobile" },
   { group: "Mobile",  screen: "Active Job & Sign-off",         admin: "mobile", manager: "mobile", leader: "mobile", worker: "mobile" },
+  { group: "Mobile",  screen: "Specification",                 admin: "mobile", manager: "mobile", leader: "mobile", worker: "mobile" },
 ];
 
 const ROLES = [
@@ -118,7 +120,7 @@ export default function RolesPermissionsPage() {
               const showGroup = row.group !== lastGroup;
               lastGroup = row.group;
               return (
-                <>
+                <React.Fragment key={row.screen}>
                   {showGroup && (
                     <tr key={`group-${row.group}`}>
                       <td colSpan={5} className="px-5 pt-4 pb-1.5">
@@ -145,7 +147,7 @@ export default function RolesPermissionsPage() {
                       </td>
                     ))}
                   </tr>
-                </>
+                </React.Fragment>
               );
             })}
           </tbody>
