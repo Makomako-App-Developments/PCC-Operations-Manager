@@ -147,6 +147,10 @@ router.patch("/jobs/:id", requireAuth, async (req, res) => {
 
   const patch = req.body as Record<string, unknown>;
 
+  // Never trust client-supplied timestamps — server owns these
+  delete patch.startedAt;
+  delete patch.completedAt;
+
   // Set timestamps when transitioning status
   if (patch.status === "in_progress" && before.status === "pending") {
     patch.startedAt = new Date();

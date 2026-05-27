@@ -3,11 +3,13 @@ import {
   useGetAsset,
   useGetJob,
   useUpdateJob,
+  getGetJobQueryKey,
+  getListJobsQueryKey,
 } from "@workspace/api-client-react";
 import * as Haptics from "expo-haptics";
 import * as ImagePicker from "expo-image-picker";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import React, { useState } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -342,6 +344,10 @@ export default function JobDetailScreen() {
   const [checkedTasks, setCheckedTasks] = useState<Record<number, boolean>>({});
   const [notes, setNotes] = useState("");
   const [pendingAction, setPendingAction] = useState<"start" | "complete" | "skip" | null>(null);
+  const [remainingSeconds, setRemainingSeconds] = useState<number | null>(null);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const queryClient = useQueryClient();
 
   const { data: job, isLoading: jobLoading } = useGetJob(id ?? "");
   const { data: asset, isLoading: assetLoading } = useGetAsset(
@@ -352,6 +358,33 @@ export default function JobDetailScreen() {
   const updateJob = useUpdateJob();
   const teamComplete = useTeamComplete(id ?? "");
   const isAllTeams = !!(job as any)?.isAllTeams;
+
+  const invalidateJob = () => {
+    if (id) {
+      queryClient.invalidateQueries({ queryKey: getGetJobQueryKey(id) });
+      queryClient.invalidateQueries({ queryKey: getListJobsQueryKey() });
+    }
+  };
+
+  // Countdown timer — ticks while job is in_progress
+  useEffect(() => {
+    const startedAt = (job as any)?.startedAt;
+    const totalSecs = asset ? asset.serviceTimeMins * 60 : null;
+    if (job?.status !== "in_progress" || !totalSecs) {
+      if (timerRef.current) clearInterval(timerRef.current);
+      setRemainingSeconds(null);
+      return;
+    }
+    const calcRemaining = () => {
+      const elapsed = startedAt
+        ? Math.floor((Date.now() - new Date(startedAt).getTime()) / 1000)
+        : 0;
+      return totalSecs - elapsed;
+    };
+    setRemainingSeconds(calcRemaining());
+    timerRef.current = setInterval(() => setRemainingSeconds(calcRemaining()), 1000);
+    return () => { if (timerRef.current) clearInterval(timerRef.current); };
+  }, [job?.status, (job as any)?.startedAt, asset?.serviceTimeMins]);
 
   const tasks =
     TASKS_BY_GARDEN_TYPE[asset?.gardenType ?? ""] ?? DEFAULT_TASKS;
@@ -370,11 +403,12 @@ export default function JobDetailScreen() {
     if (!id || !pendingAction) return;
     if (pendingAction === "start") {
       updateJob.mutate(
-        { id, data: { status: "in_progress", startedAt: new Date().toISOString() } },
+        { id, data: { status: "in_progress" } },
         {
           onSuccess: () => {
             Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
             setPendingAction(null);
+            invalidateJob();
           },
           onError: () => setPendingAction(null),
         },
@@ -387,6 +421,7 @@ export default function JobDetailScreen() {
             onSuccess: () => {
               Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
               setPendingAction(null);
+              invalidateJob();
               router.back();
             },
             onError: () => setPendingAction(null),
@@ -394,11 +429,12 @@ export default function JobDetailScreen() {
         );
       } else {
         updateJob.mutate(
-          { id, data: { status: "completed", completedAt: new Date().toISOString(), notes: notes.trim() || undefined } },
+          { id, data: { status: "completed", notes: notes.trim() || undefined } },
           {
             onSuccess: () => {
               Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
               setPendingAction(null);
+              invalidateJob();
               router.back();
             },
             onError: () => setPendingAction(null),
@@ -412,6 +448,7 @@ export default function JobDetailScreen() {
           onSuccess: () => {
             Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
             setPendingAction(null);
+            invalidateJob();
             router.back();
           },
           onError: () => setPendingAction(null),
@@ -425,6 +462,18 @@ export default function JobDetailScreen() {
   const status = job?.status;
   const isActive = status === "in_progress";
   const isDone = status === "completed" || status === "skipped";
+
+  const formatTimer = (secs: number) => {
+    const isOver = secs < 0;
+    const abs = Math.abs(secs);
+    const h = Math.floor(abs / 3600);
+    const m = Math.floor((abs % 3600) / 60);
+    const s = abs % 60;
+    const parts = h > 0
+      ? `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`
+      : `${m}:${String(s).padStart(2, "0")}`;
+    return isOver ? `-${parts}` : parts;
+  };
 
   const topPad = insets.top + (Platform.OS === "web" ? 67 : 0);
   const bottomPad = insets.bottom + (Platform.OS === "web" ? 34 : 16);
@@ -759,6 +808,18 @@ export default function JobDetailScreen() {
               )}
             </TouchableOpacity>
           ) : (
+            <View style={{ gap: 10 }}>
+              {remainingSeconds !== null && (
+                <View style={[styles.timerRow, { borderColor: colors.border, backgroundColor: remainingSeconds < 0 ? "#fee2e2" : `${colors.primary}18` }]}>
+                  <Feather name="clock" size={14} color={remainingSeconds < 0 ? "#ef4444" : colors.primary} />
+                  <Text style={[styles.timerLabel, { color: remainingSeconds < 0 ? "#ef4444" : colors.foreground }]}>
+                    {remainingSeconds >= 0 ? "Time remaining" : "Over time"}
+                  </Text>
+                  <Text style={[styles.timerValue, { color: remainingSeconds < 0 ? "#ef4444" : colors.primary }]}>
+                    {formatTimer(remainingSeconds)}
+                  </Text>
+                </View>
+              )}
             <View style={styles.actionRow}>
               <TouchableOpacity
                 style={[
@@ -799,6 +860,7 @@ export default function JobDetailScreen() {
                   </>
                 )}
               </TouchableOpacity>
+            </View>
             </View>
           )}
         </View>
@@ -1019,6 +1081,25 @@ const styles = StyleSheet.create({
   secondaryBtnText: {
     fontFamily: "Inter_600SemiBold",
     fontSize: 15,
+  },
+  timerRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+  },
+  timerLabel: {
+    fontFamily: "Inter_500Medium",
+    fontSize: 13,
+    flex: 1,
+  },
+  timerValue: {
+    fontFamily: "Inter_700Bold",
+    fontSize: 18,
+    letterSpacing: 0.5,
   },
   confirmBar: {
     gap: 10,
