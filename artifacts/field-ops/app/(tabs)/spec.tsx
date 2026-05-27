@@ -145,7 +145,6 @@ function SpecCard({ spec, colors: c }: { spec: SpecType; colors: ReturnType<type
       {/* Header row */}
       <View style={styles.cardHeader}>
         <View style={styles.cardTitleGroup}>
-          <Text style={[styles.typeNum, { color: PRIMARY }]}>{spec.typeNum}</Text>
           <Text style={[styles.cardLabel, { color: c.foreground }]}>{spec.label}</Text>
         </View>
         <View style={styles.cardHeaderRight}>
