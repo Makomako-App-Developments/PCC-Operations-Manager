@@ -408,7 +408,7 @@ function GanttView({
           <div className="bg-white rounded-xl px-4 py-2 shadow-sm border border-gray-100 flex items-center gap-2 flex-shrink-0">
             <Route className="w-3.5 h-3.5 text-gray-400" />
             <span className="text-xs font-semibold text-gray-800">{rows.reduce((s, r) => s + r.jobs.length, 0)}</span>
-            <span className="text-[10px] text-gray-500">total jobs</span>
+            <span className="text-[10px] text-gray-500">jobs in period</span>
           </div>
         </div>
       )}
