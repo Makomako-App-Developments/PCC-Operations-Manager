@@ -19,7 +19,6 @@ function buildHtml(
   color: string
 ): string {
   const hasPolygon = boundary?.coordinates?.[0]?.length;
-  // GeoJSON [lng,lat] → Leaflet [lat,lng]
   const leafletCoords = hasPolygon
     ? JSON.stringify(
         boundary!.coordinates[0].map(([lo, la]: number[]) => [la, lo])
@@ -40,20 +39,48 @@ function buildHtml(
   return `<!DOCTYPE html>
 <html>
 <head>
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <style>
   * { margin:0; padding:0; box-sizing:border-box; }
   html,body,#map { width:100%; height:100%; }
+  #layer-btn {
+    position:absolute; top:10px; right:10px; z-index:1000;
+    background:#fff; border:none; border-radius:6px;
+    padding:6px 10px; font-size:12px; font-weight:600;
+    color:#333; cursor:pointer; box-shadow:0 1px 4px rgba(0,0,0,0.25);
+    font-family:sans-serif;
+  }
 </style>
 </head>
 <body>
 <div id="map"></div>
+<button id="layer-btn">Aerial</button>
 <script>
-  var map = L.map('map', { zoomControl: false, attributionControl: false })
+  var map = L.map('map', { zoomControl: true, attributionControl: false })
     .setView(${center}, ${zoom});
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+
+  var streetLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png');
+  var aerialLayer = L.tileLayer(
+    'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+    { maxZoom: 21 }
+  );
+  streetLayer.addTo(map);
+
+  var isAerial = false;
+  document.getElementById('layer-btn').addEventListener('click', function() {
+    if (isAerial) {
+      map.removeLayer(aerialLayer);
+      streetLayer.addTo(map);
+      this.textContent = 'Aerial';
+    } else {
+      map.removeLayer(streetLayer);
+      aerialLayer.addTo(map);
+      this.textContent = 'Map';
+    }
+    isAerial = !isAerial;
+  });
 
   var coords = ${leafletCoords};
   if (coords.length > 0) {
@@ -78,7 +105,7 @@ function buildHtml(
 </html>`;
 }
 
-export function BoundaryMap({ boundary, lat, lng, color = "#00AECD", height = 200 }: Props) {
+export function BoundaryMap({ boundary, lat, lng, color = "#00AECD", height = 220 }: Props) {
   const clat = lat != null ? Number(lat) : -41.13;
   const clng = lng != null ? Number(lng) : 174.85;
 

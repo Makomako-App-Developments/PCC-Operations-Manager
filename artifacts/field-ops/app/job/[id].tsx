@@ -341,6 +341,7 @@ export default function JobDetailScreen() {
 
   const [checkedTasks, setCheckedTasks] = useState<Record<number, boolean>>({});
   const [notes, setNotes] = useState("");
+  const [pendingAction, setPendingAction] = useState<"start" | "complete" | "skip" | null>(null);
 
   const { data: job, isLoading: jobLoading } = useGetJob(id ?? "");
   const { data: asset, isLoading: assetLoading } = useGetAsset(
@@ -361,95 +362,62 @@ export default function JobDetailScreen() {
     setCheckedTasks((prev) => ({ ...prev, [index]: !prev[index] }));
   };
 
-  const handleStart = () => {
-    if (!id) return;
-    Alert.alert("Start Job", "Record your start time now?", [
-      { text: "Cancel", style: "cancel" },
-      {
-        text: "Start",
-        onPress: () => {
-          updateJob.mutate(
-            { id, data: { status: "in_progress", startedAt: new Date().toISOString() } },
-            {
-              onSuccess: () => {
-                Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-              },
-            },
-          );
-        },
-      },
-    ]);
-  };
+  const handleStart = () => { if (id) setPendingAction("start"); };
+  const handleComplete = () => { if (id) setPendingAction("complete"); };
+  const handleSkip = () => { if (id) setPendingAction("skip"); };
 
-  const handleComplete = () => {
-    if (!id) return;
-    if (isAllTeams) {
-      Alert.alert("Sign Off", "Record your team's completion for this job?", [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Sign Off",
-          onPress: () => {
-            teamComplete.mutate(
-              { notes: notes.trim() || undefined },
-              {
-                onSuccess: () => {
-                  Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-                  router.back();
-                },
-                onError: (err: any) => {
-                  Alert.alert("Error", err?.message ?? "Sign-off failed");
-                },
-              },
-            );
-          },
-        },
-      ]);
-    } else {
+  const handleConfirm = () => {
+    if (!id || !pendingAction) return;
+    if (pendingAction === "start") {
       updateJob.mutate(
-        {
-          id,
-          data: {
-            status: "completed",
-            completedAt: new Date().toISOString(),
-            notes: notes.trim() || undefined,
-          },
-        },
+        { id, data: { status: "in_progress", startedAt: new Date().toISOString() } },
         {
           onSuccess: () => {
             Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+            setPendingAction(null);
+          },
+          onError: () => setPendingAction(null),
+        },
+      );
+    } else if (pendingAction === "complete") {
+      if (isAllTeams) {
+        teamComplete.mutate(
+          { notes: notes.trim() || undefined },
+          {
+            onSuccess: () => {
+              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+              setPendingAction(null);
+              router.back();
+            },
+            onError: () => setPendingAction(null),
+          },
+        );
+      } else {
+        updateJob.mutate(
+          { id, data: { status: "completed", completedAt: new Date().toISOString(), notes: notes.trim() || undefined } },
+          {
+            onSuccess: () => {
+              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+              setPendingAction(null);
+              router.back();
+            },
+            onError: () => setPendingAction(null),
+          },
+        );
+      }
+    } else if (pendingAction === "skip") {
+      updateJob.mutate(
+        { id, data: { status: "skipped", notes: notes.trim() || undefined } },
+        {
+          onSuccess: () => {
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+            setPendingAction(null);
             router.back();
           },
+          onError: () => setPendingAction(null),
         },
       );
     }
-  };
-
-  const handleSkip = () => {
-    if (!id) return;
-    Alert.alert("Skip Job", "Mark this job as skipped?", [
-      { text: "Cancel", style: "cancel" },
-      {
-        text: "Skip",
-        style: "destructive",
-        onPress: () => {
-          updateJob.mutate(
-            {
-              id,
-              data: {
-                status: "skipped",
-                notes: notes.trim() || undefined,
-              },
-            },
-            {
-              onSuccess: () => {
-                Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-                router.back();
-              },
-            },
-          );
-        },
-      },
-    ]);
   };
 
   const isLoading = jobLoading || assetLoading;
@@ -719,7 +687,59 @@ export default function JobDetailScreen() {
             },
           ]}
         >
-          {!isActive ? (
+          {pendingAction ? (
+            <View style={styles.confirmBar}>
+              <Text style={[styles.confirmMsg, { color: colors.foreground }]}>
+                {pendingAction === "start"
+                  ? "Start this job now?"
+                  : pendingAction === "skip"
+                  ? "Mark this job as skipped?"
+                  : isAllTeams
+                  ? "Sign off for your team?"
+                  : "Mark as complete?"}
+              </Text>
+              <View style={styles.confirmRow}>
+                <TouchableOpacity
+                  style={[styles.cancelBtn, { borderColor: colors.border, borderRadius: colors.radius }]}
+                  onPress={() => setPendingAction(null)}
+                  activeOpacity={0.8}
+                >
+                  <Text style={[styles.cancelBtnText, { color: colors.mutedForeground }]}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[
+                    styles.confirmBtn,
+                    {
+                      backgroundColor:
+                        pendingAction === "skip"
+                          ? "#ef4444"
+                          : pendingAction === "complete"
+                          ? "#22c55e"
+                          : colors.primary,
+                      borderRadius: colors.radius,
+                    },
+                  ]}
+                  onPress={handleConfirm}
+                  activeOpacity={0.85}
+                  disabled={isMutating}
+                >
+                  {isMutating ? (
+                    <ActivityIndicator color="#fff" size="small" />
+                  ) : (
+                    <Text style={styles.confirmBtnText}>
+                      {pendingAction === "start"
+                        ? "Start"
+                        : pendingAction === "skip"
+                        ? "Skip"
+                        : isAllTeams
+                        ? "Sign Off"
+                        : "Complete"}
+                    </Text>
+                  )}
+                </TouchableOpacity>
+              </View>
+            </View>
+          ) : !isActive ? (
             <TouchableOpacity
               style={[
                 styles.primaryBtn,
@@ -999,5 +1019,39 @@ const styles = StyleSheet.create({
   secondaryBtnText: {
     fontFamily: "Inter_600SemiBold",
     fontSize: 15,
+  },
+  confirmBar: {
+    gap: 10,
+  },
+  confirmMsg: {
+    fontFamily: "Inter_600SemiBold",
+    fontSize: 14,
+    textAlign: "center",
+  },
+  confirmRow: {
+    flexDirection: "row",
+    gap: 10,
+  },
+  cancelBtn: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 13,
+    borderWidth: 1,
+  },
+  cancelBtnText: {
+    fontFamily: "Inter_600SemiBold",
+    fontSize: 15,
+  },
+  confirmBtn: {
+    flex: 2,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 13,
+  },
+  confirmBtnText: {
+    fontFamily: "Inter_700Bold",
+    fontSize: 15,
+    color: "#fff",
   },
 });
