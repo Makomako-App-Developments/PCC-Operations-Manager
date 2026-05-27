@@ -254,7 +254,7 @@ export default function NewAudit() {
 
   const filteredAssets = assets.filter((a) => {
     const q = assetSearch.toLowerCase();
-    return !q || a.name?.toLowerCase().includes(q) || a.description?.toLowerCase().includes(q) || a.reference?.toLowerCase().includes(q);
+    return !q || a.name?.toLowerCase().includes(q) || a.description?.toLowerCase().includes(q);
   }).slice(0, 50);
 
   const score = calcAuditScore(responses);

@@ -544,7 +544,6 @@ router.get(
         createdAt:         jobsTable.createdAt,
         updatedAt:         jobsTable.updatedAt,
         assetName:         assetsTable.name,
-        assetRef:          assetsTable.reference,
         assetDesc:         assetsTable.description,
         gardenType:        assetsTable.gardenType,
         suburb:            assetsTable.suburb,
@@ -636,7 +635,6 @@ router.get(
         crewStatus:        jobsTable.crewStatus,
         assetId:           assetsTable.id,
         assetName:         assetsTable.name,
-        assetRef:          assetsTable.reference,
         assetDesc:         assetsTable.description,
         gardenType:        assetsTable.gardenType,
         standard:          assetsTable.standard,
@@ -662,7 +660,7 @@ router.get(
       );
 
     const assetMap = new Map<string, {
-      assetId: string; assetName: string; assetRef: string; assetDesc: string | null;
+      assetId: string; assetName: string; assetDesc: string | null;
       gardenType: string; standard: string; frequency: string;
       serviceTimeMins: number; teamId: string | null; routeOrder: number | null;
       jobs: { id: string; scheduledDate: string; status: string; crewStatus: string | null; estimatedTimeMins: number | null }[];
@@ -671,7 +669,7 @@ router.get(
     for (const row of rows) {
       if (!assetMap.has(row.assetId)) {
         assetMap.set(row.assetId, {
-          assetId: row.assetId, assetName: row.assetName, assetRef: row.assetRef, assetDesc: row.assetDesc,
+          assetId: row.assetId, assetName: row.assetName, assetDesc: row.assetDesc,
           gardenType: row.gardenType, standard: row.standard, frequency: row.frequency,
           serviceTimeMins: row.serviceTimeMins, teamId: row.teamId, routeOrder: row.routeOrder,
           jobs: [],
@@ -715,7 +713,6 @@ router.get(
         estimatedTimeMins: jobsTable.estimatedTimeMins,
         serviceTimeMins:   assetsTable.serviceTimeMins,
         assetName:         assetsTable.name,
-        assetRef:          assetsTable.reference,
         assetDesc:         assetsTable.description,
         routeOrder:        assetsTable.routeOrder,
         crewStatus:        jobsTable.crewStatus,

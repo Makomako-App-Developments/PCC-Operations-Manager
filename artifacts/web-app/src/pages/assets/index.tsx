@@ -495,7 +495,6 @@ function AssetDetailDrawer({ assetId, onClose, teamName }: { assetId: string | n
                   </button>
                 )}
               </div>
-              <p className="text-[11px] text-white/50 font-mono mb-2.5">{asset.reference}</p>
               <div className="flex flex-wrap gap-1.5">
                 <Badge className={`text-[10px] border-0 capitalize ${TYPE_COLORS[asset.gardenType] || "bg-gray-100 text-gray-700"}`}>
                   {asset.gardenType.replace(/_/g, " ")}

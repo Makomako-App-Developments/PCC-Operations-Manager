@@ -80,7 +80,7 @@ router.get(
     const assetIds = [...new Set(rows.map(r => r.recordId).filter(Boolean))] as string[];
     const assets = assetIds.length > 0
       ? await db
-          .select({ id: assetsTable.id, name: assetsTable.name, reference: assetsTable.reference })
+          .select({ id: assetsTable.id, name: assetsTable.name })
           .from(assetsTable)
           .where(inArray(assetsTable.id, assetIds))
       : [];
@@ -94,7 +94,6 @@ router.get(
         id:             row.id,
         assetId:        row.recordId,
         assetName:      info?.name     ?? (newD?.name)      ?? "Unknown",
-        assetReference: info?.reference ?? (newD?.reference) ?? "—",
         action:         row.action,
         changedAt:      row.changedAt,
         changedByName:  row.changedByName ?? "System",

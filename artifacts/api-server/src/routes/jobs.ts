@@ -76,7 +76,7 @@ router.get("/completed-works", requireAuth, validateQuery(completedWorksQuerySch
   if (q.gardenType) conditions.push(eq(assetsTable.gardenType, q.gardenType as any) as any);
   if (q.search) {
     const term = `%${q.search}%`;
-    conditions.push(or(ilike(assetsTable.name, term), ilike(assetsTable.reference, term)) as any);
+    conditions.push(ilike(assetsTable.name, term) as any);
   }
 
   const offset = (q.page - 1) * q.limit;
@@ -96,7 +96,6 @@ router.get("/completed-works", requireAuth, validateQuery(completedWorksQuerySch
       teamName:         teamsTable.name,
       assetId:          assetsTable.id,
       assetName:        assetsTable.name,
-      assetReference:   assetsTable.reference,
       gardenType:       assetsTable.gardenType,
       ward:             assetsTable.ward,
       suburb:           assetsTable.suburb,

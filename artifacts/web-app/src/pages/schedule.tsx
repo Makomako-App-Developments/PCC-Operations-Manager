@@ -64,7 +64,6 @@ type ViewType = "day" | "week" | "gantt" | "gantt-day";
 interface GanttAssetRow {
   assetId: string;
   assetName: string;
-  assetRef: string;
   assetDesc: string | null;
   gardenType: string;
   standard: string;
@@ -172,8 +171,7 @@ function DailyGanttView({
     : allRows;
   const rows = q
     ? teamFiltered.filter(r =>
-        r.assetName.toLowerCase().includes(q) ||
-        r.assetRef.toLowerCase().includes(q),
+        r.assetName.toLowerCase().includes(q),
       )
     : teamFiltered;
 
@@ -258,7 +256,7 @@ function DailyGanttView({
                     </td>
                     <td className="py-1.5 px-3 sticky z-10" style={{ left: 40,  background: rowBg, width: 190 }}>
                       <Link href={`/assets/${row.assetId}`} className="font-semibold text-gray-800 hover:text-teal-600 hover:underline truncate max-w-[185px] block leading-snug" title={row.assetName}>{row.assetName}</Link>
-                      <p className="text-gray-400 text-[10px] truncate max-w-[185px]">{row.assetDesc || row.assetRef}</p>
+                      <p className="text-gray-400 text-[10px] truncate max-w-[185px]">{row.assetDesc}</p>
                     </td>
                     <td className="py-1.5 px-3 sticky z-10" style={{ left: 230, background: rowBg, width: 80 }}>
                       <span className={`px-1.5 py-0.5 rounded text-[9px] font-semibold capitalize ${TYPE_BADGES[row.gardenType] ?? "bg-gray-100 text-gray-600"}`}>
@@ -296,7 +294,7 @@ function DailyGanttView({
                                 return (
                                   <button
                                     key={job.id}
-                                    onClick={() => onJobClick({ ...job, assetName: row.assetName, assetRef: row.assetRef, teamId: row.teamId })}
+                                    onClick={() => onJobClick({ ...job, assetName: row.assetName, teamId: row.teamId })}
                                     className="w-6 h-6 rounded-full flex items-center justify-center text-white hover:opacity-80 transition-opacity flex-shrink-0"
                                     style={{ background: bg }}
                                     title={`${row.assetName} — ${job.status.replace("_", " ")}`}
@@ -372,8 +370,7 @@ function GanttView({
     : allRows;
   const rows = q
     ? teamFiltered.filter(r =>
-        r.assetName.toLowerCase().includes(q) ||
-        r.assetRef.toLowerCase().includes(q),
+        r.assetName.toLowerCase().includes(q),
       )
     : teamFiltered;
 
@@ -526,8 +523,7 @@ function DayView({
   const q = searchTerm.trim().toLowerCase();
   const jobs = q
     ? rawJobs.filter((j: any) =>
-        j.assetName?.toLowerCase().includes(q) ||
-        j.assetRef?.toLowerCase().includes(q),
+        j.assetName?.toLowerCase().includes(q),
       )
     : rawJobs;
 
@@ -683,7 +679,7 @@ function DayView({
                                     <p className={`text-sm font-semibold leading-tight ${done ? "line-through text-gray-400" : overdue ? "text-red-700" : "text-gray-800"}`}>
                                       {job.assetName}
                                     </p>
-                                    <p className="text-[11px] text-gray-400 mt-0.5 truncate">{(job as any).assetDesc ?? job.assetRef}</p>
+                                    <p className="text-[11px] text-gray-400 mt-0.5 truncate">{(job as any).assetDesc}</p>
                                   </div>
                                   <div className="flex items-center gap-1.5 flex-shrink-0 pt-0.5 flex-wrap justify-end">
                                     {overdue     && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-red-100 text-red-700 font-semibold">Overdue</span>}
@@ -767,8 +763,7 @@ function WeekView({
   for (const day of visibleDays) {
     const dayJobs = q
       ? day.jobs.filter((j: any) =>
-          j.assetName?.toLowerCase().includes(q) ||
-          j.assetRef?.toLowerCase().includes(q))
+          j.assetName?.toLowerCase().includes(q))
       : day.jobs;
     for (const job of dayJobs) {
       allJobs.push({ ...job, _date: day.date });
@@ -891,7 +886,7 @@ function WeekView({
                       const ra = a.routeOrder ?? 999999;
                       const rb = b.routeOrder ?? 999999;
                       if (ra !== rb) return ra - rb;
-                      return (a.assetRef ?? "").localeCompare(b.assetRef ?? "");
+                      return (a.assetName ?? "").localeCompare(b.assetName ?? "");
                     });
                     const dateObj = new Date(date + "T00:00:00");
                     const isToday = todayStr === date;
@@ -964,7 +959,7 @@ function WeekView({
                                     <p className={`text-[12px] font-semibold leading-tight truncate ${done ? "line-through text-gray-400" : overdue ? "text-red-700" : "text-gray-800"}`}>
                                       {job.assetName}
                                     </p>
-                                    <p className="text-[10px] text-gray-400 mt-0.5 truncate">{(job as any).assetDesc ?? job.assetRef}</p>
+                                    <p className="text-[10px] text-gray-400 mt-0.5 truncate">{(job as any).assetDesc}</p>
                                     <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
                                       {overdue     && <span className="text-[9px] px-1 py-0.5 rounded bg-red-100 text-red-700 font-semibold">Overdue</span>}
                                       {crewNone    && <span className="text-[9px] px-1 py-0.5 rounded bg-red-100 text-red-700 font-semibold flex items-center gap-0.5"><XCircle className="w-2 h-2" />No crew</span>}
@@ -1228,8 +1223,7 @@ export default function Schedule() {
 
   const filteredAssets = (allAssets?.data ?? []).filter((a: any) =>
     urgentSearch.length < 2 ? false :
-    a.name.toLowerCase().includes(urgentSearch.toLowerCase()) ||
-    a.reference.toLowerCase().includes(urgentSearch.toLowerCase()),
+    a.name.toLowerCase().includes(urgentSearch.toLowerCase()),
   ).slice(0, 8);
 
   const openGenerateDialog = () => {
@@ -1552,7 +1546,7 @@ export default function Schedule() {
               {selectedJob?.assetName ?? "Job"}
             </SheetTitle>
             <SheetDescription className="text-xs text-gray-400 font-mono">
-              {selectedJob?.assetRef} · {selectedJob?.scheduledDate ? format(new Date(selectedJob.scheduledDate + "T00:00:00"), "EEEE d MMM yyyy") : ""}
+              {selectedJob?.scheduledDate ? format(new Date(selectedJob.scheduledDate + "T00:00:00"), "EEEE d MMM yyyy") : ""}
             </SheetDescription>
           </SheetHeader>
 
@@ -1687,14 +1681,14 @@ export default function Schedule() {
                   <div className="flex items-center justify-between px-3 py-2.5 rounded-lg border border-[#00AECD] bg-[#00AECD]/5">
                     <div>
                       <p className="text-sm font-semibold text-gray-900">{urgentAsset.name}</p>
-                      <p className="text-[11px] text-gray-400 font-mono">{urgentAsset.reference} · {getTeamName(urgentAsset.teamId)}</p>
+                      <p className="text-[11px] text-gray-400">{getTeamName(urgentAsset.teamId)}</p>
                     </div>
                     <button onClick={() => { setUrgentAsset(null); setUrgentSearch(""); }} className="text-xs text-gray-400 hover:text-gray-700 underline">Change</button>
                   </div>
                 ) : (
                   <div className="space-y-1">
                     <Input
-                      placeholder="Search by name or ref…"
+                      placeholder="Search by name…"
                       value={urgentSearch}
                       onChange={e => setUrgentSearch(e.target.value)}
                       className="text-sm"
@@ -1712,7 +1706,7 @@ export default function Schedule() {
                             className="w-full text-left px-3 py-2 hover:bg-gray-50 border-b border-gray-100 last:border-b-0 transition-colors"
                           >
                             <p className="text-sm font-medium text-gray-900">{a.name}</p>
-                            <p className="text-[11px] text-gray-400 font-mono">{a.reference} · {getTeamName(a.teamId)}</p>
+                            <p className="text-[11px] text-gray-400">{getTeamName(a.teamId)}</p>
                           </button>
                         ))}
                       </div>
@@ -1816,7 +1810,7 @@ export default function Schedule() {
                           />
                           <div className="flex-1 min-w-0">
                             <p className={`text-sm font-medium truncate ${isPushed ? "line-through text-gray-400" : "text-gray-900"}`}>{j.assetName}</p>
-                            <p className="text-[10px] text-gray-400 truncate">{(j as any).assetDesc ?? j.assetRef}</p>
+                            <p className="text-[10px] text-gray-400 truncate">{(j as any).assetDesc}</p>
                           </div>
                           <span className="text-xs text-gray-500 flex-shrink-0">{(mins / 60).toFixed(1)}h</span>
                           {isPushed && (

@@ -779,7 +779,6 @@ export default function AssetDetail() {
         </Link>
         <span className="text-gray-300">/</span>
         <span className="text-sm font-semibold text-gray-800 truncate">{asset.name}</span>
-        <span className="text-[10px] font-mono text-gray-400 bg-gray-100 px-2 py-0.5 rounded flex-shrink-0">{asset.reference}</span>
       </header>
 
       {/* Two-column layout */}
@@ -798,7 +797,6 @@ export default function AssetDetail() {
             <div className="flex flex-col h-full overflow-y-auto">
               {/* Identity header */}
               <div className="px-5 py-5 flex-shrink-0" style={{ background: NAVY }}>
-                <p className="text-[10px] text-white/40 font-mono mb-0.5">{asset.reference}</p>
                 <h2 className="text-base font-bold text-white leading-snug">{asset.name}</h2>
                 {asset.description && (
                   <p className="text-[11px] text-white/60 mt-1 leading-snug">{asset.description}</p>

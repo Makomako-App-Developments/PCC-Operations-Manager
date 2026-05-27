@@ -563,7 +563,7 @@ export function ReactiveJobWizard({ teamsData, assetsData, onClose, onPublished 
                             setAssetDropdownOpen(true);
                           }}
                           onBlur={() => setTimeout(() => setAssetDropdownOpen(false), 150)}
-                          placeholder="Search by name or reference…"
+                          placeholder="Search by name…"
                           className="w-full pl-8 pr-3 py-2 text-sm border border-gray-200 rounded-xl outline-none focus:border-[#00AECD] bg-white"
                         />
                       </div>
@@ -574,7 +574,6 @@ export function ReactiveJobWizard({ teamsData, assetsData, onClose, onPublished 
                             const filtered = assetsData.filter(a =>
                               !q ||
                               a.name.toLowerCase().includes(q) ||
-                              (a.reference ?? "").toLowerCase().includes(q) ||
                               ((a as any).description ?? "").toLowerCase().includes(q)
                             );
                             return filtered.length === 0
@@ -598,7 +597,6 @@ export function ReactiveJobWizard({ teamsData, assetsData, onClose, onPublished 
                                       <span className="text-[11px] text-gray-400 truncate">{(a as any).description}</span>
                                     )}
                                   </span>
-                                  <span className="text-[10px] font-mono text-gray-400 flex-shrink-0 mt-0.5">{a.reference}</span>
                                 </button>
                               ));
                           })()}
@@ -1099,9 +1097,6 @@ export function ReactiveJobWizard({ teamsData, assetsData, onClose, onPublished 
                                   <Clock className="w-3 h-3" />
                                   {fmtMins(jobMins)}
                                 </span>
-                                {job.assetRef && (
-                                  <span className="font-mono text-gray-300">{job.assetRef}</span>
-                                )}
                                 {job.suburb && <span>{job.suburb}</span>}
                               </div>
                               {action === "push" && (

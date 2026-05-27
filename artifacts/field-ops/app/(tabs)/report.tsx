@@ -369,7 +369,7 @@ export default function ReportScreen() {
                     {a.name}
                   </Text>
                   <Text style={[styles.modalItemSub, { color: colors.mutedForeground }]}>
-                    {a.reference} {a.suburb ? `· ${a.suburb}` : ""}
+                    {a.suburb ?? ""}
                   </Text>
                 </View>
                 {selectedAssetId === a.id && (

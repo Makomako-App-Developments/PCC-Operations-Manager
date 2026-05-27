@@ -79,7 +79,6 @@ interface ChangeEntry {
   id: string;
   assetId: string;
   assetName: string;
-  assetReference: string;
   action: string;
   changedAt: string;
   changedByName: string;
@@ -119,10 +118,9 @@ function AssetChangesTab() {
 
   const handleExportCSV = () => {
     const rows = [
-      ["Date", "Asset Reference", "Asset Name", "Action", "Changed By", "Fields Changed", "Details"],
+      ["Date", "Asset Name", "Action", "Changed By", "Fields Changed", "Details"],
       ...data.map(e => [
         new Date(e.changedAt).toLocaleString("en-NZ"),
-        e.assetReference,
         e.assetName,
         ACTION_LABELS[e.action] ?? e.action,
         e.changedByName,
@@ -198,7 +196,6 @@ function AssetChangesTab() {
                     </td>
                     <td className="px-5 py-3">
                       <p className="font-medium text-gray-900 leading-tight">{entry.assetName}</p>
-                      <p className="text-[10px] font-mono text-gray-400">{entry.assetReference}</p>
                     </td>
                     <td className="px-5 py-3">
                       <span

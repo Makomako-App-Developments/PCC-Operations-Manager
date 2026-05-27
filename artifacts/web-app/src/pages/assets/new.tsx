@@ -15,7 +15,6 @@ import { ArrowLeft } from "lucide-react";
 const BRAND = "#00AECD";
 
 const assetSchema = z.object({
-  reference: z.string().min(1, "Reference is required"),
   name: z.string().min(1, "Name is required"),
   siteType: z.enum(["park","street"]).optional(),
   gardenType: z.enum(["annuals","roses_perennials","ornamental","amenity","rain_garden","reveg","bush","tree_planter_pits","hedge"]),
@@ -42,7 +41,6 @@ export default function NewAsset() {
   const form = useForm<z.infer<typeof assetSchema>>({
     resolver: zodResolver(assetSchema),
     defaultValues: {
-      reference: "",
       name: "",
       gardenType: "amenity",
       standard: "medium",
@@ -92,14 +90,6 @@ export default function NewAsset() {
                   <div className="border-b pb-2 mb-4">
                     <h3 className="text-sm font-bold text-gray-900 uppercase tracking-wide">Identification</h3>
                   </div>
-
-                  <FormField control={form.control} name="reference" render={({ field }) => (
-                    <FormItem>
-                      <FormLabel className="text-xs text-gray-500 uppercase tracking-wide">Asset Reference</FormLabel>
-                      <FormControl><Input placeholder="e.g. GRD-1234" {...field} className="h-10" /></FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )} />
 
                   <FormField control={form.control} name="name" render={({ field }) => (
                     <FormItem>

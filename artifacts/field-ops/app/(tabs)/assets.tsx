@@ -53,7 +53,6 @@ export default function AssetsScreen() {
     return assets.filter(
       (a) =>
         a.name.toLowerCase().includes(q) ||
-        a.reference.toLowerCase().includes(q) ||
         (a.suburb ?? "").toLowerCase().includes(q),
     );
   }, [assets, search]);
@@ -89,7 +88,7 @@ export default function AssetsScreen() {
             style={[styles.searchInput, { color: colors.foreground }]}
             value={search}
             onChangeText={setSearch}
-            placeholder="Search by name, ref, suburb…"
+            placeholder="Search by name or suburb…"
             placeholderTextColor={colors.mutedForeground}
             autoCorrect={false}
             clearButtonMode="while-editing"
@@ -139,9 +138,6 @@ export default function AssetsScreen() {
                   <View style={styles.cardTitleGroup}>
                     <Text style={[styles.assetName, { color: colors.foreground }]} numberOfLines={1}>
                       {asset.name}
-                    </Text>
-                    <Text style={[styles.assetRef, { color: colors.mutedForeground }]}>
-                      {asset.reference}
                     </Text>
                   </View>
                   <View style={styles.standardBadge}>

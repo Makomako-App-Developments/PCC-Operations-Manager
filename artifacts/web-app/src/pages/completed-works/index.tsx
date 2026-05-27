@@ -22,7 +22,6 @@ interface CompletedWork {
   teamName: string | null;
   assetId: string | null;
   assetName: string | null;
-  assetReference: string | null;
   gardenType: string | null;
   ward: string | null;
   suburb: string | null;
@@ -113,9 +112,6 @@ function DetailPanel({ job, onClose }: { job: CompletedWork; onClose: () => void
           <h2 className="text-base font-semibold text-gray-900 leading-tight truncate">
             {job.assetName ?? "Unknown Site"}
           </h2>
-          {job.assetReference && (
-            <span className="text-xs text-gray-400 font-mono">{job.assetReference}</span>
-          )}
         </div>
         <button
           onClick={onClose}
@@ -295,7 +291,6 @@ export default function CompletedWorks() {
     const q = search.toLowerCase();
     return all.filter(r =>
       r.assetName?.toLowerCase().includes(q) ||
-      r.assetReference?.toLowerCase().includes(q) ||
       r.suburb?.toLowerCase().includes(q) ||
       r.teamName?.toLowerCase().includes(q) ||
       r.notes?.toLowerCase().includes(q)
@@ -337,7 +332,7 @@ export default function CompletedWorks() {
             <div className="relative flex-1 min-w-[200px] max-w-xs">
               <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 pointer-events-none" />
               <Input
-                placeholder="Search site, reference, notes…"
+                placeholder="Search site, suburb, notes…"
                 value={search}
                 onChange={e => setSearch(e.target.value)}
                 className="pl-8 h-9 text-sm"
@@ -451,9 +446,6 @@ export default function CompletedWorks() {
                       </td>
                       <td className="px-4 py-2.5">
                         <div className="font-medium text-gray-900 truncate max-w-[220px]">{row.assetName ?? "—"}</div>
-                        {row.assetReference && (
-                          <div className="text-[10px] text-gray-400 font-mono">{row.assetReference}</div>
-                        )}
                       </td>
                       <td className="px-4 py-2.5 whitespace-nowrap">
                         <span className="text-xs text-gray-600">
