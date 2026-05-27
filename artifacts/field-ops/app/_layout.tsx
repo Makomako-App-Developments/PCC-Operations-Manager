@@ -39,8 +39,9 @@ function AuthGuard() {
     if (isLoading) return;
 
     const inTabsGroup = segments[0] === "(tabs)";
+    const onLoginScreen = segments[0] === "login";
 
-    if (!user && inTabsGroup) {
+    if (!user && !onLoginScreen) {
       router.replace("/login");
     } else if (user && !inTabsGroup) {
       router.replace("/(tabs)");
