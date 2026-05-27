@@ -58,13 +58,13 @@ function buildHtml(
 <div id="map"></div>
 <button id="layer-btn">Aerial</button>
 <script>
-  var map = L.map('map', { zoomControl: true, attributionControl: false })
+  var map = L.map('map', { zoomControl: true, attributionControl: false, maxZoom: 22 })
     .setView(${center}, ${zoom});
 
-  var streetLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png');
+  var streetLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 22, maxNativeZoom: 19 });
   var aerialLayer = L.tileLayer(
     'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
-    { maxZoom: 21 }
+    { maxZoom: 22, maxNativeZoom: 21 }
   );
   streetLayer.addTo(map);
 
