@@ -265,7 +265,7 @@ function DailyGanttView({
                       </span>
                     </td>
                     <td className="py-1.5 px-3 sticky z-10 text-gray-600 capitalize" style={{ left: 310, background: rowBg, width: 70 }}>{row.frequency}</td>
-                    <td className="py-1.5 px-3 sticky z-10 text-gray-600"            style={{ left: 380, background: rowBg, width: 55 }}>{row.serviceTimeMins}m</td>
+                    <td className="py-1.5 px-3 sticky z-10 text-gray-600"            style={{ left: 380, background: rowBg, width: 55 }}>{row.jobs[0]?.estimatedTimeMins ?? row.serviceTimeMins}m</td>
                     <td className="py-1.5 px-3 sticky z-10 border-r border-gray-200" style={{ left: 435, background: rowBg, width: 115 }}>
                       <div className="flex items-center gap-1.5">
                         <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: color }} />
@@ -302,7 +302,7 @@ function DailyGanttView({
                                   >
                                     {done
                                       ? <CheckCircle className="w-3.5 h-3.5" />
-                                      : <span className="text-[9px] font-bold">{row.serviceTimeMins}m</span>
+                                      : <span className="text-[9px] font-bold">{job.estimatedTimeMins ?? row.serviceTimeMins}m</span>
                                     }
                                   </button>
                                 );
@@ -470,7 +470,7 @@ function GanttView({
                       </span>
                     </td>
                     <td className="py-2 px-3 sticky z-10 text-gray-600 capitalize" style={{ left: 310, background: rowBg, width: 70 }}>{row.frequency}</td>
-                    <td className="py-2 px-3 sticky z-10 text-gray-600"            style={{ left: 380, background: rowBg, width: 55 }}>{row.serviceTimeMins}m</td>
+                    <td className="py-2 px-3 sticky z-10 text-gray-600"            style={{ left: 380, background: rowBg, width: 55 }}>{row.jobs[0]?.estimatedTimeMins ?? row.serviceTimeMins}m</td>
                     <td className="py-2 px-3 sticky z-10 border-r border-gray-200" style={{ left: 435, background: rowBg, width: 115 }}>
                       <div className="flex items-center gap-1.5">
                         <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: color }} />
