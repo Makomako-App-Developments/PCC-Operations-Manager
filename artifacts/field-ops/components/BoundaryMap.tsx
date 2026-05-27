@@ -90,7 +90,7 @@ function buildHtml(
       fillOpacity: 0.25,
       weight: 3
     }).addTo(map);
-    map.fitBounds(poly.getBounds(), { padding: [20, 20] });
+    map.fitBounds(poly.getBounds(), { padding: [8, 8], maxZoom: 20 });
   } else {
     L.circleMarker([${lat}, ${lng}], {
       radius: 10,
