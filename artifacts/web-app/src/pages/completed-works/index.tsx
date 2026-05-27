@@ -1,5 +1,6 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { useSearch } from "wouter";
 import { Search, X, Clock, Camera, FileText, ChevronRight, CheckCircle2, ArrowUpRight, ArrowDownRight, Minus } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -247,6 +248,9 @@ function TimeRow({ label, mins, highlight = false }: { label: string; mins: numb
 // ─── main page ───────────────────────────────────────────────────────────────
 
 export default function CompletedWorks() {
+  const search$ = useSearch();
+  const jobParam = new URLSearchParams(search$).get("job");
+
   const [search, setSearch] = useState("");
   const [teamId, setTeamId] = useState("all");
   const [ward, setWard] = useState("all");
@@ -272,6 +276,13 @@ export default function CompletedWorks() {
     },
     staleTime: 30_000,
   });
+
+  // Auto-open a job when navigated here with ?job=<id>
+  useEffect(() => {
+    if (!jobParam || !data?.data) return;
+    const match = data.data.find(j => j.id === jobParam);
+    if (match) setSelectedJob(match);
+  }, [jobParam, data]);
 
   const { data: teamsData } = useQuery<Array<{ id: string; name: string }>>({
     queryKey: ["teams"],
