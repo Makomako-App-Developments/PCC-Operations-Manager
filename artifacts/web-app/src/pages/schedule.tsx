@@ -691,7 +691,7 @@ function DayView({
                                     {crewReduced && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 font-semibold flex items-center gap-0.5"><AlertTriangle className="w-2.5 h-2.5" />Reduced</span>}
                                     {(job as any).isAllTeams && (
                                       <span className="text-[10px] px-1.5 py-0.5 rounded-full font-semibold flex items-center gap-0.5" style={{ background: "#00AECD20", color: "#00AECD" }}>
-                                        <Users className="w-2.5 h-2.5" />All Teams · {((job as any).teamCompletions ?? []).length}/{teamsData.length}✓
+                                        <Users className="w-2.5 h-2.5" />Full Team · {((job as any).teamCompletions ?? []).length}/{teamsData.length}✓
                                       </span>
                                     )}
                                     <span className="text-[11px] text-gray-400 flex items-center gap-0.5">
@@ -1283,9 +1283,9 @@ export default function Schedule() {
     return TEAM_COLORS[idx % TEAM_COLORS.length] ?? "#94a3b8";
   };
   const getTeamName = (teamId?: string | null) => {
-    if (!teamId) return "All Teams";
-    if (!teamsData) return "All Teams";
-    return teamsData.find(t => t.id === teamId)?.name ?? "All Teams";
+    if (!teamId) return "Full Team";
+    if (!teamsData) return "Full Team";
+    return teamsData.find(t => t.id === teamId)?.name ?? "Full Team";
   };
 
   return (
