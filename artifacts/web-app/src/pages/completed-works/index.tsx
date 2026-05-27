@@ -23,6 +23,7 @@ interface CompletedWork {
   teamName: string | null;
   assetId: string | null;
   assetName: string | null;
+  assetDescription: string | null;
   gardenType: string | null;
   ward: string | null;
   suburb: string | null;
@@ -429,6 +430,7 @@ export default function CompletedWorks() {
                 <tr className="bg-gray-50 border-b border-gray-200">
                   <th className="text-left px-4 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap">Date</th>
                   <th className="text-left px-4 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">Site</th>
+                  <th className="text-left px-4 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">Description</th>
                   <th className="text-left px-4 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap">Type</th>
                   <th className="text-left px-4 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">Ward</th>
                   <th className="text-left px-4 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">Team</th>
@@ -457,6 +459,9 @@ export default function CompletedWorks() {
                       </td>
                       <td className="px-4 py-2.5">
                         <div className="font-medium text-gray-900 truncate max-w-[220px]">{row.assetName ?? "—"}</div>
+                      </td>
+                      <td className="px-4 py-2.5">
+                        <div className="text-xs text-gray-600 truncate max-w-[260px]">{row.assetDescription ?? "—"}</div>
                       </td>
                       <td className="px-4 py-2.5 whitespace-nowrap">
                         <span className="text-xs text-gray-600">

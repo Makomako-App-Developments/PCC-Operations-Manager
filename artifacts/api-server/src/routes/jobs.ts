@@ -96,6 +96,7 @@ router.get("/completed-works", requireAuth, validateQuery(completedWorksQuerySch
       teamName:         teamsTable.name,
       assetId:          assetsTable.id,
       assetName:        assetsTable.name,
+      assetDescription: assetsTable.description,
       gardenType:       assetsTable.gardenType,
       ward:             assetsTable.ward,
       suburb:           assetsTable.suburb,
