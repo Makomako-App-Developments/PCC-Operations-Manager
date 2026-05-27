@@ -492,7 +492,7 @@ export default function Dashboard() {
                   const variance = act - est;
                   const over = variance > 0;
                   return (
-                    <tr key={j.id} className="border-b border-gray-50 hover:bg-gray-50/50 transition-colors cursor-pointer" onClick={() => setLocation(`/completed-works?job=${j.id}`)}>
+                    <tr key={j.id} className="border-b border-gray-50 hover:bg-gray-50/50 transition-colors cursor-pointer" onClick={() => navigate(`/completed-works?job=${j.id}`)}>
                       <td className="px-4 py-2.5 text-[11px] text-gray-400">
                         {j.scheduledDate ? format(parseISO(j.scheduledDate), "d MMM") : "—"}
                       </td>
