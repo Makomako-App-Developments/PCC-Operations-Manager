@@ -10,22 +10,24 @@ import { usersTable } from "./users";
 
 // Scheduled + recurring jobs
 export const jobsTable = pgTable("jobs", {
-  id:               uuid("id").primaryKey().defaultRandom(),
-  assetId:          uuid("asset_id").notNull().references(() => assetsTable.id),
-  jobType:          jobTypeEnum("job_type").notNull(),
-  status:           jobStatusEnum("status").notNull().default("pending"),
-  teamId:           uuid("team_id").references(() => teamsTable.id),
-  assignedUserId:   uuid("assigned_user_id").references(() => usersTable.id),
-  scheduledDate:    date("scheduled_date").notNull(),
-  startedAt:        timestamp("started_at"),
-  completedAt:      timestamp("completed_at"),
-  actualTimeMins:   integer("actual_time_mins"),
-  estimatedTimeMins: integer("estimated_time_mins"),
-  crewStatus:       crewStatusEnum("crew_status").notNull().default("full"),
-  isAllTeams:       boolean("is_all_teams").notNull().default(false),
-  notes:            text("notes"),
-  createdAt:        timestamp("created_at").notNull().defaultNow(),
-  updatedAt:        timestamp("updated_at").notNull().defaultNow(),
+  id:                 uuid("id").primaryKey().defaultRandom(),
+  assetId:            uuid("asset_id").notNull().references(() => assetsTable.id),
+  jobType:            jobTypeEnum("job_type").notNull(),
+  status:             jobStatusEnum("status").notNull().default("pending"),
+  teamId:             uuid("team_id").references(() => teamsTable.id),
+  assignedUserId:     uuid("assigned_user_id").references(() => usersTable.id),
+  scheduledDate:      date("scheduled_date").notNull(),
+  startedAt:          timestamp("started_at"),
+  pausedAt:           timestamp("paused_at"),
+  completedAt:        timestamp("completed_at"),
+  actualTimeMins:     integer("actual_time_mins"),
+  pausedElapsedSecs:  integer("paused_elapsed_secs").notNull().default(0),
+  estimatedTimeMins:  integer("estimated_time_mins"),
+  crewStatus:         crewStatusEnum("crew_status").notNull().default("full"),
+  isAllTeams:         boolean("is_all_teams").notNull().default(false),
+  notes:              text("notes"),
+  createdAt:          timestamp("created_at").notNull().defaultNow(),
+  updatedAt:          timestamp("updated_at").notNull().defaultNow(),
 }, (t) => [
   index("jobs_asset_id_idx").on(t.assetId),
   index("jobs_team_id_idx").on(t.teamId),
@@ -48,6 +50,20 @@ export const jobTeamCompletionsTable = pgTable("job_team_completions", {
 }, (t) => [
   index("jtc_job_id_idx").on(t.jobId),
   index("jtc_team_id_idx").on(t.teamId),
+]);
+
+// Individual task skip reasons — for manager reporting & analytics
+export const jobTaskSkipReasonsTable = pgTable("job_task_skip_reasons", {
+  id:         uuid("id").primaryKey().defaultRandom(),
+  jobId:      uuid("job_id").notNull().references(() => jobsTable.id, { onDelete: "cascade" }),
+  taskIndex:  integer("task_index").notNull(),
+  taskLabel:  text("task_label").notNull(),
+  reason:     text("reason").notNull(),
+  createdById: uuid("created_by_id").references(() => usersTable.id),
+  createdAt:  timestamp("created_at").notNull().defaultNow(),
+}, (t) => [
+  index("jtsr_job_id_idx").on(t.jobId),
+  index("jtsr_created_by_idx").on(t.createdById),
 ]);
 
 // Reactive jobs raised by field workers or managers
@@ -93,13 +109,16 @@ export const jobPhotosTable = pgTable("job_photos", {
 export const insertJobSchema                  = createInsertSchema(jobsTable).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertReactiveJobSchema          = createInsertSchema(reactiveJobsTable).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertJobTeamCompletionSchema    = createInsertSchema(jobTeamCompletionsTable).omit({ id: true, createdAt: true });
+export const insertJobTaskSkipReasonSchema    = createInsertSchema(jobTaskSkipReasonsTable).omit({ id: true, createdAt: true });
 export const selectJobSchema                  = createSelectSchema(jobsTable);
 export const selectReactiveJobSchema          = createSelectSchema(reactiveJobsTable);
 export const selectJobTeamCompletionSchema    = createSelectSchema(jobTeamCompletionsTable);
 
-export type InsertJob               = z.infer<typeof insertJobSchema>;
-export type Job                     = typeof jobsTable.$inferSelect;
-export type InsertReactiveJob       = z.infer<typeof insertReactiveJobSchema>;
-export type ReactiveJob             = typeof reactiveJobsTable.$inferSelect;
-export type InsertJobTeamCompletion = z.infer<typeof insertJobTeamCompletionSchema>;
-export type JobTeamCompletion       = typeof jobTeamCompletionsTable.$inferSelect;
+export type InsertJob                  = z.infer<typeof insertJobSchema>;
+export type Job                        = typeof jobsTable.$inferSelect;
+export type InsertReactiveJob          = z.infer<typeof insertReactiveJobSchema>;
+export type ReactiveJob                = typeof reactiveJobsTable.$inferSelect;
+export type InsertJobTeamCompletion    = z.infer<typeof insertJobTeamCompletionSchema>;
+export type JobTeamCompletion          = typeof jobTeamCompletionsTable.$inferSelect;
+export type InsertJobTaskSkipReason    = z.infer<typeof insertJobTaskSkipReasonSchema>;
+export type JobTaskSkipReason          = typeof jobTaskSkipReasonsTable.$inferSelect;

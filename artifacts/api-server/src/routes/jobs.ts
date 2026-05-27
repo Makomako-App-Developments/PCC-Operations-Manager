@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { db, jobsTable, reactiveJobsTable, insertJobSchema, insertReactiveJobSchema, assetsTable, teamsTable, usersTable, jobTeamCompletionsTable } from "@workspace/db";
+import { db, jobsTable, reactiveJobsTable, insertJobSchema, insertReactiveJobSchema, assetsTable, teamsTable, usersTable, jobTeamCompletionsTable, jobTaskSkipReasonsTable } from "@workspace/db";
 import { eq, and, inArray, or, gte, lte, ilike, desc } from "drizzle-orm";
 import { z } from "zod";
 import { requireAuth, requireRole } from "../middlewares/auth";
@@ -150,13 +150,39 @@ router.patch("/jobs/:id", requireAuth, async (req, res) => {
   // Never trust client-supplied timestamps — server owns these
   delete patch.startedAt;
   delete patch.completedAt;
+  delete patch.pausedAt;
 
-  // Set timestamps when transitioning status
-  if (patch.status === "in_progress" && before.status === "pending") {
-    patch.startedAt = new Date();
+  // Status transition logic
+  const fromStatus = before.status;
+  const toStatus = patch.status as string | undefined;
+
+  if (toStatus === "in_progress") {
+    if (fromStatus === "pending") {
+      // Fresh start
+      patch.startedAt = new Date();
+      patch.pausedAt = null;
+    } else if (fromStatus === "paused") {
+      // Resume — accumulate elapsed time so far into pausedElapsedSecs
+      const pausedAt = before.pausedAt ? new Date(before.pausedAt).getTime() : Date.now();
+      const additionalSecs = Math.floor((Date.now() - pausedAt) / 1000);
+      patch.pausedElapsedSecs = (before.pausedElapsedSecs ?? 0) + additionalSecs;
+      patch.pausedAt = null;
+    }
   }
-  if (patch.status === "completed" && before.status !== "completed") {
-    patch.completedAt = new Date();
+
+  if (toStatus === "paused" && fromStatus === "in_progress") {
+    patch.pausedAt = new Date();
+  }
+
+  if (toStatus === "completed" && fromStatus !== "completed") {
+    const completedAt = new Date();
+    patch.completedAt = completedAt;
+    // Calculate actual time: wall-clock minus any accumulated paused time
+    if (before.startedAt) {
+      const wallSecs = Math.floor((completedAt.getTime() - new Date(before.startedAt).getTime()) / 1000);
+      const pausedSecs = before.pausedElapsedSecs ?? 0;
+      patch.actualTimeMins = Math.max(1, Math.round((wallSecs - pausedSecs) / 60));
+    }
   }
 
   const [updated] = await db
@@ -232,6 +258,36 @@ router.patch("/jobs/:id", requireAuth, async (req, res) => {
   }
 
   res.json(updated);
+});
+
+// GET /api/jobs/:id/task-skip-reasons
+router.get("/jobs/:id/task-skip-reasons", requireAuth, async (req, res) => {
+  const id = String(req.params.id);
+  const rows = await db
+    .select()
+    .from(jobTaskSkipReasonsTable)
+    .where(eq(jobTaskSkipReasonsTable.jobId, id))
+    .orderBy(jobTaskSkipReasonsTable.taskIndex);
+  res.json({ data: rows });
+});
+
+// POST /api/jobs/:id/task-skip-reasons
+router.post("/jobs/:id/task-skip-reasons", requireAuth, async (req, res) => {
+  const id = String(req.params.id);
+  const { taskIndex, taskLabel, reason } = req.body as {
+    taskIndex: number;
+    taskLabel: string;
+    reason: string;
+  };
+  if (typeof taskIndex !== "number" || !taskLabel || !reason) {
+    res.status(400).json({ error: "taskIndex, taskLabel and reason are required" });
+    return;
+  }
+  const [created] = await db
+    .insert(jobTaskSkipReasonsTable)
+    .values({ jobId: id, taskIndex, taskLabel, reason, createdById: req.auth!.userId })
+    .returning();
+  res.status(201).json(created);
 });
 
 // POST /api/jobs/:id/team-complete — sign off a team's time on an All Teams job

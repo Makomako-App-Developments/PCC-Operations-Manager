@@ -44,6 +44,7 @@ export const jobTypeEnum = pgEnum("job_type", [
 export const jobStatusEnum = pgEnum("job_status", [
   "pending",
   "in_progress",
+  "paused",
   "completed",
   "skipped",
   "overdue",
