@@ -38,12 +38,13 @@ function AuthGuard() {
   useEffect(() => {
     if (isLoading) return;
 
-    const inTabsGroup = segments[0] === "(tabs)";
-    const onLoginScreen = segments[0] === "login";
+    const seg = segments[0];
+    const onLoginScreen = seg === "login";
+    const inAuthenticatedArea = seg === "(tabs)" || seg === "job";
 
     if (!user && !onLoginScreen) {
       router.replace("/login");
-    } else if (user && !inTabsGroup) {
+    } else if (user && !inAuthenticatedArea) {
       router.replace("/(tabs)");
     }
   }, [user, isLoading, segments]);
