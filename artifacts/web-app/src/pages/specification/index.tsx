@@ -14,9 +14,9 @@ const COLUMNS = [
   { id: "amenity",    type: "Type 4", label: "Amenity" },
   { id: "rain",       type: "Type 5", label: "Rain Garden" },
   { id: "reveg",      type: "Type 6", label: "Reveg" },
-  { id: "bush",       type: "Type 7", label: "Bush" },
   { id: "tree",       type: "Type 8", label: "Tree\nPlanters/Pits" },
   { id: "hedges",     type: "Type 9", label: "Hedges" },
+  { id: "bush",       type: "Type 7", label: "Bush" },
 ] as const;
 
 type ColId = typeof COLUMNS[number]["id"];
