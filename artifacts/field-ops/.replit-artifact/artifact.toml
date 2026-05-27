@@ -3,7 +3,7 @@ previewPath = "/field-ops/"
 title = "GardenOps Field"
 version = "1.0.0"
 id = "artifacts/field-ops"
-router = "expo-domain"
+router = "path"
 
 [[integratedSkills]]
 name = "expo"
