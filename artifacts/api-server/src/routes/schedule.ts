@@ -108,11 +108,24 @@ async function buildAbsenceMap(
 
 // ─────────────────────────────────────────────────────────────────────────────
 // POST /api/schedule/generate
-// Geosequenced scheduler — jobs placed on natural due dates in routeOrder.
-// Over-capacity rule: if remaining capacity >= 50% of job time, start today
-// (team finishes on-site, day may run slightly over). Otherwise spill to the
-// next working day.
+// Geosequence-first scheduler with ±3-day due-date flexibility.
+//
+// ALGORITHM:
+//   For each team, assets are sorted by routeOrder (geosequence). Each asset
+//   has a natural due date derived from its frequency interval starting at
+//   fromDate. The scheduler walks through each working day in the range and,
+//   for each team, tries to place the next-in-geosequence asset if that
+//   asset's natural due date is within ±3 days of today. This keeps the route
+//   contiguous while allowing minor date shifts to maintain flow. When a day
+//   fills up, remaining eligible assets spill to the next working day.
+//
+// ±3-day window rule:
+//   An asset is "eligible" for a given day if:
+//     naturalDueDate - 3 ≤ candidateDay ≤ naturalDueDate + 3
+//   AND it has not already been placed this cycle.
 // ─────────────────────────────────────────────────────────────────────────────
+const DUE_DATE_FLEX_DAYS = 3;
+
 const generateBodySchema = z.object({
   fromDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   toDate:   z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
@@ -132,7 +145,7 @@ router.post(
     const productiveTimeMins = settings?.productiveTimeMins ?? 390;
     const standardCrewSize   = settings?.standardCrewSize   ?? 2;
 
-    // Load assets ordered by geosequence
+    // Load assets in geosequence order (routeOrder ASC, nulls last)
     const assets = await db
       .select()
       .from(assetsTable)
@@ -140,7 +153,8 @@ router.post(
         teamId
           ? and(eq(assetsTable.isActive, true), eq(assetsTable.teamId, teamId))
           : eq(assetsTable.isActive, true),
-      );
+      )
+      .orderBy(sql`${assetsTable.routeOrder} NULLS LAST`, assetsTable.name);
 
     // Load team membership
     const allMembers = await db.select().from(teamMembersTable);
@@ -179,40 +193,108 @@ router.post(
       }
     }
 
-    // ── Step 1: Enumerate all (asset, naturalDate) candidates ────────────────
-    type Candidate = { asset: typeof assets[number]; naturalDate: string };
-    const candidatesByDate = new Map<string, Candidate[]>();
+    type AssetRow = typeof assets[number];
 
+    // ── Step 1: Group assets by team ─────────────────────────────────────────
+    // Assets are already in geosequence order from the DB query.
+    const assetsByTeam = new Map<string, AssetRow[]>();
     for (const asset of assets) {
-      const intervalDays = FREQ_DAYS[asset.frequency] ?? 28;
-      let cursor = fromDate;
-      while (cursor <= toDate) {
-        const weekday = toWeekday(cursor);
-        if (weekday <= toDate) {
-          if (!candidatesByDate.has(weekday)) candidatesByDate.set(weekday, []);
-          candidatesByDate.get(weekday)!.push({ asset, naturalDate: weekday });
+      const key = asset.teamId ?? "__none__";
+      if (!assetsByTeam.has(key)) assetsByTeam.set(key, []);
+      assetsByTeam.get(key)!.push(asset);
+    }
+
+    // ── Step 2: For each team+asset, compute all natural due dates in range ──
+    // naturalDueDates[teamKey][assetId] = array of due date strings (weekdays)
+    // within [fromDate - flex, toDate + flex] so window lookups work at edges.
+    type AssetSchedule = {
+      asset: AssetRow;
+      dueDates: string[]; // sorted natural weekday due dates within the range
+      placedDates: Set<string>; // which due-date cycles have been placed
+    };
+    const teamSchedules = new Map<string, AssetSchedule[]>();
+
+    for (const [teamKey, teamAssets] of assetsByTeam) {
+      const schedules: AssetSchedule[] = [];
+      for (const asset of teamAssets) {
+        const intervalDays = FREQ_DAYS[asset.frequency] ?? 28;
+        const dueDates: string[] = [];
+        // Start from before fromDate so first due date in range is caught
+        let cursor = fromDate;
+        while (cursor <= addDays(toDate, DUE_DATE_FLEX_DAYS)) {
+          const weekday = toWeekday(cursor);
+          if (weekday >= addDays(fromDate, -DUE_DATE_FLEX_DAYS)) {
+            dueDates.push(weekday);
+          }
+          cursor = addDays(cursor, intervalDays);
         }
-        cursor = addDays(cursor, intervalDays);
+        schedules.push({ asset, dueDates, placedDates: new Set() });
+      }
+      teamSchedules.set(teamKey, schedules);
+    }
+
+    // ── Step 3: Check DB for already-placed jobs in this run's range ─────────
+    // Track which (assetId, dueDate cycle) already has a job so we skip them.
+    // We use the nearest natural due date to the existing job's scheduled date.
+    const existingJobDates = await db
+      .select({
+        assetId:       jobsTable.assetId,
+        scheduledDate: sql<string>`to_char(${jobsTable.scheduledDate}, 'YYYY-MM-DD')`,
+        status:        jobsTable.status,
+        id:            jobsTable.id,
+        estimatedTimeMins: jobsTable.estimatedTimeMins,
+      })
+      .from(jobsTable)
+      .where(
+        and(
+          gte(jobsTable.scheduledDate, addDays(fromDate, -DUE_DATE_FLEX_DAYS)),
+          lte(jobsTable.scheduledDate, addDays(toDate, DUE_DATE_FLEX_DAYS)),
+          eq(jobsTable.jobType, "scheduled"),
+          notInArray(jobsTable.status, ["completed", "skipped"]),
+          ...(teamId ? [eq(jobsTable.teamId, teamId)] : []),
+        ),
+      );
+
+    // Map assetId → set of scheduledDate strings that already exist
+    const existingByAsset = new Map<string, Set<string>>();
+    for (const j of existingJobDates) {
+      if (!existingByAsset.has(j.assetId)) existingByAsset.set(j.assetId, new Set());
+      existingByAsset.get(j.assetId)!.add(j.scheduledDate);
+    }
+
+    // Mark placedDates for assets that already have jobs in the range
+    for (const [, schedules] of teamSchedules) {
+      for (const sched of schedules) {
+        const existingDates = existingByAsset.get(sched.asset.id);
+        if (!existingDates) continue;
+        for (const existingDate of existingDates) {
+          // Find which due-date cycle this existing job belongs to
+          const intervalDays = FREQ_DAYS[sched.asset.frequency] ?? 28;
+          for (const dueDate of sched.dueDates) {
+            const diff = Math.abs(
+              (new Date(existingDate + "T00:00:00Z").getTime() -
+               new Date(dueDate    + "T00:00:00Z").getTime()) / 86400000
+            );
+            if (diff <= DUE_DATE_FLEX_DAYS) {
+              sched.placedDates.add(dueDate);
+              break;
+            }
+          }
+        }
       }
     }
 
-    // ── Step 2: Process dates in order, per-team geosequence with look-ahead ─
-    //
-    // For each team's day:
-    //   • Place jobs in routeOrder (geosequence).
-    //   • When a job doesn't fit in remaining time, keep scanning forward for a
-    //     smaller job that does fit (filling the slot efficiently).
-    //   • After exhausting all fitting options, start the first deferred job
-    //     today anyway — the crew begins it and finishes it first thing tomorrow.
-    //     Any remaining deferred jobs spill to the next working day.
-    // ─────────────────────────────────────────────────────────────────────────
-    const sortedDates = Array.from(candidatesByDate.keys()).sort();
+    // ── Step 4: Build list of all working days in range ──────────────────────
+    const workingDays: string[] = [];
+    let dayCursor = fromDate;
+    while (dayCursor <= toDate) {
+      if (!isWeekend(dayCursor)) workingDays.push(dayCursor);
+      dayCursor = addDays(dayCursor, 1);
+    }
 
     let jobsCreated = 0;
     let jobsRefreshed = 0;
     let jobsSpilled = 0;
-
-    type AssetRow = typeof assets[number];
 
     const insertRows: {
       assetId: string;
@@ -224,48 +306,6 @@ router.post(
       crewStatus: CrewStatus;
       isAllTeams?: boolean;
     }[] = [];
-
-    // spillQueue: date → assets to prepend to that day (geosequence order preserved)
-    const spillQueue = new Map<string, AssetRow[]>();
-
-    // Helper: dedup-check one asset against DB; returns true if should skip
-    async function existsInWindow(asset: AssetRow, refDate: string): Promise<boolean> {
-      const intervalDays = (FREQ_DAYS as Record<string, number>)[asset.frequency] ?? 28;
-      const windowStart  = addDays(refDate, -(intervalDays - 1));
-      const [row] = await db
-        .select({
-          id:            jobsTable.id,
-          status:        jobsTable.status,
-          scheduledDate: sql<string>`to_char(${jobsTable.scheduledDate}, 'YYYY-MM-DD')`,
-        })
-        .from(jobsTable)
-        .where(
-          and(
-            eq(jobsTable.assetId, asset.id),
-            gte(jobsTable.scheduledDate, windowStart),
-            lte(jobsTable.scheduledDate, refDate),
-            eq(jobsTable.jobType, "scheduled"),
-            notInArray(jobsTable.status, ["completed", "skipped"]),
-          ),
-        )
-        .limit(1);
-
-      if (!row) return false;
-
-      // Exact-date pending match → refresh crew status
-      if (row.scheduledDate === refDate && row.status === "pending") {
-        const tid = asset.teamId ?? null;
-        const { estimatedTimeMins, crewStatus } = calcCrewAdjustment(
-          tid, refDate, membersByTeam, absenceMap, asset.serviceTimeMins, standardCrewSize,
-        );
-        await db
-          .update(jobsTable)
-          .set({ estimatedTimeMins, crewStatus, updatedAt: new Date() })
-          .where(eq(jobsTable.id, row.id));
-        jobsRefreshed++;
-      }
-      return true;
-    }
 
     // Helper: emit a job row and update minutesUsed
     function placeJob(asset: AssetRow, date: string, estMins: number, cs: CrewStatus) {
@@ -280,128 +320,157 @@ router.post(
       jobsCreated++;
     }
 
-    for (const naturalDate of sortedDates) {
-      const dayCandidates = candidatesByDate.get(naturalDate)!;
+    // ── Step 5: Walk each working day; for each team fill in geosequence ─────
+    //
+    // On each day, for each team's asset list (already in geosequence order):
+    //   • An asset is eligible if it has a natural due date D where
+    //     D - flex ≤ today ≤ D + flex, AND that due-date cycle hasn't been placed.
+    //   • We only consider the NEXT unplaced asset in geosequence order as eligible
+    //     (not all eligible assets) — this maintains route contiguity.
+    //   • If the next asset fits in remaining capacity → place it, advance pointer.
+    //   • If it doesn't fit → spill it (and all subsequent) to the next working day
+    //     by marking them as "pending for next day" via a carry queue.
+    //   • Exception: if only this one asset remains for the day and the day would
+    //     otherwise be empty, place it as an overrun (crew finishes tomorrow).
+    //
+    // carryQueue[teamKey]: assets that overflowed from a previous day and must
+    // be placed as soon as possible (prepended before natural eligibles).
+    // ─────────────────────────────────────────────────────────────────────────
+    const carryQueue = new Map<string, { asset: AssetRow; dueDate: string }[]>();
 
-      // Geosequence order; service time is tiebreaker
-      dayCandidates.sort((a, b) => {
-        const ro_a = a.asset.routeOrder ?? 999999;
-        const ro_b = b.asset.routeOrder ?? 999999;
-        if (ro_a !== ro_b) return ro_a - ro_b;
-        return a.asset.serviceTimeMins - b.asset.serviceTimeMins;
-      });
-
-      // Collect assets for this day: spill-overs first, then natural candidates
-      const spills = spillQueue.get(naturalDate) ?? [];
-      spillQueue.delete(naturalDate);
-      const allAssets: AssetRow[] = [
-        ...spills,
-        ...dayCandidates.map(c => c.asset),
-      ];
-
-      // Group by team so look-ahead operates within each team's queue independently
-      const byTeam = new Map<string, AssetRow[]>();
-      for (const asset of allAssets) {
-        const key = asset.teamId ?? "__none__";
-        if (!byTeam.has(key)) byTeam.set(key, []);
-        byTeam.get(key)!.push(asset);
-      }
-
-      for (const [teamKey, teamAssets] of byTeam) {
+    for (const today of workingDays) {
+      for (const [teamKey, schedules] of teamSchedules) {
         const tid = teamKey === "__none__" ? null : teamKey;
 
-        // Filter out assets that already have a job in their interval window
-        const eligible: AssetRow[] = [];
-        for (const asset of teamAssets) {
-          const skip = await existsInWindow(asset, naturalDate);
-          if (!skip) eligible.push(asset);
-        }
-        if (eligible.length === 0) continue;
+        // Build today's work queue:
+        // 1. Carried-over assets from previous day that are now overdue
+        const carried = (carryQueue.get(teamKey) ?? []).filter(c => {
+          // Keep carrying if still within flex window or past it (must place)
+          return addDays(c.dueDate, DUE_DATE_FLEX_DAYS) >= today;
+        });
+        // Remove from carry queue
+        carryQueue.set(teamKey, (carryQueue.get(teamKey) ?? []).filter(c =>
+          !carried.some(cc => cc.asset.id === c.asset.id && cc.dueDate === c.dueDate)
+        ));
 
-        // ── Place in geosequence; max 1-job look-ahead when slot is tight ──────
-        //
-        // When job[i] doesn't fit:
-        //   • Peek at job[i+1] only.
-        //   • If job[i+1] fits → place it today (fills the slot), then start
-        //     job[i] today as an overrun (crew finishes it tomorrow morning),
-        //     and spill job[i+2 …] to the next working day.
-        //   • If job[i+1] doesn't fit (or doesn't exist) → start job[i] today
-        //     as an overrun, spill job[i+1 …] to the next working day.
-        //
-        // In both cases the day is closed for this team after the overrun.
-        // ─────────────────────────────────────────────────────────────────────
-        const nextDay = addWorkingDays(naturalDate, 1);
-
-        const spillAssets = (from: number) => {
-          for (let k = from; k < eligible.length; k++) {
-            if (nextDay <= toDate) {
-              if (!spillQueue.has(nextDay)) spillQueue.set(nextDay, []);
-              spillQueue.get(nextDay)!.push(eligible[k]);
-              jobsSpilled++;
-            } else {
-              const { estimatedTimeMins: e, crewStatus: c } = calcCrewAdjustment(
-                tid, naturalDate, membersByTeam, absenceMap, eligible[k].serviceTimeMins, standardCrewSize,
-              );
-              placeJob(eligible[k], naturalDate, e, c);
+        // 2. Find assets newly eligible today (next unplaced asset in geosequence
+        //    whose due date window includes today)
+        const newEligible: { asset: AssetRow; dueDate: string }[] = [];
+        for (const sched of schedules) {
+          // Find the first unplaced due date that is eligible for today
+          for (const dueDate of sched.dueDates) {
+            if (sched.placedDates.has(dueDate)) continue;
+            const earliest = addDays(dueDate, -DUE_DATE_FLEX_DAYS);
+            const latest   = addDays(dueDate,  DUE_DATE_FLEX_DAYS);
+            if (today >= earliest && today <= latest) {
+              newEligible.push({ asset: sched.asset, dueDate });
+              break; // only one due-date cycle per asset per pass
             }
+            // If today is before the window opens for this due date, stop checking
+            // further due dates for this asset (they'll be even later)
+            if (today < earliest) break;
           }
-        };
+        }
 
-        let dayDone = false;
-        for (let i = 0; i < eligible.length; i++) {
-          if (dayDone) break;
+        // Merge: carried first (maintain geosequence within each group)
+        const toPlace = [...carried, ...newEligible];
+        if (toPlace.length === 0) continue;
 
-          const asset = eligible[i];
-          const usedToday = tid ? getMins(minutesUsed, tid, naturalDate) : 0;
+        // Deduplicate by assetId (carried asset shouldn't appear in newEligible too)
+        const seen = new Set<string>();
+        const queue = toPlace.filter(x => {
+          if (seen.has(x.asset.id)) return false;
+          seen.add(x.asset.id);
+          return true;
+        });
+
+        let dayFull = false;
+        const nextWorkDay = addWorkingDays(today, 1);
+
+        for (let i = 0; i < queue.length; i++) {
+          const { asset, dueDate } = queue[i];
+          const sched = schedules.find(s => s.asset.id === asset.id)!;
+
+          // Already placed (e.g. an existing job was found in DB)
+          if (sched.placedDates.has(dueDate)) continue;
+
+          const usedToday = tid ? getMins(minutesUsed, tid, today) : 0;
           const remaining = productiveTimeMins - usedToday;
           const { estimatedTimeMins: estMins, crewStatus: cs } = calcCrewAdjustment(
-            tid, naturalDate, membersByTeam, absenceMap, asset.serviceTimeMins, standardCrewSize,
+            tid, today, membersByTeam, absenceMap, asset.serviceTimeMins, standardCrewSize,
           );
 
-          if (!tid || remaining >= estMins) {
-            // Fits — place today and continue
-            placeJob(asset, naturalDate, estMins, cs);
-          } else {
-            // Doesn't fit — peek at the immediately next job only
-            const nextAsset = eligible[i + 1];
-            if (nextAsset) {
-              const usedAfter = tid ? getMins(minutesUsed, tid, naturalDate) : 0;
-              const remAfter  = productiveTimeMins - usedAfter;
-              const { estimatedTimeMins: estNext, crewStatus: csNext } = calcCrewAdjustment(
-                tid, naturalDate, membersByTeam, absenceMap, nextAsset.serviceTimeMins, standardCrewSize,
-              );
+          // Check if this asset is overdue (past its flex window) — must place today
+          const latestDate = addDays(dueDate, DUE_DATE_FLEX_DAYS);
+          const isOverdue = today >= latestDate;
 
-              if (!tid || remAfter >= estNext) {
-                // Next job fits the remaining slot — place it today
-                placeJob(nextAsset, naturalDate, estNext, csNext);
-              }
-              // Whether or not the next job fit, start the current job today (overrun)
-              placeJob(asset, naturalDate, estMins, cs);
-              // Spill everything from i+2 onwards (or i+1 if next didn't fit)
-              const spillFrom = (!tid || remAfter >= estNext) ? i + 2 : i + 1;
-              spillAssets(spillFrom);
+          if (dayFull && !isOverdue) {
+            // Day is full and asset is not overdue — carry to next working day
+            if (nextWorkDay <= addDays(toDate, DUE_DATE_FLEX_DAYS)) {
+              if (!carryQueue.has(teamKey)) carryQueue.set(teamKey, []);
+              carryQueue.get(teamKey)!.push({ asset, dueDate });
+              jobsSpilled++;
             } else {
-              // No next job — start current today as overrun; nothing to spill
-              placeJob(asset, naturalDate, estMins, cs);
+              // No more working days — place anyway
+              placeJob(asset, today, estMins, cs);
+              sched.placedDates.add(dueDate);
             }
-            dayDone = true;
+            continue;
+          }
+
+          if (!tid || remaining >= estMins || isOverdue) {
+            // Fits, or must be placed (overdue) — place today
+            placeJob(asset, today, estMins, cs);
+            sched.placedDates.add(dueDate);
+            if (tid && remaining < estMins) {
+              // Overrun — day is now full
+              dayFull = true;
+            }
+          } else {
+            // Doesn't fit and not overdue — carry to next working day
+            if (nextWorkDay <= addDays(toDate, DUE_DATE_FLEX_DAYS)) {
+              if (!carryQueue.has(teamKey)) carryQueue.set(teamKey, []);
+              carryQueue.get(teamKey)!.push({ asset, dueDate });
+              jobsSpilled++;
+            } else {
+              placeJob(asset, today, estMins, cs);
+              sched.placedDates.add(dueDate);
+            }
+            dayFull = true;
           }
         }
       }
     }
 
-    // Flush any remaining spill-overs (dates added by spilling beyond sortedDates)
-    const pendingSpillDates = [...spillQueue.keys()].sort();
-    for (const spillDate of pendingSpillDates) {
-      if (spillDate > toDate) continue;
-      const spills = spillQueue.get(spillDate)!;
-      for (const asset of spills) {
-        const tid = asset.teamId ?? null;
+    // ── Step 6: Flush remaining carry-overs (past toDate — place on last day) ─
+    const lastWorkDay = workingDays[workingDays.length - 1] ?? toDate;
+    for (const [teamKey, remaining] of carryQueue) {
+      const tid = teamKey === "__none__" ? null : teamKey;
+      for (const { asset, dueDate } of remaining) {
+        const sched = teamSchedules.get(teamKey)?.find(s => s.asset.id === asset.id);
+        if (!sched || sched.placedDates.has(dueDate)) continue;
         const { estimatedTimeMins: estMins, crewStatus: cs } = calcCrewAdjustment(
-          tid, spillDate, membersByTeam, absenceMap, asset.serviceTimeMins, standardCrewSize,
+          tid, lastWorkDay, membersByTeam, absenceMap, asset.serviceTimeMins, standardCrewSize,
         );
-        placeJob(asset, spillDate, estMins, cs);
+        placeJob(asset, lastWorkDay, estMins, cs);
+        sched.placedDates.add(dueDate);
       }
+    }
+
+    // ── Step 7: Refresh crew status for existing pending jobs ─────────────────
+    for (const j of existingJobDates) {
+      if (j.status !== "pending") continue;
+      const asset = assets.find(a => a.id === j.assetId);
+      if (!asset) continue;
+      const tid = asset.teamId ?? null;
+      const { estimatedTimeMins, crewStatus } = calcCrewAdjustment(
+        tid, j.scheduledDate, membersByTeam, absenceMap, asset.serviceTimeMins, standardCrewSize,
+      );
+      await db
+        .update(jobsTable)
+        .set({ estimatedTimeMins, crewStatus, updatedAt: new Date() })
+        .where(eq(jobsTable.id, j.id));
+      jobsRefreshed++;
     }
 
     if (insertRows.length > 0) {
