@@ -16,6 +16,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription, SheetFooter } from "@/components/ui/sheet";
@@ -216,7 +217,14 @@ function DailyGanttView({
               </tr>
               {/* Day header row */}
               <tr className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">
-                <th title="Geosequence number" className="text-center py-2 px-1 border-b border-gray-200 sticky bg-white z-30 cursor-help" style={{ left: 0,   minWidth: 40,  width: 40  }}>#</th>
+                <th className="text-center py-2 px-1 border-b border-gray-200 sticky bg-white z-30" style={{ left: 0, minWidth: 40, width: 40 }}>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <span className="cursor-help">#</span>
+                    </TooltipTrigger>
+                    <TooltipContent side="right">Geosequence number</TooltipContent>
+                  </Tooltip>
+                </th>
                 <th className="text-left py-2 px-3 border-b border-gray-200 sticky bg-white z-30" style={{ left: 40,  minWidth: 190, width: 190 }}>Site</th>
                 <th className="text-left py-2 px-3 border-b border-gray-200 sticky bg-white z-30" style={{ left: 230, minWidth: 80,  width: 80  }}>Type</th>
                 <th className="text-left py-2 px-3 border-b border-gray-200 sticky bg-white z-30" style={{ left: 310, minWidth: 70,  width: 70  }}>Freq</th>
@@ -413,7 +421,14 @@ function GanttView({
           <table className="text-xs border-collapse" style={{ minWidth: 550 + GANTT_WEEK_COUNT * 85 }}>
             <thead className="sticky top-0 z-30 bg-white shadow-sm">
               <tr className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">
-                <th title="Geosequence number" className="text-center py-2.5 px-1 border-b border-gray-200 sticky bg-white z-30 cursor-help" style={{ left: 0,   minWidth: 40,  width: 40  }}>#</th>
+                <th className="text-center py-2.5 px-1 border-b border-gray-200 sticky bg-white z-30" style={{ left: 0, minWidth: 40, width: 40 }}>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <span className="cursor-help">#</span>
+                    </TooltipTrigger>
+                    <TooltipContent side="right">Geosequence number</TooltipContent>
+                  </Tooltip>
+                </th>
                 <th className="text-left py-2.5 px-3 border-b border-gray-200 sticky bg-white z-30" style={{ left: 40,  minWidth: 190, width: 190 }}>Site</th>
                 <th className="text-left py-2.5 px-3 border-b border-gray-200 sticky bg-white z-30" style={{ left: 230, minWidth: 80,  width: 80 }}>Type</th>
                 <th className="text-left py-2.5 px-3 border-b border-gray-200 sticky bg-white z-30" style={{ left: 310, minWidth: 70,  width: 70 }}>Freq</th>
