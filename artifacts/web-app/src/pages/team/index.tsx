@@ -159,6 +159,25 @@ function WorkloadTab() {
     staleTime: 5 * 60_000,
   });
 
+  const { data: crewMembers = [] } = useQuery<Array<{ id: string; personName: string; teamId: string }>>({
+    queryKey: ["crew-members"],
+    queryFn: async () => {
+      const res = await fetch("/api/team-members", { credentials: "include" });
+      if (!res.ok) throw new Error("Failed");
+      return res.json();
+    },
+    staleTime: 60_000,
+  });
+
+  const teamMemberNames = useMemo(() => {
+    const map: Record<string, string[]> = {};
+    for (const m of crewMembers) {
+      if (!map[m.teamId]) map[m.teamId] = [];
+      map[m.teamId].push(m.personName);
+    }
+    return map;
+  }, [crewMembers]);
+
   const totals = useMemo(() => {
     if (!data) return null;
     return {
@@ -260,6 +279,11 @@ function WorkloadTab() {
                         </span>
                         {isAllTeams && (
                           <span className="text-[10px] text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded-full">shared workload</span>
+                        )}
+                        {!isAllTeams && row.teamId && teamMemberNames[row.teamId] && (
+                          <span className="text-[11px] font-medium" style={{ color: BRAND }}>
+                            {teamMemberNames[row.teamId].join(", ")}
+                          </span>
                         )}
                       </div>
                     </td>
