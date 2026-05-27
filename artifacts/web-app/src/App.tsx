@@ -1,4 +1,4 @@
-import { Switch, Route, Router as WouterRouter } from "wouter";
+import { Switch, Route, Router as WouterRouter, Redirect } from "wouter";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -6,6 +6,8 @@ import NotFound from "@/pages/not-found";
 import { AuthProvider, useAuth } from "@/lib/auth";
 import { Layout } from "@/components/layout";
 import { Loader2 } from "lucide-react";
+
+const WORKER_ALLOWED_PATHS = ["/specification"];
 
 // Placeholder imports for pages
 import Login from "@/pages/login";
@@ -31,7 +33,7 @@ import CompletedWorks from "@/pages/completed-works/index";
 
 const queryClient = new QueryClient();
 
-function ProtectedRoute({ component: Component, ...rest }: any) {
+function ProtectedRoute({ component: Component, path, ...rest }: any) {
   const { user, isLoading } = useAuth();
 
   if (isLoading) {
@@ -46,6 +48,11 @@ function ProtectedRoute({ component: Component, ...rest }: any) {
     return null; // AuthProvider redirects to /login
   }
 
+  // Field workers may only view /specification
+  if (user.role === "field_worker" && path && !WORKER_ALLOWED_PATHS.some(p => path.startsWith(p))) {
+    return <Redirect to="/specification" />;
+  }
+
   return (
     <Layout>
       <Component {...rest} />
@@ -57,27 +64,27 @@ function Router() {
   return (
     <Switch>
       <Route path="/login" component={Login} />
-      <Route path="/dashboard"><ProtectedRoute component={Dashboard} /></Route>
-      <Route path="/assets"><ProtectedRoute component={Assets} /></Route>
-      <Route path="/assets/new"><ProtectedRoute component={NewAsset} /></Route>
-      <Route path="/assets/:id"><ProtectedRoute component={AssetDetail} /></Route>
-      <Route path="/map"><ProtectedRoute component={MapPage} /></Route>
-      <Route path="/schedule"><ProtectedRoute component={Schedule} /></Route>
-      <Route path="/reactive-jobs"><ProtectedRoute component={ReactiveJobs} /></Route>
-      <Route path="/audits/new"><ProtectedRoute component={NewAudit} /></Route>
-      <Route path="/audits/:id/edit"><ProtectedRoute component={EditAudit} /></Route>
-      <Route path="/audits/:id"><ProtectedRoute component={AuditDetail} /></Route>
-      <Route path="/audits"><ProtectedRoute component={Audits} /></Route>
-      <Route path="/programmes"><ProtectedRoute component={Programmes} /></Route>
-      <Route path="/reports"><ProtectedRoute component={Reports} /></Route>
-      <Route path="/audit-log"><ProtectedRoute component={AuditLog} /></Route>
-      <Route path="/users"><ProtectedRoute component={Users} /></Route>
-      <Route path="/settings"><ProtectedRoute component={Settings} /></Route>
-      <Route path="/team"><ProtectedRoute component={Team} /></Route>
-      <Route path="/specification"><ProtectedRoute component={Specification} /></Route>
-      <Route path="/completed-works"><ProtectedRoute component={CompletedWorks} /></Route>
+      <Route path="/dashboard"><ProtectedRoute path="/dashboard" component={Dashboard} /></Route>
+      <Route path="/assets/new"><ProtectedRoute path="/assets/new" component={NewAsset} /></Route>
+      <Route path="/assets/:id"><ProtectedRoute path="/assets" component={AssetDetail} /></Route>
+      <Route path="/assets"><ProtectedRoute path="/assets" component={Assets} /></Route>
+      <Route path="/map"><ProtectedRoute path="/map" component={MapPage} /></Route>
+      <Route path="/schedule"><ProtectedRoute path="/schedule" component={Schedule} /></Route>
+      <Route path="/reactive-jobs"><ProtectedRoute path="/reactive-jobs" component={ReactiveJobs} /></Route>
+      <Route path="/audits/new"><ProtectedRoute path="/audits" component={NewAudit} /></Route>
+      <Route path="/audits/:id/edit"><ProtectedRoute path="/audits" component={EditAudit} /></Route>
+      <Route path="/audits/:id"><ProtectedRoute path="/audits" component={AuditDetail} /></Route>
+      <Route path="/audits"><ProtectedRoute path="/audits" component={Audits} /></Route>
+      <Route path="/programmes"><ProtectedRoute path="/programmes" component={Programmes} /></Route>
+      <Route path="/reports"><ProtectedRoute path="/reports" component={Reports} /></Route>
+      <Route path="/audit-log"><ProtectedRoute path="/audit-log" component={AuditLog} /></Route>
+      <Route path="/users"><ProtectedRoute path="/users" component={Users} /></Route>
+      <Route path="/settings"><ProtectedRoute path="/settings" component={Settings} /></Route>
+      <Route path="/team"><ProtectedRoute path="/team" component={Team} /></Route>
+      <Route path="/specification"><ProtectedRoute path="/specification" component={Specification} /></Route>
+      <Route path="/completed-works"><ProtectedRoute path="/completed-works" component={CompletedWorks} /></Route>
       <Route path="/">
-        <ProtectedRoute component={() => {
+        <ProtectedRoute path="/" component={() => {
           window.location.href = "/dashboard";
           return null;
         }} />

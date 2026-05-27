@@ -36,8 +36,11 @@ export function Layout({ children }: { children: React.ReactNode }) {
     { icon: FileText,        label: "Specification",   href: "/specification",    managerOnly: false },
     { icon: UsersRound,      label: "Team",            href: "/team",             managerOnly: false },
   ];
+  const isWorker = user?.role === "field_worker";
   const isPrivileged = user?.role === "administrator" || user?.role === "manager" || user?.role === "supervisor";
-  const nav = allNav.filter(item => !item.managerOnly || isPrivileged);
+  const nav = isWorker
+    ? allNav.filter(item => item.href === "/specification")
+    : allNav.filter(item => !item.managerOnly || isPrivileged);
 
   return (
     <div className="flex min-h-screen bg-[#f5f7f9] font-sans">

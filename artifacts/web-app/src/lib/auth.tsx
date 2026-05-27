@@ -22,9 +22,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const loginMutation = useLogin({
     mutation: {
-      onSuccess: () => {
+      onSuccess: (data: any) => {
         queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
-        setLocation("/dashboard");
+        const role = data?.user?.role ?? "";
+        setLocation(role === "field_worker" ? "/specification" : "/dashboard");
       }
     }
   });
