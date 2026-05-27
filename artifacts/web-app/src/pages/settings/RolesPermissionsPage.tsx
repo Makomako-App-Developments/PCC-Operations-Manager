@@ -25,7 +25,7 @@ const ROWS: Row[] = [
   { group: "Desktop", screen: "Programmes",                    admin: "edit",   manager: "edit",   leader: "view",   worker: "none"   },
   { group: "Desktop", screen: "Audits",                        admin: "edit",   manager: "edit",   leader: "view",   worker: "none"   },
   { group: "Desktop", screen: "Reports",                       admin: "edit",   manager: "edit",   leader: "view",   worker: "none"   },
-  { group: "Desktop", screen: "Specification — View",          admin: "edit",   manager: "edit",   leader: "view",   worker: "none"   },
+  { group: "Desktop", screen: "Specification — View",          admin: "edit",   manager: "edit",   leader: "view",   worker: "view"   },
   { group: "Desktop", screen: "Specification — Edit",          admin: "edit",   manager: "edit",   leader: "none",   worker: "none",  note: "Daniela Biaggio, Tim Broadwith & Administrator only" },
   { group: "Desktop", screen: "Settings",                      admin: "edit",   manager: "edit",   leader: "none",   worker: "none"   },
   { group: "Mobile",  screen: "My Jobs",                       admin: "mobile", manager: "mobile", leader: "mobile", worker: "mobile" },
