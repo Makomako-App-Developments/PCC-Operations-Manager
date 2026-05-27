@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Link } from "wouter";
 import {
   useGetScheduleWeek,
   getGetScheduleWeekQueryKey,
@@ -256,7 +257,7 @@ function DailyGanttView({
                       {row.routeOrder ?? "—"}
                     </td>
                     <td className="py-1.5 px-3 sticky z-10" style={{ left: 40,  background: rowBg, width: 190 }}>
-                      <p className="font-semibold text-gray-800 truncate max-w-[185px]" title={row.assetName}>{row.assetName}</p>
+                      <Link href={`/assets/${row.assetId}`} className="font-semibold text-gray-800 hover:text-teal-600 hover:underline truncate max-w-[185px] block leading-snug" title={row.assetName}>{row.assetName}</Link>
                       <p className="text-gray-400 text-[10px] truncate max-w-[185px]">{row.assetDesc || row.assetRef}</p>
                     </td>
                     <td className="py-1.5 px-3 sticky z-10" style={{ left: 230, background: rowBg, width: 80 }}>
@@ -461,7 +462,7 @@ function GanttView({
                       {row.routeOrder ?? "—"}
                     </td>
                     <td className="py-2 px-3 sticky z-10" style={{ left: 40,  background: rowBg, width: 190 }}>
-                      <p className="font-semibold text-gray-800 truncate max-w-[185px]" title={row.assetName}>{row.assetName}</p>
+                      <Link href={`/assets/${row.assetId}`} className="font-semibold text-gray-800 hover:text-teal-600 hover:underline truncate max-w-[185px] block leading-snug" title={row.assetName}>{row.assetName}</Link>
                       <p className="text-gray-400 text-[10px] truncate max-w-[185px]">{row.assetDesc || row.assetRef}</p>
                     </td>
                     <td className="py-2 px-3 sticky z-10" style={{ left: 230, background: rowBg, width: 80 }}>
