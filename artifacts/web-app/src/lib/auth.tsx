@@ -44,8 +44,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   });
 
   useEffect(() => {
-    if (!isLoading && !user && location !== "/login") {
+    if (isLoading) return;
+    if (!user && location !== "/login") {
       setLocation("/login");
+    } else if (user && (user as any).role === "field_worker") {
+      window.location.href = "/field-ops/";
     }
   }, [isLoading, user, location, setLocation]);
 
