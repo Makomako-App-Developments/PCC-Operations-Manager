@@ -659,7 +659,7 @@ router.get(
       );
 
     const assetMap = new Map<string, {
-      assetId: string; assetName: string; assetRef: string;
+      assetId: string; assetName: string; assetRef: string; assetDesc: string | null;
       gardenType: string; standard: string; frequency: string;
       serviceTimeMins: number; teamId: string | null; routeOrder: number | null;
       jobs: { id: string; scheduledDate: string; status: string; crewStatus: string | null; estimatedTimeMins: number | null }[];
@@ -668,7 +668,7 @@ router.get(
     for (const row of rows) {
       if (!assetMap.has(row.assetId)) {
         assetMap.set(row.assetId, {
-          assetId: row.assetId, assetName: row.assetName, assetRef: row.assetRef,
+          assetId: row.assetId, assetName: row.assetName, assetRef: row.assetRef, assetDesc: row.assetDesc,
           gardenType: row.gardenType, standard: row.standard, frequency: row.frequency,
           serviceTimeMins: row.serviceTimeMins, teamId: row.teamId, routeOrder: row.routeOrder,
           jobs: [],
