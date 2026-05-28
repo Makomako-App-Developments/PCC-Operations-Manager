@@ -670,7 +670,7 @@ export function ReactiveJobWizard({ teamsData, assetsData, onClose, onPublished 
                     </select>
                   </div>
                   <div>
-                    <label className="text-xs text-gray-500 font-medium block mb-1.5">Date *</label>
+                    <label className="text-xs text-gray-500 font-medium block mb-1.5">Scheduled Date *</label>
                     <input
                       type="date"
                       value={selectedDate}
