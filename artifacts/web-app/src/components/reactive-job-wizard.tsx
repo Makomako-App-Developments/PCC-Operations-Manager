@@ -29,6 +29,7 @@ const REASON_TYPES = [
   "Contractor damage",
   "Safety hazard",
   "Event prep",
+  "Dumped rubbish",
   "Other",
 ];
 
