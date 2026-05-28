@@ -17,8 +17,7 @@ import { useToast } from "@/hooks/use-toast";
 
 export const BRAND = "#00AECD";
 export const NAVY = "#0f2a36";
-const PRODUCTIVE = 360;
-const MAX_CAP = 480;
+const PRODUCTIVE = 390;
 const COMBINE_THRESHOLD = 5;
 
 const REASON_TYPES = [
@@ -61,14 +60,12 @@ export function fmtMins(m: number) {
   return h > 0 ? `${h}h${r > 0 ? ` ${r}m` : ""}` : `${r}m`;
 }
 
-function capacityBand(mins: number): "green" | "amber" | "red" {
-  if (mins > MAX_CAP) return "red";
-  if (mins > PRODUCTIVE) return "amber";
-  return "green";
+function capacityBand(mins: number): "green" | "red" {
+  return mins > PRODUCTIVE ? "red" : "green";
 }
 
-function bandColor(band: "green" | "amber" | "red") {
-  return band === "green" ? "#16a34a" : band === "amber" ? "#d97706" : "#dc2626";
+function bandColor(band: "green" | "red") {
+  return band === "green" ? "#16a34a" : "#dc2626";
 }
 
 function freqWindowDays(freq: string) {
@@ -153,13 +150,10 @@ function CapBar({
   const band = capacityBand(total);
   const color = bandColor(band);
   const safe = Math.max(0, total);
-  const pctProd = Math.min(100, (Math.min(safe, PRODUCTIVE) / MAX_CAP) * 100);
-  const pctAmb = Math.max(
-    0,
-    Math.min(100, ((Math.min(safe, MAX_CAP) - PRODUCTIVE) / MAX_CAP) * 100),
-  );
-  const pctOver = Math.max(0, Math.min(20, ((safe - MAX_CAP) / MAX_CAP) * 100));
-  const prodMark = (PRODUCTIVE / MAX_CAP) * 100;
+  const scale = Math.max(PRODUCTIVE * 1.25, safe);
+  const pctGreen = Math.min(100, (Math.min(safe, PRODUCTIVE) / scale) * 100);
+  const pctRed = safe > PRODUCTIVE ? Math.min(100, ((safe - PRODUCTIVE) / scale) * 100) : 0;
+  const targetMark = (PRODUCTIVE / scale) * 100;
 
   return (
     <div>
@@ -168,48 +162,37 @@ function CapBar({
           {teamName} — {dateLabel}
         </span>
         <span className="font-bold" style={{ color }}>
-          {fmtMins(total)} / 8h day
+          {fmtMins(total)} / {fmtMins(PRODUCTIVE)} target
         </span>
       </div>
       <div className="relative h-5 rounded-full overflow-hidden bg-gray-100 flex">
         <div
           className="h-full rounded-l-full transition-all"
-          style={{ width: `${pctProd}%`, background: "#16a34a" }}
+          style={{ width: `${pctGreen}%`, background: "#16a34a" }}
         />
-        {pctAmb > 0 && (
-          <div
-            className="h-full transition-all"
-            style={{ width: `${pctAmb}%`, background: "#d97706" }}
-          />
-        )}
-        {pctOver > 0 && (
+        {pctRed > 0 && (
           <div
             className="h-full rounded-r-full transition-all"
-            style={{ width: `${pctOver}%`, background: "#dc2626" }}
+            style={{ width: `${pctRed}%`, background: "#dc2626" }}
           />
         )}
         <div
           className="absolute top-0 bottom-0 w-0.5 bg-white/80"
-          style={{ left: `${prodMark}%` }}
+          style={{ left: `${targetMark}%` }}
         />
       </div>
       <div className="flex justify-between text-[10px] mt-1 text-gray-400">
         <span>0</span>
-        <span>↑ 6h target</span>
-        <span>8h max</span>
+        <span>↑ {fmtMins(PRODUCTIVE)} target</span>
       </div>
       <div className="flex gap-3 mt-2 flex-wrap text-[11px]">
         <span className="flex items-center gap-1 text-green-700">
           <span className="w-2.5 h-2.5 rounded-sm bg-green-500 inline-block" />
-          Productive ({fmtMins(PRODUCTIVE)})
-        </span>
-        <span className="flex items-center gap-1 text-amber-700">
-          <span className="w-2.5 h-2.5 rounded-sm bg-amber-500 inline-block" />
-          Contingency buffer
+          Within target
         </span>
         <span className="flex items-center gap-1 text-red-600">
           <span className="w-2.5 h-2.5 rounded-sm bg-red-500 inline-block" />
-          Over maximum
+          Over target
         </span>
         {reactive > 0 && (
           <span className="flex items-center gap-1 text-purple-600 ml-auto">
@@ -266,7 +249,6 @@ export function ReactiveJobWizard({ teamsData, assetsData, onClose, onPublished 
 
   const [actions, setActions] = useState<Record<string, JobAction>>({});
   const [reassignTo, setReassignTo] = useState<Record<string, string>>({});
-  const [contingencyApproved, setContingencyApproved] = useState(false);
   const [isPublishing, setIsPublishing] = useState(false);
 
   const { data: settingsData } = useQuery<{ reactivePriorities?: ReactivePriority[] }>({
@@ -356,10 +338,9 @@ export function ReactiveJobWizard({ teamsData, assetsData, onClose, onPublished 
     return { resolvedTotal: totalWithReactive - freed };
   }, [actions, reassignTo, dayJobs, totalWithReactive]);
 
-  const overMax = resolvedTotal > MAX_CAP;
-  const inContingency = resolvedTotal > PRODUCTIVE && resolvedTotal <= MAX_CAP;
+  const overTarget = resolvedTotal > PRODUCTIVE;
   const isGreen = resolvedTotal <= PRODUCTIVE;
-  const canPublish = !overMax && (isGreen || contingencyApproved);
+  const canPublish = !overTarget;
 
   const resolvedJobsList = dayJobs.filter(j => actions[j.id] && actions[j.id] !== "none");
 
@@ -850,12 +831,7 @@ export function ReactiveJobWizard({ teamsData, assetsData, onClose, onPublished 
                         {
                           label: "New total",
                           value: fmtMins(totalWithReactive),
-                          color:
-                            totalWithReactive > MAX_CAP
-                              ? "#dc2626"
-                              : totalWithReactive > PRODUCTIVE
-                              ? "#d97706"
-                              : "#16a34a",
+                          color: totalWithReactive > PRODUCTIVE ? "#dc2626" : "#16a34a",
                         },
                       ].map(({ label, value, color }) => (
                         <div key={label} className="text-center p-3 rounded-xl bg-gray-50">
@@ -867,33 +843,18 @@ export function ReactiveJobWizard({ teamsData, assetsData, onClose, onPublished 
                       ))}
                     </div>
 
-                    {totalWithReactive > MAX_CAP && (
+                    {totalWithReactive > PRODUCTIVE && (
                       <div className="mt-4 p-4 rounded-xl bg-red-50 border border-red-200 flex gap-3">
                         <AlertTriangle className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" />
                         <div>
                           <p className="text-sm font-bold text-red-700">
-                            {teamName} will be {fmtMins(totalWithReactive - MAX_CAP)} over the
-                            8-hour maximum
+                            {teamName} will be {fmtMins(totalWithReactive - PRODUCTIVE)} over the
+                            daily target
                           </p>
                           <p className="text-xs text-red-600 mt-0.5">
                             Push, defer, delete or reassign at least{" "}
-                            {fmtMins(totalWithReactive - MAX_CAP)} of scheduled work on the next
+                            {fmtMins(totalWithReactive - PRODUCTIVE)} of scheduled work on the next
                             step.
-                          </p>
-                        </div>
-                      </div>
-                    )}
-                    {totalWithReactive > PRODUCTIVE && totalWithReactive <= MAX_CAP && (
-                      <div className="mt-4 p-4 rounded-xl bg-amber-50 border border-amber-200 flex gap-3">
-                        <AlertCircle className="w-5 h-5 text-amber-500 flex-shrink-0 mt-0.5" />
-                        <div>
-                          <p className="text-sm font-bold text-amber-700">
-                            {teamName} will use {fmtMins(totalWithReactive - PRODUCTIVE)} of the
-                            2-hour contingency buffer
-                          </p>
-                          <p className="text-xs text-amber-600 mt-0.5">
-                            Within the 8-hour maximum. Proceed with contingency authorisation or
-                            reschedule some work.
                           </p>
                         </div>
                       </div>
@@ -1009,37 +970,11 @@ export function ReactiveJobWizard({ teamsData, assetsData, onClose, onPublished 
                   teamName={teamName}
                   dateLabel={dateLabel}
                 />
-                {overMax && (
+                {overTarget && (
                   <div className="mt-3 p-3 rounded-xl bg-red-50 border border-red-200 flex items-center gap-2">
                     <AlertTriangle className="w-4 h-4 text-red-500 flex-shrink-0" />
                     <p className="text-xs font-semibold text-red-700">
-                      Still {fmtMins(resolvedTotal - MAX_CAP)} over maximum — move or remove more
-                      work.
-                    </p>
-                  </div>
-                )}
-                {inContingency && !contingencyApproved && (
-                  <div className="mt-3 p-3 rounded-xl bg-amber-50 border border-amber-200 flex items-center justify-between gap-3">
-                    <div className="flex items-center gap-2">
-                      <Shield className="w-4 h-4 text-amber-500 flex-shrink-0" />
-                      <p className="text-xs font-semibold text-amber-700">
-                        Using {fmtMins(resolvedTotal - PRODUCTIVE)} of contingency — authorise to
-                        proceed.
-                      </p>
-                    </div>
-                    <button
-                      onClick={() => setContingencyApproved(true)}
-                      className="px-3 py-1.5 rounded-lg text-[11px] font-bold text-white bg-amber-500 hover:bg-amber-600 transition-colors whitespace-nowrap"
-                    >
-                      Authorise Additional Hours
-                    </button>
-                  </div>
-                )}
-                {inContingency && contingencyApproved && (
-                  <div className="mt-3 p-3 rounded-xl bg-green-50 border border-green-200 flex items-center gap-2">
-                    <CheckCircle2 className="w-4 h-4 text-green-600" />
-                    <p className="text-xs font-semibold text-green-700">
-                      Contingency authorised — team approved to work up to 8 hours.
+                      Still {fmtMins(resolvedTotal - PRODUCTIVE)} over target — move or remove more work.
                     </p>
                   </div>
                 )}
@@ -1047,7 +982,7 @@ export function ReactiveJobWizard({ teamsData, assetsData, onClose, onPublished 
                   <div className="mt-3 p-3 rounded-xl bg-green-50 border border-green-200 flex items-center gap-2">
                     <CheckCircle2 className="w-4 h-4 text-green-600" />
                     <p className="text-xs font-semibold text-green-700">
-                      Within productive target — no contingency needed.
+                      Within daily target — ready to publish.
                     </p>
                   </div>
                 )}
@@ -1329,12 +1264,6 @@ export function ReactiveJobWizard({ teamsData, assetsData, onClose, onPublished 
                   teamName={teamName}
                   dateLabel={dateLabel}
                 />
-                {contingencyApproved && (
-                  <div className="mt-3 flex items-center gap-2 text-[11px] text-amber-700 font-semibold">
-                    <Shield className="w-3.5 h-3.5" />
-                    Contingency hours authorised
-                  </div>
-                )}
               </div>
 
               {/* Notification preview */}
