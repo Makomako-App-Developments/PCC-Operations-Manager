@@ -1345,7 +1345,7 @@ export default function Schedule() {
       </header>
 
       {/* Sub-toolbar */}
-      <div className="bg-white border-b px-8 py-2.5 flex items-center gap-4 flex-shrink-0">
+      <div className="bg-white border-b px-8 py-2.5 flex items-center gap-4 flex-shrink-0 sticky top-[69px] z-10">
         <div className="relative w-56">
           <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 pointer-events-none" />
           <input

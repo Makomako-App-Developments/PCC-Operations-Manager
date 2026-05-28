@@ -43,7 +43,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
     : allNav.filter(item => !item.managerOnly || isPrivileged);
 
   return (
-    <div className="flex min-h-screen bg-[#f5f7f9] font-sans">
+    <div className="flex h-screen overflow-hidden bg-[#f5f7f9] font-sans">
       <aside className="w-56 flex-shrink-0 flex flex-col sticky top-0 h-screen bg-[#0f2a36] overflow-hidden">
         <div className="px-5 py-5 border-b border-white/10">
           <div className="bg-[#00AECD] rounded-lg px-3 py-2 text-center">
