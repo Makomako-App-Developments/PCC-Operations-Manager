@@ -1,14 +1,16 @@
 import { useState, useMemo } from "react";
 import { useLocation } from "wouter";
-import { useQuery } from "@tanstack/react-query";
-import { useListAudits, getListAuditsQueryKey, useListAssets, useListTeams } from "@workspace/api-client-react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useListAudits, getListAuditsQueryKey, useListAssets, useListTeams, useDeleteAudit } from "@workspace/api-client-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { format } from "date-fns";
-import { ClipboardCheck, Plus, Eye, Download, Search, Trophy, TrendingDown, XCircle, BookOpen } from "lucide-react";
+import { ClipboardCheck, Plus, Eye, Download, Search, Trophy, TrendingDown, XCircle, BookOpen, Trash2 } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
 import { KPI_SECTIONS, ALL_KPIS } from "./kpi-config";
 
 const BRAND = "#00AECD";
@@ -80,11 +82,28 @@ export default function Audits() {
   const [, navigate] = useLocation();
   const [search, setSearch] = useState("");
   const [teamFilter, setTeamFilter] = useState("all");
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const { toast } = useToast();
+  const qc = useQueryClient();
 
   const { data: auditsData, isLoading } = useListAudits({ query: { queryKey: getListAuditsQueryKey() } });
   const { data: assetsData } = useListAssets({ limit: 2000 });
   const { data: teamsData } = useListTeams();
   const { data: stats, isLoading: statsLoading } = useAuditStats();
+
+  const deleteMutation = useDeleteAudit({
+    mutation: {
+      onSuccess: () => {
+        qc.invalidateQueries({ queryKey: getListAuditsQueryKey() });
+        toast({ title: "Audit deleted" });
+        setConfirmDeleteId(null);
+      },
+      onError: () => {
+        toast({ title: "Failed to delete audit", variant: "destructive" });
+        setConfirmDeleteId(null);
+      },
+    },
+  });
 
   const audits = (auditsData?.data ?? []) as Record<string, any>[];
   const assets = assetsData?.data ?? [];
@@ -295,6 +314,15 @@ export default function Audits() {
                         >
                           <Download className="w-4 h-4" />
                         </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-8 w-8 p-0 text-gray-400 hover:text-red-600 hover:bg-red-50"
+                          onClick={() => setConfirmDeleteId(audit.id)}
+                          title="Delete audit"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </Button>
                       </div>
                     </td>
                   </tr>
@@ -304,6 +332,26 @@ export default function Audits() {
           </Card>
         )}
       </div>
+
+      <AlertDialog open={!!confirmDeleteId} onOpenChange={(open) => { if (!open) setConfirmDeleteId(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete audit?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently delete the audit and all its results. This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-red-600 hover:bg-red-700 text-white"
+              onClick={() => { if (confirmDeleteId) deleteMutation.mutate({ id: confirmDeleteId }); }}
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
