@@ -419,10 +419,10 @@ export default function CompletedWorks() {
             {/* Garden type */}
             <Select value={gardenType} onValueChange={setGardenType}>
               <SelectTrigger className="h-9 text-sm w-[180px]">
-                <SelectValue placeholder="All types" />
+                <SelectValue placeholder="All specifications" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">All types</SelectItem>
+                <SelectItem value="all">All specifications</SelectItem>
                 {Object.entries(GARDEN_TYPE_LABELS).map(([k, v]) => (
                   <SelectItem key={k} value={k}>{v}</SelectItem>
                 ))}
@@ -471,7 +471,7 @@ export default function CompletedWorks() {
                     { key: "scheduledDate", label: "Date", align: "left", nowrap: true },
                     { key: "assetName", label: "Site", align: "left", nowrap: false },
                     { key: "assetDescription", label: "Description", align: "left", nowrap: false },
-                    { key: "gardenType", label: "Type", align: "left", nowrap: true },
+                    { key: "gardenType", label: "Specification", align: "left", nowrap: true },
                     { key: "ward", label: "Ward", align: "left", nowrap: false },
                     { key: "teamName", label: "Team", align: "left", nowrap: false },
                     { key: "estimatedTimeMins", label: "Scheduled", align: "right", nowrap: true },
