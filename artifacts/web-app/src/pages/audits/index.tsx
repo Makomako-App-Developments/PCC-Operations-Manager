@@ -266,7 +266,7 @@ export default function Audits() {
               </thead>
               <tbody className="divide-y divide-gray-100">
                 {filtered.map((audit) => (
-                  <tr key={audit.id} className="hover:bg-gray-50/50 transition-colors">
+                  <tr key={audit.id} className="hover:bg-gray-50/50 transition-colors cursor-pointer" onClick={() => navigate(`/audits/${audit.id}`)}>
                     <td className="px-5 py-3.5 text-gray-600 text-sm">
                       {format(new Date(audit.conductedAt ?? audit.createdAt), "d MMM yyyy")}
                     </td>
@@ -275,7 +275,7 @@ export default function Audits() {
                     <td className="px-5 py-3.5">
                       <ScoreBadge score={audit.overallScore} />
                     </td>
-                    <td className="px-5 py-3.5">
+                    <td className="px-5 py-3.5" onClick={(e) => e.stopPropagation()}>
                       <div className="flex items-center justify-end gap-2">
                         <Button
                           variant="ghost"
