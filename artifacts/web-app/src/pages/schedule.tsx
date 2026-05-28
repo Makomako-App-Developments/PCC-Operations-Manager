@@ -1328,7 +1328,7 @@ export default function Schedule() {
             onClick={() => setWizardOpen(true)}
           >
             <Zap className="w-4 h-4" />
-            Add Reactive Job
+            Add Unscheduled Work
           </Button>
           <Button
             size="sm"

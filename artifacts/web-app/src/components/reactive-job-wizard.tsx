@@ -405,7 +405,7 @@ export function ReactiveJobWizard({ teamsData, assetsData, onClose, onPublished 
       ]);
 
       toast({
-        title: "Reactive job published",
+        title: "Unscheduled work published",
         description: `${location} assigned to ${teamName} for ${dateLabel}`,
       });
       onPublished();
@@ -444,7 +444,7 @@ export function ReactiveJobWizard({ teamsData, assetsData, onClose, onPublished 
         <div>
           <h1 className="text-lg font-semibold flex items-center gap-2" style={{ color: NAVY }}>
             <Zap className="w-5 h-5 text-amber-500" />
-            New Reactive Job
+            New Unscheduled Work
           </h1>
           <p className="text-xs text-gray-400">
             Ad-hoc work insertion with schedule impact management
@@ -827,7 +827,7 @@ export function ReactiveJobWizard({ teamsData, assetsData, onClose, onPublished 
                     <div className="mt-5 grid grid-cols-3 gap-4">
                       {[
                         { label: "Scheduled today", value: fmtMins(totalScheduled), color: "#374151" },
-                        { label: "+ Reactive job", value: `+${fmtMins(serviceMin)}`, color: "#d97706" },
+                        { label: "+ Unscheduled work", value: `+${fmtMins(serviceMin)}`, color: "#d97706" },
                         {
                           label: "New total",
                           value: fmtMins(totalWithReactive),
@@ -1172,7 +1172,7 @@ export function ReactiveJobWizard({ teamsData, assetsData, onClose, onPublished 
               <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
                 <h3 className="text-sm font-bold text-gray-900 mb-4 flex items-center gap-2">
                   <Zap className="w-4 h-4 text-amber-500" />
-                  Reactive job to be added
+                  Unscheduled work to be added
                 </h3>
                 <div className="p-4 rounded-xl bg-amber-50 border border-amber-200 flex items-start gap-4">
                   <div className="flex-1">

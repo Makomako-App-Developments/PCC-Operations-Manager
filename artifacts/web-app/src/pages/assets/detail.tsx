@@ -382,7 +382,7 @@ function WorksHistoryTab({ assetId, getTeamName }: { assetId: string; getTeamNam
     <div className="flex-1 overflow-y-auto">
       <div className="px-6 py-4 border-b bg-gray-50">
         <p className="text-sm font-semibold text-gray-800">Completed Works</p>
-        <p className="text-xs text-gray-400 mt-0.5">{rows.length} record{rows.length !== 1 ? "s" : ""} — scheduled &amp; reactive jobs</p>
+        <p className="text-xs text-gray-400 mt-0.5">{rows.length} record{rows.length !== 1 ? "s" : ""} — scheduled &amp; unscheduled work</p>
       </div>
 
       {rows.length === 0 ? (
@@ -444,7 +444,7 @@ function WorksHistoryTab({ assetId, getTeamName }: { assetId: string; getTeamNam
                     {!row.reactive && <PhotoPanel jobId={row.id} />}
                     {row.reactive && (
                       <p className="text-[11px] text-gray-400 italic flex items-center gap-1.5">
-                        <Camera className="w-3 h-3" />Photo upload not available for reactive jobs
+                        <Camera className="w-3 h-3" />Photo upload not available for unscheduled work
                       </p>
                     )}
                   </div>

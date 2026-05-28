@@ -104,7 +104,7 @@ export default function ReportScreen() {
       >
         <Text style={[styles.title, { color: colors.foreground }]}>Report Issue</Text>
         <Text style={[styles.subtitle, { color: colors.mutedForeground }]}>
-          Raise a reactive job for your supervisor
+          Raise unscheduled work for your supervisor
         </Text>
       </View>
 

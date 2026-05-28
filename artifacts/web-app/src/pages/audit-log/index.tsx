@@ -18,7 +18,7 @@ const TABLE_OPTIONS = [
   { value: "all",           label: "All tables" },
   { value: "assets",        label: "Assets" },
   { value: "jobs",          label: "Jobs" },
-  { value: "reactive_jobs", label: "Reactive Jobs" },
+  { value: "reactive_jobs", label: "Unscheduled Work" },
   { value: "audits",        label: "Audits" },
   { value: "infill_orders", label: "Infill Orders" },
   { value: "mulching_records", label: "Mulching Records" },

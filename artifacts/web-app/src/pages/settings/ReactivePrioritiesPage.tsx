@@ -106,9 +106,9 @@ export default function ReactivePrioritiesPage() {
             <Zap className="w-4 h-4 text-amber-500" />
           </div>
           <div>
-            <h2 className="text-sm font-semibold text-gray-900">Reactive Job Priorities</h2>
+            <h2 className="text-sm font-semibold text-gray-900">Unscheduled Work Priorities</h2>
             <p className="text-xs text-gray-400">
-              Customise the three priority levels shown when creating a reactive job
+              Customise the three priority levels shown when creating unscheduled work
             </p>
           </div>
         </div>

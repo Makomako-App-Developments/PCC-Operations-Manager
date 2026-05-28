@@ -121,7 +121,7 @@ export default function ReactiveJobs() {
         <div>
           <h1 className="text-lg font-semibold flex items-center gap-2" style={{ color: NAVY }}>
             <Zap className="w-5 h-5 text-amber-500" />
-            Reactive Jobs
+            Unscheduled Work
           </h1>
           <p className="text-xs text-gray-400">Ad-hoc requests, emergency work, and community issues</p>
         </div>
@@ -131,7 +131,7 @@ export default function ReactiveJobs() {
           style={{ background: BRAND }}
         >
           <Plus className="w-4 h-4" />
-          New Reactive Job
+          New Unscheduled Work
         </button>
       </header>
 
@@ -182,11 +182,11 @@ export default function ReactiveJobs() {
         ) : filteredJobs.length === 0 ? (
           <div className="py-20 text-center bg-white rounded-2xl border border-dashed border-gray-200">
             <Zap className="w-10 h-10 text-gray-100 mx-auto mb-3" />
-            <p className="text-gray-500 font-semibold">No reactive jobs</p>
+            <p className="text-gray-500 font-semibold">No unscheduled work</p>
             <p className="text-sm text-gray-400 mt-1">
               {statusFilter !== "all" || search
                 ? "Try adjusting your filters"
-                : "Click 'New Reactive Job' to log one"}
+                : "Click 'New Unscheduled Work' to log one"}
             </p>
           </div>
         ) : (
@@ -287,7 +287,7 @@ export default function ReactiveJobs() {
             <div className="p-5 border-b flex items-center justify-between">
               <h2 className="font-bold text-gray-900 flex items-center gap-2">
                 <Zap className="w-4 h-4 text-amber-500" />
-                Update Reactive Job
+                Update Unscheduled Work
               </h2>
               <button
                 onClick={() => setSelectedJob(null)}
