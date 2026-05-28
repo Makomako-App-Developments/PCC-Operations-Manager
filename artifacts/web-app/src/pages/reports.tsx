@@ -8,7 +8,7 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell, Legend,
 } from "recharts";
-import { CheckCircle2, AlertTriangle, TrendingUp, Percent, History, BarChart2, ArrowRight, Download } from "lucide-react";
+import { CheckCircle2, AlertTriangle, TrendingUp, Percent, History, BarChart2, ArrowRight, Download, Clock } from "lucide-react";
 
 const BRAND = "#00AECD";
 const NAVY  = "#0f2a36";
@@ -83,6 +83,213 @@ interface ChangeEntry {
   changedAt: string;
   changedByName: string;
   changes: Array<{ field: string; label: string; old: any; new: any }>;
+}
+
+// Distinct palette for up to 8 teams
+const TEAM_COLORS = ["#00AECD","#0f2a36","#8b5cf6","#f59e0b","#16a34a","#ec4899","#ea580c","#6366f1"];
+
+interface UnscheduledRow { month: string; teamName: string; hours: number; }
+
+function formatMonth(ym: string) {
+  const [y, m] = ym.split("-");
+  const d = new Date(Number(y), Number(m) - 1, 1);
+  return d.toLocaleString("en-NZ", { month: "short", year: "2-digit" });
+}
+
+function UnscheduledWorkTab() {
+  const oneYearAgo = new Date();
+  oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
+
+  const [from, setFrom]     = useState(oneYearAgo.toISOString().slice(0, 10));
+  const [to,   setTo]       = useState(new Date().toISOString().slice(0, 10));
+  const [rows, setRows]     = useState<UnscheduledRow[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError]   = useState<string | null>(null);
+
+  const load = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const params = new URLSearchParams();
+      if (from) params.set("from", new Date(from).toISOString());
+      if (to)   params.set("to",   new Date(to + "T23:59:59").toISOString());
+      const r = await fetch(`/api/reports/unscheduled-hours?${params}`, { credentials: "include" });
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      const json = await r.json();
+      setRows(json.rows ?? []);
+    } catch (e: any) {
+      setError(e.message ?? "Failed to load");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => { load(); }, []);
+
+  // Derive sorted unique teams and months
+  const teams  = [...new Set(rows.map(r => r.teamName))].sort();
+  const months = [...new Set(rows.map(r => r.month))].sort();
+
+  // Pivot: [{month, "Team A": hours, "Team B": hours, …}]
+  const chartData = months.map(month => {
+    const entry: Record<string, any> = { month, label: formatMonth(month) };
+    for (const team of teams) {
+      const found = rows.find(r => r.month === month && r.teamName === team);
+      entry[team] = found ? Number(found.hours) : 0;
+    }
+    return entry;
+  });
+
+  // Totals per team for the summary table
+  const teamTotals = teams.map(team => ({
+    name:  team,
+    hours: rows.filter(r => r.teamName === team).reduce((s, r) => s + Number(r.hours), 0),
+  })).sort((a, b) => b.hours - a.hours);
+
+  const grandTotal = teamTotals.reduce((s, t) => s + t.hours, 0);
+
+  const handleExportCSV = () => {
+    const header = ["Month", ...teams];
+    const csvRows = [
+      header,
+      ...chartData.map(row => [row.label, ...teams.map(t => String(row[t] ?? 0))]),
+    ];
+    const csv = csvRows.map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(",")).join("\n");
+    const blob = new Blob([csv], { type: "text/csv" });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement("a");
+    a.href = url; a.download = `unscheduled-hours-${from}-to-${to}.csv`; a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  return (
+    <div className="space-y-5">
+      {/* Filters */}
+      <Card className="rounded-2xl border-0 shadow-sm">
+        <CardContent className="p-5">
+          <div className="flex items-end gap-4 flex-wrap">
+            <div className="space-y-1">
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">From</p>
+              <Input type="date" value={from} onChange={e => setFrom(e.target.value)} className="text-sm w-40 h-9" />
+            </div>
+            <div className="space-y-1">
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">To</p>
+              <Input type="date" value={to} onChange={e => setTo(e.target.value)} className="text-sm w-40 h-9" />
+            </div>
+            <Button onClick={load} disabled={loading} size="sm" style={{ background: BRAND }} className="text-white h-9">
+              {loading ? "Loading…" : "Apply"}
+            </Button>
+            {rows.length > 0 && (
+              <Button onClick={handleExportCSV} variant="outline" size="sm" className="h-9 gap-1.5">
+                <Download className="w-3.5 h-3.5" /> Export CSV
+              </Button>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+
+      {error ? (
+        <div className="p-8 text-center text-red-500 text-sm">{error}</div>
+      ) : loading ? (
+        <div className="space-y-4">
+          <Skeleton className="w-full h-64 rounded-2xl" />
+          <Skeleton className="w-full h-32 rounded-2xl" />
+        </div>
+      ) : rows.length === 0 ? (
+        <div className="p-12 text-center text-gray-400 text-sm">No unscheduled work found in this date range.</div>
+      ) : (
+        <>
+          {/* Bar chart */}
+          <Card className="rounded-2xl border-0 shadow-sm">
+            <CardHeader className="pb-2 pt-5 px-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle className="text-sm font-semibold text-gray-700">Unscheduled Work Hours — Per Team Per Month</CardTitle>
+                  <p className="text-xs text-gray-400 mt-0.5">Based on reactive jobs assigned to each team (actual hours if recorded, otherwise estimated)</p>
+                </div>
+                <span className="text-xs text-gray-400">{grandTotal.toFixed(1)} hrs total</span>
+              </div>
+            </CardHeader>
+            <CardContent className="px-2 pb-4">
+              <ResponsiveContainer width="100%" height={300}>
+                <BarChart data={chartData} margin={{ top: 4, right: 24, left: 0, bottom: 4 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                  <XAxis dataKey="label" tick={{ fontSize: 11, fill: "#6b7280" }} />
+                  <YAxis tick={{ fontSize: 11, fill: "#6b7280" }} unit="h" allowDecimals={false} />
+                  <Tooltip
+                    content={({ active, payload, label }) => {
+                      if (!active || !payload?.length) return null;
+                      return (
+                        <div className="bg-white border border-gray-200 rounded-lg shadow-lg px-3 py-2 text-xs">
+                          <p className="font-semibold text-gray-800 mb-1">{label}</p>
+                          {payload.map((p: any) => (
+                            <p key={p.name} style={{ color: p.fill }}>
+                              {p.name}: <span className="font-bold">{Number(p.value).toFixed(1)}h</span>
+                            </p>
+                          ))}
+                        </div>
+                      );
+                    }}
+                  />
+                  <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 11, paddingTop: 8 }} />
+                  {teams.map((team, i) => (
+                    <Bar
+                      key={team}
+                      dataKey={team}
+                      name={team}
+                      fill={TEAM_COLORS[i % TEAM_COLORS.length]}
+                      radius={[4, 4, 0, 0]}
+                      maxBarSize={32}
+                    />
+                  ))}
+                </BarChart>
+              </ResponsiveContainer>
+            </CardContent>
+          </Card>
+
+          {/* Summary table */}
+          <Card className="rounded-2xl border-0 shadow-sm overflow-hidden">
+            <CardHeader className="pb-2 pt-5 px-6">
+              <CardTitle className="text-sm font-semibold text-gray-700">Team Totals</CardTitle>
+            </CardHeader>
+            <CardContent className="p-0">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b bg-gray-50 text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                    <th className="text-left px-6 py-3">Team</th>
+                    <th className="text-left px-6 py-3">Total Hours</th>
+                    <th className="text-left px-6 py-3">Share</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {teamTotals.map((t, i) => {
+                    const share = grandTotal > 0 ? (t.hours / grandTotal) * 100 : 0;
+                    return (
+                      <tr key={t.name} className="hover:bg-gray-50">
+                        <td className="px-6 py-3.5 font-medium text-gray-900 flex items-center gap-2">
+                          <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: TEAM_COLORS[i % TEAM_COLORS.length] }} />
+                          {t.name}
+                        </td>
+                        <td className="px-6 py-3.5 text-gray-700 font-semibold">{t.hours.toFixed(1)}h</td>
+                        <td className="px-6 py-3.5">
+                          <div className="flex items-center gap-3">
+                            <div className="w-28 h-2 bg-gray-100 rounded-full overflow-hidden">
+                              <div className="h-full rounded-full" style={{ width: `${share}%`, background: TEAM_COLORS[i % TEAM_COLORS.length] }} />
+                            </div>
+                            <span className="text-xs font-bold text-gray-600">{share.toFixed(0)}%</span>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </CardContent>
+          </Card>
+        </>
+      )}
+    </div>
+  );
 }
 
 function AssetChangesTab() {
@@ -244,7 +451,7 @@ function AssetChangesTab() {
 }
 
 export default function Reports() {
-  const [tab, setTab] = useState<"performance" | "asset-changes">("performance");
+  const [tab, setTab] = useState<"performance" | "unscheduled" | "asset-changes">("performance");
 
   const { data: summary, isLoading: loadingSummary } = useGetDashboardSummary({
     query: { queryKey: getGetDashboardSummaryQueryKey() },
@@ -300,8 +507,9 @@ export default function Reports() {
       <div className="bg-white border-b px-8 flex-shrink-0">
         <div className="flex gap-0">
           {[
-            { id: "performance",    label: "Performance",     icon: BarChart2 },
-            { id: "asset-changes",  label: "Asset Changes",   icon: History   },
+            { id: "performance",    label: "Performance",        icon: BarChart2 },
+            { id: "unscheduled",    label: "Unscheduled Work",   icon: Clock     },
+            { id: "asset-changes",  label: "Asset Changes",      icon: History   },
           ].map(t => (
             <button
               key={t.id}
@@ -322,6 +530,8 @@ export default function Reports() {
       <div className="flex-1 overflow-auto p-8">
         {tab === "asset-changes" ? (
           <AssetChangesTab />
+        ) : tab === "unscheduled" ? (
+          <UnscheduledWorkTab />
         ) : loadingSummary ? (
           <div className="space-y-6">
             {[1, 2, 3, 4].map(i => <Skeleton key={i} className="w-full h-40 rounded-2xl" />)}

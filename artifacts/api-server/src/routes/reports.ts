@@ -1,6 +1,6 @@
 import { Router } from "express";
-import { db, auditLogTable, usersTable, assetsTable } from "@workspace/db";
-import { and, eq, gte, lte, desc, sql, inArray } from "drizzle-orm";
+import { db, auditLogTable, usersTable, assetsTable, reactiveJobsTable, teamsTable } from "@workspace/db";
+import { and, eq, gte, lte, desc, sql, inArray, isNotNull } from "drizzle-orm";
 import { z } from "zod";
 import { requireAuth, requireRole } from "../middlewares/auth";
 import { validateQuery } from "../middlewares/validate";
@@ -102,6 +102,41 @@ router.get(
     });
 
     res.json({ data, total: Number(count) });
+  },
+);
+
+// GET /api/reports/unscheduled-hours
+// Returns reactive-job hours grouped by team × month
+const unscheduledQuerySchema = z.object({
+  from: z.string().optional(),
+  to:   z.string().optional(),
+});
+
+router.get(
+  "/reports/unscheduled-hours",
+  requireAuth,
+  requireRole("manager", "supervisor"),
+  validateQuery(unscheduledQuerySchema),
+  async (_req, res) => {
+    const { from, to } = res.locals.query as z.infer<typeof unscheduledQuerySchema>;
+
+    const conditions = [isNotNull(reactiveJobsTable.assignedTeamId)];
+    if (from) conditions.push(gte(reactiveJobsTable.raisedAt, new Date(from)));
+    if (to)   conditions.push(lte(reactiveJobsTable.raisedAt, new Date(to)));
+
+    const rows = await db
+      .select({
+        month:    sql<string>`to_char(${reactiveJobsTable.raisedAt}, 'YYYY-MM')`,
+        teamName: teamsTable.name,
+        hours:    sql<number>`round(sum(coalesce(${reactiveJobsTable.actualTimeMins}, ${reactiveJobsTable.estimatedTimeMins}, 0)) / 60.0, 2)`,
+      })
+      .from(reactiveJobsTable)
+      .innerJoin(teamsTable, eq(reactiveJobsTable.assignedTeamId, teamsTable.id))
+      .where(and(...conditions))
+      .groupBy(sql`to_char(${reactiveJobsTable.raisedAt}, 'YYYY-MM')`, teamsTable.name)
+      .orderBy(sql`to_char(${reactiveJobsTable.raisedAt}, 'YYYY-MM')`, teamsTable.name);
+
+    res.json({ rows });
   },
 );
 
