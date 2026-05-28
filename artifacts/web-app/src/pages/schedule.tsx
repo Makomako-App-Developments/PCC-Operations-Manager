@@ -225,7 +225,7 @@ function DailyGanttView({
                   </Tooltip>
                 </th>
                 <th className="text-left py-2 px-3 border-b border-gray-200 sticky bg-white z-30" style={{ left: 40,  minWidth: 190, width: 190 }}>Site</th>
-                <th className="text-left py-2 px-3 border-b border-gray-200 sticky bg-white z-30" style={{ left: 230, minWidth: 80,  width: 80  }}>Type</th>
+                <th className="text-left py-2 px-3 border-b border-gray-200 sticky bg-white z-30" style={{ left: 230, minWidth: 80,  width: 80  }}>Specification</th>
                 <th className="text-left py-2 px-3 border-b border-gray-200 sticky bg-white z-30" style={{ left: 310, minWidth: 70,  width: 70  }}>Freq</th>
                 <th className="text-left py-2 px-3 border-b border-gray-200 sticky bg-white z-30" style={{ left: 380, minWidth: 55,  width: 55  }}>Mins</th>
                 <th className="text-left py-2 px-3 border-b border-gray-200 sticky bg-white z-30 border-r border-gray-200" style={{ left: 435, minWidth: 115, width: 115 }}>Team</th>
@@ -428,7 +428,7 @@ function GanttView({
                   </Tooltip>
                 </th>
                 <th className="text-left py-2.5 px-3 border-b border-gray-200 sticky bg-white z-30" style={{ left: 40,  minWidth: 190, width: 190 }}>Site</th>
-                <th className="text-left py-2.5 px-3 border-b border-gray-200 sticky bg-white z-30" style={{ left: 230, minWidth: 80,  width: 80 }}>Type</th>
+                <th className="text-left py-2.5 px-3 border-b border-gray-200 sticky bg-white z-30" style={{ left: 230, minWidth: 80,  width: 80 }}>Specification</th>
                 <th className="text-left py-2.5 px-3 border-b border-gray-200 sticky bg-white z-30" style={{ left: 310, minWidth: 70,  width: 70 }}>Freq</th>
                 <th className="text-left py-2.5 px-3 border-b border-gray-200 sticky bg-white z-30" style={{ left: 380, minWidth: 55,  width: 55 }}>Time</th>
                 <th className="text-left py-2.5 px-3 border-b border-gray-200 sticky bg-white z-30 border-r border-gray-200" style={{ left: 435, minWidth: 115, width: 115 }}>Team</th>
