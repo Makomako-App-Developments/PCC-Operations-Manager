@@ -303,8 +303,8 @@ function PhotoPanel({ jobId }: { jobId: string }) {
         {photos.map((p: any) => (
           <button key={p.id} onClick={() => setLightbox(p)}
             className="rounded-lg overflow-hidden border border-gray-200 hover:border-teal-400 hover:shadow-sm transition-all text-left group">
-            <div className="h-20 bg-gray-100 relative">
-              <img src={p.blobUrl} alt={p.caption || "Photo"} className="w-full h-full object-cover group-hover:opacity-90 transition-opacity" />
+            <div className="bg-gray-100">
+              <img src={p.blobUrl} alt={p.caption || "Photo"} className="w-full object-contain group-hover:opacity-90 transition-opacity" />
             </div>
             {p.caption && <p className="px-1.5 py-1 text-[9px] text-gray-500 leading-tight truncate">{p.caption}</p>}
           </button>
@@ -313,7 +313,7 @@ function PhotoPanel({ jobId }: { jobId: string }) {
       {lightbox && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm" onClick={() => setLightbox(null)}>
           <div className="max-w-lg w-full mx-4 rounded-2xl overflow-hidden shadow-2xl bg-white" onClick={e => e.stopPropagation()}>
-            <img src={lightbox.blobUrl} alt={lightbox.caption || "Photo"} className="w-full object-cover max-h-96" />
+            <img src={lightbox.blobUrl} alt={lightbox.caption || "Photo"} className="w-full object-contain max-h-[80vh]" />
             <div className="px-4 py-3 flex items-center justify-between">
               <p className="text-sm font-medium text-gray-700">{lightbox.caption || ""}</p>
               <button onClick={() => setLightbox(null)} className="text-gray-400 hover:text-gray-700">
