@@ -10,7 +10,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, Camera, MapPin, Locate, X, CheckCircle2, XCircle, MinusCircle, ChevronDown, ChevronUp } from "lucide-react";
 import { KPI_SECTIONS, ALL_KPIS, ResponseState, KpiResult, emptyResponse, calcAuditScore } from "./kpi-config";
 import { format } from "date-fns";
-import { MapContainer, TileLayer, Marker, useMapEvents } from "react-leaflet";
+import { MapContainer, TileLayer, Marker, useMapEvents, GeoJSON, useMap } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 
@@ -22,12 +22,26 @@ function MapClickHandler({ onPin }: { onPin: (lat: number, lng: number) => void 
   return null;
 }
 
+function BoundaryFit({ boundary }: { boundary: any }) {
+  const map = useMap();
+  useEffect(() => {
+    if (!boundary) return;
+    try {
+      const layer = L.geoJSON(boundary);
+      const bounds = layer.getBounds();
+      if (bounds.isValid()) map.fitBounds(bounds, { padding: [24, 24] });
+    } catch {}
+  }, [boundary, map]);
+  return null;
+}
+
 interface PinMapModalProps {
   onConfirm: (lat: number, lng: number) => void;
   onClose: () => void;
   initial?: { lat: number; lng: number };
+  assetBoundary?: any;
 }
-function PinMapModal({ onConfirm, onClose, initial }: PinMapModalProps) {
+function PinMapModal({ onConfirm, onClose, initial, assetBoundary }: PinMapModalProps) {
   const [pin, setPin] = useState<{ lat: number; lng: number } | null>(initial ?? null);
   const center: [number, number] = initial ? [initial.lat, initial.lng] : [-41.09, 174.87];
   return (
@@ -42,6 +56,12 @@ function PinMapModal({ onConfirm, onClose, initial }: PinMapModalProps) {
           <MapContainer center={center} zoom={16} style={{ height: "100%", width: "100%" }}>
             <TileLayer url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}" attribution="Esri" maxZoom={19} />
             <MapClickHandler onPin={(lat, lng) => setPin({ lat, lng })} />
+            {assetBoundary && (
+              <>
+                <GeoJSON key={JSON.stringify(assetBoundary)} data={assetBoundary} style={{ color: "#00AECD", weight: 2.5, fillColor: "#00AECD", fillOpacity: 0.12 }} />
+                <BoundaryFit boundary={assetBoundary} />
+              </>
+            )}
             {pin && <Marker position={[pin.lat, pin.lng]} />}
           </MapContainer>
         </div>
@@ -68,8 +88,9 @@ interface KpiCardProps {
   state: ResponseState;
   onChange: (s: ResponseState) => void;
   showError: boolean;
+  assetBoundary?: any;
 }
-function KpiCard({ kpi, state, onChange, showError }: KpiCardProps) {
+function KpiCard({ kpi, state, onChange, showError, assetBoundary }: KpiCardProps) {
   const fileRef = useRef<HTMLInputElement>(null);
   const [pinModal, setPinModal] = useState(false);
   const [locating, setLocating] = useState(false);
@@ -221,6 +242,7 @@ function KpiCard({ kpi, state, onChange, showError }: KpiCardProps) {
           onConfirm={(lat, lng) => set({ failLat: lat, failLng: lng })}
           onClose={() => setPinModal(false)}
           initial={state.failLat != null ? { lat: state.failLat, lng: state.failLng! } : undefined}
+          assetBoundary={assetBoundary}
         />
       )}
     </div>
@@ -467,6 +489,7 @@ export default function NewAudit() {
                     state={responses[kpi.key]}
                     onChange={(s) => setResponses((prev) => ({ ...prev, [kpi.key]: s }))}
                     showError={showErrors}
+                    assetBoundary={selectedAsset?.boundary}
                   />
                 ))}
               </div>
