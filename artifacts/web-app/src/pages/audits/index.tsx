@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { format } from "date-fns";
-import { ClipboardCheck, Plus, Eye, Download, Search, Trophy, TrendingDown, XCircle, BookOpen, Trash2 } from "lucide-react";
+import { ClipboardCheck, Plus, Eye, Download, Search, Trophy, TrendingDown, XCircle, BookOpen, Trash2, Pencil } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { KPI_SECTIONS, ALL_KPIS } from "./kpi-config";
 
@@ -304,6 +304,15 @@ export default function Audits() {
                           title="View audit"
                         >
                           <Eye className="w-4 h-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-8 w-8 p-0 text-gray-500 hover:text-gray-700"
+                          onClick={() => navigate(`/audits/${audit.id}/edit`)}
+                          title="Edit audit"
+                        >
+                          <Pencil className="w-4 h-4" />
                         </Button>
                         <Button
                           variant="ghost"
