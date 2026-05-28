@@ -986,12 +986,12 @@ export function ReactiveJobWizard({ teamsData, assetsData, onClose, onPublished 
                   ← Back
                 </button>
                 <button
-                  onClick={() => setStep(totalWithReactive > MAX_CAP ? 3 : 4)}
+                  onClick={() => setStep(totalWithReactive > PRODUCTIVE ? 3 : 4)}
                   disabled={weekLoading}
                   className="flex items-center gap-2 px-6 py-2.5 rounded-xl text-sm font-semibold text-white hover:opacity-90 disabled:opacity-50"
                   style={{ background: BRAND }}
                 >
-                  {totalWithReactive > MAX_CAP ? "Resolve Conflicts" : "Review & Confirm"}{" "}
+                  {totalWithReactive > PRODUCTIVE ? "Resolve Conflicts" : "Review & Confirm"}{" "}
                   <ArrowRight className="w-4 h-4" />
                 </button>
               </div>
@@ -1385,7 +1385,7 @@ export function ReactiveJobWizard({ teamsData, assetsData, onClose, onPublished 
 
               <div className="flex items-center justify-between pb-8">
                 <button
-                  onClick={() => setStep(totalWithReactive > MAX_CAP ? 3 : 2)}
+                  onClick={() => setStep(totalWithReactive > PRODUCTIVE ? 3 : 2)}
                   className="text-sm text-gray-400 hover:text-gray-600"
                 >
                   ← Back
