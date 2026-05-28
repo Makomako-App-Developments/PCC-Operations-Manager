@@ -125,9 +125,6 @@ export default function AuditDetail() {
           <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
             <div className="flex items-start justify-between mb-4">
               <div>
-                <span className="inline-flex text-xs font-semibold px-3 py-1 rounded-full bg-[#e6f8fb] text-[#00AECD] mb-2">
-                  Garden Baseline Audit
-                </span>
                 <h1 className="text-2xl font-bold text-gray-900">Garden Audit Report</h1>
               </div>
               <div className="text-right">
