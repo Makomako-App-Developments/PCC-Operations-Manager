@@ -29,6 +29,7 @@ const REASON_TYPES = [
   "Safety hazard",
   "Event prep",
   "Dumped rubbish",
+  "Plant delivery",
   "Other",
 ];
 
