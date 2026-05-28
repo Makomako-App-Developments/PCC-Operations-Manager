@@ -10,12 +10,23 @@ interface SystemSettings {
   workEndHour: number;
 }
 
-const HOUR_OPTIONS = Array.from({ length: 17 }, (_, i) => i + 5); // 5am–9pm
+const HALF_HOUR_OPTIONS = Array.from({ length: 33 }, (_, i) => 5 + i * 0.5); // 5:00 – 21:00 in 0.5 steps
 
-function formatHourLabel(h: number) {
-  if (h === 0)  return "12am";
-  if (h === 12) return "12pm";
-  return h < 12 ? `${h}am` : `${h - 12}pm`;
+function formatHalfHourLabel(h: number) {
+  const hour = Math.floor(h);
+  const mins = h % 1 !== 0 ? "30" : "00";
+  if (hour === 0)  return `12:${mins}am`;
+  if (hour === 12) return `12:${mins}pm`;
+  return hour < 12 ? `${hour}:${mins}am` : `${hour - 12}:${mins}pm`;
+}
+
+function formatSpan(start: number, end: number) {
+  const total = end - start;
+  const hours = Math.floor(total);
+  const mins  = total % 1 !== 0 ? "30 mins" : "";
+  if (hours === 0) return mins;
+  if (!mins) return `${hours} hour${hours !== 1 ? "s" : ""}`;
+  return `${hours} hour${hours !== 1 ? "s" : ""} 30 mins`;
 }
 
 export default function WorkHoursPage() {
@@ -58,7 +69,7 @@ export default function WorkHoursPage() {
       });
       if (!r.ok) throw new Error(await r.text());
       setSaved({ start: startHour, end: endHour });
-      toast({ title: "Work hours saved", description: `${formatHourLabel(startHour)} – ${formatHourLabel(endHour)}` });
+      toast({ title: "Work hours saved", description: `${formatHalfHourLabel(startHour)} – ${formatHalfHourLabel(endHour)}` });
     } catch {
       toast({ title: "Save failed", variant: "destructive" });
     } finally {
@@ -73,8 +84,6 @@ export default function WorkHoursPage() {
       </div>
     );
   }
-
-  const spanHours = endHour - startHour;
 
   return (
     <div className="max-w-2xl mx-auto px-8 py-8 space-y-8">
@@ -97,8 +106,8 @@ export default function WorkHoursPage() {
               onChange={e => setStartHour(Number(e.target.value))}
               className="w-full px-3 py-2 text-sm border border-gray-200 rounded-xl outline-none focus:border-[#00AECD] bg-white"
             >
-              {HOUR_OPTIONS.filter(h => h < endHour).map(h => (
-                <option key={h} value={h}>{formatHourLabel(h)}</option>
+              {HALF_HOUR_OPTIONS.filter(h => h < endHour).map(h => (
+                <option key={h} value={h}>{formatHalfHourLabel(h)}</option>
               ))}
             </select>
           </div>
@@ -110,8 +119,8 @@ export default function WorkHoursPage() {
               onChange={e => setEndHour(Number(e.target.value))}
               className="w-full px-3 py-2 text-sm border border-gray-200 rounded-xl outline-none focus:border-[#00AECD] bg-white"
             >
-              {HOUR_OPTIONS.filter(h => h > startHour).map(h => (
-                <option key={h} value={h}>{formatHourLabel(h)}</option>
+              {HALF_HOUR_OPTIONS.filter(h => h > startHour).map(h => (
+                <option key={h} value={h}>{formatHalfHourLabel(h)}</option>
               ))}
             </select>
           </div>
@@ -120,8 +129,8 @@ export default function WorkHoursPage() {
         <div className="bg-gray-50 rounded-xl p-4 flex items-center gap-3">
           <div className="w-2 h-2 rounded-full bg-[#00AECD]" />
           <p className="text-xs text-gray-600">
-            Team availability grid will show <strong>{spanHours} hour{spanHours !== 1 ? "s" : ""}</strong> from{" "}
-            <strong>{formatHourLabel(startHour)}</strong> to <strong>{formatHourLabel(endHour)}</strong>
+            Team availability grid will show <strong>{formatSpan(startHour, endHour)}</strong> from{" "}
+            <strong>{formatHalfHourLabel(startHour)}</strong> to <strong>{formatHalfHourLabel(endHour)}</strong>
           </p>
         </div>
 

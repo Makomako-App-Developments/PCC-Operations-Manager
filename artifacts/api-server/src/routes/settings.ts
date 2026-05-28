@@ -33,8 +33,8 @@ const reactivePrioritySchema = z.object({
 const patchSettingsSchema = z.object({
   productiveTimeMins:  z.number().int().min(60).max(600).optional(),
   standardCrewSize:    z.number().int().min(1).max(10).optional(),
-  workStartHour:       z.number().int().min(5).max(12).optional(),
-  workEndHour:         z.number().int().min(12).max(22).optional(),
+  workStartHour:       z.number().min(5).max(12).optional(),
+  workEndHour:         z.number().min(12).max(22).optional(),
   reactivePriorities:  z.array(reactivePrioritySchema).optional(),
 });
 
