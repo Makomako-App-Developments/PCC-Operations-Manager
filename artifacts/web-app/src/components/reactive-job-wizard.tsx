@@ -352,10 +352,11 @@ export function ReactiveJobWizard({ teamsData, assetsData, onClose, onPublished 
     if (!canPublish) return;
     setIsPublishing(true);
     try {
+      const priorityMap: Record<string, string> = { urgent: "urgent", standard: "medium", routine: "low" };
       const rjBody: Record<string, unknown> = {
         issueType: reason,
         description: notes || location || reason,
-        priority,
+        priority: priorityMap[priority] ?? "medium",
         assignedTeamId: selectedTeamId || undefined,
         scheduledDate: selectedDate,
         estimatedTimeMins: serviceMin,
