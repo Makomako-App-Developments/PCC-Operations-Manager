@@ -141,7 +141,7 @@ export default function TodayScreen() {
                     {pendingJobs.length}
                   </Text>
                 </View>
-                {pendingJobs.map((job) => (
+                {pendingJobs.map((job, idx) => (
                   <JobCard
                     key={job.id}
                     id={job.id}
@@ -156,6 +156,7 @@ export default function TodayScreen() {
                     status={job.status}
                     scheduledDate={job.scheduledDate}
                     isAllTeams={(job as any).isAllTeams ?? false}
+                    geoSeq={idx + 1}
                   />
                 ))}
               </View>

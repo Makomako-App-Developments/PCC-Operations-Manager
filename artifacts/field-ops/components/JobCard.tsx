@@ -19,6 +19,7 @@ interface JobCardProps {
   status: string;
   scheduledDate: string;
   isAllTeams?: boolean;
+  geoSeq?: number;
 }
 
 const GARDEN_TYPE_LABEL: Record<string, string> = {
@@ -96,6 +97,7 @@ export function JobCard({
   serviceTimeMins,
   status,
   isAllTeams,
+  geoSeq,
 }: JobCardProps) {
   const colors = useColors();
   const router = useRouter();
@@ -132,6 +134,11 @@ export function JobCard({
       ]}
     >
       <View style={styles.header}>
+        {geoSeq != null && (
+          <View style={[styles.seqBadge, { borderColor: colors.border, backgroundColor: colors.background }]}>
+            <Text style={[styles.seqText, { color: colors.mutedForeground }]}>{geoSeq}</Text>
+          </View>
+        )}
         <View style={styles.titleGroup}>
           <Text
             style={[styles.assetName, { color: colors.foreground }]}
@@ -214,6 +221,21 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     gap: 8,
     marginBottom: 8,
+  },
+  seqBadge: {
+    width: 22,
+    height: 22,
+    borderRadius: 6,
+    borderWidth: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0,
+    marginTop: 1,
+  },
+  seqText: {
+    fontFamily: "Inter_700Bold",
+    fontSize: 10,
+    lineHeight: 12,
   },
   titleGroup: {
     flex: 1,
