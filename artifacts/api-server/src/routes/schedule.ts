@@ -235,14 +235,9 @@ router.post(
       const schedules: AssetSchedule[] = [];
       for (const asset of teamAssets) {
         const intervalDays = FREQ_DAYS[asset.frequency] ?? 28;
-        // Derive a deterministic phase offset (0..intervalDays-1) from the
-        // asset UUID so each asset's due dates are spread across the interval
-        // rather than all landing on the same day.
-        const hashByte = parseInt(asset.id.replace(/-/g, "").slice(0, 2), 16); // 0-255
-        const phaseOffset = Math.round((hashByte / 255) * (intervalDays - 1));
         const dueDates: string[] = [];
-        // Start cursor far enough back that the first due-date in range is captured
-        let cursor = addDays(fromDate, phaseOffset - intervalDays);
+        // Start from before fromDate so first due date in range is caught
+        let cursor = fromDate;
         while (cursor <= addDays(toDate, DUE_DATE_FLEX_DAYS)) {
           const weekday = toWeekday(cursor);
           if (weekday >= addDays(fromDate, -DUE_DATE_FLEX_DAYS)) {
@@ -365,15 +360,10 @@ router.post(
         const tid = teamKey === "__none__" ? null : teamKey;
 
         // Build today's work queue:
-        // 1. Carried-over assets from previous day that are now overdue
-        const carried = (carryQueue.get(teamKey) ?? []).filter(c => {
-          // Keep carrying if still within flex window or past it (must place)
-          return addDays(c.dueDate, DUE_DATE_FLEX_DAYS) >= today;
-        });
-        // Remove from carry queue
-        carryQueue.set(teamKey, (carryQueue.get(teamKey) ?? []).filter(c =>
-          !carried.some(cc => cc.asset.id === c.asset.id && cc.dueDate === c.dueDate)
-        ));
+        // 1. All carried-over assets from previous days (retained indefinitely
+        //    until placed — no expiry — so capacity always wins over force-placement)
+        const carried = carryQueue.get(teamKey) ?? [];
+        carryQueue.set(teamKey, []); // clear; assets that don't fit today are re-added below
 
         // 2. Find assets newly eligible today (next unplaced asset in geosequence
         //    whose due date window includes today)
@@ -422,34 +412,30 @@ router.post(
             tid, today, membersByTeam, absenceMap, asset.serviceTimeMins, standardCrewSize,
           );
 
-          // Check if this asset is overdue (past its flex window) — must place today
-          const latestDate = addDays(dueDate, DUE_DATE_FLEX_DAYS);
-          const isOverdue = today >= latestDate;
-
-          if (dayFull && !isOverdue) {
-            // Day is full and asset is not overdue — carry to next working day
+          if (dayFull) {
+            // Day is full — always carry to next working day (capacity always wins;
+            // no force-placement based on overdue status to prevent pile-up)
             if (nextWorkDay <= addDays(toDate, DUE_DATE_FLEX_DAYS)) {
               if (!carryQueue.has(teamKey)) carryQueue.set(teamKey, []);
               carryQueue.get(teamKey)!.push({ asset, dueDate });
               jobsSpilled++;
             } else {
-              // No more working days — place anyway
+              // No more working days in range — place on last day
               placeJob(asset, today, estMins, cs);
               sched.placedDates.add(dueDate);
             }
             continue;
           }
 
-          if (!tid || remaining >= estMins || isOverdue) {
-            // Fits, or must be placed (overdue) — place today
+          if (!tid || remaining >= estMins) {
+            // Fits (or no-team asset) — place today
             placeJob(asset, today, estMins, cs);
             sched.placedDates.add(dueDate);
             if (tid && remaining < estMins) {
-              // Overrun — day is now full
               dayFull = true;
             }
           } else {
-            // Doesn't fit and not overdue — carry to next working day
+            // Doesn't fit — carry to next working day
             if (nextWorkDay <= addDays(toDate, DUE_DATE_FLEX_DAYS)) {
               if (!carryQueue.has(teamKey)) carryQueue.set(teamKey, []);
               carryQueue.get(teamKey)!.push({ asset, dueDate });
