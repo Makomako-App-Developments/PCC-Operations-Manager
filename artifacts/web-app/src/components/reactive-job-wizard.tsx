@@ -21,15 +21,15 @@ const PRODUCTIVE = 390;
 const COMBINE_THRESHOLD = 5;
 
 const REASON_TYPES = [
+  "Contractor damage",
+  "Councillor request",
+  "Dumped rubbish",
+  "Event prep",
+  "Plant delivery",
+  "Resident complaint",
+  "Safety hazard",
   "Storm / wind damage",
   "Vandalism / graffiti",
-  "Resident complaint",
-  "Councillor request",
-  "Contractor damage",
-  "Safety hazard",
-  "Event prep",
-  "Dumped rubbish",
-  "Plant delivery",
   "Other",
 ];
 
