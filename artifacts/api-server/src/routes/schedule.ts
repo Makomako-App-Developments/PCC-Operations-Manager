@@ -235,9 +235,14 @@ router.post(
       const schedules: AssetSchedule[] = [];
       for (const asset of teamAssets) {
         const intervalDays = FREQ_DAYS[asset.frequency] ?? 28;
+        // Derive a deterministic phase offset (0..intervalDays-1) from the
+        // asset UUID so each asset's due dates are spread across the interval
+        // rather than all landing on the same day.
+        const hashByte = parseInt(asset.id.replace(/-/g, "").slice(0, 2), 16); // 0-255
+        const phaseOffset = Math.round((hashByte / 255) * (intervalDays - 1));
         const dueDates: string[] = [];
-        // Start from before fromDate so first due date in range is caught
-        let cursor = fromDate;
+        // Start cursor far enough back that the first due-date in range is captured
+        let cursor = addDays(fromDate, phaseOffset - intervalDays);
         while (cursor <= addDays(toDate, DUE_DATE_FLEX_DAYS)) {
           const weekday = toWeekday(cursor);
           if (weekday >= addDays(fromDate, -DUE_DATE_FLEX_DAYS)) {
