@@ -4,7 +4,7 @@ import { and, eq, gte, lte } from "drizzle-orm";
 import { z } from "zod";
 import { requireAuth, requireRole } from "../middlewares/auth";
 import { validateBody, validateQuery } from "../middlewares/validate";
-import { refreshCrewStatusForTeamDate } from "../lib/crew-utils";
+import { refreshCrewStatusForTeamDate, computeDayCapacity } from "../lib/crew-utils";
 
 const router = Router();
 
@@ -95,11 +95,20 @@ router.put(
     // Auto-refresh crew status on pending jobs for this person's team on this date
     const teamId = await getTeamIdForPerson(personName);
     let jobsRefreshed = 0;
+    let capacityAfter: {
+      totalScheduledMins: number;
+      productiveTimeMins: number;
+      utilizationPct: number;
+    } | null = null;
+
     if (teamId) {
       jobsRefreshed = await refreshCrewStatusForTeamDate(teamId, date);
+
+      // Calculate day capacity after the refresh so the client can warn if over-capacity
+      capacityAfter = await computeDayCapacity(teamId, date);
     }
 
-    res.json({ ok: true, jobsRefreshed });
+    res.json({ ok: true, jobsRefreshed, capacityAfter });
   },
 );
 

@@ -118,6 +118,44 @@ export async function buildAbsenceDataForTeamDate(
 }
 
 /**
+ * Compute pending-job capacity for a team on a given date.
+ * Returns total scheduled minutes vs productive time, and a utilization %.
+ * Used by PUT /api/team/availability to detect over-capacity after an absence change.
+ */
+export async function computeDayCapacity(
+  teamId: string,
+  date: string,
+): Promise<{ totalScheduledMins: number; productiveTimeMins: number; utilizationPct: number }> {
+  const { productiveTimeMins } = await loadSystemSettings();
+
+  const pendingJobs = await db
+    .select({
+      estimatedTimeMins: jobsTable.estimatedTimeMins,
+      serviceTimeMins:   assetsTable.serviceTimeMins,
+    })
+    .from(jobsTable)
+    .innerJoin(assetsTable, eq(jobsTable.assetId, assetsTable.id))
+    .where(
+      and(
+        eq(jobsTable.teamId, teamId),
+        eq(jobsTable.scheduledDate, date),
+        inArray(jobsTable.status, ["pending", "in_progress"]),
+      ),
+    );
+
+  const totalScheduledMins = pendingJobs.reduce(
+    (sum, j) => sum + (j.estimatedTimeMins ?? j.serviceTimeMins),
+    0,
+  );
+
+  return {
+    totalScheduledMins,
+    productiveTimeMins,
+    utilizationPct: Math.round((totalScheduledMins / productiveTimeMins) * 100),
+  };
+}
+
+/**
  * Recalculate + update crewStatus/estimatedTimeMins on all PENDING jobs
  * for a given team on a given date. Called automatically when availability changes.
  */

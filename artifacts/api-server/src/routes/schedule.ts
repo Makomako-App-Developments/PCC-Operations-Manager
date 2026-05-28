@@ -7,7 +7,7 @@ import { eq, and, gte, lte, inArray, sql, notInArray, or, isNull } from "drizzle
 import { z } from "zod";
 import { requireAuth, requireRole } from "../middlewares/auth";
 import { validateBody, validateQuery } from "../middlewares/validate";
-import { FREQ_DAYS, calcCrewAdjustment, type CrewStatus } from "../lib/crew-utils";
+import { FREQ_DAYS, calcCrewAdjustment, loadSystemSettings, buildAbsenceDataForTeamDate, type CrewStatus } from "../lib/crew-utils";
 
 const router = Router();
 
@@ -734,6 +734,182 @@ router.get(
       utilizationPct:     Math.round((totalMins / productiveTimeMins) * 100),
       jobs,
     });
+  },
+);
+
+// ─────────────────────────────────────────────────────────────────────────────
+// POST /api/schedule/replan-day
+// Reschedules pending scheduled jobs for a specific team on a specific date,
+// placing as many as fit within productiveTimeMins on that day (in geosequence
+// order) and spilling any remainder to the next working day.
+//
+// Designed for the over-capacity recovery flow triggered when a worker is
+// marked unavailable. Unlike the full generate endpoint, it only touches that
+// one day's jobs and does NOT reshuffle any other days.
+// ─────────────────────────────────────────────────────────────────────────────
+const replanDaySchema = z.object({
+  teamId: z.string().uuid(),
+  date:   z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+});
+
+router.post(
+  "/schedule/replan-day",
+  requireAuth,
+  requireRole("manager", "supervisor"),
+  validateBody(replanDaySchema),
+  async (req, res) => {
+    const { teamId, date } = res.locals.body as z.infer<typeof replanDaySchema>;
+    const { productiveTimeMins, standardCrewSize } = await loadSystemSettings();
+
+    // Build crew/absence data for the affected date
+    const { membersByTeam, absenceMap } = await buildAbsenceDataForTeamDate(teamId, date);
+
+    // Load pending scheduled jobs for this team on this date in geosequence order
+    const pendingJobs = await db
+      .select({
+        id:              jobsTable.id,
+        assetId:         jobsTable.assetId,
+        serviceTimeMins: assetsTable.serviceTimeMins,
+      })
+      .from(jobsTable)
+      .innerJoin(assetsTable, eq(jobsTable.assetId, assetsTable.id))
+      .where(
+        and(
+          eq(jobsTable.teamId, teamId),
+          eq(jobsTable.scheduledDate, date),
+          eq(jobsTable.status, "pending"),
+          eq(jobsTable.jobType, "scheduled"),
+        ),
+      )
+      .orderBy(sql`${assetsTable.routeOrder} NULLS LAST`, assetsTable.name);
+
+    if (pendingJobs.length === 0) {
+      return res.json({ jobsOnDate: 0, jobsSpilled: 0 });
+    }
+
+    // Delete them so we can re-insert with updated placement
+    await db
+      .delete(jobsTable)
+      .where(inArray(jobsTable.id, pendingJobs.map(j => j.id)));
+
+    // Pre-compute the next SPILL_HORIZON working days so overflow can be placed
+    // on the first future day that has enough remaining capacity.
+    const SPILL_HORIZON = 10;
+    const spillCandidates: string[] = [];
+    let cur = date;
+    for (let i = 0; i < SPILL_HORIZON; i++) {
+      cur = addWorkingDays(cur, 1);
+      spillCandidates.push(cur);
+    }
+
+    // Load existing pending/in-progress load on all candidate days in one query
+    const futureRows = await db
+      .select({
+        scheduledDate:     sql<string>`to_char(${jobsTable.scheduledDate}, 'YYYY-MM-DD')`,
+        estimatedTimeMins: jobsTable.estimatedTimeMins,
+        serviceTimeMins:   assetsTable.serviceTimeMins,
+      })
+      .from(jobsTable)
+      .innerJoin(assetsTable, eq(jobsTable.assetId, assetsTable.id))
+      .where(
+        and(
+          eq(jobsTable.teamId, teamId),
+          inArray(jobsTable.scheduledDate, spillCandidates),
+          inArray(jobsTable.status, ["pending", "in_progress"]),
+        ),
+      );
+
+    // Build per-day existing load map
+    const existingLoad = new Map<string, number>();
+    for (const d of spillCandidates) existingLoad.set(d, 0);
+    for (const r of futureRows) {
+      existingLoad.set(
+        r.scheduledDate,
+        (existingLoad.get(r.scheduledDate) ?? 0) + (r.estimatedTimeMins ?? r.serviceTimeMins),
+      );
+    }
+    // Track load being added in this batch (so consecutive overflow jobs share a day budget)
+    const batchLoad = new Map<string, number>();
+
+    // Cache absence data per spill day (lazy, only loaded on first spill to that day)
+    const absenceCache = new Map<string, Awaited<ReturnType<typeof buildAbsenceDataForTeamDate>>>();
+    const getSpillDayAbsence = async (d: string) => {
+      if (!absenceCache.has(d)) {
+        absenceCache.set(d, await buildAbsenceDataForTeamDate(teamId, d));
+      }
+      return absenceCache.get(d)!;
+    };
+
+    let usedMins = 0;
+    let jobsOnDate = 0;
+    let jobsSpilled = 0;
+
+    const insertRows: {
+      assetId: string;
+      jobType: "scheduled";
+      teamId: string;
+      scheduledDate: string;
+      status: "pending";
+      estimatedTimeMins: number;
+      crewStatus: CrewStatus;
+    }[] = [];
+
+    for (const job of pendingJobs) {
+      const { estimatedTimeMins, crewStatus } = calcCrewAdjustment(
+        teamId, date, membersByTeam, absenceMap, job.serviceTimeMins, standardCrewSize,
+      );
+
+      if (usedMins + estimatedTimeMins <= productiveTimeMins) {
+        // Fits on the affected date
+        insertRows.push({
+          assetId: job.assetId, jobType: "scheduled", teamId,
+          scheduledDate: date, status: "pending", estimatedTimeMins, crewStatus,
+        });
+        usedMins += estimatedTimeMins;
+        jobsOnDate++;
+      } else {
+        // Find the first future working day that has capacity for this job.
+        // Uses existing DB load + already-queued batch load for accurate headroom.
+        let placed = false;
+        for (const spillDay of spillCandidates) {
+          const nd = await getSpillDayAbsence(spillDay);
+          const { estimatedTimeMins: ndMins, crewStatus: ndCs } = calcCrewAdjustment(
+            teamId, spillDay, nd.membersByTeam, nd.absenceMap, job.serviceTimeMins, standardCrewSize,
+          );
+          const dayLoad = (existingLoad.get(spillDay) ?? 0) + (batchLoad.get(spillDay) ?? 0);
+          if (dayLoad + ndMins <= productiveTimeMins) {
+            insertRows.push({
+              assetId: job.assetId, jobType: "scheduled", teamId,
+              scheduledDate: spillDay, status: "pending", estimatedTimeMins: ndMins, crewStatus: ndCs,
+            });
+            batchLoad.set(spillDay, (batchLoad.get(spillDay) ?? 0) + ndMins);
+            jobsSpilled++;
+            placed = true;
+            break;
+          }
+        }
+        if (!placed) {
+          // All horizon days are full — fall back to next working day regardless
+          const fallbackDay = spillCandidates[0];
+          const nd = await getSpillDayAbsence(fallbackDay);
+          const { estimatedTimeMins: ndMins, crewStatus: ndCs } = calcCrewAdjustment(
+            teamId, fallbackDay, nd.membersByTeam, nd.absenceMap, job.serviceTimeMins, standardCrewSize,
+          );
+          insertRows.push({
+            assetId: job.assetId, jobType: "scheduled", teamId,
+            scheduledDate: fallbackDay, status: "pending", estimatedTimeMins: ndMins, crewStatus: ndCs,
+          });
+          batchLoad.set(fallbackDay, (batchLoad.get(fallbackDay) ?? 0) + ndMins);
+          jobsSpilled++;
+        }
+      }
+    }
+
+    if (insertRows.length > 0) {
+      await db.insert(jobsTable).values(insertRows);
+    }
+
+    res.json({ jobsOnDate, jobsSpilled });
   },
 );
 

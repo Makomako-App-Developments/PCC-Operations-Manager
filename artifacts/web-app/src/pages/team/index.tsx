@@ -1,6 +1,6 @@
 import { useState, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { ChevronLeft, ChevronRight, Users, BarChart3, MapPin, Ruler, Clock, UserCheck } from "lucide-react";
+import { ChevronLeft, ChevronRight, Users, BarChart3, MapPin, Ruler, Clock, UserCheck, AlertTriangle, Loader2, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Popover,
@@ -457,6 +457,11 @@ export default function TeamPage() {
   const [weekMon, setWeekMon]     = useState<Date>(() => getMondayOfWeek(new Date()));
   const [activeDay, setActiveDay] = useState(0);
 
+  const [capacityWarning, setCapacityWarning] = useState<CapacityWarning | null>(null);
+  const [replanLoading, setReplanLoading]     = useState(false);
+  const [replanSuccess, setReplanSuccess]     = useState(false);
+  const [replanError, setReplanError]         = useState<string | null>(null);
+
   const { data: settingsData } = useQuery<{ workStartHour: number; workEndHour: number }>({
     queryKey: ["system-settings"],
     queryFn: async () => {
@@ -494,12 +499,41 @@ export default function TeamPage() {
       body: JSON.stringify(body),
     });
     if (!res.ok) throw new Error("Failed to save");
-    return res.json();
+    return res.json() as Promise<{
+      ok: boolean;
+      jobsRefreshed: number;
+      capacityAfter: { totalScheduledMins: number; productiveTimeMins: number; utilizationPct: number } | null;
+    }>;
+  };
+
+  const applyCapacityWarning = (
+    data: Awaited<ReturnType<typeof saveAvailability>>,
+    personName: string,
+    date: string,
+  ) => {
+    const person = PEOPLE.find(p => p.name === personName);
+    if (data.capacityAfter && data.capacityAfter.utilizationPct > 100) {
+      if (person?.teamId) {
+        setCapacityWarning({
+          teamId:         person.teamId,
+          teamName:       person.team,
+          date,
+          utilizationPct: data.capacityAfter.utilizationPct,
+        });
+        setReplanSuccess(false);
+        setReplanError(null);
+      }
+    } else if (capacityWarning?.date === date && capacityWarning?.teamId === person?.teamId) {
+      setCapacityWarning(null);
+    }
   };
 
   const mutation = useMutation({
     mutationFn: saveAvailability,
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["team-avail", weekStart] }),
+    onSuccess: (data, variables) => {
+      qc.invalidateQueries({ queryKey: ["team-avail", weekStart] });
+      applyCapacityWarning(data, variables.personName, variables.date);
+    },
   });
 
   const availMap = useMemo(() => {
@@ -520,6 +554,76 @@ export default function TeamPage() {
   const handleSetWholeDay = async (personName: string, status: Status) => {
     await Promise.all(HOURS.map(h => saveAvailability({ personName, date: dayDate, hour: h, status })));
     qc.invalidateQueries({ queryKey: ["team-avail", weekStart] });
+    // After all parallel saves complete, do one authoritative capacity check for
+    // the final DB state (individual parallel responses may be from intermediate states).
+    const person = PEOPLE.find(p => p.name === personName);
+    if (person?.teamId) {
+      try {
+        const cap = await fetch(
+          `/api/schedule/day-capacity?teamId=${person.teamId}&date=${dayDate}`,
+          { credentials: "include" },
+        ).then(r => r.ok ? r.json() : null) as { utilizationPct: number } | null;
+        if (cap && cap.utilizationPct > 100) {
+          setCapacityWarning({
+            teamId:         person.teamId,
+            teamName:       person.team,
+            date:           dayDate,
+            utilizationPct: cap.utilizationPct,
+          });
+          setReplanSuccess(false);
+          setReplanError(null);
+        } else if (capacityWarning?.date === dayDate && capacityWarning?.teamId === person.teamId) {
+          setCapacityWarning(null);
+        }
+      } catch {
+        // Best-effort — warning may not appear, but saves still succeeded
+      }
+    }
+  };
+
+  const handleReplan = async () => {
+    if (!capacityWarning) return;
+    setReplanLoading(true);
+    setReplanError(null);
+    setReplanSuccess(false);
+    try {
+      const res = await fetch("/api/schedule/replan-day", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          teamId: capacityWarning.teamId,
+          date:   capacityWarning.date,
+        }),
+      });
+      if (!res.ok) throw new Error("Re-plan request failed");
+
+      // Re-check actual capacity after the replan — only clear the warning if
+      // the day is genuinely no longer over capacity (avoid optimistic false positives).
+      const capRes = await fetch(
+        `/api/schedule/day-capacity?teamId=${capacityWarning.teamId}&date=${capacityWarning.date}`,
+        { credentials: "include" },
+      );
+      const cap = capRes.ok ? (await capRes.json() as { utilizationPct: number }) : null;
+
+      if (!cap || cap.utilizationPct <= 100) {
+        setReplanSuccess(true);
+        setCapacityWarning(null);
+      } else {
+        // Day is still over capacity (all future days were also full) — keep
+        // the warning but update the utilization to the new value.
+        setCapacityWarning(prev => prev ? { ...prev, utilizationPct: cap.utilizationPct } : null);
+        setReplanError(
+          `Re-plan redistributed some jobs, but the day is still at ${cap.utilizationPct}% — further redistribution may be needed.`,
+        );
+      }
+
+      qc.invalidateQueries({ queryKey: ["team-avail", weekStart] });
+    } catch (e) {
+      setReplanError(e instanceof Error ? e.message : "Unknown error");
+    } finally {
+      setReplanLoading(false);
+    }
   };
 
   const isCurrentWeek = toDateStr(getMondayOfWeek(new Date())) === weekStart;
@@ -654,6 +758,61 @@ export default function TeamPage() {
               </div>
             </div>
 
+            {/* Over-capacity warning banner */}
+            {capacityWarning && (
+              <div className="bg-red-50 border border-red-200 rounded-xl px-5 py-4 flex items-start gap-4">
+                <AlertTriangle className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" />
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-semibold text-red-800">
+                    {capacityWarning.teamName} is over capacity on{" "}
+                    {new Date(capacityWarning.date + "T00:00:00").toLocaleDateString("en-NZ", {
+                      weekday: "long", day: "numeric", month: "long",
+                    })}{" "}
+                    ({capacityWarning.utilizationPct}%)
+                  </p>
+                  <p className="text-xs text-red-600 mt-0.5">
+                    Pending jobs now exceed productive time. Re-plan to redistribute work that no longer fits.
+                  </p>
+                  {replanError && (
+                    <p className="text-xs text-red-700 font-medium mt-1">{replanError}</p>
+                  )}
+                </div>
+                <Button
+                  size="sm"
+                  disabled={replanLoading}
+                  onClick={handleReplan}
+                  className="flex-shrink-0 bg-red-600 hover:bg-red-700 text-white text-xs h-8 px-3 gap-1.5"
+                >
+                  {replanLoading ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <RefreshCw className="w-3.5 h-3.5" />
+                  )}
+                  {replanLoading ? "Re-planning…" : "Re-plan this day"}
+                </Button>
+              </div>
+            )}
+
+            {/* Re-plan success confirmation */}
+            {replanSuccess && !capacityWarning && (
+              <div className="bg-green-50 border border-green-200 rounded-xl px-5 py-3 flex items-center gap-3">
+                <div className="w-4 h-4 rounded-full bg-green-500 flex items-center justify-center flex-shrink-0">
+                  <svg className="w-2.5 h-2.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                  </svg>
+                </div>
+                <p className="text-sm font-medium text-green-800">
+                  Day re-planned — jobs redistributed to the next available working day.
+                </p>
+                <button
+                  onClick={() => setReplanSuccess(false)}
+                  className="ml-auto text-green-500 hover:text-green-700 text-xs"
+                >
+                  Dismiss
+                </button>
+              </div>
+            )}
+
             {/* Day detail grid */}
             <div className="bg-white rounded-xl border border-gray-200">
               {/* Day tabs */}
@@ -771,4 +930,11 @@ interface AvailRow {
   date:       string;
   hour:       number;
   status:     Status;
+}
+
+interface CapacityWarning {
+  teamId:       string;
+  teamName:     string;
+  date:         string;
+  utilizationPct: number;
 }
