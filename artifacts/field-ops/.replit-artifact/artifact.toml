@@ -11,7 +11,7 @@ version = "1.0.0"
 
 [[services]]
 name = "expo"
-paths = [ "/field-ops/", "/node_modules/", "/_expo/", "/assets/" ]
+paths = [ "/field-ops/" ]
 localPort = 21340
 
 [services.development]

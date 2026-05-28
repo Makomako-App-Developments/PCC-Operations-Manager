@@ -3,3 +3,4 @@
 - [Express asset route ordering](express-asset-route-ordering.md) — any named sub-path under /assets/* must live in assets.ts BEFORE the /:id wildcard handler.
 - [Geosequence-first scheduler](geosequence-scheduler.md) — scheduler uses ±3-day flex window; generate always deletes pending jobs first for a clean slate.
 - [Expo Auth Routing](expo-auth-routing.md) — use AuthGuard in _layout.tsx; never bare Redirect/router.replace on login screen or it escapes to web app
+- [Artifact path conflicts](artifact-path-conflicts.md) — Expo's broad service paths (/node_modules/, /assets/) hijack sibling web-app requests on the main proxy; narrow to previewPath only.
