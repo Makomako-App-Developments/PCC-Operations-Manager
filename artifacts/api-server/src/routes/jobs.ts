@@ -371,7 +371,7 @@ router.get("/reactive-jobs", requireAuth, async (req, res) => {
 });
 
 // POST /api/reactive-jobs
-router.post("/reactive-jobs", requireAuth, validateBody(insertReactiveJobSchema), async (req, res) => {
+router.post("/reactive-jobs", requireAuth, validateBody(insertReactiveJobSchema.omit({ raisedById: true })), async (req, res) => {
   const [created] = await db
     .insert(reactiveJobsTable)
     .values({ ...req.body, raisedById: req.auth!.userId })
