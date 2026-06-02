@@ -162,8 +162,9 @@ function CapBar({
         <span className="font-semibold" style={{ color: NAVY }}>
           {teamName} — {dateLabel}
         </span>
-        <span className="font-bold" style={{ color }}>
-          {fmtMins(total)} / {fmtMins(PRODUCTIVE)} target
+        <span className="font-bold">
+          <span style={{ color }}>{fmtMins(total)}</span>
+          <span className="text-gray-900"> / {fmtMins(PRODUCTIVE)} target</span>
         </span>
       </div>
       <div className="relative h-5 rounded-full overflow-hidden bg-gray-100 flex">
