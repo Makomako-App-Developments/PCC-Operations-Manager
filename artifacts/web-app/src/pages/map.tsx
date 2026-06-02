@@ -1,6 +1,7 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { ChevronDown, ChevronUp, X, Filter, Tag } from "lucide-react";
-import { MapContainer, TileLayer, Polygon, CircleMarker, Tooltip, Popup, ZoomControl } from "react-leaflet";
+import { MapContainer, TileLayer, Polygon, CircleMarker, Tooltip, Popup, ZoomControl, useMap } from "react-leaflet";
+import { useSearch } from "wouter";
 import "leaflet/dist/leaflet.css";
 import {
   useListAssets,
@@ -218,9 +219,23 @@ function ToggleChip({
   );
 }
 
+// ─── FlyToAsset — placed inside MapContainer so it can call useMap() ──────────
+
+function FlyToAsset({ lat, lng }: { lat: number; lng: number }) {
+  const map = useMap();
+  useEffect(() => {
+    map.flyTo([lat, lng], Math.max(map.getZoom(), 17), { animate: true, duration: 1.2 });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lat, lng]);
+  return null;
+}
+
 // ─── Main page ────────────────────────────────────────────────────────────────
 
 export default function MapPage() {
+  const search = useSearch();
+  const linkedAssetId = useMemo(() => new URLSearchParams(search).get("assetId"), [search]);
+
   const [typeFilter,     setTypeFilter]     = useState<Set<string>>(new Set());
   const [scheduleFilter, setScheduleFilter] = useState<Set<ScheduleState>>(new Set());
   const [jobFilter,      setJobFilter]      = useState<Set<JobType>>(new Set());
@@ -264,6 +279,11 @@ export default function MapPage() {
     jobTypes: deriveJobTypes(a.id, jobs, reactiveJobs, mulching, infill),
     teamName: a.teamId ? (teamMap.get(a.teamId) ?? "Unassigned") : "Unassigned",
   })), [mappableAssets, jobs, reactiveJobs, mulching, infill, teamMap]);
+
+  const linkedAsset = useMemo(
+    () => linkedAssetId ? mappableAssets.find(a => a.id === linkedAssetId) ?? null : null,
+    [linkedAssetId, mappableAssets],
+  );
 
   function toggle<T>(set: Set<T>, val: T): Set<T> {
     const next = new Set(set);
@@ -524,6 +544,26 @@ export default function MapPage() {
             maxNativeZoom={TILE_LAYERS[layerMode].maxNativeZoom}
             maxZoom={21}
           />
+
+          {/* Fly to linked asset when arriving from Programmes */}
+          {linkedAsset && (
+            <FlyToAsset lat={linkedAsset.lat as number} lng={linkedAsset.lng as number} />
+          )}
+
+          {/* Highlight ring for linked asset */}
+          {linkedAsset && (
+            <CircleMarker
+              center={[linkedAsset.lat as number, linkedAsset.lng as number]}
+              radius={22}
+              pathOptions={{
+                color: "#ffffff",
+                weight: 3,
+                fillColor: BRAND,
+                fillOpacity: 0.25,
+                dashArray: "4 3",
+              }}
+            />
+          )}
 
           {/* Garden boundary outlines */}
           {visible.map(({ asset, scheduleState }) => {

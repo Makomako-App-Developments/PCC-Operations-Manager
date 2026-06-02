@@ -26,8 +26,9 @@ import { useToast } from "@/hooks/use-toast";
 import {
   Sprout, Plus, Layers, X, Search, ChevronRight,
   Calendar, Users, Leaf, FileText, AlertTriangle, CheckCircle2,
-  Download, ChevronDown, ChevronUp, Package, List, Map as MapIcon,
+  Download, ChevronDown, ChevronUp, Package, List, Map as MapIcon, ExternalLink,
 } from "lucide-react";
+import { useLocation } from "wouter";
 import { MapContainer, TileLayer, CircleMarker, Tooltip, ZoomControl, Marker } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
@@ -509,15 +510,18 @@ function NewAssessmentDrawer({
 // ─── Job Detail panel ─────────────────────────────────────────────────────────
 
 function JobDetailPanel({
-  job, teams, assetTeamId, onClose, onSchedule, onStatusChange,
+  job, teams, assetTeamId, assetLat, assetLng, onClose, onSchedule, onStatusChange,
 }: {
   job: InfillJob;
   teams: { id: string; name: string }[];
   assetTeamId?: string | null;
+  assetLat?: number | null;
+  assetLng?: number | null;
   onClose: () => void;
   onSchedule: (jobId: string, teamId: string, plannedDate: string, estimatedMins: number) => void;
   onStatusChange: (jobId: string, status: JobStatus) => void;
 }) {
+  const [, navigate] = useLocation();
   const defaultTeam = job.assignedTeamId ?? assetTeamId ?? "";
   const [teamId, setTeamId] = useState(defaultTeam);
   const autoAssigned = !job.assignedTeamId && !!assetTeamId && teamId === assetTeamId;
@@ -564,7 +568,21 @@ function JobDetailPanel({
           <div>
             <p className="text-white text-sm font-bold">{job.assetName ?? "Unknown asset"}</p>
             <p className="text-white/50 text-[11px] mt-0.5">Assessed {fmt(job.assessmentDate)}</p>
-            <div className="mt-2"><StatusBadge status={job.status} /></div>
+            <div className="mt-2 flex items-center gap-2">
+              <StatusBadge status={job.status} />
+              {assetLat != null && assetLng != null && (
+                <button
+                  onClick={() => navigate(`/map?assetId=${job.assetId}`)}
+                  className="flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full transition-colors"
+                  style={{ background: "rgba(255,255,255,0.12)", color: "rgba(255,255,255,0.75)" }}
+                  title="View this site on the main map"
+                >
+                  <MapIcon className="w-3 h-3" />
+                  View on map
+                  <ExternalLink className="w-2.5 h-2.5 opacity-70" />
+                </button>
+              )}
+            </div>
           </div>
           <button onClick={onClose}><X className="w-5 h-5 text-white/40 hover:text-white" /></button>
         </div>
@@ -1689,6 +1707,8 @@ export default function Programmes() {
           job={selectedJob}
           teams={teams}
           assetTeamId={assets.find(a => a.id === selectedJob.assetId)?.teamId ?? null}
+          assetLat={assets.find(a => a.id === selectedJob.assetId)?.lat ?? null}
+          assetLng={assets.find(a => a.id === selectedJob.assetId)?.lng ?? null}
           onClose={() => setSelectedJobId(null)}
           onSchedule={handleSchedule}
           onStatusChange={handleStatusChange}
