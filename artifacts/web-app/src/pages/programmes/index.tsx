@@ -461,15 +461,18 @@ function NewAssessmentDrawer({
 // ─── Job Detail panel ─────────────────────────────────────────────────────────
 
 function JobDetailPanel({
-  job, teams, onClose, onSchedule, onStatusChange,
+  job, teams, assetTeamId, onClose, onSchedule, onStatusChange,
 }: {
   job: InfillJob;
   teams: { id: string; name: string }[];
+  assetTeamId?: string | null;
   onClose: () => void;
   onSchedule: (jobId: string, teamId: string, plannedDate: string, estimatedMins: number) => void;
   onStatusChange: (jobId: string, status: JobStatus) => void;
 }) {
-  const [teamId, setTeamId] = useState(job.assignedTeamId ?? "");
+  const defaultTeam = job.assignedTeamId ?? assetTeamId ?? "";
+  const [teamId, setTeamId] = useState(defaultTeam);
+  const autoAssigned = !job.assignedTeamId && !!assetTeamId && teamId === assetTeamId;
   const [plannedDate, setPlannedDate] = useState(job.plannedDate ?? "");
   const [estMins, setEstMins] = useState(String(job.estimatedMins ?? ""));
   const totalPlants = job.species.reduce((s, sp) => s + sp.quantity, 0);
@@ -530,7 +533,15 @@ function JobDetailPanel({
                 <Calendar className="w-4 h-4" style={{ color: BRAND }} /> Schedule to Team
               </p>
               <div>
-                <Label className="text-[11px] text-gray-500 mb-1 block">Assign Team</Label>
+                <div className="flex items-center justify-between mb-1">
+                  <Label className="text-[11px] text-gray-500">Assign Team</Label>
+                  {autoAssigned && (
+                    <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full"
+                      style={{ background: "#e0f7fb", color: BRAND }}>
+                      Area team
+                    </span>
+                  )}
+                </div>
                 <select value={teamId} onChange={e => setTeamId(e.target.value)}
                   className="w-full px-3 py-2 text-sm border border-gray-200 rounded-xl outline-none focus:border-[#00AECD] bg-white">
                   <option value="">— Select team —</option>
@@ -722,7 +733,7 @@ export default function Programmes() {
   const { data: assetsData } = useListAssets({ limit: 500 }, {
     query: { queryKey: getListAssetsQueryKey({ limit: 500 }) },
   });
-  const assets: { id: string; name: string; description?: string | null }[] = ((assetsData as any)?.data ?? []).map((a: any) => ({ id: a.id, name: a.name, description: a.description ?? null }));
+  const assets: { id: string; name: string; description?: string | null; teamId?: string | null }[] = ((assetsData as any)?.data ?? []).map((a: any) => ({ id: a.id, name: a.name, description: a.description ?? null, teamId: a.teamId ?? null }));
 
   // Teams
   const { data: teamsRaw } = useListTeams({ query: { queryKey: getListTeamsQueryKey() } as any });
@@ -970,6 +981,7 @@ export default function Programmes() {
         <JobDetailPanel
           job={selectedJob}
           teams={teams}
+          assetTeamId={assets.find(a => a.id === selectedJob.assetId)?.teamId ?? null}
           onClose={() => setSelectedJobId(null)}
           onSchedule={handleSchedule}
           onStatusChange={handleStatusChange}
