@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   useListAssets, getListAssetsQueryKey,
@@ -28,7 +28,7 @@ import {
   Calendar, Users, Leaf, FileText, AlertTriangle, CheckCircle2,
   Download, ChevronDown, ChevronUp, Package, List, Map as MapIcon, ExternalLink,
 } from "lucide-react";
-import { useLocation } from "wouter";
+import { useLocation, useSearch } from "wouter";
 import { MapContainer, TileLayer, CircleMarker, Tooltip, ZoomControl, Marker, useMapEvents } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
@@ -302,14 +302,15 @@ function SpeciesPicker({
 // ─── New Assessment drawer ────────────────────────────────────────────────────
 
 function NewAssessmentDrawer({
-  assets, onClose, onSave,
+  assets, onClose, onSave, initialAssetId,
 }: {
   assets: { id: string; name: string; description?: string | null }[];
   onClose: () => void;
   onSave: (job: { assetId: string; assessmentDate: string; assessmentNotes: string; species: SelectedSpecies[] }) => void;
+  initialAssetId?: string;
 }) {
   const [step, setStep] = useState<1 | 2 | 3>(1);
-  const [assetId, setAssetId] = useState("");
+  const [assetId, setAssetId] = useState(initialAssetId ?? "");
   const [assessmentDate, setAssessmentDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [notes, setNotes] = useState("");
   const [species, setSpecies] = useState<SelectedSpecies[]>([]);
@@ -1146,6 +1147,8 @@ function InfillMapView({
 export default function Programmes() {
   const qc = useQueryClient();
   const { toast } = useToast();
+  const search = useSearch();
+  const [, navigate] = useLocation();
 
   // Infill jobs
   const { data: jobsData, isLoading: jobsLoading } = useQuery<{ data: InfillJob[]; total: number }>({
@@ -1193,9 +1196,20 @@ export default function Programmes() {
   });
 
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [prefilledAssetId, setPrefilledAssetId] = useState("");
   const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<JobStatus | "all">("all");
   const [infillView, setInfillView] = useState<"list" | "map">("list");
+
+  useEffect(() => {
+    const params = new URLSearchParams(search);
+    const assetId = params.get("newAssessment");
+    if (assetId) {
+      setPrefilledAssetId(assetId);
+      setDrawerOpen(true);
+      navigate("/programmes", { replace: true });
+    }
+  }, [search]);
 
   type SortKey = "assetName" | "assessmentNotes" | "totalPlants" | "status" | "teamName";
   const [sortKey, setSortKey] = useState<SortKey>("assetName");
@@ -1704,7 +1718,8 @@ export default function Programmes() {
       {drawerOpen && (
         <NewAssessmentDrawer
           assets={assets}
-          onClose={() => setDrawerOpen(false)}
+          initialAssetId={prefilledAssetId}
+          onClose={() => { setDrawerOpen(false); setPrefilledAssetId(""); }}
           onSave={handleSaveAssessment}
         />
       )}

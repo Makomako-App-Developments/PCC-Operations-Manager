@@ -561,7 +561,7 @@ function InfillStatusBadge({ status }: { status: string }) {
   );
 }
 
-function InfillPlantingTab({ assetId, onJobClick }: { assetId: string; onJobClick: () => void }) {
+function InfillPlantingTab({ assetId, onJobClick, onNewAssessment }: { assetId: string; onJobClick: () => void; onNewAssessment: () => void }) {
   const [jobs, setJobs]       = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -592,12 +592,22 @@ function InfillPlantingTab({ assetId, onJobClick }: { assetId: string; onJobClic
             {jobs.length} job{jobs.length !== 1 ? "s" : ""} — click any job to open in Programmes
           </p>
         </div>
-        <button
-          onClick={onJobClick}
-          className="text-[11px] font-semibold px-3 py-1.5 rounded-lg transition-colors"
-          style={{ background: "#e0f7fb", color: BRAND }}>
-          View all in Programmes →
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={onNewAssessment}
+            className="text-[11px] font-semibold px-3 py-1.5 rounded-lg border transition-colors"
+            style={{ borderColor: BRAND, color: BRAND, background: "white" }}>
+            <span className="flex items-center gap-1">
+              <Sprout className="w-3 h-3" /> Record Plant Requirements
+            </span>
+          </button>
+          <button
+            onClick={onJobClick}
+            className="text-[11px] font-semibold px-3 py-1.5 rounded-lg transition-colors"
+            style={{ background: "#e0f7fb", color: BRAND }}>
+            View all in Programmes →
+          </button>
+        </div>
       </div>
 
       {jobs.length === 0 ? (
@@ -1077,6 +1087,7 @@ export default function AssetDetail() {
                 key={`infill-${id}`}
                 assetId={id!}
                 onJobClick={() => navigate("/programmes")}
+                onNewAssessment={() => navigate(`/programmes?newAssessment=${id}`)}
               />
             )}
           </div>
