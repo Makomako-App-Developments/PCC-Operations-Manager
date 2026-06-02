@@ -28,7 +28,8 @@ import {
   Calendar, Users, Leaf, FileText, AlertTriangle, CheckCircle2,
   Download, ChevronDown, ChevronUp, Package, List, Map as MapIcon,
 } from "lucide-react";
-import { MapContainer, TileLayer, CircleMarker, Tooltip, ZoomControl } from "react-leaflet";
+import { MapContainer, TileLayer, CircleMarker, Tooltip, ZoomControl, Marker } from "react-leaflet";
+import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 
 const BRAND = "#00AECD";
@@ -834,6 +835,33 @@ interface MappedAsset {
   lng: number | null;
 }
 
+// Spread N markers in a circle around a centre point (lat/lng degrees).
+// ~0.00035° ≈ 35 m at NZ latitudes — enough to visually separate markers.
+const SPIDER_RADIUS = 0.00035;
+
+function spiderOffsets(count: number): Array<[number, number]> {
+  return Array.from({ length: count }, (_, i) => {
+    const angle = (2 * Math.PI * i) / count - Math.PI / 2;
+    return [SPIDER_RADIUS * Math.cos(angle), SPIDER_RADIUS * Math.sin(angle)];
+  });
+}
+
+function makeClusterIcon(count: number) {
+  const size = count > 9 ? 44 : 38;
+  return L.divIcon({
+    html: `<div style="
+      width:${size}px;height:${size}px;border-radius:50%;
+      background:#0f2a36;border:3px solid white;
+      display:flex;align-items:center;justify-content:center;
+      font-family:system-ui,sans-serif;font-weight:700;font-size:${count > 9 ? 13 : 15}px;
+      color:white;box-shadow:0 2px 8px rgba(0,0,0,0.35);cursor:pointer;
+    ">${count}</div>`,
+    className: "",
+    iconSize: L.point(size, size),
+    iconAnchor: L.point(size / 2, size / 2),
+  });
+}
+
 function InfillMapView({
   jobs,
   assets,
@@ -845,6 +873,8 @@ function InfillMapView({
   statusFilter: JobStatus | "all";
   onSelectJob: (id: string) => void;
 }) {
+  const [expandedKeys, setExpandedKeys] = useState<Set<string>>(new Set());
+
   const assetCoords = useMemo(() => {
     const m = new Map<string, { lat: number; lng: number }>();
     for (const a of assets) {
@@ -865,10 +895,29 @@ function InfillMapView({
       .filter((x): x is NonNullable<typeof x> => x !== null);
   }, [jobs, statusFilter, assetCoords]);
 
+  // Group by exact lat/lng position so stacked markers are detected.
+  const clusters = useMemo(() => {
+    const map = new Map<string, typeof visibleJobs>();
+    for (const item of visibleJobs) {
+      const key = `${item.lat.toFixed(7)},${item.lng.toFixed(7)}`;
+      if (!map.has(key)) map.set(key, []);
+      map.get(key)!.push(item);
+    }
+    return map;
+  }, [visibleJobs]);
+
   const unmapped = useMemo(() => {
     const filtered = statusFilter === "all" ? jobs : jobs.filter(j => j.status === statusFilter);
     return filtered.filter(j => !assetCoords.has(j.assetId)).length;
   }, [jobs, statusFilter, assetCoords]);
+
+  function toggleCluster(key: string) {
+    setExpandedKeys(prev => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key); else next.add(key);
+      return next;
+    });
+  }
 
   return (
     <div className="space-y-3">
@@ -893,41 +942,112 @@ function InfillMapView({
             maxNativeZoom={19}
             maxZoom={21}
           />
-          {visibleJobs.map(({ job, lat, lng, totalPlants }) => {
-            const color = MARKER_COLORS[job.status] ?? "#6b7280";
-            const cfg = JOB_STATUS[job.status];
-            const radius = Math.max(10, Math.min(22, 10 + Math.sqrt(totalPlants) * 0.9));
-            return (
-              <CircleMarker
-                key={job.id}
-                center={[lat, lng]}
-                radius={radius}
-                pathOptions={{
-                  fillColor: color,
-                  fillOpacity: 0.9,
-                  color: "white",
-                  weight: 2.5,
-                }}
-                eventHandlers={{ click: () => onSelectJob(job.id) }}
-              >
-                <Tooltip direction="top" offset={[0, -(radius + 4)]} opacity={1}>
-                  <div style={{ fontFamily: "system-ui, sans-serif", lineHeight: 1.5, minWidth: 140 }}>
-                    <p style={{ fontWeight: 700, fontSize: 12, color: "#0f2a36", margin: 0 }}>
-                      {job.assetName ?? "Unknown site"}
-                    </p>
-                    <p style={{ fontSize: 10, margin: "2px 0 0", fontWeight: 600, color: cfg.color }}>
-                      {cfg.label}
-                    </p>
-                    <p style={{ fontSize: 10, color: "#6b7280", margin: "1px 0 0" }}>
-                      {totalPlants} plant{totalPlants !== 1 ? "s" : ""}
-                    </p>
-                    <p style={{ fontSize: 9, color: "#9ca3af", margin: "3px 0 0" }}>
-                      Click to open detail
-                    </p>
-                  </div>
-                </Tooltip>
-              </CircleMarker>
-            );
+
+          {Array.from(clusters.entries()).map(([key, items]) => {
+            const { lat, lng } = items[0];
+
+            // ── Single job at this position ──────────────────────────────
+            if (items.length === 1) {
+              const { job, totalPlants } = items[0];
+              const color = MARKER_COLORS[job.status] ?? "#6b7280";
+              const cfg = JOB_STATUS[job.status];
+              const radius = Math.max(10, Math.min(22, 10 + Math.sqrt(totalPlants) * 0.9));
+              return (
+                <CircleMarker
+                  key={job.id}
+                  center={[lat, lng]}
+                  radius={radius}
+                  pathOptions={{ fillColor: color, fillOpacity: 0.9, color: "white", weight: 2.5 }}
+                  eventHandlers={{ click: () => onSelectJob(job.id) }}
+                >
+                  <Tooltip direction="top" offset={[0, -(radius + 4)]} opacity={1}>
+                    <div style={{ fontFamily: "system-ui, sans-serif", lineHeight: 1.5, minWidth: 140 }}>
+                      <p style={{ fontWeight: 700, fontSize: 12, color: "#0f2a36", margin: 0 }}>
+                        {job.assetName ?? "Unknown site"}
+                      </p>
+                      <p style={{ fontSize: 10, margin: "2px 0 0", fontWeight: 600, color: cfg.color }}>
+                        {cfg.label}
+                      </p>
+                      <p style={{ fontSize: 10, color: "#6b7280", margin: "1px 0 0" }}>
+                        {totalPlants} plant{totalPlants !== 1 ? "s" : ""}
+                      </p>
+                      <p style={{ fontSize: 9, color: "#9ca3af", margin: "3px 0 0" }}>
+                        Click to open detail
+                      </p>
+                    </div>
+                  </Tooltip>
+                </CircleMarker>
+              );
+            }
+
+            // ── Multiple jobs at this position ───────────────────────────
+            const isExpanded = expandedKeys.has(key);
+
+            if (!isExpanded) {
+              // Collapsed: show a single cluster badge
+              return (
+                <Marker
+                  key={key}
+                  position={[lat, lng]}
+                  icon={makeClusterIcon(items.length)}
+                  eventHandlers={{ click: () => toggleCluster(key) }}
+                >
+                  <Tooltip direction="top" offset={[0, -22]} opacity={1}>
+                    <div style={{ fontFamily: "system-ui, sans-serif", lineHeight: 1.5, minWidth: 150 }}>
+                      <p style={{ fontWeight: 700, fontSize: 12, color: "#0f2a36", margin: 0 }}>
+                        {items[0].job.assetName ?? "Unknown site"}
+                      </p>
+                      <p style={{ fontSize: 10, color: "#6b7280", margin: "2px 0 0" }}>
+                        {items.length} overlapping jobs
+                      </p>
+                      <p style={{ fontSize: 9, color: "#9ca3af", margin: "3px 0 0" }}>
+                        Click to expand
+                      </p>
+                    </div>
+                  </Tooltip>
+                </Marker>
+              );
+            }
+
+            // Expanded: fan out individual markers in a circle
+            const offsets = spiderOffsets(items.length);
+            return items.map(({ job, totalPlants }, idx) => {
+              const color = MARKER_COLORS[job.status] ?? "#6b7280";
+              const cfg = JOB_STATUS[job.status];
+              const radius = Math.max(10, Math.min(22, 10 + Math.sqrt(totalPlants) * 0.9));
+              const [dLat, dLng] = offsets[idx];
+              return (
+                <CircleMarker
+                  key={job.id}
+                  center={[lat + dLat, lng + dLng]}
+                  radius={radius}
+                  pathOptions={{ fillColor: color, fillOpacity: 0.9, color: "white", weight: 2.5 }}
+                  eventHandlers={{
+                    click: (e) => {
+                      e.originalEvent.stopPropagation();
+                      onSelectJob(job.id);
+                    },
+                  }}
+                >
+                  <Tooltip direction="top" offset={[0, -(radius + 4)]} opacity={1}>
+                    <div style={{ fontFamily: "system-ui, sans-serif", lineHeight: 1.5, minWidth: 150 }}>
+                      <p style={{ fontWeight: 700, fontSize: 12, color: "#0f2a36", margin: 0 }}>
+                        {job.assetName ?? "Unknown site"}
+                      </p>
+                      <p style={{ fontSize: 10, margin: "2px 0 0", fontWeight: 600, color: cfg.color }}>
+                        {cfg.label}
+                      </p>
+                      <p style={{ fontSize: 10, color: "#6b7280", margin: "1px 0 0" }}>
+                        {totalPlants} plant{totalPlants !== 1 ? "s" : ""}
+                      </p>
+                      <p style={{ fontSize: 9, color: "#00aecd", margin: "3px 0 0" }}>
+                        Click to open · {idx + 1}/{items.length}
+                      </p>
+                    </div>
+                  </Tooltip>
+                </CircleMarker>
+              );
+            });
           })}
         </MapContainer>
       </div>
@@ -941,6 +1061,10 @@ function InfillMapView({
             <span className="text-[10px] text-gray-600">{JOB_STATUS[s].label}</span>
           </div>
         ))}
+        <div className="flex items-center gap-1.5">
+          <span className="w-3 h-3 rounded-full flex-shrink-0 bg-[#0f2a36] flex items-center justify-center" style={{ fontSize: 7, color: "white", fontWeight: 700 }}>N</span>
+          <span className="text-[10px] text-gray-600">Cluster (click to expand)</span>
+        </div>
         <span className="text-[10px] text-gray-400 ml-auto">Marker size ∝ plant quantity</span>
       </div>
     </div>
