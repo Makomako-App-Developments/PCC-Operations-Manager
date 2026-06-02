@@ -834,7 +834,7 @@ export function ReactiveJobWizard({ teamsData, assetsData, onClose, onPublished 
                       <span className="text-xl font-bold text-gray-400 flex-shrink-0">+</span>
                       <div className="flex-1 text-center p-3 rounded-xl bg-gray-50">
                         <p className="text-[11px] text-gray-400 mb-1">Unscheduled work</p>
-                        <p className="text-xl font-black" style={{ color: "#d97706" }}>+{fmtMins(serviceMin)}</p>
+                        <p className="text-xl font-black" style={{ color: "#374151" }}>+{fmtMins(serviceMin)}</p>
                       </div>
                       <span className="text-xl font-bold text-gray-400 flex-shrink-0">=</span>
                       <div className="flex-1 text-center p-3 rounded-xl bg-gray-50">
