@@ -5,7 +5,9 @@ import {
   useListMulchingRecords, getListMulchingRecordsQueryKey,
   useCreateMulchingRecord, useUpdateMulchingRecord,
   useListTeams, getListTeamsQueryKey,
+  useGetScheduleWeek, getGetScheduleWeekQueryKey,
 } from "@workspace/api-client-react";
+import { CapBar, fmtMins, mondayOf, PRODUCTIVE } from "@/components/reactive-job-wizard";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -23,7 +25,7 @@ import { format, parseISO } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
 import {
   Sprout, Plus, Layers, X, Search, ChevronRight,
-  Calendar, Users, Leaf, FileText,
+  Calendar, Users, Leaf, FileText, AlertTriangle, CheckCircle2,
 } from "lucide-react";
 
 const BRAND = "#00AECD";
@@ -477,6 +479,36 @@ function JobDetailPanel({
   const [estMins, setEstMins] = useState(String(job.estimatedMins ?? ""));
   const totalPlants = job.species.reduce((s, sp) => s + sp.quantity, 0);
 
+  const weekStr = plannedDate ? mondayOf(plannedDate) : "";
+  const selectedTeam = teams.find(t => t.id === teamId);
+  const teamName = selectedTeam?.name ?? "Team";
+  const dateLabel = plannedDate
+    ? format(new Date(plannedDate + "T00:00:00"), "EEE d MMM")
+    : "";
+
+  const { data: weekData, isLoading: weekLoading } = useGetScheduleWeek(
+    { week: weekStr, teamId: teamId || undefined },
+    {
+      query: {
+        queryKey: getGetScheduleWeekQueryKey({ week: weekStr, teamId: teamId || undefined }),
+        enabled: !!weekStr && !!teamId,
+      },
+    },
+  );
+
+  const dayJobs = useMemo(
+    () => (weekData as any)?.days?.find((d: any) => d.date === plannedDate)?.jobs ?? [],
+    [weekData, plannedDate],
+  );
+
+  const totalScheduled = useMemo(
+    () => dayJobs.reduce((s: number, j: any) => s + (j.serviceTimeMins ?? 0), 0),
+    [dayJobs],
+  );
+  const infillMins = parseInt(estMins) || 0;
+  const totalWithInfill = totalScheduled + infillMins;
+  const showImpact = !!teamId && !!plannedDate;
+
   return (
     <div className="fixed inset-0 z-50 flex">
       <div className="flex-1 bg-black/30" onClick={onClose} />
@@ -559,6 +591,70 @@ function JobDetailPanel({
                     placeholder="e.g. 120" className="rounded-xl text-sm" />
                 </div>
               </div>
+
+              {/* Schedule impact — shown once team + date are both set */}
+              {showImpact && (
+                <div className="rounded-xl border border-gray-100 bg-gray-50 p-4 space-y-4">
+                  <p className="text-xs font-bold text-gray-700">
+                    Schedule impact — {teamName}, {dateLabel}
+                  </p>
+                  {weekLoading ? (
+                    <div className="h-10 flex items-center justify-center text-gray-400 text-xs">
+                      Loading schedule data…
+                    </div>
+                  ) : (
+                    <>
+                      <CapBar
+                        total={totalWithInfill}
+                        reactive={infillMins}
+                        teamName={teamName}
+                        dateLabel={dateLabel}
+                      />
+
+                      <div className="flex items-center gap-2">
+                        <div className="flex-1 text-center p-3 rounded-xl bg-white border border-gray-100">
+                          <p className="text-[10px] text-gray-400 mb-1">Scheduled today</p>
+                          <p className="text-lg font-black text-gray-700">{fmtMins(totalScheduled)}</p>
+                        </div>
+                        <span className="text-lg font-bold text-gray-400 flex-shrink-0">+</span>
+                        <div className="flex-1 text-center p-3 rounded-xl bg-white border border-gray-100">
+                          <p className="text-[10px] text-gray-400 mb-1">Infill work</p>
+                          <p className="text-lg font-black text-gray-700">+{fmtMins(infillMins)}</p>
+                        </div>
+                        <span className="text-lg font-bold text-gray-400 flex-shrink-0">=</span>
+                        <div className="flex-1 text-center p-3 rounded-xl bg-white border border-gray-100">
+                          <p className="text-[10px] text-gray-400 mb-1">New total</p>
+                          <p className="text-lg font-black" style={{ color: totalWithInfill > PRODUCTIVE ? "#dc2626" : "#16a34a" }}>
+                            {fmtMins(totalWithInfill)}
+                          </p>
+                        </div>
+                      </div>
+
+                      {totalWithInfill > PRODUCTIVE ? (
+                        <div className="p-3 rounded-xl bg-red-50 border border-red-200 flex gap-2.5">
+                          <AlertTriangle className="w-4 h-4 text-red-500 flex-shrink-0 mt-0.5" />
+                          <div>
+                            <p className="text-xs font-bold text-red-700">
+                              {teamName} will be {fmtMins(totalWithInfill - PRODUCTIVE)} over the daily target
+                            </p>
+                            <p className="text-[11px] text-red-600 mt-0.5">
+                              Consider adjusting the date or redistributing scheduled work.
+                            </p>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="p-3 rounded-xl bg-green-50 border border-green-200 flex items-center gap-2">
+                          <CheckCircle2 className="w-4 h-4 text-green-600 flex-shrink-0" />
+                          <p className="text-[11px] font-semibold text-green-700">
+                            Within productive target — no capacity issues.
+                          </p>
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
+              )}
+
               <button
                 onClick={() => onSchedule(job.id, teamId, plannedDate, parseInt(estMins) || 0)}
                 disabled={!teamId || !plannedDate}

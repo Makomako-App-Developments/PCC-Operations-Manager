@@ -17,7 +17,7 @@ import { useToast } from "@/hooks/use-toast";
 
 export const BRAND = "#00AECD";
 export const NAVY = "#0f2a36";
-const PRODUCTIVE = 390;
+export const PRODUCTIVE = 390;
 const COMBINE_THRESHOLD = 5;
 
 const REASON_TYPES = [
@@ -40,7 +40,7 @@ function localDateStr(d: Date) {
   return `${y}-${m}-${day}`;
 }
 
-function mondayOf(dateStr: string) {
+export function mondayOf(dateStr: string) {
   const d = new Date(dateStr + "T00:00:00");
   const day = d.getDay();
   const diff = day === 0 ? -6 : 1 - day;
@@ -61,11 +61,11 @@ export function fmtMins(m: number) {
   return h > 0 ? `${h}h${r > 0 ? ` ${r}m` : ""}` : `${r}m`;
 }
 
-function capacityBand(mins: number): "green" | "red" {
+export function capacityBand(mins: number): "green" | "red" {
   return mins > PRODUCTIVE ? "red" : "green";
 }
 
-function bandColor(band: "green" | "red") {
+export function bandColor(band: "green" | "red") {
   return band === "green" ? "#16a34a" : "#dc2626";
 }
 
@@ -137,7 +137,7 @@ export const STATUS_CONFIG: Record<
   cancelled:   { label: "Cancelled",  color: "#dc2626", bg: "#fef2f2", icon: X },
 };
 
-function CapBar({
+export function CapBar({
   total,
   reactive,
   teamName,
