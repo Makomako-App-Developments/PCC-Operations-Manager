@@ -102,16 +102,17 @@ router.post(
   validateBody(createInfillJobSchema),
   async (req, res) => {
     const { species, ...jobData } = req.body as z.infer<typeof createInfillJobSchema>;
-    const [job] = await db.insert(infillJobsTable).values({
-      ...jobData,
-      assessedById: req.auth!.userId,
-    }).returning();
 
-    if (species.length > 0) {
-      await db.insert(infillOrdersTable).values(
+    const job = await db.transaction(async tx => {
+      const [created] = await tx.insert(infillJobsTable).values({
+        ...jobData,
+        assessedById: req.auth!.userId,
+      }).returning();
+
+      await tx.insert(infillOrdersTable).values(
         species.map(sp => ({
-          assetId:         job.assetId,
-          infillJobId:     job.id,
+          assetId:         created.assetId,
+          infillJobId:     created.id,
           speciesName:     sp.speciesName,
           speciesCategory: sp.speciesCategory,
           quantity:        sp.quantity,
@@ -119,7 +120,9 @@ router.post(
           orderedById:     req.auth!.userId,
         }))
       );
-    }
+
+      return created;
+    });
 
     await auditLog({
       tableName: "infill_jobs", recordId: job.id, action: "INSERT",
