@@ -93,6 +93,14 @@ const JOB_STATUS: Record<JobStatus, { label: string; color: string; bg: string }
   cancelled:   { label: "Cancelled",   color: "#9ca3af", bg: "#f9fafb" },
 };
 
+const ALLOWED_TRANSITIONS: Record<JobStatus, JobStatus[]> = {
+  draft:       ["cancelled"],
+  scheduled:   ["in_progress", "draft", "cancelled"],
+  in_progress: ["completed", "scheduled", "cancelled"],
+  completed:   [],
+  cancelled:   ["draft"],
+};
+
 const MULCH_STATUS: Record<string, { label: string; color: string; bg: string }> = {
   due:          { label: "Due",          color: "#dc2626", bg: "#fef2f2" },
   scheduled:    { label: "Scheduled",    color: "#2563eb", bg: "#eff6ff" },
@@ -542,22 +550,21 @@ function JobDetailPanel({
             </div>
           )}
 
-          {/* Status update buttons */}
-          <div>
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Update Status</p>
-            <div className="flex flex-wrap gap-2">
-              {(Object.keys(JOB_STATUS) as JobStatus[])
-                .filter(s => s !== job.status && s !== "scheduled")
-                .map(s => (
+          {/* Status update buttons — state machine constrained */}
+          {ALLOWED_TRANSITIONS[job.status].length > 0 && (
+            <div>
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Update Status</p>
+              <div className="flex flex-wrap gap-2">
+                {ALLOWED_TRANSITIONS[job.status].map(s => (
                   <button key={s} onClick={() => onStatusChange(job.id, s)}
                     className="text-xs font-semibold px-3 py-1.5 rounded-lg border transition-colors hover:bg-gray-50"
                     style={{ borderColor: JOB_STATUS[s].color, color: JOB_STATUS[s].color }}>
                     Mark {JOB_STATUS[s].label}
                   </button>
-                ))
-              }
+                ))}
+              </div>
             </div>
-          </div>
+          )}
         </div>
       </div>
     </div>

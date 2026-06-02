@@ -76,6 +76,25 @@ const createInfillJobSchema = insertInfillJobSchema.extend({
   })).min(1),
 });
 
+// Only mutable fields allowed in PATCH — no arbitrary column overwrite
+const patchInfillJobSchema = z.object({
+  assignedTeamId:  z.string().uuid().nullable().optional(),
+  plannedDate:     z.string().nullable().optional(),
+  estimatedMins:   z.number().int().nonnegative().nullable().optional(),
+  assessmentNotes: z.string().nullable().optional(),
+  status: z.enum(["draft", "scheduled", "in_progress", "completed", "cancelled"]).optional(),
+});
+
+// Valid state-machine transitions for infill jobs
+type InfillJobStatus = "draft" | "scheduled" | "in_progress" | "completed" | "cancelled";
+const ALLOWED_TRANSITIONS: Record<InfillJobStatus, InfillJobStatus[]> = {
+  draft:       ["scheduled", "cancelled"],
+  scheduled:   ["in_progress", "draft", "cancelled"],
+  in_progress: ["completed", "scheduled", "cancelled"],
+  completed:   [],
+  cancelled:   ["draft"],
+};
+
 router.post(
   "/infill-jobs",
   requireAuth,
@@ -116,15 +135,41 @@ router.patch(
   "/infill-jobs/:id",
   requireAuth,
   requireRole("manager", "supervisor"),
+  validateBody(patchInfillJobSchema),
   async (req, res) => {
     const id = String(req.params.id);
     const [before] = await db.select().from(infillJobsTable).where(eq(infillJobsTable.id, id)).limit(1);
     if (!before) { res.status(404).json({ error: "Infill job not found" }); return; }
+
+    const patch = (res.locals.body ?? req.body) as z.infer<typeof patchInfillJobSchema>;
+
+    // Enforce state machine if status is being changed
+    if (patch.status && patch.status !== before.status) {
+      const allowed = ALLOWED_TRANSITIONS[before.status as InfillJobStatus] ?? [];
+      if (!allowed.includes(patch.status as InfillJobStatus)) {
+        res.status(422).json({
+          error: `Cannot transition job from '${before.status}' to '${patch.status}'. Allowed transitions: ${allowed.join(", ") || "none"}.`,
+        });
+        return;
+      }
+    }
+
+    // Require team + planned date when scheduling
+    if (patch.status === "scheduled") {
+      const resolvedTeam = patch.assignedTeamId ?? before.assignedTeamId;
+      const resolvedDate = patch.plannedDate ?? before.plannedDate;
+      if (!resolvedTeam || !resolvedDate) {
+        res.status(422).json({ error: "Scheduling a job requires an assigned team and a planned date." });
+        return;
+      }
+    }
+
     const [updated] = await db
       .update(infillJobsTable)
-      .set({ ...req.body, updatedAt: new Date() })
+      .set({ ...patch, updatedAt: new Date() })
       .where(eq(infillJobsTable.id, id))
       .returning();
+
     await auditLog({
       tableName: "infill_jobs", recordId: id, action: "UPDATE",
       changedById: req.auth?.userId ?? null,
