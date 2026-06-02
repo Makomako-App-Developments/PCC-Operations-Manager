@@ -107,6 +107,7 @@ router.post(
       const [created] = await tx.insert(infillJobsTable).values({
         ...jobData,
         assessedById: req.auth!.userId,
+        status: "draft", // always create as draft regardless of client input
       }).returning();
 
       await tx.insert(infillOrdersTable).values(
