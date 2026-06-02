@@ -867,12 +867,36 @@ export default function Programmes() {
   const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<JobStatus | "all">("all");
 
+  type SortKey = "assetName" | "assessmentNotes" | "totalPlants" | "status" | "teamName";
+  const [sortKey, setSortKey] = useState<SortKey>("assetName");
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
+
+  const handleSort = (key: SortKey) => {
+    if (sortKey === key) setSortDir(d => d === "asc" ? "desc" : "asc");
+    else { setSortKey(key); setSortDir("asc"); }
+  };
+
   const selectedJob = jobs.find(j => j.id === selectedJobId) ?? null;
 
   const filteredJobs = useMemo(
     () => statusFilter === "all" ? jobs : jobs.filter(j => j.status === statusFilter),
     [jobs, statusFilter]
   );
+
+  const sortedJobs = useMemo(() => {
+    return [...filteredJobs].sort((a, b) => {
+      let av: string | number = "";
+      let bv: string | number = "";
+      if (sortKey === "assetName") { av = a.assetName ?? ""; bv = b.assetName ?? ""; }
+      else if (sortKey === "assessmentNotes") { av = a.assessmentNotes ?? ""; bv = b.assessmentNotes ?? ""; }
+      else if (sortKey === "totalPlants") { av = a.species.reduce((s, sp) => s + sp.quantity, 0); bv = b.species.reduce((s, sp) => s + sp.quantity, 0); }
+      else if (sortKey === "status") { av = a.status; bv = b.status; }
+      else if (sortKey === "teamName") { av = a.teamName ?? ""; bv = b.teamName ?? ""; }
+      if (av < bv) return sortDir === "asc" ? -1 : 1;
+      if (av > bv) return sortDir === "asc" ? 1 : -1;
+      return 0;
+    });
+  }, [filteredJobs, sortKey, sortDir]);
 
   const statCounts = useMemo(() => {
     const c: Partial<Record<JobStatus | "all", number>> = { all: jobs.length };
@@ -955,10 +979,10 @@ export default function Programmes() {
               </Button>
             </div>
 
-            {/* Jobs list */}
+            {/* Jobs table */}
             {jobsLoading ? (
-              <div className="space-y-3">{[...Array(3)].map((_, i) => <Skeleton key={i} className="h-24 w-full rounded-xl" />)}</div>
-            ) : filteredJobs.length === 0 ? (
+              <div className="space-y-2">{[...Array(4)].map((_, i) => <Skeleton key={i} className="h-10 w-full rounded-lg" />)}</div>
+            ) : sortedJobs.length === 0 ? (
               <div className="text-center py-16 text-gray-400">
                 <Sprout className="w-12 h-12 mx-auto mb-3 opacity-20" />
                 <p className="text-sm font-medium">No assessments found</p>
@@ -967,88 +991,105 @@ export default function Programmes() {
                 )}
               </div>
             ) : (
-              <div className="space-y-3">
-                {filteredJobs.map(job => {
-                  const totalPlants = job.species.reduce((s, sp) => s + sp.quantity, 0);
-                  return (
-                    <div key={job.id}
-                      className="bg-white rounded-xl border hover:border-[#00AECD] transition-colors group">
-                      {/* Main card body — click to open detail */}
-                      <div className="px-5 pt-4 pb-3 flex items-start justify-between gap-4 cursor-pointer"
-                        onClick={() => setSelectedJobId(job.id)}>
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <span className="text-sm font-semibold text-gray-900 truncate">{job.assetName ?? "Unknown asset"}</span>
+              <div className="rounded-xl border border-gray-200 overflow-hidden bg-white">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-gray-100 bg-gray-50">
+                      {([
+                        { key: "assetName",       label: "Site name" },
+                        { key: "assessmentNotes",  label: "Description" },
+                        { key: "totalPlants",      label: "Plants" },
+                        { key: "status",           label: "Status" },
+                        { key: "teamName",         label: "Team" },
+                      ] as { key: SortKey; label: string }[]).map(col => (
+                        <th key={col.key}
+                          className="px-4 py-3 text-left text-[11px] font-semibold text-gray-500 uppercase tracking-wider select-none cursor-pointer hover:text-gray-800 whitespace-nowrap"
+                          onClick={() => handleSort(col.key)}>
+                          <span className="flex items-center gap-1">
+                            {col.label}
+                            <span className="text-gray-300">
+                              {sortKey === col.key
+                                ? sortDir === "asc" ? "↑" : "↓"
+                                : "↕"}
+                            </span>
+                          </span>
+                        </th>
+                      ))}
+                      <th className="px-4 py-3 text-right text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-50">
+                    {sortedJobs.map(job => {
+                      const totalPlants = job.species.reduce((s, sp) => s + sp.quantity, 0);
+                      const canSchedule = job.status === "draft";
+                      const canCancel   = job.status === "draft" || job.status === "scheduled";
+                      return (
+                        <tr key={job.id}
+                          className="hover:bg-[#f0fafb] cursor-pointer transition-colors group"
+                          onClick={() => setSelectedJobId(job.id)}>
+                          <td className="px-4 py-3">
+                            <span className="font-semibold text-gray-900 group-hover:text-[#00AECD] transition-colors">
+                              {job.assetName ?? "—"}
+                            </span>
+                            <div className="text-[10px] text-gray-400 mt-0.5">
+                              {fmt(job.assessmentDate)}{job.assessorName ? ` · ${job.assessorName}` : ""}
+                            </div>
+                          </td>
+                          <td className="px-4 py-3 max-w-[220px]">
+                            <span className="text-gray-600 line-clamp-2 text-xs">
+                              {job.assessmentNotes || <span className="text-gray-300 italic">—</span>}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 text-center">
+                            <span className="font-bold text-base" style={{ color: BRAND }}>{totalPlants}</span>
+                          </td>
+                          <td className="px-4 py-3">
                             <StatusBadge status={job.status} />
-                          </div>
-                          <p className="text-[11px] text-gray-400 mt-0.5">
-                            Assessed {fmt(job.assessmentDate)}{job.assessorName ? ` by ${job.assessorName}` : ""}
-                          </p>
-                          {job.assessmentNotes && (
-                            <p className="text-xs text-gray-500 mt-1 line-clamp-1 italic">{job.assessmentNotes}</p>
-                          )}
-                          {/* Species chips */}
-                          {job.species.length > 0 && (
-                            <div className="flex flex-wrap gap-1 mt-2">
-                              {job.species.slice(0, 3).map((sp, i) => (
-                                <span key={i} className={`text-[9px] font-semibold px-1.5 py-0.5 rounded-full ${CAT_COLORS[sp.speciesCategory as SpeciesCategory] ?? "bg-gray-100 text-gray-600"}`}>
-                                  {sp.quantity}× <SciName name={sp.speciesName} />
-                                </span>
-                              ))}
-                              {job.species.length > 3 && (
-                                <span className="text-[9px] text-gray-400">+{job.species.length - 3} more</span>
-                              )}
-                            </div>
-                          )}
-                        </div>
-
-                        <div className="flex items-center gap-4 flex-shrink-0 text-right">
-                          <div>
-                            <p className="text-lg font-bold" style={{ color: BRAND }}>{totalPlants}</p>
-                            <p className="text-[10px] text-gray-400">plants</p>
-                          </div>
-                          {job.teamName && (
-                            <div>
-                              <div className="flex items-center gap-1 text-[11px] text-gray-600">
-                                <Users className="w-3 h-3" /> {job.teamName}
+                          </td>
+                          <td className="px-4 py-3">
+                            {job.teamName ? (
+                              <div>
+                                <div className="text-xs font-medium text-gray-700">{job.teamName}</div>
+                                {job.plannedDate && (
+                                  <div className="text-[10px] text-gray-400 mt-0.5 flex items-center gap-1">
+                                    <Calendar className="w-3 h-3" />{fmt(job.plannedDate)}
+                                  </div>
+                                )}
                               </div>
-                              {job.plannedDate && (
-                                <div className="flex items-center gap-1 text-[11px] text-gray-400 mt-0.5">
-                                  <Calendar className="w-3 h-3" /> {fmt(job.plannedDate)}
-                                </div>
+                            ) : (
+                              <span className="text-gray-300 text-xs italic">Unassigned</span>
+                            )}
+                          </td>
+                          <td className="px-4 py-3" onClick={e => e.stopPropagation()}>
+                            <div className="flex items-center gap-1.5 justify-end">
+                              {canSchedule && (
+                                <button
+                                  onClick={() => setSelectedJobId(job.id)}
+                                  className="text-[11px] font-semibold px-2.5 py-1 rounded-lg transition-colors"
+                                  style={{ color: JOB_STATUS.scheduled.color, background: JOB_STATUS.scheduled.bg }}>
+                                  Schedule
+                                </button>
+                              )}
+                              <button
+                                onClick={() => setSelectedJobId(job.id)}
+                                className="text-[11px] font-semibold px-2.5 py-1 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors">
+                                Edit
+                              </button>
+                              {canCancel && (
+                                <button
+                                  onClick={() => updateJob.mutate({ id: job.id, data: { status: "cancelled" } })}
+                                  className="text-[11px] font-semibold px-2.5 py-1 rounded-lg transition-colors"
+                                  style={{ color: "#dc2626", background: "#fef2f2" }}>
+                                  Cancel
+                                </button>
                               )}
                             </div>
-                          )}
-                          <ChevronRight className="w-4 h-4 text-gray-300 group-hover:text-[#00AECD] transition-colors" />
-                        </div>
-                      </div>
-
-                      {/* Quick-advance footer — one-click status advance */}
-                      {(() => {
-                        // Only "Schedule →" is a manager action; starting/completing is done by field teams
-                        const nextMap: Partial<Record<JobStatus, { label: string; next: JobStatus }>> = {
-                          draft: { label: "Schedule →", next: "scheduled" },
-                        };
-                        const advance = nextMap[job.status];
-                        if (!advance) return null;
-                        return (
-                          <div className="px-5 pb-3 pt-0 border-t border-gray-50 flex items-center justify-between">
-                            <span className="text-[10px] text-gray-400">Open detail to schedule</span>
-                            <button
-                              onClick={e => {
-                                e.stopPropagation();
-                                setSelectedJobId(job.id);
-                              }}
-                              className="text-[11px] font-semibold px-3 py-1 rounded-lg transition-colors"
-                              style={{ color: JOB_STATUS[advance.next].color, background: JOB_STATUS[advance.next].bg }}>
-                              {advance.label}
-                            </button>
-                          </div>
-                        );
-                      })()}
-                    </div>
-                  );
-                })}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
               </div>
             )}
           </div>
