@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db, assetsTable, insertAssetSchema, auditLogTable, usersTable } from "@workspace/db";
-import { and, eq, ilike, sql, desc } from "drizzle-orm";
+import { and, eq, ilike, or, sql, desc } from "drizzle-orm";
 import { z } from "zod";
 import { requireAuth, requireRole } from "../middlewares/auth";
 import { validateBody, validateQuery } from "../middlewares/validate";
@@ -57,7 +57,7 @@ router.get("/assets", requireAuth, validateQuery(listQuerySchema), async (req, r
     ...(gardenType ? [eq(assetsTable.gardenType, gardenType as any)] : []),
     ...(teamId ? [eq(assetsTable.teamId, teamId)] : []),
     ...(ward ? [eq(assetsTable.ward, ward)] : []),
-    ...(search ? [ilike(assetsTable.name, `%${search}%`)] : []),
+    ...(search ? [or(ilike(assetsTable.name, `%${search}%`), ilike(assetsTable.globalId, `%${search}%`))] : []),
   ];
   const where = and(...conditions);
 
