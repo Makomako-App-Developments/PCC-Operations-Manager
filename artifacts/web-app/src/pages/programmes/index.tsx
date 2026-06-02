@@ -265,7 +265,7 @@ function SpeciesPicker({
 function NewAssessmentDrawer({
   assets, onClose, onSave,
 }: {
-  assets: { id: string; name: string }[];
+  assets: { id: string; name: string; description?: string | null }[];
   onClose: () => void;
   onSave: (job: { assetId: string; assessmentDate: string; assessmentNotes: string; species: SelectedSpecies[] }) => void;
 }) {
@@ -326,7 +326,7 @@ function NewAssessmentDrawer({
                 <select value={assetId} onChange={e => setAssetId(e.target.value)}
                   className="w-full px-3 py-2 text-sm border border-gray-200 rounded-xl outline-none focus:border-[#00AECD] bg-white">
                   <option value="">— Select an asset —</option>
-                  {assets.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+                  {assets.map(a => <option key={a.id} value={a.id}>{a.name}{a.description ? `, ${a.description}` : ""}</option>)}
                 </select>
               </div>
               <div>
@@ -581,7 +581,7 @@ function JobDetailPanel({
 
 // ─── Mulching tab ─────────────────────────────────────────────────────────────
 
-function MulchingTab({ assets }: { assets: { id: string; name: string }[] }) {
+function MulchingTab({ assets }: { assets: { id: string; name: string; description?: string | null }[] }) {
   const qc = useQueryClient();
   const { toast } = useToast();
 
@@ -665,7 +665,7 @@ function MulchingTab({ assets }: { assets: { id: string; name: string }[] }) {
               <select value={form.assetId} onChange={e => setForm(f => ({ ...f, assetId: e.target.value }))}
                 className="mt-1 w-full px-3 py-2 text-sm border rounded-xl bg-white">
                 <option value="">— Select asset —</option>
-                {assets.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+                {assets.map(a => <option key={a.id} value={a.id}>{a.name}{a.description ? `, ${a.description}` : ""}</option>)}
               </select>
             </div>
             <div className="grid grid-cols-2 gap-3">
@@ -722,7 +722,7 @@ export default function Programmes() {
   const { data: assetsData } = useListAssets({ limit: 500 }, {
     query: { queryKey: getListAssetsQueryKey({ limit: 500 }) },
   });
-  const assets: { id: string; name: string }[] = ((assetsData as any)?.data ?? []).map((a: any) => ({ id: a.id, name: a.name }));
+  const assets: { id: string; name: string; description?: string | null }[] = ((assetsData as any)?.data ?? []).map((a: any) => ({ id: a.id, name: a.name, description: a.description ?? null }));
 
   // Teams
   const { data: teamsRaw } = useListTeams({ query: { queryKey: getListTeamsQueryKey() } as any });
