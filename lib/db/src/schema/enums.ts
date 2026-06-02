@@ -101,3 +101,11 @@ export const crewStatusEnum = pgEnum("crew_status", [
   "reduced",
   "none",
 ]);
+
+export const infillJobStatusEnum = pgEnum("infill_job_status", [
+  "draft",
+  "scheduled",
+  "in_progress",
+  "completed",
+  "cancelled",
+]);

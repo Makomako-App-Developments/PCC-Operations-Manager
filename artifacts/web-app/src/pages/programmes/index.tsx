@@ -1,10 +1,10 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
-  useListInfillOrders, getListInfillOrdersQueryKey,
-  useCreateInfillOrder, useUpdateInfillOrder,
+  useListAssets, getListAssetsQueryKey,
   useListMulchingRecords, getListMulchingRecordsQueryKey,
   useCreateMulchingRecord, useUpdateMulchingRecord,
-  useListAssets, getListAssetsQueryKey,
+  useListTeams, getListTeamsQueryKey,
 } from "@workspace/api-client-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -12,19 +12,85 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from "@/components/ui/select";
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
+} from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { format } from "date-fns";
-import { useQueryClient } from "@tanstack/react-query";
+import { format, parseISO } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
-import { Sprout, Plus, Layers, Package, CheckCircle2, Clock, Truck, Leaf } from "lucide-react";
+import {
+  Sprout, Plus, Layers, X, Search, ChevronRight,
+  Calendar, Users, Leaf, FileText,
+} from "lucide-react";
 
-const INFILL_STATUS: Record<string, { label: string; color: string; bg: string; icon: any }> = {
-  draft:     { label: "Draft",     color: "#6b7280", bg: "#f3f4f6", icon: Clock },
-  ordered:   { label: "Ordered",   color: "#2563eb", bg: "#eff6ff", icon: Package },
-  delivered: { label: "Delivered", color: "#d97706", bg: "#fef3c7", icon: Truck },
-  planted:   { label: "Planted",   color: "#16a34a", bg: "#dcfce7", icon: Leaf },
+const BRAND = "#00AECD";
+const NAVY  = "#0f2a36";
+
+// ─── Species catalogue ────────────────────────────────────────────────────────
+
+type SpeciesCategory = "Native Trees" | "Native Shrubs" | "Groundcovers" | "Annual Bedding" | "Roses";
+
+interface Species {
+  name: string; maori?: string; category: SpeciesCategory;
+  size: "Small" | "Medium" | "Large"; note: string;
+}
+
+const SPECIES_LIST: Species[] = [
+  { name: "Cordyline australis",    maori: "Tī kōuka",   category: "Native Trees",   size: "Large",  note: "Cabbage tree — excellent focal point" },
+  { name: "Sophora microphylla",    maori: "Kōwhai",     category: "Native Trees",   size: "Medium", note: "Seasonal yellow flowers, bird-attracting" },
+  { name: "Metrosideros excelsa",   maori: "Pōhutukawa", category: "Native Trees",   size: "Large",  note: "Coastal, summer red flowers" },
+  { name: "Kunzea ericoides",       maori: "Kānuka",     category: "Native Trees",   size: "Medium", note: "Fast growing, good nurse tree" },
+  { name: "Pittosporum tenuifolium",maori: "Kōhūhū",     category: "Native Trees",   size: "Medium", note: "Shade tolerant, fragrant flowers" },
+  { name: "Phormium tenax",         maori: "Harakeke",   category: "Native Shrubs",  size: "Large",  note: "NZ flax — bold structural plant" },
+  { name: "Hebe stricta",           maori: "Koromiko",   category: "Native Shrubs",  size: "Small",  note: "White flowers, good filler" },
+  { name: "Hebe topiaria",                               category: "Native Shrubs",  size: "Small",  note: "Dense grey-green dome form" },
+  { name: "Coprosma robusta",       maori: "Karamu",     category: "Native Shrubs",  size: "Medium", note: "Glossy leaves, orange berries" },
+  { name: "Coprosma propinqua",                          category: "Native Shrubs",  size: "Small",  note: "Divaricating, suits revegetation" },
+  { name: "Corokia cotoneaster",                         category: "Native Shrubs",  size: "Small",  note: "Wire-netting bush, hardy" },
+  { name: "Leptospermum scoparium", maori: "Mānuka",     category: "Native Shrubs",  size: "Medium", note: "Pioneer shrub, fast growing" },
+  { name: "Carex secta",            maori: "Purei",      category: "Groundcovers",   size: "Medium", note: "Wetland sedge, good under canopy" },
+  { name: "Carex testacea",                              category: "Groundcovers",   size: "Small",  note: "Orange sedge, ornamental" },
+  { name: "Libertia grandiflora",   maori: "Mikoikoi",   category: "Groundcovers",   size: "Small",  note: "White flowers, sun/partial shade" },
+  { name: "Pratia angulata",                             category: "Groundcovers",   size: "Small",  note: "Creeping groundcover, white flowers" },
+  { name: "Festuca glauca",                              category: "Groundcovers",   size: "Small",  note: "Blue fescue, ornamental grass" },
+  { name: "Alyssum",                                     category: "Annual Bedding", size: "Small",  note: "White/purple, fragrant edging" },
+  { name: "Begonia",                                     category: "Annual Bedding", size: "Small",  note: "Shade tolerant, long flowering" },
+  { name: "Impatiens",                                   category: "Annual Bedding", size: "Small",  note: "Busy Lizzie — shade beds" },
+  { name: "Lobelia",                                     category: "Annual Bedding", size: "Small",  note: "Blue/white edging, cascading" },
+  { name: "Marigold (Tagetes)",                          category: "Annual Bedding", size: "Small",  note: "Bright, long season, pest deterrent" },
+  { name: "Pansy (Viola)",                               category: "Annual Bedding", size: "Small",  note: "Cool season colour" },
+  { name: "Petunia",                                     category: "Annual Bedding", size: "Small",  note: "Summer to autumn, trailing" },
+  { name: "Salvia",                                      category: "Annual Bedding", size: "Small",  note: "Long-flowering, heat tolerant" },
+  { name: "'Iceberg'",                                   category: "Roses",          size: "Medium", note: "Floribunda, white, repeat flowering" },
+  { name: "'Queen Elizabeth'",                           category: "Roses",          size: "Large",  note: "Floribunda, pink, vigorous" },
+  { name: "'Mr Lincoln'",                                category: "Roses",          size: "Medium", note: "Hybrid Tea, deep red, fragrant" },
+  { name: "'Just Joey'",                                 category: "Roses",          size: "Medium", note: "Hybrid Tea, apricot, fragrant" },
+  { name: "'Double Delight'",                            category: "Roses",          size: "Medium", note: "Hybrid Tea, red/cream, highly fragrant" },
+];
+
+const CATEGORIES: SpeciesCategory[] = ["Native Trees", "Native Shrubs", "Groundcovers", "Annual Bedding", "Roses"];
+
+const CAT_COLORS: Record<SpeciesCategory, string> = {
+  "Native Trees":   "bg-emerald-100 text-emerald-800",
+  "Native Shrubs":  "bg-green-100 text-green-700",
+  "Groundcovers":   "bg-lime-100 text-lime-700",
+  "Annual Bedding": "bg-yellow-100 text-yellow-700",
+  "Roses":          "bg-pink-100 text-pink-700",
+};
+
+// ─── Status configs ───────────────────────────────────────────────────────────
+
+type JobStatus = "draft" | "scheduled" | "in_progress" | "completed" | "cancelled";
+
+const JOB_STATUS: Record<JobStatus, { label: string; color: string; bg: string }> = {
+  draft:       { label: "Draft",       color: "#6b7280", bg: "#f3f4f6" },
+  scheduled:   { label: "Scheduled",   color: "#2563eb", bg: "#eff6ff" },
+  in_progress: { label: "In Progress", color: "#d97706", bg: "#fef3c7" },
+  completed:   { label: "Completed",   color: "#16a34a", bg: "#dcfce7" },
+  cancelled:   { label: "Cancelled",   color: "#9ca3af", bg: "#f9fafb" },
 };
 
 const MULCH_STATUS: Record<string, { label: string; color: string; bg: string }> = {
@@ -34,398 +100,831 @@ const MULCH_STATUS: Record<string, { label: string; color: string; bg: string }>
   not_required: { label: "Not Required", color: "#6b7280", bg: "#f3f4f6" },
 };
 
-const SPECIES_CATEGORIES = [
-  "Annual Bedding", "Roses", "Perennials", "Shrubs",
-  "Trees", "Ground Cover", "Bulbs", "Grasses",
-];
-
 const MULCH_TYPES = ["Bark Mulch", "Wood Chip", "Compost", "Straw", "Pea Gravel"];
 
-export default function Programmes() {
-  const queryClient = useQueryClient();
-  const { toast } = useToast();
+// ─── Types ────────────────────────────────────────────────────────────────────
 
-  const [infillOpen, setInfillOpen] = useState(false);
-  const [mulchOpen, setMulchOpen] = useState(false);
-  const [infillForm, setInfillForm] = useState({
-    assetId: "", speciesName: "", speciesCategory: "", quantity: "",
-    orderDate: "", supplierRef: "", unitCostNzd: "", notes: "",
-  });
-  const [mulchForm, setMulchForm] = useState({
-    assetId: "", scheduledDate: "", volumeM3: "", mulchType: "",
-    contractor: "", costNzd: "", notes: "",
-  });
+interface SpeciesLine { speciesName: string; speciesCategory: string; quantity: number; }
 
-  const { data: assetsData } = useListAssets({ limit: 200 }, {
-    query: { queryKey: getListAssetsQueryKey({ limit: 200 }) },
-  });
-  const { data: infillData, isLoading: loadingInfill } = useListInfillOrders({}, {
-    query: { queryKey: getListInfillOrdersQueryKey() },
-  });
-  const { data: mulchData, isLoading: loadingMulch } = useListMulchingRecords({}, {
-    query: { queryKey: getListMulchingRecordsQueryKey() },
-  });
+interface InfillJob {
+  id: string;
+  assetId: string;
+  assetName: string | null;
+  assessorName: string | null;
+  assessmentDate: string;
+  assessmentNotes: string | null;
+  assignedTeamId: string | null;
+  teamName: string | null;
+  plannedDate: string | null;
+  estimatedMins: number | null;
+  status: JobStatus;
+  species: SpeciesLine[];
+  createdAt: string;
+}
 
-  const createInfill = useCreateInfillOrder({
-    mutation: {
-      onSuccess: () => {
-        toast({ title: "Infill planting created" });
-        queryClient.invalidateQueries({ queryKey: ["/api/infill-orders"] });
-        setInfillOpen(false);
-        setInfillForm({ assetId: "", speciesName: "", speciesCategory: "", quantity: "", orderDate: "", supplierRef: "", unitCostNzd: "", notes: "" });
-      },
-      onError: () => toast({ title: "Failed to create order", variant: "destructive" }),
-    },
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function SciName({ name, className = "" }: { name: string; className?: string }) {
+  return name.startsWith("'")
+    ? <span className={className}>{name}</span>
+    : <em className={className}>{name}</em>;
+}
+
+function StatusBadge({ status }: { status: JobStatus }) {
+  const cfg = JOB_STATUS[status] ?? JOB_STATUS.draft;
+  return (
+    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full"
+      style={{ color: cfg.color, background: cfg.bg }}>
+      {cfg.label}
+    </span>
+  );
+}
+
+function fmt(d: string | null | undefined) {
+  if (!d) return "—";
+  try { return format(parseISO(d), "d MMM yyyy"); } catch { return d; }
+}
+
+// ─── Species Picker modal ─────────────────────────────────────────────────────
+
+interface SelectedSpecies { name: string; category: SpeciesCategory; qty: number; }
+
+function SpeciesPicker({
+  selected, onToggle, onQtyChange, onClose, onSave,
+}: {
+  selected: SelectedSpecies[];
+  onToggle: (sp: Species) => void;
+  onQtyChange: (name: string, qty: number) => void;
+  onClose: () => void;
+  onSave: () => void;
+}) {
+  const [search, setSearch] = useState("");
+  const [activeTab, setActiveTab] = useState<SpeciesCategory | "All">("All");
+
+  const filtered = SPECIES_LIST.filter(sp => {
+    const matchCat = activeTab === "All" || sp.category === activeTab;
+    const q = search.toLowerCase();
+    return matchCat && (!q || sp.name.toLowerCase().includes(q) || (sp.maori?.toLowerCase().includes(q)));
   });
-
-  const updateInfill = useUpdateInfillOrder({
-    mutation: {
-      onSuccess: () => {
-        toast({ title: "Order updated" });
-        queryClient.invalidateQueries({ queryKey: ["/api/infill-orders"] });
-      },
-    },
-  });
-
-  const createMulch = useCreateMulchingRecord({
-    mutation: {
-      onSuccess: () => {
-        toast({ title: "Mulching record created" });
-        queryClient.invalidateQueries({ queryKey: ["/api/mulching-records"] });
-        setMulchOpen(false);
-        setMulchForm({ assetId: "", scheduledDate: "", volumeM3: "", mulchType: "", contractor: "", costNzd: "", notes: "" });
-      },
-      onError: () => toast({ title: "Failed to create record", variant: "destructive" }),
-    },
-  });
-
-  const updateMulch = useUpdateMulchingRecord({
-    mutation: {
-      onSuccess: () => {
-        toast({ title: "Record updated" });
-        queryClient.invalidateQueries({ queryKey: ["/api/mulching-records"] });
-      },
-    },
-  });
-
-  const handleCreateInfill = () => {
-    if (!infillForm.assetId || !infillForm.speciesName || !infillForm.speciesCategory || !infillForm.quantity) {
-      toast({ title: "Asset, species name, category, and quantity are required", variant: "destructive" });
-      return;
-    }
-    createInfill.mutate({
-      data: {
-        assetId: infillForm.assetId,
-        speciesName: infillForm.speciesName,
-        speciesCategory: infillForm.speciesCategory,
-        quantity: parseInt(infillForm.quantity, 10),
-        orderDate: infillForm.orderDate || undefined,
-        supplierRef: infillForm.supplierRef || undefined,
-        unitCostNzd: infillForm.unitCostNzd || undefined,
-        notes: infillForm.notes || undefined,
-      } as any,
-    });
-  };
-
-  const handleCreateMulch = () => {
-    if (!mulchForm.assetId) {
-      toast({ title: "Asset is required", variant: "destructive" });
-      return;
-    }
-    createMulch.mutate({
-      data: {
-        assetId: mulchForm.assetId,
-        scheduledDate: mulchForm.scheduledDate || undefined,
-        volumeM3: mulchForm.volumeM3 || undefined,
-        mulchType: mulchForm.mulchType || undefined,
-        contractor: mulchForm.contractor || undefined,
-        costNzd: mulchForm.costNzd || undefined,
-        notes: mulchForm.notes || undefined,
-      } as any,
-    });
-  };
-
-  const infillOrders = infillData?.data ?? [];
-  const mulchRecords = mulchData?.data ?? [];
+  const isSelected = (name: string) => selected.some(s => s.name === name);
+  const totalPlants = selected.reduce((s, sp) => s + sp.qty, 0);
 
   return (
-    <div className="flex-1 flex flex-col min-h-0 bg-[#f5f7f9]">
-      <header className="bg-white border-b px-8 py-4 sticky top-0 z-10 flex-shrink-0">
-        <h1 className="text-lg font-semibold text-gray-900">Programmes</h1>
-        <p className="text-xs text-gray-400">Infill planting orders and mulching records</p>
-      </header>
+    <div className="fixed inset-0 z-[60] bg-black/40 flex items-center justify-center p-6">
+      <div className="bg-white rounded-2xl w-full max-w-3xl shadow-2xl flex flex-col max-h-[85vh]">
+        <div className="px-6 py-4 border-b flex items-center justify-between">
+          <div>
+            <h3 className="text-sm font-bold text-gray-900">Select Species</h3>
+            <p className="text-[11px] text-gray-400">{selected.length} species · {totalPlants} plants total</p>
+          </div>
+          <button onClick={onClose}><X className="w-5 h-5 text-gray-400" /></button>
+        </div>
+        <div className="px-6 py-3 border-b space-y-2">
+          <div className="relative">
+            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+            <input value={search} onChange={e => setSearch(e.target.value)}
+              placeholder="Search species or Māori name…"
+              className="w-full pl-9 pr-3 py-2 text-sm border border-gray-200 rounded-xl outline-none focus:border-[#00AECD]" />
+          </div>
+          <div className="flex gap-1.5 flex-wrap">
+            {(["All", ...CATEGORIES] as const).map(cat => (
+              <button key={cat} onClick={() => setActiveTab(cat as SpeciesCategory | "All")}
+                className="text-[11px] font-semibold px-3 py-1 rounded-full transition-colors"
+                style={activeTab === cat
+                  ? { background: BRAND, color: "white" }
+                  : { background: "#f3f4f6", color: "#6b7280" }}>
+                {cat}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div className="flex-1 overflow-y-auto px-6 py-4">
+          <div className="grid grid-cols-2 gap-2">
+            {filtered.map(sp => {
+              const sel = isSelected(sp.name);
+              const selRecord = selected.find(s => s.name === sp.name);
+              return (
+                <div key={sp.name}
+                  className="p-3 rounded-xl border-2 transition-all cursor-pointer"
+                  style={{ borderColor: sel ? BRAND : "#f3f4f6", background: sel ? "#00AECD08" : "white" }}
+                  onClick={() => !sel && onToggle(sp)}>
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex-1 min-w-0">
+                      <SciName name={sp.name} className="text-xs font-semibold text-gray-900 leading-tight" />
+                      {sp.maori && <p className="text-[10px] text-gray-400 mt-0.5 italic">{sp.maori}</p>}
+                      <p className="text-[10px] text-gray-500 mt-0.5">{sp.note}</p>
+                    </div>
+                    <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full flex-shrink-0 ${CAT_COLORS[sp.category]}`}>{sp.size}</span>
+                  </div>
+                  {sel && (
+                    <div className="mt-2 flex items-center gap-2" onClick={e => e.stopPropagation()}>
+                      <span className="text-[10px] text-gray-500">Qty:</span>
+                      <div className="flex items-center gap-1">
+                        <button onClick={() => onQtyChange(sp.name, Math.max(1, (selRecord?.qty ?? 1) - 1))}
+                          className="w-5 h-5 rounded bg-gray-100 text-xs font-bold flex items-center justify-center hover:bg-gray-200">−</button>
+                        <span className="w-8 text-center text-xs font-bold" style={{ color: BRAND }}>{selRecord?.qty}</span>
+                        <button onClick={() => onQtyChange(sp.name, (selRecord?.qty ?? 1) + 1)}
+                          className="w-5 h-5 rounded bg-gray-100 text-xs font-bold flex items-center justify-center hover:bg-gray-200">+</button>
+                      </div>
+                      <button onClick={() => onToggle(sp)} className="ml-auto text-red-400 hover:text-red-600">
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+          {filtered.length === 0 && (
+            <div className="text-center py-8 text-gray-400 text-sm">No species match your search.</div>
+          )}
+        </div>
+        <div className="px-6 py-4 border-t flex items-center justify-between">
+          <p className="text-xs text-gray-400">{selected.length} species · {totalPlants} plants</p>
+          <button onClick={onSave} disabled={selected.length === 0}
+            className="px-5 py-2 rounded-xl text-sm font-semibold text-white disabled:opacity-40"
+            style={{ background: BRAND }}>
+            Confirm Selection
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
-      <div className="flex-1 overflow-auto p-8">
-        <Tabs defaultValue="infill">
-          <TabsList className="mb-6 bg-white border shadow-sm h-10">
-            <TabsTrigger value="infill" className="gap-1.5 text-sm data-[state=active]:bg-[#00AECD] data-[state=active]:text-white">
-              <Sprout className="w-3.5 h-3.5" /> Infill Planting ({infillOrders.length})
-            </TabsTrigger>
-            <TabsTrigger value="mulching" className="gap-1.5 text-sm data-[state=active]:bg-[#00AECD] data-[state=active]:text-white">
-              <Layers className="w-3.5 h-3.5" /> Mulching Records ({mulchRecords.length})
-            </TabsTrigger>
-          </TabsList>
+// ─── New Assessment drawer ────────────────────────────────────────────────────
 
-          {/* ── Infill Planting ── */}
-          <TabsContent value="infill">
-            <div className="flex justify-end mb-4">
-              <Button
-                className="bg-[#00AECD] hover:bg-[#0097b2] text-white gap-1.5 h-9 text-sm"
-                onClick={() => setInfillOpen(true)}
-                data-testid="btn-new-infill"
-              >
-                <Plus className="w-4 h-4" /> New Infill Planting
-              </Button>
+function NewAssessmentDrawer({
+  assets, onClose, onSave,
+}: {
+  assets: { id: string; name: string }[];
+  onClose: () => void;
+  onSave: (job: { assetId: string; assessmentDate: string; assessmentNotes: string; species: SelectedSpecies[] }) => void;
+}) {
+  const [step, setStep] = useState<1 | 2 | 3>(1);
+  const [assetId, setAssetId] = useState("");
+  const [assessmentDate, setAssessmentDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [notes, setNotes] = useState("");
+  const [species, setSpecies] = useState<SelectedSpecies[]>([]);
+  const [showPicker, setShowPicker] = useState(false);
+
+  const asset = assets.find(a => a.id === assetId);
+  const totalPlants = species.reduce((s, sp) => s + sp.qty, 0);
+
+  const toggleSpecies = (sp: Species) =>
+    setSpecies(prev =>
+      prev.some(s => s.name === sp.name)
+        ? prev.filter(s => s.name !== sp.name)
+        : [...prev, { name: sp.name, category: sp.category, qty: 5 }]
+    );
+  const setQty = (name: string, qty: number) =>
+    setSpecies(prev => prev.map(s => s.name === name ? { ...s, qty } : s));
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-6">
+      {showPicker && (
+        <SpeciesPicker selected={species} onToggle={toggleSpecies} onQtyChange={setQty}
+          onClose={() => setShowPicker(false)} onSave={() => setShowPicker(false)} />
+      )}
+      <div className="bg-white rounded-2xl w-full max-w-xl shadow-2xl">
+        {/* Header with step indicator */}
+        <div className="px-6 py-4 border-b flex items-start justify-between">
+          <div>
+            <h3 className="text-sm font-bold text-gray-900">New Planting Assessment</h3>
+            <div className="flex items-center gap-1 mt-1.5">
+              {([1, 2, 3] as const).map(n => (
+                <div key={n} className="flex items-center gap-1">
+                  <div className="w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold transition-all"
+                    style={{ background: step >= n ? BRAND : "#e5e7eb", color: step >= n ? "white" : "#9ca3af" }}>
+                    {n}
+                  </div>
+                  {n < 3 && <div className="w-6 h-px transition-all" style={{ background: step > n ? BRAND : "#e5e7eb" }} />}
+                </div>
+              ))}
+              <span className="text-[11px] text-gray-400 ml-1.5">
+                {step === 1 ? "Asset & Notes" : step === 2 ? "Species" : "Review"}
+              </span>
             </div>
-            {loadingInfill ? (
-              <Skeleton className="w-full h-64 rounded-xl" />
-            ) : infillOrders.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-20 text-gray-400 bg-white rounded-xl border border-dashed">
-                <Sprout className="w-12 h-12 mb-3 opacity-30" />
-                <p className="text-sm font-medium">No infill planting yet</p>
-              </div>
-            ) : (
-              <div className="rounded-xl border border-gray-200 bg-white overflow-hidden shadow-sm">
-                <table className="w-full text-sm" data-testid="table-infill">
-                  <thead>
-                    <tr className="border-b bg-gray-50 text-xs font-semibold text-gray-500 uppercase tracking-wide">
-                      <th className="text-left px-5 py-3">Asset</th>
-                      <th className="text-left px-5 py-3">Species</th>
-                      <th className="text-left px-5 py-3">Category</th>
-                      <th className="text-left px-5 py-3">Qty</th>
-                      <th className="text-left px-5 py-3">Status</th>
-                      <th className="text-left px-5 py-3">Order Date</th>
-                      <th className="text-left px-5 py-3">Advance</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-100">
-                    {infillOrders.map((o: any) => {
-                      const conf = INFILL_STATUS[o.status] ?? INFILL_STATUS.draft;
-                      const Icon = conf.icon;
-                      const nextStatuses: Record<string, string> = { draft: "ordered", ordered: "delivered", delivered: "planted" };
-                      const next = nextStatuses[o.status];
-                      return (
-                        <tr key={o.id} className="hover:bg-gray-50 transition-colors" data-testid={`row-infill-${o.id}`}>
-                          <td className="px-5 py-3.5 font-medium text-gray-900">{o.assetName ?? "—"}</td>
-                          <td className="px-5 py-3.5 text-gray-700">{o.speciesName}</td>
-                          <td className="px-5 py-3.5 text-gray-600">{o.speciesCategory}</td>
-                          <td className="px-5 py-3.5 font-bold text-gray-900">{o.quantity}</td>
-                          <td className="px-5 py-3.5">
-                            <span className="inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-1 rounded-full uppercase tracking-wide" style={{ background: conf.bg, color: conf.color }}>
-                              <Icon className="w-3 h-3" /> {conf.label}
-                            </span>
-                          </td>
-                          <td className="px-5 py-3.5 text-gray-600 text-xs">{o.orderDate ? format(new Date(o.orderDate), "d MMM yyyy") : "—"}</td>
-                          <td className="px-5 py-3.5">
-                            {next && (
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                className="h-7 text-xs px-2.5"
-                                onClick={() => updateInfill.mutate({ id: o.id, data: { status: next as any } })}
-                                disabled={updateInfill.isPending}
-                                data-testid={`btn-advance-infill-${o.id}`}
-                              >
-                                → {INFILL_STATUS[next].label}
-                              </Button>
-                            )}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </TabsContent>
+          </div>
+          <button onClick={onClose}><X className="w-5 h-5 text-gray-400" /></button>
+        </div>
 
-          {/* ── Mulching Records ── */}
-          <TabsContent value="mulching">
-            <div className="flex justify-end mb-4">
-              <Button
-                className="bg-[#00AECD] hover:bg-[#0097b2] text-white gap-1.5 h-9 text-sm"
-                onClick={() => setMulchOpen(true)}
-                data-testid="btn-new-mulch"
-              >
-                <Plus className="w-4 h-4" /> New Mulching Record
-              </Button>
+        {/* Step bodies */}
+        <div className="px-6 py-5 space-y-4">
+          {step === 1 && (
+            <>
+              <div>
+                <Label className="text-xs font-medium text-gray-500 mb-1.5 block">Garden Asset</Label>
+                <select value={assetId} onChange={e => setAssetId(e.target.value)}
+                  className="w-full px-3 py-2 text-sm border border-gray-200 rounded-xl outline-none focus:border-[#00AECD] bg-white">
+                  <option value="">— Select an asset —</option>
+                  {assets.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+                </select>
+              </div>
+              <div>
+                <Label className="text-xs font-medium text-gray-500 mb-1.5 block">Assessment Date</Label>
+                <Input type="date" value={assessmentDate} onChange={e => setAssessmentDate(e.target.value)}
+                  className="rounded-xl" />
+              </div>
+              <div>
+                <Label className="text-xs font-medium text-gray-500 mb-1.5 block">Assessment Notes</Label>
+                <Textarea value={notes} onChange={e => setNotes(e.target.value)} rows={3}
+                  placeholder="Describe coverage gaps, conditions, observations…"
+                  className="rounded-xl resize-none" />
+              </div>
+            </>
+          )}
+
+          {step === 2 && (
+            <div className="space-y-3">
+              <div className="p-3 rounded-xl bg-gray-50 flex items-center gap-3">
+                <div className="w-8 h-8 rounded-lg bg-emerald-100 flex items-center justify-center flex-shrink-0">
+                  <Leaf className="w-4 h-4 text-emerald-600" />
+                </div>
+                <div>
+                  <p className="text-xs font-semibold text-gray-800">{asset?.name}</p>
+                  <p className="text-[10px] text-gray-400">{fmt(assessmentDate)}</p>
+                </div>
+              </div>
+
+              {species.length === 0 ? (
+                <div className="text-center py-8 border-2 border-dashed border-gray-200 rounded-xl">
+                  <Sprout className="w-8 h-8 text-gray-300 mx-auto mb-2" />
+                  <p className="text-xs text-gray-400">No species selected yet</p>
+                </div>
+              ) : (
+                <div className="space-y-2 max-h-52 overflow-y-auto">
+                  {species.map(sp => (
+                    <div key={sp.name} className="flex items-center justify-between px-3 py-2 rounded-lg bg-gray-50">
+                      <div>
+                        <SciName name={sp.name} className="text-xs font-semibold text-gray-800" />
+                        <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full ${CAT_COLORS[sp.category]}`}>{sp.category}</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <button onClick={() => setQty(sp.name, Math.max(1, sp.qty - 1))}
+                          className="w-5 h-5 rounded bg-gray-200 text-xs font-bold flex items-center justify-center">−</button>
+                        <span className="text-sm font-bold w-6 text-center" style={{ color: BRAND }}>{sp.qty}</span>
+                        <button onClick={() => setQty(sp.name, sp.qty + 1)}
+                          className="w-5 h-5 rounded bg-gray-200 text-xs font-bold flex items-center justify-center">+</button>
+                        <button onClick={() => setSpecies(p => p.filter(s => s.name !== sp.name))}
+                          className="text-red-300 hover:text-red-500 ml-1"><X className="w-3.5 h-3.5" /></button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <button onClick={() => setShowPicker(true)}
+                className="w-full py-2.5 rounded-xl border-2 border-dashed text-sm font-semibold flex items-center justify-center gap-2"
+                style={{ borderColor: BRAND, color: BRAND }}>
+                <Plus className="w-4 h-4" /> Add / Edit Species
+              </button>
+
+              {species.length > 0 && (
+                <p className="text-xs text-gray-500 text-right">
+                  Total: <span className="font-bold text-gray-800">{totalPlants} plants</span> across {species.length} species
+                </p>
+              )}
             </div>
-            {loadingMulch ? (
-              <Skeleton className="w-full h-64 rounded-xl" />
-            ) : mulchRecords.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-20 text-gray-400 bg-white rounded-xl border border-dashed">
-                <Layers className="w-12 h-12 mb-3 opacity-30" />
-                <p className="text-sm font-medium">No mulching records yet</p>
+          )}
+
+          {step === 3 && (
+            <div className="space-y-3">
+              <div className="p-4 rounded-xl bg-emerald-50 border border-emerald-200">
+                <p className="text-sm font-bold text-emerald-800 mb-1">{asset?.name}</p>
+                <p className="text-[11px] text-emerald-600 mb-2">{fmt(assessmentDate)}</p>
+                {notes && <p className="text-xs text-emerald-700 italic mb-3">{notes}</p>}
+                <div className="space-y-1">
+                  {species.map(sp => (
+                    <div key={sp.name} className="flex justify-between text-xs text-emerald-700">
+                      <SciName name={sp.name} />
+                      <span className="font-semibold">{sp.qty} plants</span>
+                    </div>
+                  ))}
+                </div>
+                <div className="mt-2 pt-2 border-t border-emerald-300 flex justify-between text-xs font-bold text-emerald-800">
+                  <span>Total</span>
+                  <span>{totalPlants} plants</span>
+                </div>
               </div>
-            ) : (
-              <div className="rounded-xl border border-gray-200 bg-white overflow-hidden shadow-sm">
-                <table className="w-full text-sm" data-testid="table-mulching">
-                  <thead>
-                    <tr className="border-b bg-gray-50 text-xs font-semibold text-gray-500 uppercase tracking-wide">
-                      <th className="text-left px-5 py-3">Asset</th>
-                      <th className="text-left px-5 py-3">Scheduled</th>
-                      <th className="text-left px-5 py-3">Status</th>
-                      <th className="text-left px-5 py-3">Type</th>
-                      <th className="text-left px-5 py-3">Volume (m³)</th>
-                      <th className="text-left px-5 py-3">Contractor</th>
-                      <th className="text-left px-5 py-3">Advance</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-100">
-                    {mulchRecords.map((r: any) => {
-                      const conf = MULCH_STATUS[r.status] ?? MULCH_STATUS.due;
-                      const nextStatuses: Record<string, string> = { due: "scheduled", scheduled: "completed" };
-                      const next = nextStatuses[r.status];
-                      return (
-                        <tr key={r.id} className="hover:bg-gray-50 transition-colors" data-testid={`row-mulch-${r.id}`}>
-                          <td className="px-5 py-3.5 font-medium text-gray-900">{r.assetName ?? "—"}</td>
-                          <td className="px-5 py-3.5 text-gray-600 text-xs">{r.scheduledDate ? format(new Date(r.scheduledDate), "d MMM yyyy") : "—"}</td>
-                          <td className="px-5 py-3.5">
-                            <span className="inline-flex items-center text-[11px] font-semibold px-2 py-1 rounded-full uppercase tracking-wide" style={{ background: conf.bg, color: conf.color }}>
-                              {conf.label}
-                            </span>
-                          </td>
-                          <td className="px-5 py-3.5 text-gray-600">{r.mulchType ?? "—"}</td>
-                          <td className="px-5 py-3.5 text-gray-700">{r.volumeM3 ?? "—"}</td>
-                          <td className="px-5 py-3.5 text-gray-600">{r.contractor ?? "—"}</td>
-                          <td className="px-5 py-3.5">
-                            {next && (
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                className="h-7 text-xs px-2.5"
-                                onClick={() => updateMulch.mutate({ id: r.id, data: { status: next as any } })}
-                                disabled={updateMulch.isPending}
-                                data-testid={`btn-advance-mulch-${r.id}`}
-                              >
-                                → {MULCH_STATUS[next].label}
-                              </Button>
-                            )}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
+              <p className="text-[11px] text-gray-400 text-center">
+                Saved as <span className="font-semibold text-gray-600">Draft</span>. Schedule it to a team from the detail panel.
+              </p>
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="px-6 py-4 border-t flex items-center justify-between">
+          {step > 1
+            ? <button onClick={() => setStep(s => (s - 1) as any)} className="text-sm text-gray-400 hover:text-gray-600">← Back</button>
+            : <div />
+          }
+          {step < 3 ? (
+            <button
+              onClick={() => setStep(s => (s + 1) as any)}
+              disabled={step === 1 ? !assetId : species.length === 0}
+              className="px-5 py-2 rounded-xl text-sm font-semibold text-white disabled:opacity-40 flex items-center gap-1"
+              style={{ background: BRAND }}>
+              Next <ChevronRight className="w-4 h-4" />
+            </button>
+          ) : (
+            <button
+              onClick={() => onSave({ assetId, assessmentDate, assessmentNotes: notes, species })}
+              className="px-5 py-2 rounded-xl text-sm font-semibold text-white"
+              style={{ background: BRAND }}>
+              Save Assessment
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Job Detail panel ─────────────────────────────────────────────────────────
+
+function JobDetailPanel({
+  job, teams, onClose, onSchedule, onStatusChange,
+}: {
+  job: InfillJob;
+  teams: { id: string; name: string }[];
+  onClose: () => void;
+  onSchedule: (jobId: string, teamId: string, plannedDate: string, estimatedMins: number) => void;
+  onStatusChange: (jobId: string, status: JobStatus) => void;
+}) {
+  const [teamId, setTeamId] = useState(job.assignedTeamId ?? "");
+  const [plannedDate, setPlannedDate] = useState(job.plannedDate ?? "");
+  const [estMins, setEstMins] = useState(String(job.estimatedMins ?? ""));
+  const totalPlants = job.species.reduce((s, sp) => s + sp.quantity, 0);
+
+  return (
+    <div className="fixed inset-0 z-50 flex">
+      <div className="flex-1 bg-black/30" onClick={onClose} />
+      <div className="w-[420px] bg-white shadow-2xl flex flex-col overflow-y-auto">
+        {/* Panel header */}
+        <div className="px-6 py-4 border-b flex items-start justify-between" style={{ background: NAVY }}>
+          <div>
+            <p className="text-white text-sm font-bold">{job.assetName ?? "Unknown asset"}</p>
+            <p className="text-white/50 text-[11px] mt-0.5">Assessed {fmt(job.assessmentDate)}</p>
+            <div className="mt-2"><StatusBadge status={job.status} /></div>
+          </div>
+          <button onClick={onClose}><X className="w-5 h-5 text-white/40 hover:text-white" /></button>
+        </div>
+
+        <div className="flex-1 p-6 space-y-6">
+          {/* Assessment notes */}
+          {job.assessmentNotes && (
+            <div className="p-3 rounded-xl bg-amber-50 border border-amber-200">
+              <div className="flex items-center gap-1.5 mb-1">
+                <FileText className="w-3.5 h-3.5 text-amber-600" />
+                <span className="text-[11px] font-semibold text-amber-700">Assessment Notes</span>
               </div>
-            )}
-          </TabsContent>
-        </Tabs>
+              <p className="text-xs text-amber-700">{job.assessmentNotes}</p>
+            </div>
+          )}
+
+          {/* Species lines */}
+          <div>
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
+              Species Plan · {totalPlants} plants
+            </p>
+            <div className="space-y-1.5">
+              {job.species.map((sp, i) => (
+                <div key={i} className="flex items-center justify-between px-3 py-2 rounded-lg bg-gray-50">
+                  <div>
+                    <SciName name={sp.speciesName} className="text-xs font-semibold text-gray-800" />
+                    <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full ${CAT_COLORS[sp.speciesCategory as SpeciesCategory] ?? "bg-gray-100 text-gray-600"}`}>
+                      {sp.speciesCategory}
+                    </span>
+                  </div>
+                  <span className="text-sm font-bold" style={{ color: BRAND }}>{sp.quantity}</span>
+                </div>
+              ))}
+              {job.species.length === 0 && (
+                <p className="text-xs text-gray-400 italic">No species lines recorded.</p>
+              )}
+            </div>
+          </div>
+
+          {/* Schedule section */}
+          {job.status !== "completed" && job.status !== "cancelled" && (
+            <div className="border rounded-xl p-4 space-y-3">
+              <p className="text-xs font-semibold text-gray-700 flex items-center gap-1.5">
+                <Calendar className="w-4 h-4" style={{ color: BRAND }} /> Schedule to Team
+              </p>
+              <div>
+                <Label className="text-[11px] text-gray-500 mb-1 block">Assign Team</Label>
+                <select value={teamId} onChange={e => setTeamId(e.target.value)}
+                  className="w-full px-3 py-2 text-sm border border-gray-200 rounded-xl outline-none focus:border-[#00AECD] bg-white">
+                  <option value="">— Select team —</option>
+                  {teams.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                </select>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <Label className="text-[11px] text-gray-500 mb-1 block">Planned Date</Label>
+                  <Input type="date" value={plannedDate} onChange={e => setPlannedDate(e.target.value)} className="rounded-xl text-sm" />
+                </div>
+                <div>
+                  <Label className="text-[11px] text-gray-500 mb-1 block">Est. time (mins)</Label>
+                  <Input type="number" value={estMins} onChange={e => setEstMins(e.target.value)}
+                    placeholder="e.g. 120" className="rounded-xl text-sm" />
+                </div>
+              </div>
+              <button
+                onClick={() => onSchedule(job.id, teamId, plannedDate, parseInt(estMins) || 0)}
+                disabled={!teamId || !plannedDate}
+                className="w-full py-2 rounded-xl text-sm font-semibold text-white disabled:opacity-40"
+                style={{ background: BRAND }}>
+                Schedule Job
+              </button>
+            </div>
+          )}
+
+          {/* Status update buttons */}
+          <div>
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Update Status</p>
+            <div className="flex flex-wrap gap-2">
+              {(Object.keys(JOB_STATUS) as JobStatus[])
+                .filter(s => s !== job.status && s !== "scheduled")
+                .map(s => (
+                  <button key={s} onClick={() => onStatusChange(job.id, s)}
+                    className="text-xs font-semibold px-3 py-1.5 rounded-lg border transition-colors hover:bg-gray-50"
+                    style={{ borderColor: JOB_STATUS[s].color, color: JOB_STATUS[s].color }}>
+                    Mark {JOB_STATUS[s].label}
+                  </button>
+                ))
+              }
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Mulching tab ─────────────────────────────────────────────────────────────
+
+function MulchingTab({ assets }: { assets: { id: string; name: string }[] }) {
+  const qc = useQueryClient();
+  const { toast } = useToast();
+
+  const { data: mulchData, isLoading: mulchLoading } = useListMulchingRecords(undefined, {
+    query: { queryKey: getListMulchingRecordsQueryKey() },
+  });
+  const mulchRecords: any[] = (mulchData as any)?.data ?? [];
+
+  const createMulch = useCreateMulchingRecord();
+  const updateMulch = useUpdateMulchingRecord();
+
+  const [open, setOpen] = useState(false);
+  const [form, setForm] = useState({ assetId: "", scheduledDate: "", volumeM3: "", mulchType: "", contractor: "", costNzd: "", notes: "" });
+
+  const handleCreate = async () => {
+    try {
+      await (createMulch.mutateAsync as any)({ data: { assetId: form.assetId, scheduledDate: form.scheduledDate || null, volumeM3: form.volumeM3 || null, mulchType: form.mulchType || null, contractor: form.contractor || null, costNzd: form.costNzd || null, notes: form.notes || null } });
+      qc.invalidateQueries({ queryKey: getListMulchingRecordsQueryKey() });
+      toast({ title: "Mulching record added" });
+      setOpen(false);
+      setForm({ assetId: "", scheduledDate: "", volumeM3: "", mulchType: "", contractor: "", costNzd: "", notes: "" });
+    } catch {
+      toast({ title: "Failed to add record", variant: "destructive" });
+    }
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-base font-semibold text-gray-800">Mulching Programme</h2>
+          <p className="text-sm text-gray-400">{mulchRecords.length} records</p>
+        </div>
+        <Button onClick={() => setOpen(true)} style={{ background: BRAND }}>
+          <Plus className="w-4 h-4 mr-1" /> Add Record
+        </Button>
       </div>
 
-      {/* Create Infill dialog */}
-      {infillOpen && <Dialog open onOpenChange={(o) => { if (!o) setInfillOpen(false); }}>
-        <DialogContent className="sm:max-w-[500px]">
-          <DialogHeader><DialogTitle>New Infill Planting Order</DialogTitle></DialogHeader>
-          <div className="space-y-4 py-2">
-            <div className="grid grid-cols-2 gap-4">
-              <div className="col-span-2 space-y-1.5">
-                <Label>Asset <span className="text-red-500">*</span></Label>
-                <Select value={infillForm.assetId} onValueChange={(v) => setInfillForm((f) => ({ ...f, assetId: v }))}>
-                  <SelectTrigger data-testid="select-infill-asset"><SelectValue placeholder="Select asset…" /></SelectTrigger>
-                  <SelectContent>
-                    {assetsData?.data.map((a) => <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>)}
-                  </SelectContent>
-                </Select>
+      {mulchLoading ? (
+        <div className="space-y-2">{[...Array(4)].map((_, i) => <Skeleton key={i} className="h-16 w-full rounded-xl" />)}</div>
+      ) : mulchRecords.length === 0 ? (
+        <div className="text-center py-12 text-gray-400">
+          <Layers className="w-10 h-10 mx-auto mb-2 opacity-30" />
+          <p className="text-sm">No mulching records yet.</p>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {mulchRecords.map((r: any) => {
+            const st = MULCH_STATUS[r.status] ?? MULCH_STATUS.due;
+            return (
+              <div key={r.id} className="bg-white rounded-xl border px-4 py-3 flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-semibold text-gray-800">{r.assetName ?? "Unknown asset"}</p>
+                  <p className="text-[11px] text-gray-400">
+                    {r.scheduledDate ? fmt(r.scheduledDate) : "No date"} · {r.mulchType ?? "No type"} · {r.volumeM3 ? `${r.volumeM3} m³` : "Vol TBD"}
+                  </p>
+                </div>
+                <div className="flex items-center gap-3">
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full"
+                    style={{ color: st.color, background: st.bg }}>{st.label}</span>
+                  {r.status !== "completed" && (
+                    <button
+                      onClick={() => (updateMulch.mutateAsync as any)({ id: r.id, data: { status: "completed", completedDate: new Date().toISOString().slice(0, 10) } }).then(() => qc.invalidateQueries({ queryKey: getListMulchingRecordsQueryKey() }))}
+                      className="text-[11px] text-green-600 hover:text-green-800 font-medium">
+                      Mark Done
+                    </button>
+                  )}
+                </div>
               </div>
-              <div className="space-y-1.5">
-                <Label>Species Name <span className="text-red-500">*</span></Label>
-                <Input placeholder="e.g. Agapanthus" value={infillForm.speciesName} onChange={(e) => setInfillForm((f) => ({ ...f, speciesName: e.target.value }))} data-testid="input-species-name" />
-              </div>
-              <div className="space-y-1.5">
-                <Label>Category <span className="text-red-500">*</span></Label>
-                <Select value={infillForm.speciesCategory} onValueChange={(v) => setInfillForm((f) => ({ ...f, speciesCategory: v }))}>
-                  <SelectTrigger data-testid="select-species-cat"><SelectValue placeholder="Category…" /></SelectTrigger>
-                  <SelectContent>
-                    {SPECIES_CATEGORIES.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-1.5">
-                <Label>Quantity <span className="text-red-500">*</span></Label>
-                <Input type="number" min={1} placeholder="e.g. 50" value={infillForm.quantity} onChange={(e) => setInfillForm((f) => ({ ...f, quantity: e.target.value }))} data-testid="input-quantity" />
-              </div>
-              <div className="space-y-1.5">
-                <Label>Order Date</Label>
-                <Input type="date" value={infillForm.orderDate} onChange={(e) => setInfillForm((f) => ({ ...f, orderDate: e.target.value }))} />
-              </div>
-              <div className="space-y-1.5">
-                <Label>Supplier Ref</Label>
-                <Input placeholder="PO-12345" value={infillForm.supplierRef} onChange={(e) => setInfillForm((f) => ({ ...f, supplierRef: e.target.value }))} />
-              </div>
-              <div className="space-y-1.5">
-                <Label>Unit Cost (NZD)</Label>
-                <Input placeholder="4.50" value={infillForm.unitCostNzd} onChange={(e) => setInfillForm((f) => ({ ...f, unitCostNzd: e.target.value }))} />
-              </div>
-              <div className="col-span-2 space-y-1.5">
-                <Label>Notes</Label>
-                <Textarea rows={2} value={infillForm.notes} onChange={(e) => setInfillForm((f) => ({ ...f, notes: e.target.value }))} />
-              </div>
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setInfillOpen(false)}>Cancel</Button>
-            <Button className="bg-[#00AECD] hover:bg-[#0097b2] text-white" onClick={handleCreateInfill} disabled={createInfill.isPending} data-testid="btn-submit-infill">
-              {createInfill.isPending ? "Creating…" : "Create Order"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>}
+            );
+          })}
+        </div>
+      )}
 
-      {/* Create Mulching dialog */}
-      {mulchOpen && <Dialog open onOpenChange={(o) => { if (!o) setMulchOpen(false); }}>
-        <DialogContent className="sm:max-w-[500px]">
-          <DialogHeader><DialogTitle>New Mulching Record</DialogTitle></DialogHeader>
-          <div className="space-y-4 py-2">
-            <div className="grid grid-cols-2 gap-4">
-              <div className="col-span-2 space-y-1.5">
-                <Label>Asset <span className="text-red-500">*</span></Label>
-                <Select value={mulchForm.assetId} onValueChange={(v) => setMulchForm((f) => ({ ...f, assetId: v }))}>
-                  <SelectTrigger data-testid="select-mulch-asset"><SelectValue placeholder="Select asset…" /></SelectTrigger>
-                  <SelectContent>
-                    {assetsData?.data.map((a) => <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>)}
-                  </SelectContent>
-                </Select>
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="max-w-md rounded-2xl">
+          <DialogHeader><DialogTitle>Add Mulching Record</DialogTitle></DialogHeader>
+          <div className="space-y-3">
+            <div>
+              <Label className="text-xs text-gray-500">Garden Asset</Label>
+              <select value={form.assetId} onChange={e => setForm(f => ({ ...f, assetId: e.target.value }))}
+                className="mt-1 w-full px-3 py-2 text-sm border rounded-xl bg-white">
+                <option value="">— Select asset —</option>
+                {assets.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+              </select>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label className="text-xs text-gray-500">Scheduled Date</Label>
+                <Input type="date" value={form.scheduledDate} onChange={e => setForm(f => ({ ...f, scheduledDate: e.target.value }))} className="mt-1" />
               </div>
-              <div className="space-y-1.5">
-                <Label>Scheduled Date</Label>
-                <Input type="date" value={mulchForm.scheduledDate} onChange={(e) => setMulchForm((f) => ({ ...f, scheduledDate: e.target.value }))} />
+              <div>
+                <Label className="text-xs text-gray-500">Volume (m³)</Label>
+                <Input type="number" value={form.volumeM3} onChange={e => setForm(f => ({ ...f, volumeM3: e.target.value }))} className="mt-1" placeholder="e.g. 2.5" />
               </div>
-              <div className="space-y-1.5">
-                <Label>Volume (m³)</Label>
-                <Input placeholder="e.g. 12.5" value={mulchForm.volumeM3} onChange={(e) => setMulchForm((f) => ({ ...f, volumeM3: e.target.value }))} />
-              </div>
-              <div className="space-y-1.5">
-                <Label>Mulch Type</Label>
-                <Select value={mulchForm.mulchType} onValueChange={(v) => setMulchForm((f) => ({ ...f, mulchType: v }))}>
-                  <SelectTrigger data-testid="select-mulch-type"><SelectValue placeholder="Type…" /></SelectTrigger>
-                  <SelectContent>
-                    {MULCH_TYPES.map((t) => <SelectItem key={t} value={t}>{t}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-1.5">
-                <Label>Contractor</Label>
-                <Input placeholder="Contractor name" value={mulchForm.contractor} onChange={(e) => setMulchForm((f) => ({ ...f, contractor: e.target.value }))} />
-              </div>
-              <div className="space-y-1.5">
-                <Label>Cost (NZD)</Label>
-                <Input placeholder="1200.00" value={mulchForm.costNzd} onChange={(e) => setMulchForm((f) => ({ ...f, costNzd: e.target.value }))} />
-              </div>
-              <div className="col-span-2 space-y-1.5">
-                <Label>Notes</Label>
-                <Textarea rows={2} value={mulchForm.notes} onChange={(e) => setMulchForm((f) => ({ ...f, notes: e.target.value }))} />
-              </div>
+            </div>
+            <div>
+              <Label className="text-xs text-gray-500">Mulch Type</Label>
+              <select value={form.mulchType} onChange={e => setForm(f => ({ ...f, mulchType: e.target.value }))}
+                className="mt-1 w-full px-3 py-2 text-sm border rounded-xl bg-white">
+                <option value="">— Select type —</option>
+                {MULCH_TYPES.map(t => <option key={t}>{t}</option>)}
+              </select>
+            </div>
+            <div>
+              <Label className="text-xs text-gray-500">Contractor</Label>
+              <Input value={form.contractor} onChange={e => setForm(f => ({ ...f, contractor: e.target.value }))} className="mt-1" placeholder="Optional" />
+            </div>
+            <div>
+              <Label className="text-xs text-gray-500">Notes</Label>
+              <Textarea value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} className="mt-1 resize-none" rows={2} />
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setMulchOpen(false)}>Cancel</Button>
-            <Button className="bg-[#00AECD] hover:bg-[#0097b2] text-white" onClick={handleCreateMulch} disabled={createMulch.isPending} data-testid="btn-submit-mulch">
-              {createMulch.isPending ? "Creating…" : "Create Record"}
-            </Button>
+            <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
+            <Button onClick={handleCreate} disabled={!form.assetId} style={{ background: BRAND }}>Add Record</Button>
           </DialogFooter>
         </DialogContent>
-      </Dialog>}
+      </Dialog>
+    </div>
+  );
+}
+
+// ─── Main page ────────────────────────────────────────────────────────────────
+
+export default function Programmes() {
+  const qc = useQueryClient();
+  const { toast } = useToast();
+
+  // Infill jobs
+  const { data: jobsData, isLoading: jobsLoading } = useQuery<{ data: InfillJob[]; total: number }>({
+    queryKey: ["/api/infill-jobs"],
+    queryFn: () => fetch("/api/infill-jobs", { credentials: "include" }).then(r => r.json()),
+  });
+  const jobs = jobsData?.data ?? [];
+
+  // Assets
+  const { data: assetsData } = useListAssets({ limit: 500 }, {
+    query: { queryKey: getListAssetsQueryKey({ limit: 500 }) },
+  });
+  const assets: { id: string; name: string }[] = ((assetsData as any)?.data ?? []).map((a: any) => ({ id: a.id, name: a.name }));
+
+  // Teams
+  const { data: teamsRaw } = useListTeams({ query: { queryKey: getListTeamsQueryKey() } as any });
+  const teams: { id: string; name: string }[] = (teamsRaw ?? []) as any;
+
+  // Create job mutation
+  const createJob = useMutation({
+    mutationFn: (body: any) =>
+      fetch("/api/infill-jobs", {
+        method: "POST", credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      }).then(async r => { if (!r.ok) throw new Error(await r.text()); return r.json(); }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["/api/infill-jobs"] });
+      toast({ title: "Assessment saved" });
+      setDrawerOpen(false);
+    },
+    onError: () => toast({ title: "Failed to save assessment", variant: "destructive" }),
+  });
+
+  // Update job mutation
+  const updateJob = useMutation({
+    mutationFn: ({ id, data }: { id: string; data: any }) =>
+      fetch(`/api/infill-jobs/${id}`, {
+        method: "PATCH", credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+      }).then(r => r.json()),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["/api/infill-jobs"] }),
+    onError: () => toast({ title: "Failed to update job", variant: "destructive" }),
+  });
+
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
+  const [statusFilter, setStatusFilter] = useState<JobStatus | "all">("all");
+
+  const selectedJob = jobs.find(j => j.id === selectedJobId) ?? null;
+
+  const filteredJobs = useMemo(
+    () => statusFilter === "all" ? jobs : jobs.filter(j => j.status === statusFilter),
+    [jobs, statusFilter]
+  );
+
+  const statCounts = useMemo(() => {
+    const c: Partial<Record<JobStatus | "all", number>> = { all: jobs.length };
+    for (const j of jobs) c[j.status] = (c[j.status] ?? 0) + 1;
+    return c;
+  }, [jobs]);
+
+  const handleSaveAssessment = (form: { assetId: string; assessmentDate: string; assessmentNotes: string; species: SelectedSpecies[] }) => {
+    createJob.mutate({
+      assetId:         form.assetId,
+      assessmentDate:  form.assessmentDate,
+      assessmentNotes: form.assessmentNotes,
+      species: form.species.map(sp => ({ speciesName: sp.name, speciesCategory: sp.category, quantity: sp.qty })),
+    });
+  };
+
+  const handleSchedule = (jobId: string, teamId: string, plannedDate: string, estimatedMins: number) => {
+    updateJob.mutate({ id: jobId, data: { assignedTeamId: teamId, plannedDate, estimatedMins, status: "scheduled" } });
+    toast({ title: "Job scheduled" });
+    setSelectedJobId(null);
+  };
+
+  const handleStatusChange = (jobId: string, status: JobStatus) => {
+    updateJob.mutate({ id: jobId, data: { status } });
+    setSelectedJobId(null);
+  };
+
+  return (
+    <div className="p-6 max-w-5xl mx-auto">
+      <div className="mb-6">
+        <h1 className="text-xl font-bold" style={{ color: NAVY }}>Programmes</h1>
+        <p className="text-sm text-gray-500">Infill planting assessments and mulching records</p>
+      </div>
+
+      <Tabs defaultValue="infill">
+        <TabsList className="mb-6">
+          <TabsTrigger value="infill" className="flex items-center gap-1.5">
+            <Sprout className="w-4 h-4" /> Infill Planting
+          </TabsTrigger>
+          <TabsTrigger value="mulching" className="flex items-center gap-1.5">
+            <Layers className="w-4 h-4" /> Mulching
+          </TabsTrigger>
+        </TabsList>
+
+        {/* ── Infill Planting ── */}
+        <TabsContent value="infill">
+          <div className="space-y-5">
+            {/* Stat chips */}
+            <div className="grid grid-cols-5 gap-3">
+              {(["all", "draft", "scheduled", "in_progress", "completed"] as const).map(s => {
+                const cfg = s === "all" ? null : JOB_STATUS[s];
+                const active = statusFilter === s;
+                return (
+                  <button key={s} onClick={() => setStatusFilter(s)}
+                    className="rounded-xl border p-3 text-left transition-all"
+                    style={{
+                      borderColor: active ? (cfg?.color ?? BRAND) : "#e5e7eb",
+                      background:  active ? (cfg?.bg ?? "#f0fafb") : "white",
+                    }}>
+                    <p className="text-xl font-bold" style={{ color: cfg?.color ?? BRAND }}>{statCounts[s] ?? 0}</p>
+                    <p className="text-[11px] text-gray-500 mt-0.5">{s === "all" ? "All Jobs" : cfg!.label}</p>
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Toolbar */}
+            <div className="flex items-center justify-between">
+              <p className="text-sm text-gray-500">
+                {filteredJobs.length} assessment{filteredJobs.length !== 1 ? "s" : ""}
+                {statusFilter !== "all" && ` · ${JOB_STATUS[statusFilter].label}`}
+              </p>
+              <Button onClick={() => setDrawerOpen(true)} style={{ background: BRAND }}>
+                <Plus className="w-4 h-4 mr-1" /> New Assessment
+              </Button>
+            </div>
+
+            {/* Jobs list */}
+            {jobsLoading ? (
+              <div className="space-y-3">{[...Array(3)].map((_, i) => <Skeleton key={i} className="h-24 w-full rounded-xl" />)}</div>
+            ) : filteredJobs.length === 0 ? (
+              <div className="text-center py-16 text-gray-400">
+                <Sprout className="w-12 h-12 mx-auto mb-3 opacity-20" />
+                <p className="text-sm font-medium">No assessments found</p>
+                {statusFilter === "all" && (
+                  <p className="text-xs mt-1">Click <strong>New Assessment</strong> to create the first one.</p>
+                )}
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {filteredJobs.map(job => {
+                  const totalPlants = job.species.reduce((s, sp) => s + sp.quantity, 0);
+                  return (
+                    <div key={job.id}
+                      className="bg-white rounded-xl border hover:border-[#00AECD] transition-colors cursor-pointer group"
+                      onClick={() => setSelectedJobId(job.id)}>
+                      <div className="px-5 py-4 flex items-start justify-between gap-4">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="text-sm font-semibold text-gray-900 truncate">{job.assetName ?? "Unknown asset"}</span>
+                            <StatusBadge status={job.status} />
+                          </div>
+                          <p className="text-[11px] text-gray-400 mt-0.5">
+                            Assessed {fmt(job.assessmentDate)}{job.assessorName ? ` by ${job.assessorName}` : ""}
+                          </p>
+                          {job.assessmentNotes && (
+                            <p className="text-xs text-gray-500 mt-1 line-clamp-1 italic">{job.assessmentNotes}</p>
+                          )}
+                          {/* Species chips */}
+                          {job.species.length > 0 && (
+                            <div className="flex flex-wrap gap-1 mt-2">
+                              {job.species.slice(0, 3).map((sp, i) => (
+                                <span key={i} className={`text-[9px] font-semibold px-1.5 py-0.5 rounded-full ${CAT_COLORS[sp.speciesCategory as SpeciesCategory] ?? "bg-gray-100 text-gray-600"}`}>
+                                  {sp.quantity}× <SciName name={sp.speciesName} />
+                                </span>
+                              ))}
+                              {job.species.length > 3 && (
+                                <span className="text-[9px] text-gray-400">+{job.species.length - 3} more</span>
+                              )}
+                            </div>
+                          )}
+                        </div>
+
+                        <div className="flex items-center gap-4 flex-shrink-0 text-right">
+                          <div>
+                            <p className="text-lg font-bold" style={{ color: BRAND }}>{totalPlants}</p>
+                            <p className="text-[10px] text-gray-400">plants</p>
+                          </div>
+                          {job.teamName && (
+                            <div>
+                              <div className="flex items-center gap-1 text-[11px] text-gray-600">
+                                <Users className="w-3 h-3" /> {job.teamName}
+                              </div>
+                              {job.plannedDate && (
+                                <div className="flex items-center gap-1 text-[11px] text-gray-400 mt-0.5">
+                                  <Calendar className="w-3 h-3" /> {fmt(job.plannedDate)}
+                                </div>
+                              )}
+                            </div>
+                          )}
+                          <ChevronRight className="w-4 h-4 text-gray-300 group-hover:text-[#00AECD] transition-colors" />
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </TabsContent>
+
+        {/* ── Mulching ── */}
+        <TabsContent value="mulching">
+          <MulchingTab assets={assets} />
+        </TabsContent>
+      </Tabs>
+
+      {/* Modals */}
+      {drawerOpen && (
+        <NewAssessmentDrawer
+          assets={assets}
+          onClose={() => setDrawerOpen(false)}
+          onSave={handleSaveAssessment}
+        />
+      )}
+      {selectedJob && (
+        <JobDetailPanel
+          job={selectedJob}
+          teams={teams}
+          onClose={() => setSelectedJobId(null)}
+          onSchedule={handleSchedule}
+          onStatusChange={handleStatusChange}
+        />
+      )}
     </div>
   );
 }
