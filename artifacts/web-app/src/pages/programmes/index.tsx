@@ -918,7 +918,7 @@ export default function Programmes() {
   }, [jobs]);
 
   type SpeciesScope = "all" | "needs_ordering" | "in_ground";
-  type SpeciesSortKey = "speciesName" | "category" | "totalQty" | "sites";
+  type SpeciesSortKey = "speciesName" | "category" | "totalQty" | "sites" | "completedQty";
   const [speciesScope, setSpeciesScope]         = useState<SpeciesScope>("all");
   const [speciesSortKey, setSpeciesSortKey]     = useState<SpeciesSortKey>("totalQty");
   const [speciesSortDir, setSpeciesSortDir]     = useState<"asc" | "desc">("desc");
@@ -932,19 +932,19 @@ export default function Programmes() {
   const speciesSummary = useMemo(() => {
     const map = new Map<string, {
       speciesName: string; category: string;
-      totalQty: number; sites: number;
+      totalQty: number; siteIds: Set<string>;
       draftQty: number; scheduledQty: number; completedQty: number;
     }>();
     for (const j of jobs) {
       if (j.status === "cancelled") continue;
-      if (speciesScope === "needs_ordering" && j.status === "completed") continue;
+      if (speciesScope === "needs_ordering" && (j.status === "completed" || j.status === "in_progress")) continue;
       if (speciesScope === "in_ground"      && j.status !== "completed") continue;
       for (const sp of j.species) {
         const key = `${sp.speciesName}||${sp.speciesCategory}`;
         const existing = map.get(key);
         if (existing) {
           existing.totalQty += sp.quantity;
-          existing.sites    += 1;
+          existing.siteIds.add(j.id);
           if (j.status === "draft")       existing.draftQty     += sp.quantity;
           if (j.status === "scheduled")   existing.scheduledQty += sp.quantity;
           if (j.status === "completed")   existing.completedQty += sp.quantity;
@@ -953,7 +953,7 @@ export default function Programmes() {
             speciesName:  sp.speciesName,
             category:     sp.speciesCategory,
             totalQty:     sp.quantity,
-            sites:        1,
+            siteIds:      new Set([j.id]),
             draftQty:     j.status === "draft"     ? sp.quantity : 0,
             scheduledQty: j.status === "scheduled" ? sp.quantity : 0,
             completedQty: j.status === "completed" ? sp.quantity : 0,
@@ -961,12 +961,15 @@ export default function Programmes() {
         }
       }
     }
-    const rows = Array.from(map.values());
+    const rows = Array.from(map.values()).map(r => ({ ...r, sites: r.siteIds.size }));
     return rows.sort((a, b) => {
-      const av = speciesSortKey === "totalQty" || speciesSortKey === "sites"
-        ? a[speciesSortKey] : a[speciesSortKey].toLowerCase();
-      const bv = speciesSortKey === "totalQty" || speciesSortKey === "sites"
-        ? b[speciesSortKey] : b[speciesSortKey].toLowerCase();
+      const numKeys: SpeciesSortKey[] = ["totalQty", "sites", "completedQty"];
+      const av = numKeys.includes(speciesSortKey)
+        ? (a[speciesSortKey as "totalQty" | "sites" | "completedQty"] as number)
+        : (a[speciesSortKey as "speciesName" | "category"] as string).toLowerCase();
+      const bv = numKeys.includes(speciesSortKey)
+        ? (b[speciesSortKey as "totalQty" | "sites" | "completedQty"] as number)
+        : (b[speciesSortKey as "speciesName" | "category"] as string).toLowerCase();
       if (av < bv) return speciesSortDir === "asc" ? -1 : 1;
       if (av > bv) return speciesSortDir === "asc" ? 1 : -1;
       return 0;
@@ -974,9 +977,9 @@ export default function Programmes() {
   }, [jobs, speciesScope, speciesSortKey, speciesSortDir]);
 
   const exportSpeciesCSV = () => {
-    const headers = ["Species", "Category", "Total Qty", "Sites", "Draft Qty", "Scheduled Qty", "Completed Qty"];
+    const headers = ["Species", "Category", "Total Qty", "Sites"];
     const rows = speciesSummary.map(s =>
-      [s.speciesName, s.category, s.totalQty, s.sites, s.draftQty, s.scheduledQty, s.completedQty]
+      [s.speciesName, s.category, s.totalQty, s.sites]
     );
     const csv = [headers, ...rows].map(r => r.map(v => `"${v}"`).join(",")).join("\n");
     const blob = new Blob([csv], { type: "text/csv" });
@@ -1133,8 +1136,15 @@ export default function Programmes() {
                               </span>
                             </th>
                           ))}
-                          <th className="px-4 py-2.5 text-left text-[11px] font-semibold text-gray-400 uppercase tracking-wider">
-                            Breakdown
+                          <th
+                            className="px-4 py-2.5 text-left text-[11px] font-semibold text-gray-400 uppercase tracking-wider cursor-pointer select-none hover:text-gray-700 whitespace-nowrap"
+                            onClick={() => handleSpeciesSort("completedQty")}>
+                            <span className="flex items-center gap-1">
+                              Breakdown
+                              <span className="text-gray-300">
+                                {speciesSortKey === "completedQty" ? (speciesSortDir === "asc" ? "↑" : "↓") : "↕"}
+                              </span>
+                            </span>
                           </th>
                         </tr>
                       </thead>
