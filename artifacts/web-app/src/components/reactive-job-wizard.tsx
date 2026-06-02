@@ -980,7 +980,7 @@ export function ReactiveJobWizard({ teamsData, assetsData, onClose, onPublished 
                         Still {fmtMins(resolvedTotal - PRODUCTIVE)} over target — move or remove work, or accept the overtime.
                       </p>
                       <button
-                        onClick={() => setAcceptOvertime(true)}
+                        onClick={() => { setAcceptOvertime(true); setStep(4); }}
                         className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-white border border-red-300 text-red-700 hover:bg-red-100 transition-colors flex-shrink-0"
                       >
                         Accept overtime
