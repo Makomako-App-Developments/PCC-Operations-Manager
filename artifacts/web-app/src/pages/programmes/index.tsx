@@ -29,7 +29,7 @@ import {
   Download, ChevronDown, ChevronUp, Package, List, Map as MapIcon, ExternalLink,
 } from "lucide-react";
 import { useLocation } from "wouter";
-import { MapContainer, TileLayer, CircleMarker, Tooltip, ZoomControl, Marker } from "react-leaflet";
+import { MapContainer, TileLayer, CircleMarker, Tooltip, ZoomControl, Marker, useMapEvents } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 
@@ -983,6 +983,11 @@ function InfillMapView({
     });
   }
 
+  function ZoomCollapser() {
+    useMapEvents({ zoomend: () => setExpandedKeys(new Set()) });
+    return null;
+  }
+
   return (
     <div className="space-y-3">
       {unmapped > 0 && (
@@ -999,6 +1004,7 @@ function InfillMapView({
           zoomControl={false}
           attributionControl={false}
         >
+          <ZoomCollapser />
           <ZoomControl position="bottomright" />
           <TileLayer
             url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
