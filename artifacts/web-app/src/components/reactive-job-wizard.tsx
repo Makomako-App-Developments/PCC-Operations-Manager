@@ -182,10 +182,6 @@ function CapBar({
           style={{ left: `${targetMark}%` }}
         />
       </div>
-      <div className="flex justify-between text-[10px] mt-1 text-gray-400">
-        <span>0</span>
-        <span>↑ {fmtMins(PRODUCTIVE)} target</span>
-      </div>
       <div className="flex gap-3 mt-2 flex-wrap text-[11px]">
         <span className="flex items-center gap-1 text-green-700">
           <span className="w-2.5 h-2.5 rounded-sm bg-green-500 inline-block" />
@@ -195,11 +191,6 @@ function CapBar({
           <span className="w-2.5 h-2.5 rounded-sm bg-red-500 inline-block" />
           Over target
         </span>
-        {reactive > 0 && (
-          <span className="flex items-center gap-1 text-purple-600 ml-auto">
-            <Zap className="w-3 h-3" />+{fmtMins(reactive)} reactive
-          </span>
-        )}
       </div>
     </div>
   );
@@ -835,23 +826,21 @@ export function ReactiveJobWizard({ teamsData, assetsData, onClose, onPublished 
                       dateLabel={dateLabel}
                     />
 
-                    <div className="mt-5 grid grid-cols-3 gap-4">
-                      {[
-                        { label: "Scheduled today", value: fmtMins(totalScheduled), color: "#374151" },
-                        { label: "+ Unscheduled work", value: `+${fmtMins(serviceMin)}`, color: "#d97706" },
-                        {
-                          label: "New total",
-                          value: fmtMins(totalWithReactive),
-                          color: totalWithReactive > PRODUCTIVE ? "#dc2626" : "#16a34a",
-                        },
-                      ].map(({ label, value, color }) => (
-                        <div key={label} className="text-center p-3 rounded-xl bg-gray-50">
-                          <p className="text-[11px] text-gray-400 mb-1">{label}</p>
-                          <p className="text-xl font-black" style={{ color }}>
-                            {value}
-                          </p>
-                        </div>
-                      ))}
+                    <div className="mt-5 flex items-center gap-2">
+                      <div className="flex-1 text-center p-3 rounded-xl bg-gray-50">
+                        <p className="text-[11px] text-gray-400 mb-1">Scheduled today</p>
+                        <p className="text-xl font-black" style={{ color: "#374151" }}>{fmtMins(totalScheduled)}</p>
+                      </div>
+                      <span className="text-xl font-bold text-gray-400 flex-shrink-0">+</span>
+                      <div className="flex-1 text-center p-3 rounded-xl bg-gray-50">
+                        <p className="text-[11px] text-gray-400 mb-1">Unscheduled work</p>
+                        <p className="text-xl font-black" style={{ color: "#d97706" }}>+{fmtMins(serviceMin)}</p>
+                      </div>
+                      <span className="text-xl font-bold text-gray-400 flex-shrink-0">=</span>
+                      <div className="flex-1 text-center p-3 rounded-xl bg-gray-50">
+                        <p className="text-[11px] text-gray-400 mb-1">New total</p>
+                        <p className="text-xl font-black" style={{ color: totalWithReactive > PRODUCTIVE ? "#dc2626" : "#16a34a" }}>{fmtMins(totalWithReactive)}</p>
+                      </div>
                     </div>
 
                     {totalWithReactive > PRODUCTIVE && (
