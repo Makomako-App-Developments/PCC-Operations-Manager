@@ -745,6 +745,15 @@ export function ReactiveJobWizard({ teamsData, assetsData, onClose, onPublished 
                         {priorities.find(p => p.id === priority)!.description}
                       </p>
                     )}
+                    {priority === "urgent" && selectedDate && (() => {
+                      const diffDays = Math.round((new Date(selectedDate + "T00:00:00").getTime() - new Date(today + "T00:00:00").getTime()) / 86_400_000);
+                      return diffDays > 2 ? (
+                        <p className="text-[11px] text-amber-600 mt-2 pl-1 flex items-start gap-1">
+                          <span>⚠</span>
+                          <span>Urgent jobs are typically attended within 1–2 hours — is <strong>{format(new Date(selectedDate + "T00:00:00"), "EEE d MMM")}</strong> the correct date?</span>
+                        </p>
+                      ) : null;
+                    })()}
                   </div>
                   <div className="col-span-2">
                     <label className="text-xs text-gray-500 font-medium block mb-1.5">
