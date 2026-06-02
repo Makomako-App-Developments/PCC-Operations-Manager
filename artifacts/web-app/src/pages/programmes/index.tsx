@@ -29,7 +29,7 @@ import {
   Download, ChevronDown, ChevronUp, Package, List, Map as MapIcon, ExternalLink,
 } from "lucide-react";
 import { useLocation, useSearch } from "wouter";
-import { MapContainer, TileLayer, CircleMarker, Tooltip, ZoomControl, Marker, useMapEvents } from "react-leaflet";
+import { MapContainer, TileLayer, CircleMarker, Polyline, Tooltip, ZoomControl, Marker, useMapEvents } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 
@@ -1082,15 +1082,22 @@ function InfillMapView({
 
             // Expanded: fan out individual markers in a circle
             const offsets = spiderOffsets(items.length);
-            return items.map(({ job, totalPlants }, idx) => {
+            return items.flatMap(({ job, totalPlants }, idx) => {
               const color = MARKER_COLORS[job.status] ?? "#6b7280";
               const cfg = JOB_STATUS[job.status];
               const radius = Math.max(10, Math.min(22, 10 + Math.sqrt(totalPlants) * 0.9));
               const [dLat, dLng] = offsets[idx];
-              return (
+              const offsetPos: [number, number] = [lat + dLat, lng + dLng];
+              return [
+                <Polyline
+                  key={`${job.id}-leg`}
+                  positions={[[lat, lng], offsetPos]}
+                  pathOptions={{ color: "#9ca3af", weight: 1, opacity: 0.7, dashArray: "4 4" }}
+                  interactive={false}
+                />,
                 <CircleMarker
                   key={job.id}
-                  center={[lat + dLat, lng + dLng]}
+                  center={offsetPos}
                   radius={radius}
                   pathOptions={{ fillColor: color, fillOpacity: 0.9, color: "white", weight: 2.5 }}
                   eventHandlers={{
@@ -1116,8 +1123,8 @@ function InfillMapView({
                       </p>
                     </div>
                   </Tooltip>
-                </CircleMarker>
-              );
+                </CircleMarker>,
+              ];
             });
           })}
         </MapContainer>
