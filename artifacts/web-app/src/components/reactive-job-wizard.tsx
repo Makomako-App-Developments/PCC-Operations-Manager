@@ -657,7 +657,7 @@ export function ReactiveJobWizard({ teamsData, assetsData, onClose, onPublished 
                 <div className="grid grid-cols-2 gap-5">
                   <div>
                     <label className="text-xs text-gray-500 font-medium block mb-1.5">
-                      Reason / Type *
+                      Reason / Type
                     </label>
                     <select
                       value={reason}
@@ -670,7 +670,7 @@ export function ReactiveJobWizard({ teamsData, assetsData, onClose, onPublished 
                     </select>
                   </div>
                   <div>
-                    <label className="text-xs text-gray-500 font-medium block mb-1.5">Scheduled Date *</label>
+                    <label className="text-xs text-gray-500 font-medium block mb-1.5">Scheduled on</label>
                     <input
                       type="date"
                       value={selectedDate}
@@ -680,7 +680,7 @@ export function ReactiveJobWizard({ teamsData, assetsData, onClose, onPublished 
                   </div>
                   <div>
                     <label className="text-xs text-gray-500 font-medium block mb-1.5">
-                      Assign to Team *
+                      Assign to Team
                     </label>
                     <select
                       value={selectedTeamId}
@@ -706,7 +706,7 @@ export function ReactiveJobWizard({ teamsData, assetsData, onClose, onPublished 
                   </div>
                   <div>
                     <label className="text-xs text-gray-500 font-medium block mb-1.5">
-                      Reactive time (min) *
+                      Allocated time (min)
                     </label>
                     <input
                       type="number"
