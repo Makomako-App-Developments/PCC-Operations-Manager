@@ -904,6 +904,18 @@ export default function Programmes() {
     return c;
   }, [jobs]);
 
+  const plantTotals = useMemo(() => {
+    let required = 0;
+    let inGround = 0;
+    for (const j of jobs) {
+      if (j.status === "cancelled") continue;
+      const qty = j.species.reduce((s, sp) => s + sp.quantity, 0);
+      required += qty;
+      if (j.status === "completed") inGround += qty;
+    }
+    return { required, inGround };
+  }, [jobs]);
+
   const handleSaveAssessment = (form: { assetId: string; assessmentDate: string; assessmentNotes: string; species: SelectedSpecies[] }) => {
     createJob.mutate({
       assetId:         form.assetId,
@@ -949,6 +961,34 @@ export default function Programmes() {
         {/* ── Infill Planting ── */}
         <TabsContent value="infill">
           <div className="space-y-5">
+            {/* Plant totals summary */}
+            <div className="grid grid-cols-2 gap-3">
+              <div className="rounded-xl border p-4 bg-white flex items-center gap-4">
+                <div className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0"
+                  style={{ background: "#e0f7fb" }}>
+                  <Sprout className="w-5 h-5" style={{ color: BRAND }} />
+                </div>
+                <div>
+                  <p className="text-2xl font-black" style={{ color: BRAND }}>
+                    {jobsLoading ? "—" : plantTotals.required.toLocaleString()}
+                  </p>
+                  <p className="text-xs text-gray-500 mt-0.5">Total plants required</p>
+                </div>
+              </div>
+              <div className="rounded-xl border p-4 bg-white flex items-center gap-4">
+                <div className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0"
+                  style={{ background: "#dcfce7" }}>
+                  <CheckCircle2 className="w-5 h-5 text-green-600" />
+                </div>
+                <div>
+                  <p className="text-2xl font-black text-green-600">
+                    {jobsLoading ? "—" : plantTotals.inGround.toLocaleString()}
+                  </p>
+                  <p className="text-xs text-gray-500 mt-0.5">Total plants in the ground</p>
+                </div>
+              </div>
+            </div>
+
             {/* Stat chips */}
             <div className="grid grid-cols-5 gap-3">
               {(["all", "draft", "scheduled", "in_progress", "completed"] as const).map(s => {
