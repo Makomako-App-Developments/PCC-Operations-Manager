@@ -26,6 +26,7 @@ import { useToast } from "@/hooks/use-toast";
 import {
   Sprout, Plus, Layers, X, Search, ChevronRight,
   Calendar, Users, Leaf, FileText, AlertTriangle, CheckCircle2,
+  Download, ChevronDown, ChevronUp, Package,
 } from "lucide-react";
 
 const BRAND = "#00AECD";
@@ -916,6 +917,77 @@ export default function Programmes() {
     return { required, inGround };
   }, [jobs]);
 
+  type SpeciesScope = "all" | "needs_ordering" | "in_ground";
+  type SpeciesSortKey = "speciesName" | "category" | "totalQty" | "sites";
+  const [speciesScope, setSpeciesScope]         = useState<SpeciesScope>("all");
+  const [speciesSortKey, setSpeciesSortKey]     = useState<SpeciesSortKey>("totalQty");
+  const [speciesSortDir, setSpeciesSortDir]     = useState<"asc" | "desc">("desc");
+  const [speciesExpanded, setSpeciesExpanded]   = useState(true);
+
+  const handleSpeciesSort = (key: SpeciesSortKey) => {
+    if (speciesSortKey === key) setSpeciesSortDir(d => d === "asc" ? "desc" : "asc");
+    else { setSpeciesSortKey(key); setSpeciesSortDir(key === "totalQty" ? "desc" : "asc"); }
+  };
+
+  const speciesSummary = useMemo(() => {
+    const map = new Map<string, {
+      speciesName: string; category: string;
+      totalQty: number; sites: number;
+      draftQty: number; scheduledQty: number; completedQty: number;
+    }>();
+    for (const j of jobs) {
+      if (j.status === "cancelled") continue;
+      if (speciesScope === "needs_ordering" && j.status === "completed") continue;
+      if (speciesScope === "in_ground"      && j.status !== "completed") continue;
+      for (const sp of j.species) {
+        const key = `${sp.speciesName}||${sp.speciesCategory}`;
+        const existing = map.get(key);
+        if (existing) {
+          existing.totalQty += sp.quantity;
+          existing.sites    += 1;
+          if (j.status === "draft")       existing.draftQty     += sp.quantity;
+          if (j.status === "scheduled")   existing.scheduledQty += sp.quantity;
+          if (j.status === "completed")   existing.completedQty += sp.quantity;
+        } else {
+          map.set(key, {
+            speciesName:  sp.speciesName,
+            category:     sp.speciesCategory,
+            totalQty:     sp.quantity,
+            sites:        1,
+            draftQty:     j.status === "draft"     ? sp.quantity : 0,
+            scheduledQty: j.status === "scheduled" ? sp.quantity : 0,
+            completedQty: j.status === "completed" ? sp.quantity : 0,
+          });
+        }
+      }
+    }
+    const rows = Array.from(map.values());
+    return rows.sort((a, b) => {
+      const av = speciesSortKey === "totalQty" || speciesSortKey === "sites"
+        ? a[speciesSortKey] : a[speciesSortKey].toLowerCase();
+      const bv = speciesSortKey === "totalQty" || speciesSortKey === "sites"
+        ? b[speciesSortKey] : b[speciesSortKey].toLowerCase();
+      if (av < bv) return speciesSortDir === "asc" ? -1 : 1;
+      if (av > bv) return speciesSortDir === "asc" ? 1 : -1;
+      return 0;
+    });
+  }, [jobs, speciesScope, speciesSortKey, speciesSortDir]);
+
+  const exportSpeciesCSV = () => {
+    const headers = ["Species", "Category", "Total Qty", "Sites", "Draft Qty", "Scheduled Qty", "Completed Qty"];
+    const rows = speciesSummary.map(s =>
+      [s.speciesName, s.category, s.totalQty, s.sites, s.draftQty, s.scheduledQty, s.completedQty]
+    );
+    const csv = [headers, ...rows].map(r => r.map(v => `"${v}"`).join(",")).join("\n");
+    const blob = new Blob([csv], { type: "text/csv" });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement("a");
+    a.href     = url;
+    a.download = "infill-species-summary.csv";
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   const handleSaveAssessment = (form: { assetId: string; assessmentDate: string; assessmentNotes: string; species: SelectedSpecies[] }) => {
     createJob.mutate({
       assetId:         form.assetId,
@@ -987,6 +1059,129 @@ export default function Programmes() {
                   <p className="text-xs text-gray-500 mt-0.5">Total plants in the ground</p>
                 </div>
               </div>
+            </div>
+
+            {/* Species order summary */}
+            <div className="rounded-xl border border-gray-200 bg-white overflow-hidden">
+              {/* Header */}
+              <div className="px-4 py-3 flex items-center justify-between border-b border-gray-100 bg-gray-50">
+                <button
+                  className="flex items-center gap-2 text-sm font-semibold text-gray-700 hover:text-gray-900"
+                  onClick={() => setSpeciesExpanded(v => !v)}>
+                  <Package className="w-4 h-4" style={{ color: BRAND }} />
+                  Species Order Summary
+                  <span className="text-[11px] font-normal text-gray-400 ml-1">
+                    {speciesSummary.length} species
+                  </span>
+                  {speciesExpanded
+                    ? <ChevronUp className="w-3.5 h-3.5 text-gray-400" />
+                    : <ChevronDown className="w-3.5 h-3.5 text-gray-400" />}
+                </button>
+                <button
+                  onClick={exportSpeciesCSV}
+                  className="flex items-center gap-1.5 text-[11px] font-semibold px-3 py-1.5 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors">
+                  <Download className="w-3 h-3" /> Export CSV
+                </button>
+              </div>
+
+              {speciesExpanded && (
+                <>
+                  {/* Scope filter */}
+                  <div className="px-4 py-2.5 border-b border-gray-100 flex items-center gap-2">
+                    <span className="text-[11px] text-gray-400 mr-1">Show:</span>
+                    {([
+                      { key: "all",            label: "All" },
+                      { key: "needs_ordering", label: "Needs ordering" },
+                      { key: "in_ground",      label: "In ground" },
+                    ] as { key: SpeciesScope; label: string }[]).map(s => (
+                      <button key={s.key}
+                        onClick={() => setSpeciesScope(s.key)}
+                        className="text-[11px] font-semibold px-2.5 py-1 rounded-full border transition-colors"
+                        style={{
+                          borderColor: speciesScope === s.key ? BRAND : "#e5e7eb",
+                          background:  speciesScope === s.key ? "#e0f7fb" : "white",
+                          color:       speciesScope === s.key ? BRAND : "#6b7280",
+                        }}>
+                        {s.label}
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* Table */}
+                  {speciesSummary.length === 0 ? (
+                    <div className="py-8 text-center text-gray-400 text-sm">
+                      No species data for this filter.
+                    </div>
+                  ) : (
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="border-b border-gray-100">
+                          {([
+                            { key: "speciesName", label: "Species" },
+                            { key: "category",    label: "Category" },
+                            { key: "totalQty",    label: "Total qty" },
+                            { key: "sites",       label: "Sites" },
+                          ] as { key: SpeciesSortKey; label: string }[]).map(col => (
+                            <th key={col.key}
+                              className="px-4 py-2.5 text-left text-[11px] font-semibold text-gray-400 uppercase tracking-wider cursor-pointer select-none hover:text-gray-700 whitespace-nowrap"
+                              onClick={() => handleSpeciesSort(col.key)}>
+                              <span className="flex items-center gap-1">
+                                {col.label}
+                                <span className="text-gray-300">
+                                  {speciesSortKey === col.key ? (speciesSortDir === "asc" ? "↑" : "↓") : "↕"}
+                                </span>
+                              </span>
+                            </th>
+                          ))}
+                          <th className="px-4 py-2.5 text-left text-[11px] font-semibold text-gray-400 uppercase tracking-wider">
+                            Breakdown
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-50">
+                        {speciesSummary.map(row => (
+                          <tr key={`${row.speciesName}||${row.category}`} className="hover:bg-gray-50">
+                            <td className="px-4 py-2.5">
+                              <span className="font-semibold text-gray-800 italic">{row.speciesName}</span>
+                            </td>
+                            <td className="px-4 py-2.5">
+                              <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${CAT_COLORS[row.category as SpeciesCategory] ?? "bg-gray-100 text-gray-600"}`}>
+                                {row.category}
+                              </span>
+                            </td>
+                            <td className="px-4 py-2.5">
+                              <span className="text-lg font-black" style={{ color: BRAND }}>{row.totalQty}</span>
+                            </td>
+                            <td className="px-4 py-2.5 text-sm text-gray-600">{row.sites}</td>
+                            <td className="px-4 py-2.5">
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                {row.draftQty > 0 && (
+                                  <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full"
+                                    style={{ background: JOB_STATUS.draft.bg, color: JOB_STATUS.draft.color }}>
+                                    {row.draftQty} draft
+                                  </span>
+                                )}
+                                {row.scheduledQty > 0 && (
+                                  <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full"
+                                    style={{ background: JOB_STATUS.scheduled.bg, color: JOB_STATUS.scheduled.color }}>
+                                    {row.scheduledQty} scheduled
+                                  </span>
+                                )}
+                                {row.completedQty > 0 && (
+                                  <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full"
+                                    style={{ background: JOB_STATUS.completed.bg, color: JOB_STATUS.completed.color }}>
+                                    {row.completedQty} in ground
+                                  </span>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
+                </>
+              )}
             </div>
 
             {/* Stat chips */}
