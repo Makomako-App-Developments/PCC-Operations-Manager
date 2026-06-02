@@ -1025,24 +1025,19 @@ export default function Programmes() {
 
                       {/* Quick-advance footer — one-click status advance */}
                       {(() => {
+                        // Only "Schedule →" is a manager action; starting/completing is done by field teams
                         const nextMap: Partial<Record<JobStatus, { label: string; next: JobStatus }>> = {
-                          draft:       { label: "Schedule →", next: "scheduled" },
-                          scheduled:   { label: "Start →",    next: "in_progress" },
-                          in_progress: { label: "Complete →", next: "completed" },
+                          draft: { label: "Schedule →", next: "scheduled" },
                         };
                         const advance = nextMap[job.status];
                         if (!advance) return null;
-                        const isDraft = job.status === "draft";
                         return (
                           <div className="px-5 pb-3 pt-0 border-t border-gray-50 flex items-center justify-between">
-                            <span className="text-[10px] text-gray-400">
-                              {isDraft ? "Open detail to schedule" : `→ ${JOB_STATUS[advance.next].label}`}
-                            </span>
+                            <span className="text-[10px] text-gray-400">Open detail to schedule</span>
                             <button
                               onClick={e => {
                                 e.stopPropagation();
-                                if (isDraft) { setSelectedJobId(job.id); return; }
-                                updateJob.mutate({ id: job.id, data: { status: advance.next } });
+                                setSelectedJobId(job.id);
                               }}
                               className="text-[11px] font-semibold px-3 py-1 rounded-lg transition-colors"
                               style={{ color: JOB_STATUS[advance.next].color, background: JOB_STATUS[advance.next].bg }}>
