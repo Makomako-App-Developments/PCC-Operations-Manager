@@ -35,6 +35,27 @@ import "leaflet/dist/leaflet.css";
 const BRAND = "#00AECD";
 const NAVY  = "#0f2a36";
 
+// ─── Plant grades (NZ nursery standard) ───────────────────────────────────────
+
+type PlantGrade = "Root Trainer" | "1 litre" | "1.5 litre/PB2" | "2 litre/PB3" | "5 litre/PB 6.5" | "PB 8" | "PB12" | "PB40" | "PB95";
+
+const PLANT_GRADES: PlantGrade[] = [
+  "Root Trainer", "1 litre", "1.5 litre/PB2", "2 litre/PB3",
+  "5 litre/PB 6.5", "PB 8", "PB12", "PB40", "PB95",
+];
+
+const GRADE_COLORS: Record<PlantGrade, string> = {
+  "Root Trainer":    "bg-sky-100 text-sky-700",
+  "1 litre":         "bg-teal-100 text-teal-700",
+  "1.5 litre/PB2":   "bg-cyan-100 text-cyan-700",
+  "2 litre/PB3":     "bg-emerald-100 text-emerald-700",
+  "5 litre/PB 6.5":  "bg-green-100 text-green-700",
+  "PB 8":            "bg-lime-100 text-lime-700",
+  "PB12":            "bg-amber-100 text-amber-700",
+  "PB40":            "bg-orange-100 text-orange-700",
+  "PB95":            "bg-rose-100 text-rose-700",
+};
+
 // ─── Species catalogue ────────────────────────────────────────────────────────
 
 type SpeciesCategory = "Native Trees" | "Native Shrubs" | "Groundcovers" | "Annual Bedding" | "Roses";
@@ -161,14 +182,15 @@ function fmt(d: string | null | undefined) {
 
 // ─── Species Picker modal ─────────────────────────────────────────────────────
 
-interface SelectedSpecies { name: string; category: SpeciesCategory; qty: number; notes?: string; }
+interface SelectedSpecies { name: string; grade: PlantGrade; qty: number; notes?: string; }
 
 function SpeciesPicker({
-  selected, onToggle, onQtyChange, onClose, onSave,
+  selected, onToggle, onQtyChange, onGradeChange, onClose, onSave,
 }: {
   selected: SelectedSpecies[];
   onToggle: (sp: Species) => void;
   onQtyChange: (name: string, qty: number) => void;
+  onGradeChange: (name: string, grade: PlantGrade) => void;
   onClose: () => void;
   onSave: () => void;
 }) {
@@ -228,21 +250,31 @@ function SpeciesPicker({
                       {sp.maori && <p className="text-[10px] text-gray-400 mt-0.5 italic">{sp.maori}</p>}
                       <p className="text-[10px] text-gray-500 mt-0.5">{sp.note}</p>
                     </div>
-                    <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full flex-shrink-0 ${CAT_COLORS[sp.category]}`}>{sp.size}</span>
                   </div>
                   {sel && (
-                    <div className="mt-2 flex items-center gap-2" onClick={e => e.stopPropagation()}>
-                      <span className="text-[10px] text-gray-500">Qty:</span>
-                      <div className="flex items-center gap-1">
-                        <button onClick={() => onQtyChange(sp.name, Math.max(1, (selRecord?.qty ?? 1) - 1))}
-                          className="w-5 h-5 rounded bg-gray-100 text-xs font-bold flex items-center justify-center hover:bg-gray-200">−</button>
-                        <span className="w-8 text-center text-xs font-bold" style={{ color: BRAND }}>{selRecord?.qty}</span>
-                        <button onClick={() => onQtyChange(sp.name, (selRecord?.qty ?? 1) + 1)}
-                          className="w-5 h-5 rounded bg-gray-100 text-xs font-bold flex items-center justify-center hover:bg-gray-200">+</button>
+                    <div className="mt-2 space-y-1.5" onClick={e => e.stopPropagation()}>
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] text-gray-500">Qty:</span>
+                        <div className="flex items-center gap-1">
+                          <button onClick={() => onQtyChange(sp.name, Math.max(1, (selRecord?.qty ?? 1) - 1))}
+                            className="w-5 h-5 rounded bg-gray-100 text-xs font-bold flex items-center justify-center hover:bg-gray-200">−</button>
+                          <span className="w-8 text-center text-xs font-bold" style={{ color: BRAND }}>{selRecord?.qty}</span>
+                          <button onClick={() => onQtyChange(sp.name, (selRecord?.qty ?? 1) + 1)}
+                            className="w-5 h-5 rounded bg-gray-100 text-xs font-bold flex items-center justify-center hover:bg-gray-200">+</button>
+                        </div>
+                        <button onClick={() => onToggle(sp)} className="ml-auto text-red-400 hover:text-red-600">
+                          <X className="w-3.5 h-3.5" />
+                        </button>
                       </div>
-                      <button onClick={() => onToggle(sp)} className="ml-auto text-red-400 hover:text-red-600">
-                        <X className="w-3.5 h-3.5" />
-                      </button>
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-[10px] text-gray-500 flex-shrink-0">Grade:</span>
+                        <select
+                          value={selRecord?.grade ?? "1 litre"}
+                          onChange={e => onGradeChange(sp.name, e.target.value as PlantGrade)}
+                          className="text-[10px] font-semibold flex-1 border border-gray-200 rounded-lg px-1.5 py-0.5 bg-white outline-none focus:border-[#00AECD]">
+                          {PLANT_GRADES.map(g => <option key={g} value={g}>{g}</option>)}
+                        </select>
+                      </div>
                     </div>
                   )}
                 </div>
@@ -289,15 +321,18 @@ function NewAssessmentDrawer({
     setSpecies(prev =>
       prev.some(s => s.name === sp.name)
         ? prev.filter(s => s.name !== sp.name)
-        : [...prev, { name: sp.name, category: sp.category, qty: 5 }]
+        : [...prev, { name: sp.name, grade: "1 litre" as PlantGrade, qty: 5 }]
     );
-  const setQty = (name: string, qty: number) =>
+  const setQty   = (name: string, qty: number) =>
     setSpecies(prev => prev.map(s => s.name === name ? { ...s, qty } : s));
+  const setGrade = (name: string, grade: PlantGrade) =>
+    setSpecies(prev => prev.map(s => s.name === name ? { ...s, grade } : s));
 
   return (
     <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-6">
       {showPicker && (
         <SpeciesPicker selected={species} onToggle={toggleSpecies} onQtyChange={setQty}
+          onGradeChange={setGrade}
           onClose={() => setShowPicker(false)} onSave={() => setShowPicker(false)} />
       )}
       <div className="bg-white rounded-2xl w-full max-w-xl shadow-2xl">
@@ -370,12 +405,12 @@ function NewAssessmentDrawer({
                 <div className="space-y-2 max-h-64 overflow-y-auto">
                   {species.map(sp => (
                     <div key={sp.name} className="px-3 py-2 rounded-lg bg-gray-50 space-y-1.5">
-                      <div className="flex items-center justify-between">
-                        <div>
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="min-w-0">
                           <SciName name={sp.name} className="text-xs font-semibold text-gray-800" />
-                          <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full ${CAT_COLORS[sp.category]}`}>{sp.category}</span>
+                          <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full ${GRADE_COLORS[sp.grade] ?? "bg-gray-100 text-gray-600"}`}>{sp.grade}</span>
                         </div>
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 flex-shrink-0">
                           <button onClick={() => setQty(sp.name, Math.max(1, sp.qty - 1))}
                             className="w-5 h-5 rounded bg-gray-200 text-xs font-bold flex items-center justify-center">−</button>
                           <span className="text-sm font-bold w-6 text-center" style={{ color: BRAND }}>{sp.qty}</span>
@@ -384,6 +419,13 @@ function NewAssessmentDrawer({
                           <button onClick={() => setSpecies(p => p.filter(s => s.name !== sp.name))}
                             className="text-red-300 hover:text-red-500 ml-1"><X className="w-3.5 h-3.5" /></button>
                         </div>
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-[10px] text-gray-500 flex-shrink-0">Grade:</span>
+                        <select value={sp.grade} onChange={e => setGrade(sp.name, e.target.value as PlantGrade)}
+                          className="text-[10px] font-semibold flex-1 border border-gray-200 rounded-lg px-1.5 py-0.5 bg-white outline-none focus:border-[#00AECD]">
+                          {PLANT_GRADES.map(g => <option key={g} value={g}>{g}</option>)}
+                        </select>
                       </div>
                       <input
                         value={sp.notes ?? ""}
@@ -418,9 +460,9 @@ function NewAssessmentDrawer({
                 {notes && <p className="text-xs text-emerald-700 italic mb-3">{notes}</p>}
                 <div className="space-y-1">
                   {species.map(sp => (
-                    <div key={sp.name} className="flex justify-between text-xs text-emerald-700">
+                    <div key={sp.name} className="flex justify-between text-xs text-emerald-700 gap-2">
                       <SciName name={sp.name} />
-                      <span className="font-semibold">{sp.qty} plants</span>
+                      <span className="font-semibold shrink-0">{sp.grade} · {sp.qty} plants</span>
                     </div>
                   ))}
                 </div>
@@ -549,7 +591,7 @@ function JobDetailPanel({
                 <div key={i} className="flex items-center justify-between px-3 py-2 rounded-lg bg-gray-50">
                   <div>
                     <SciName name={sp.speciesName} className="text-xs font-semibold text-gray-800" />
-                    <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full ${CAT_COLORS[sp.speciesCategory as SpeciesCategory] ?? "bg-gray-100 text-gray-600"}`}>
+                    <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full ${GRADE_COLORS[sp.speciesCategory as PlantGrade] ?? "bg-gray-100 text-gray-600"}`}>
                       {sp.speciesCategory}
                     </span>
                   </div>
@@ -878,7 +920,11 @@ function InfillMapView({
   const assetCoords = useMemo(() => {
     const m = new Map<string, { lat: number; lng: number }>();
     for (const a of assets) {
-      if (a.lat != null && a.lng != null) m.set(a.id, { lat: a.lat, lng: a.lng });
+      if (a.lat != null && a.lng != null) {
+        const lat = Number(a.lat);
+        const lng = Number(a.lng);
+        if (!isNaN(lat) && !isNaN(lng)) m.set(a.id, { lat, lng });
+      }
     }
     return m;
   }, [assets]);
@@ -1257,7 +1303,7 @@ export default function Programmes() {
       assessmentNotes: form.assessmentNotes,
       species: form.species.map(sp => ({
         speciesName:     sp.name,
-        speciesCategory: sp.category,
+        speciesCategory: sp.grade,
         quantity:        sp.qty,
         notes:           sp.notes || undefined,
       })),
@@ -1380,7 +1426,7 @@ export default function Programmes() {
                         <tr className="border-b border-gray-100">
                           {([
                             { key: "speciesName", label: "Species" },
-                            { key: "category",    label: "Category" },
+                            { key: "category",    label: "Grade/size" },
                             { key: "totalQty",    label: "Total qty" },
                             { key: "sites",       label: "Sites" },
                           ] as { key: SpeciesSortKey; label: string }[]).map(col => (
@@ -1414,7 +1460,7 @@ export default function Programmes() {
                               <span className="font-semibold text-gray-800 italic">{row.speciesName}</span>
                             </td>
                             <td className="px-4 py-2.5">
-                              <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${CAT_COLORS[row.category as SpeciesCategory] ?? "bg-gray-100 text-gray-600"}`}>
+                              <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${GRADE_COLORS[row.category as PlantGrade] ?? "bg-gray-100 text-gray-600"}`}>
                                 {row.category}
                               </span>
                             </td>
