@@ -1,7 +1,7 @@
 import { Router } from "express";
 import {
   db, assetsTable, jobsTable, teamMembersTable, teamAvailabilityTable,
-  systemSettingsTable, jobTeamCompletionsTable,
+  systemSettingsTable, jobTeamCompletionsTable, infillJobsTable,
 } from "@workspace/db";
 import { eq, and, gte, lte, inArray, sql, notInArray, or, isNull } from "drizzle-orm";
 import { z } from "zod";
@@ -586,14 +586,94 @@ router.get(
       dayMap.get(row.scheduledDate)?.push(row);
     }
 
+    // ── Merge infill planting jobs into day buckets ───────────────────────────
+    const infillConditions = and(
+      gte(infillJobsTable.plannedDate, weekStart),
+      lte(infillJobsTable.plannedDate, weekEnd),
+      inArray(infillJobsTable.status, ["scheduled", "in_progress", "completed"]),
+      ...(teamId ? [eq(infillJobsTable.assignedTeamId, teamId)] : []),
+    );
+
+    const infillRows = await db
+      .select({
+        id:             infillJobsTable.id,
+        assetId:        infillJobsTable.assetId,
+        plannedDate:    sql<string>`to_char(${infillJobsTable.plannedDate}, 'YYYY-MM-DD')`,
+        status:         infillJobsTable.status,
+        assignedTeamId: infillJobsTable.assignedTeamId,
+        estimatedMins:  infillJobsTable.estimatedMins,
+        assessmentNotes:infillJobsTable.assessmentNotes,
+        createdAt:      infillJobsTable.createdAt,
+        updatedAt:      infillJobsTable.updatedAt,
+        assetName:      assetsTable.name,
+        assetDesc:      assetsTable.description,
+        gardenType:     assetsTable.gardenType,
+        suburb:         assetsTable.suburb,
+        streetAddress:  assetsTable.streetAddress,
+        lat:            assetsTable.lat,
+        lng:            assetsTable.lng,
+        serviceTimeMins:assetsTable.serviceTimeMins,
+        routeOrder:     assetsTable.routeOrder,
+        frequency:      assetsTable.frequency,
+      })
+      .from(infillJobsTable)
+      .innerJoin(assetsTable, eq(infillJobsTable.assetId, assetsTable.id))
+      .where(infillConditions)
+      .orderBy(
+        infillJobsTable.plannedDate,
+        sql`${assetsTable.routeOrder} NULLS LAST`,
+        assetsTable.name,
+      );
+
+    // Map infill statuses to the standard job status vocabulary the mobile app uses
+    const infillStatusMap: Record<string, string> = {
+      scheduled:   "pending",
+      in_progress: "in_progress",
+      completed:   "completed",
+    };
+
+    for (const ir of infillRows) {
+      const mapped = {
+        id:                ir.id,
+        assetId:           ir.assetId,
+        jobType:           "infill_planting" as const,
+        status:            infillStatusMap[ir.status] ?? "pending",
+        teamId:            ir.assignedTeamId,
+        isAllTeams:        false,
+        assignedUserId:    null,
+        scheduledDate:     ir.plannedDate,
+        startedAt:         null,
+        completedAt:       null,
+        actualTimeMins:    null,
+        estimatedTimeMins: ir.estimatedMins,
+        crewStatus:        null,
+        notes:             ir.assessmentNotes,
+        createdAt:         ir.createdAt,
+        updatedAt:         ir.updatedAt,
+        assetName:         ir.assetName,
+        assetDesc:         ir.assetDesc,
+        gardenType:        ir.gardenType,
+        suburb:            ir.suburb,
+        streetAddress:     ir.streetAddress,
+        lat:               ir.lat,
+        lng:               ir.lng,
+        serviceTimeMins:   ir.estimatedMins ?? ir.serviceTimeMins,
+        routeOrder:        ir.routeOrder,
+        frequency:         ir.frequency,
+        teamCompletions:   [],
+      };
+      dayMap.get(ir.plannedDate)?.push(mapped as any);
+    }
+    // ─────────────────────────────────────────────────────────────────────────
+
     const days = Array.from(dayMap.entries()).map(([date, jobs]) => ({ date, jobs }));
 
     res.json({
       weekStart,
       weekEnd,
       days,
-      totalJobs:     rows.length,
-      completedJobs: rows.filter(r => r.status === "completed").length,
+      totalJobs:     rows.length + infillRows.length,
+      completedJobs: rows.filter(r => r.status === "completed").length + infillRows.filter(r => r.status === "completed").length,
       settings: {
         productiveTimeMins: settings?.productiveTimeMins ?? 390,
         standardCrewSize:   settings?.standardCrewSize   ?? 2,
