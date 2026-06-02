@@ -243,6 +243,7 @@ export function ReactiveJobWizard({ teamsData, assetsData, onClose, onPublished 
   const [actions, setActions] = useState<Record<string, JobAction>>({});
   const [reassignTo, setReassignTo] = useState<Record<string, string>>({});
   const [isPublishing, setIsPublishing] = useState(false);
+  const [acceptOvertime, setAcceptOvertime] = useState(false);
 
   const { data: settingsData } = useQuery<{ reactivePriorities?: ReactivePriority[] }>({
     queryKey: ["system-settings"],
@@ -333,7 +334,7 @@ export function ReactiveJobWizard({ teamsData, assetsData, onClose, onPublished 
 
   const overTarget = resolvedTotal > PRODUCTIVE;
   const isGreen = resolvedTotal <= PRODUCTIVE;
-  const canPublish = !overTarget;
+  const canPublish = !overTarget || acceptOvertime;
 
   const resolvedJobsList = dayJobs.filter(j => actions[j.id] && actions[j.id] !== "none");
 
@@ -971,12 +972,34 @@ export function ReactiveJobWizard({ teamsData, assetsData, onClose, onPublished 
                   teamName={teamName}
                   dateLabel={dateLabel}
                 />
-                {overTarget && (
-                  <div className="mt-3 p-3 rounded-xl bg-red-50 border border-red-200 flex items-center gap-2">
-                    <AlertTriangle className="w-4 h-4 text-red-500 flex-shrink-0" />
-                    <p className="text-xs font-semibold text-red-700">
-                      Still {fmtMins(resolvedTotal - PRODUCTIVE)} over target — move or remove more work.
+                {overTarget && !acceptOvertime && (
+                  <div className="mt-3 p-3 rounded-xl bg-red-50 border border-red-200">
+                    <div className="flex items-center gap-2">
+                      <AlertTriangle className="w-4 h-4 text-red-500 flex-shrink-0" />
+                      <p className="text-xs font-semibold text-red-700 flex-1">
+                        Still {fmtMins(resolvedTotal - PRODUCTIVE)} over target — move or remove work, or accept the overtime.
+                      </p>
+                      <button
+                        onClick={() => setAcceptOvertime(true)}
+                        className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-white border border-red-300 text-red-700 hover:bg-red-100 transition-colors flex-shrink-0"
+                      >
+                        Accept overtime
+                      </button>
+                    </div>
+                  </div>
+                )}
+                {overTarget && acceptOvertime && (
+                  <div className="mt-3 p-3 rounded-xl bg-amber-50 border border-amber-200 flex items-center gap-2">
+                    <AlertTriangle className="w-4 h-4 text-amber-500 flex-shrink-0" />
+                    <p className="text-xs font-semibold text-amber-700 flex-1">
+                      Overtime accepted — team will work {fmtMins(resolvedTotal - PRODUCTIVE)} over target.
                     </p>
+                    <button
+                      onClick={() => setAcceptOvertime(false)}
+                      className="text-xs text-amber-600 underline hover:text-amber-800 flex-shrink-0"
+                    >
+                      Undo
+                    </button>
                   </div>
                 )}
                 {isGreen && (
@@ -1149,7 +1172,7 @@ export function ReactiveJobWizard({ teamsData, assetsData, onClose, onPublished 
 
               <div className="flex items-center justify-between">
                 <button
-                  onClick={() => setStep(2)}
+                  onClick={() => { setStep(2); setAcceptOvertime(false); }}
                   className="text-sm text-gray-400 hover:text-gray-600"
                 >
                   ← Back
