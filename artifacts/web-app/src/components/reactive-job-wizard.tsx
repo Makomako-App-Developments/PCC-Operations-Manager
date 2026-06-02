@@ -362,7 +362,7 @@ export function ReactiveJobWizard({ teamsData, assetsData, onClose, onPublished 
 
       await (
         createRJ as { mutateAsync: (d: unknown) => Promise<unknown> }
-      ).mutateAsync(rjBody);
+      ).mutateAsync({ data: rjBody });
 
       await Promise.all(
         dayJobs
