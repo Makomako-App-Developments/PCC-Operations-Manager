@@ -26,8 +26,10 @@ import { useToast } from "@/hooks/use-toast";
 import {
   Sprout, Plus, Layers, X, Search, ChevronRight,
   Calendar, Users, Leaf, FileText, AlertTriangle, CheckCircle2,
-  Download, ChevronDown, ChevronUp, Package,
+  Download, ChevronDown, ChevronUp, Package, List, Map as MapIcon,
 } from "lucide-react";
+import { MapContainer, TileLayer, CircleMarker, Tooltip, ZoomControl } from "react-leaflet";
+import "leaflet/dist/leaflet.css";
 
 const BRAND = "#00AECD";
 const NAVY  = "#0f2a36";
@@ -813,6 +815,138 @@ function MulchingTab({ assets }: { assets: { id: string; name: string; descripti
   );
 }
 
+// ─── Status colours for map markers ──────────────────────────────────────────
+
+const MARKER_COLORS: Record<JobStatus, string> = {
+  draft:       "#6b7280",
+  scheduled:   "#00AECD",
+  in_progress: "#d97706",
+  completed:   "#16a34a",
+  cancelled:   "#9ca3af",
+};
+
+// ─── Infill Map View ──────────────────────────────────────────────────────────
+
+interface MappedAsset {
+  id: string;
+  name: string;
+  lat: number | null;
+  lng: number | null;
+}
+
+function InfillMapView({
+  jobs,
+  assets,
+  statusFilter,
+  onSelectJob,
+}: {
+  jobs: InfillJob[];
+  assets: MappedAsset[];
+  statusFilter: JobStatus | "all";
+  onSelectJob: (id: string) => void;
+}) {
+  const assetCoords = useMemo(() => {
+    const m = new Map<string, { lat: number; lng: number }>();
+    for (const a of assets) {
+      if (a.lat != null && a.lng != null) m.set(a.id, { lat: a.lat, lng: a.lng });
+    }
+    return m;
+  }, [assets]);
+
+  const visibleJobs = useMemo(() => {
+    const filtered = statusFilter === "all" ? jobs : jobs.filter(j => j.status === statusFilter);
+    return filtered
+      .map(job => {
+        const coords = assetCoords.get(job.assetId);
+        if (!coords) return null;
+        const totalPlants = job.species.reduce((s, sp) => s + sp.quantity, 0);
+        return { job, lat: coords.lat, lng: coords.lng, totalPlants };
+      })
+      .filter((x): x is NonNullable<typeof x> => x !== null);
+  }, [jobs, statusFilter, assetCoords]);
+
+  const unmapped = useMemo(() => {
+    const filtered = statusFilter === "all" ? jobs : jobs.filter(j => j.status === statusFilter);
+    return filtered.filter(j => !assetCoords.has(j.assetId)).length;
+  }, [jobs, statusFilter, assetCoords]);
+
+  return (
+    <div className="space-y-3">
+      {unmapped > 0 && (
+        <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+          {unmapped} assessment{unmapped !== 1 ? "s" : ""} hidden — asset{unmapped !== 1 ? "s" : ""} have no map coordinates.
+        </p>
+      )}
+      <div style={{ height: 540, borderRadius: 16, overflow: "hidden", border: "1px solid #e5e7eb" }}>
+        <MapContainer
+          center={[-41.1280, 174.8520]}
+          zoom={13}
+          maxZoom={21}
+          style={{ height: "100%", width: "100%" }}
+          zoomControl={false}
+          attributionControl={false}
+        >
+          <ZoomControl position="bottomright" />
+          <TileLayer
+            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+            attribution="© OpenStreetMap contributors"
+            maxNativeZoom={19}
+            maxZoom={21}
+          />
+          {visibleJobs.map(({ job, lat, lng, totalPlants }) => {
+            const color = MARKER_COLORS[job.status] ?? "#6b7280";
+            const cfg = JOB_STATUS[job.status];
+            const radius = Math.max(10, Math.min(22, 10 + Math.sqrt(totalPlants) * 0.9));
+            return (
+              <CircleMarker
+                key={job.id}
+                center={[lat, lng]}
+                radius={radius}
+                pathOptions={{
+                  fillColor: color,
+                  fillOpacity: 0.9,
+                  color: "white",
+                  weight: 2.5,
+                }}
+                eventHandlers={{ click: () => onSelectJob(job.id) }}
+              >
+                <Tooltip direction="top" offset={[0, -(radius + 4)]} opacity={1}>
+                  <div style={{ fontFamily: "system-ui, sans-serif", lineHeight: 1.5, minWidth: 140 }}>
+                    <p style={{ fontWeight: 700, fontSize: 12, color: "#0f2a36", margin: 0 }}>
+                      {job.assetName ?? "Unknown site"}
+                    </p>
+                    <p style={{ fontSize: 10, margin: "2px 0 0", fontWeight: 600, color: cfg.color }}>
+                      {cfg.label}
+                    </p>
+                    <p style={{ fontSize: 10, color: "#6b7280", margin: "1px 0 0" }}>
+                      {totalPlants} plant{totalPlants !== 1 ? "s" : ""}
+                    </p>
+                    <p style={{ fontSize: 9, color: "#9ca3af", margin: "3px 0 0" }}>
+                      Click to open detail
+                    </p>
+                  </div>
+                </Tooltip>
+              </CircleMarker>
+            );
+          })}
+        </MapContainer>
+      </div>
+
+      {/* Map legend */}
+      <div className="flex flex-wrap items-center gap-x-5 gap-y-2 px-1">
+        <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Status</p>
+        {(["draft", "scheduled", "in_progress", "completed"] as JobStatus[]).map(s => (
+          <div key={s} className="flex items-center gap-1.5">
+            <span className="w-3 h-3 rounded-full flex-shrink-0" style={{ background: MARKER_COLORS[s] }} />
+            <span className="text-[10px] text-gray-600">{JOB_STATUS[s].label}</span>
+          </div>
+        ))}
+        <span className="text-[10px] text-gray-400 ml-auto">Marker size ∝ plant quantity</span>
+      </div>
+    </div>
+  );
+}
+
 // ─── Main page ────────────────────────────────────────────────────────────────
 
 export default function Programmes() {
@@ -830,7 +964,7 @@ export default function Programmes() {
   const { data: assetsData } = useListAssets({ limit: 500 }, {
     query: { queryKey: getListAssetsQueryKey({ limit: 500 }) },
   });
-  const assets: { id: string; name: string; description?: string | null; teamId?: string | null }[] = ((assetsData as any)?.data ?? []).map((a: any) => ({ id: a.id, name: a.name, description: a.description ?? null, teamId: a.teamId ?? null }));
+  const assets: { id: string; name: string; description?: string | null; teamId?: string | null; lat: number | null; lng: number | null }[] = ((assetsData as any)?.data ?? []).map((a: any) => ({ id: a.id, name: a.name, description: a.description ?? null, teamId: a.teamId ?? null, lat: a.lat ?? null, lng: a.lng ?? null }));
 
   // Teams
   const { data: teamsRaw } = useListTeams({ query: { queryKey: getListTeamsQueryKey() } as any });
@@ -867,6 +1001,7 @@ export default function Programmes() {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<JobStatus | "all">("all");
+  const [infillView, setInfillView] = useState<"list" | "map">("list");
 
   type SortKey = "assetName" | "assessmentNotes" | "totalPlants" | "status" | "teamName";
   const [sortKey, setSortKey] = useState<SortKey>("assetName");
@@ -1214,18 +1349,43 @@ export default function Programmes() {
             </div>
 
             {/* Toolbar */}
-            <div className="flex items-center justify-between">
-              <p className="text-sm text-gray-500">
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-sm text-gray-500 flex-1">
                 {filteredJobs.length} assessment{filteredJobs.length !== 1 ? "s" : ""}
                 {statusFilter !== "all" && ` · ${JOB_STATUS[statusFilter].label}`}
               </p>
+              {/* List / Map toggle */}
+              <div className="flex rounded-lg border border-gray-200 overflow-hidden flex-shrink-0">
+                <button
+                  onClick={() => setInfillView("list")}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold transition-colors ${infillView === "list" ? "text-white" : "bg-white text-gray-500 hover:bg-gray-50"}`}
+                  style={infillView === "list" ? { background: BRAND } : {}}>
+                  <List className="w-3.5 h-3.5" /> List
+                </button>
+                <button
+                  onClick={() => setInfillView("map")}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold transition-colors border-l border-gray-200 ${infillView === "map" ? "text-white" : "bg-white text-gray-500 hover:bg-gray-50"}`}
+                  style={infillView === "map" ? { background: BRAND } : {}}>
+                  <MapIcon className="w-3.5 h-3.5" /> Map
+                </button>
+              </div>
               <Button onClick={() => setDrawerOpen(true)} style={{ background: BRAND }}>
                 <Plus className="w-4 h-4 mr-1" /> New Assessment
               </Button>
             </div>
 
-            {/* Jobs table */}
-            {jobsLoading ? (
+            {/* Map view */}
+            {infillView === "map" && (
+              <InfillMapView
+                jobs={jobs}
+                assets={assets}
+                statusFilter={statusFilter}
+                onSelectJob={setSelectedJobId}
+              />
+            )}
+
+            {/* Jobs table (list view) */}
+            {infillView === "list" && (jobsLoading ? (
               <div className="space-y-2">{[...Array(4)].map((_, i) => <Skeleton key={i} className="h-10 w-full rounded-lg" />)}</div>
             ) : sortedJobs.length === 0 ? (
               <div className="text-center py-16 text-gray-400">
@@ -1336,7 +1496,7 @@ export default function Programmes() {
                   </tbody>
                 </table>
               </div>
-            )}
+            ))}
           </div>
         </TabsContent>
 
