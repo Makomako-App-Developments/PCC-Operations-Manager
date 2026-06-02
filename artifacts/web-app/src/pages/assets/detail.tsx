@@ -14,7 +14,7 @@ import {
   ArrowLeft, MapPin, Clock, CalendarDays, Ruler, Tag,
   CheckCircle2, AlertTriangle, ChevronDown, ChevronRight,
   Camera, History, Wrench, Pencil, CalendarCheck, Zap,
-  User, ImageIcon, Leaf, Info, Loader2, X, ClipboardCheck,
+  User, ImageIcon, Leaf, Info, Loader2, X, ClipboardCheck, Sprout,
 } from "lucide-react";
 import { MapContainer, TileLayer, CircleMarker, Polygon, Tooltip, useMap } from "react-leaflet";
 import L from "leaflet";
@@ -541,6 +541,141 @@ function FieldChangesTab({ assetId }: { assetId: string }) {
   );
 }
 
+// ─── Infill Planting tab ──────────────────────────────────────────────────────
+
+const INFILL_STATUS_CFG: Record<string, { label: string; bg: string; color: string }> = {
+  draft:       { label: "Draft",       bg: "#f3f4f6", color: "#6b7280" },
+  scheduled:   { label: "Scheduled",   bg: "#dbeafe", color: "#1d4ed8" },
+  in_progress: { label: "In Progress", bg: "#fef3c7", color: "#b45309" },
+  completed:   { label: "Completed",   bg: "#dcfce7", color: "#16a34a" },
+  cancelled:   { label: "Cancelled",   bg: "#f3f4f6", color: "#9ca3af" },
+};
+
+function InfillStatusBadge({ status }: { status: string }) {
+  const cfg = INFILL_STATUS_CFG[status] ?? { label: status, bg: "#f3f4f6", color: "#6b7280" };
+  return (
+    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full capitalize"
+      style={{ background: cfg.bg, color: cfg.color }}>
+      {cfg.label}
+    </span>
+  );
+}
+
+function InfillPlantingTab({ assetId, onJobClick }: { assetId: string; onJobClick: () => void }) {
+  const [jobs, setJobs]       = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    setLoading(true);
+    fetch(`/api/infill-jobs?assetId=${assetId}`, { credentials: "include" })
+      .then(r => r.json())
+      .then(d => setJobs(d.data ?? []))
+      .catch(() => setJobs([]))
+      .finally(() => setLoading(false));
+  }, [assetId]);
+
+  const fmt = (d?: string | null) =>
+    d ? new Date(d).toLocaleDateString("en-NZ", { day: "numeric", month: "short", year: "numeric" }) : "—";
+
+  if (loading) return (
+    <div className="flex-1 flex items-center justify-center">
+      <Loader2 className="w-5 h-5 animate-spin text-gray-400" />
+    </div>
+  );
+
+  return (
+    <div className="flex-1 overflow-y-auto">
+      <div className="px-6 py-4 border-b bg-gray-50 flex items-center justify-between">
+        <div>
+          <p className="text-sm font-semibold text-gray-800">Infill Planting Jobs</p>
+          <p className="text-xs text-gray-400 mt-0.5">
+            {jobs.length} job{jobs.length !== 1 ? "s" : ""} — click any job to open in Programmes
+          </p>
+        </div>
+        <button
+          onClick={onJobClick}
+          className="text-[11px] font-semibold px-3 py-1.5 rounded-lg transition-colors"
+          style={{ background: "#e0f7fb", color: BRAND }}>
+          View all in Programmes →
+        </button>
+      </div>
+
+      {jobs.length === 0 ? (
+        <div className="flex flex-col items-center justify-center py-16 text-gray-400">
+          <Sprout className="w-8 h-8 mb-3 opacity-40" />
+          <p className="text-sm font-medium">No infill planting jobs yet</p>
+          <p className="text-xs mt-1">Jobs created in Programmes will appear here</p>
+        </div>
+      ) : (
+        <div className="divide-y divide-gray-100">
+          {jobs.map(job => {
+            const totalPlants = (job.species ?? []).reduce((s: number, sp: any) => s + (sp.quantity ?? 0), 0);
+            return (
+              <button key={job.id}
+                onClick={onJobClick}
+                className="w-full px-6 py-4 flex items-start gap-4 hover:bg-gray-50 transition-colors text-left group">
+                {/* Date badge */}
+                <div className="flex-shrink-0 w-14 text-center">
+                  <div className="rounded-xl overflow-hidden shadow-sm border border-gray-200">
+                    <div className="py-0.5 text-[9px] font-bold text-white uppercase tracking-wide"
+                      style={{ background: NAVY }}>
+                      {new Date(job.assessmentDate).toLocaleDateString("en-NZ", { month: "short" })}
+                    </div>
+                    <div className="py-1.5 bg-white">
+                      <p className="text-lg font-bold text-gray-800 leading-none">
+                        {new Date(job.assessmentDate).getDate()}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap mb-1">
+                    <InfillStatusBadge status={job.status} />
+                    {job.teamName && (
+                      <span className="text-[10px] text-gray-500 flex items-center gap-1">
+                        <User className="w-2.5 h-2.5" />{job.teamName}
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-[11px] text-gray-500">
+                    Assessed {fmt(job.assessmentDate)}
+                    {job.assessorName ? ` by ${job.assessorName}` : ""}
+                  </p>
+                  {job.plannedDate && (
+                    <p className="text-[11px] text-gray-400 mt-0.5 flex items-center gap-1">
+                      <CalendarDays className="w-3 h-3" />Planned {fmt(job.plannedDate)}
+                    </p>
+                  )}
+                  {(job.species ?? []).length > 0 && (
+                    <div className="flex flex-wrap gap-1 mt-1.5">
+                      {(job.species as any[]).slice(0, 3).map((sp: any, i: number) => (
+                        <span key={i}
+                          className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full bg-lime-100 text-lime-700 italic">
+                          {sp.quantity}× {sp.speciesName}
+                        </span>
+                      ))}
+                      {(job.species ?? []).length > 3 && (
+                        <span className="text-[9px] text-gray-400">+{(job.species as any[]).length - 3} more</span>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex-shrink-0 text-right">
+                  <p className="text-base font-bold" style={{ color: BRAND }}>{totalPlants}</p>
+                  <p className="text-[10px] text-gray-400">plants</p>
+                </div>
+                <ChevronRight className="w-4 h-4 text-gray-300 group-hover:text-[#00AECD] self-center flex-shrink-0 transition-colors" />
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Edit form ────────────────────────────────────────────────────────────────
 
 type EditForm = {
@@ -723,7 +858,7 @@ export default function AssetDetail() {
   const { id } = useParams<{ id: string }>();
   const [, navigate] = useLocation();
   const [editing, setEditing] = useState(false);
-  const [activeTab, setActiveTab] = useState<"scheduled" | "history" | "changes">("history");
+  const [activeTab, setActiveTab] = useState<"scheduled" | "history" | "changes" | "infill">("history");
 
   const { data: asset, isLoading } = useGetAsset(id!, {
     query: { enabled: !!id, queryKey: getGetAssetQueryKey(id!) },
@@ -737,6 +872,7 @@ export default function AssetDetail() {
 
   const [scheduledCount, setScheduledCount]   = useState<number | null>(null);
   const [historyCount, setHistoryCount]       = useState<number | null>(null);
+  const [infillCount, setInfillCount]         = useState<number | null>(null);
 
   useEffect(() => {
     if (!id) return;
@@ -746,12 +882,15 @@ export default function AssetDetail() {
       fetch(`/api/jobs?assetId=${id}&status=completed,skipped&limit=100`, { credentials: "include" }).then(r => r.json()),
       fetch(`/api/reactive-jobs?assetId=${id}&status=completed,cancelled&limit=100`, { credentials: "include" }).then(r => r.json()),
     ]).then(([j, r]) => setHistoryCount((j.data?.length ?? 0) + (r.data?.length ?? 0))).catch(() => {});
+    fetch(`/api/infill-jobs?assetId=${id}`, { credentials: "include" })
+      .then(r => r.json()).then(d => setInfillCount((d.data ?? []).length)).catch(() => {});
   }, [id]);
 
   const tabs = [
-    { id: "scheduled", icon: CalendarCheck, label: "Scheduled Jobs", count: scheduledCount },
-    { id: "history",   icon: Wrench,        label: "Works History",  count: historyCount },
-    { id: "changes",   icon: History,       label: "Asset Edits",    count: null },
+    { id: "scheduled", icon: CalendarCheck, label: "Scheduled Jobs",   count: scheduledCount },
+    { id: "history",   icon: Wrench,        label: "Works History",    count: historyCount },
+    { id: "changes",   icon: History,       label: "Asset Edits",      count: null },
+    { id: "infill",    icon: Sprout,        label: "Infill Planting",  count: infillCount },
   ] as const;
 
   if (isLoading || !asset) {
@@ -932,6 +1071,13 @@ export default function AssetDetail() {
             )}
             {activeTab === "changes" && (
               <FieldChangesTab key={`changes-${id}`} assetId={id!} />
+            )}
+            {activeTab === "infill" && (
+              <InfillPlantingTab
+                key={`infill-${id}`}
+                assetId={id!}
+                onJobClick={() => navigate("/programmes")}
+              />
             )}
           </div>
         </div>
