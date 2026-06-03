@@ -335,7 +335,7 @@ export default function EditAudit() {
   const score = calcAuditScore(responses);
   const answered = ALL_KPIS.filter((k) => responses[k.key]?.result != null).length;
   const audit = auditData as any;
-  const assets: any[] = (assetsRaw as any) ?? [];
+  const assets: any[] = (assetsRaw as any)?.data ?? [];
   const auditAsset = assets.find((a: any) => a.id === audit?.assetId);
   const assetBoundary = auditAsset?.boundary ?? null;
 
