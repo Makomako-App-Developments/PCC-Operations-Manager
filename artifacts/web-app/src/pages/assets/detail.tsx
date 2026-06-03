@@ -8,13 +8,15 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQueryClient, useQuery } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
+import { format, parseISO } from "date-fns";
 import {
   ArrowLeft, MapPin, Clock, CalendarDays, Ruler, Tag,
   CheckCircle2, AlertTriangle, ChevronDown, ChevronRight,
   Camera, History, Wrench, Pencil, CalendarCheck, Zap,
   User, ImageIcon, Leaf, Info, Loader2, X, ClipboardCheck, Sprout,
+  Layers, Calendar, Plus,
 } from "lucide-react";
 import { MapContainer, TileLayer, CircleMarker, Polygon, Tooltip, useMap } from "react-leaflet";
 import L from "leaflet";
@@ -862,13 +864,358 @@ function EditPanel({
   );
 }
 
+// ─── Mulching tab helpers ─────────────────────────────────────────────────────
+
+const MULCH_TYPES_LIST = ["Bark Mulch", "Wood Chip", "Compost", "Straw", "Pea Gravel"];
+const MULCH_DECAY_RATES: Record<string, number> = {
+  "Bark Mulch": 4, "Wood Chip": 3, "Compost": 7, "Straw": 10, "Pea Gravel": 0.5,
+};
+const STD_DEPTH_MM    = 50;
+const ACTION_DEPTH_MM = 25;
+
+function mulchDecay(t: string) { return MULCH_DECAY_RATES[t] ?? 5; }
+
+function mulchAddDays(s: string, d: number) {
+  const dt = new Date(s + "T00:00:00Z");
+  dt.setUTCDate(dt.getUTCDate() + d);
+  return dt.toISOString().slice(0, 10);
+}
+function mulchToWeekday(s: string): string {
+  let d = s;
+  while ([0, 6].includes(new Date(d + "T00:00:00Z").getUTCDay())) d = mulchAddDays(d, 1);
+  return d;
+}
+function mulchProjectDate(depthMm: number, mulchType: string, readingDate: string): string {
+  const rate = mulchDecay(mulchType);
+  const depthToLose = Math.max(0, depthMm - ACTION_DEPTH_MM);
+  if (depthToLose === 0) return mulchToWeekday(readingDate);
+  const daysUntil = Math.round((depthToLose / rate) * 30.44);
+  const natural = mulchAddDays(readingDate, daysUntil);
+  const flex = mulchAddDays(natural, -3);
+  return mulchToWeekday(flex >= readingDate ? flex : readingDate);
+}
+
+function fmtMulch(d?: string | null) {
+  if (!d) return "—";
+  try { return format(parseISO(d), "d MMM yyyy"); } catch { return d; }
+}
+
+function DepthBar({ depthMm }: { depthMm: number }) {
+  const pct = Math.min(100, Math.round((depthMm / STD_DEPTH_MM) * 100));
+  const color = depthMm >= 40 ? "#22c55e" : depthMm >= ACTION_DEPTH_MM ? "#f59e0b" : "#ef4444";
+  return (
+    <div className="flex items-center gap-2">
+      <div className="flex-1 h-2 bg-gray-100 rounded-full overflow-hidden">
+        <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, background: color }} />
+      </div>
+      <span className="text-xs font-bold tabular-nums" style={{ color }}>{depthMm}mm</span>
+    </div>
+  );
+}
+
+function RecordDepthPanel({
+  assetId, assetName, onClose, onSaved,
+}: { assetId: string; assetName: string; onClose: () => void; onSaved: () => void }) {
+  const { toast } = useToast();
+  const today = new Date().toISOString().slice(0, 10);
+  const [depthMm, setDepthMm]       = useState("");
+  const [mulchType, setMulchType]   = useState(MULCH_TYPES_LIST[0]);
+  const [recordedAt, setRecordedAt] = useState(today);
+  const [notes, setNotes]           = useState("");
+  const [isFresh, setIsFresh]       = useState(false);
+  const [saving, setSaving]         = useState(false);
+
+  const effectiveDepth = isFresh ? STD_DEPTH_MM : (depthMm === "" ? 0 : Number(depthMm));
+  const projectedDate = (depthMm !== "" || isFresh) && mulchType && recordedAt
+    ? mulchProjectDate(effectiveDepth, mulchType, recordedAt) : null;
+  const isImmediate = effectiveDepth <= ACTION_DEPTH_MM && (depthMm !== "" || isFresh);
+
+  const handleSave = async () => {
+    if (depthMm === "" && !isFresh) { toast({ title: "Enter a depth in mm", variant: "destructive" }); return; }
+    setSaving(true);
+    try {
+      const r = await fetch("/api/mulch-depth-readings", {
+        method: "POST", credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          assetId, depthMm: isFresh ? STD_DEPTH_MM : effectiveDepth,
+          mulchType, recordedAt, notes: notes || null, isFreshApplication: isFresh,
+        }),
+      });
+      if (!r.ok) throw new Error(await r.text());
+      toast({ title: "Depth recorded", description: projectedDate ? `Draft job projected for ${fmtMulch(projectedDate)}` : "Reading saved" });
+      onSaved();
+      onClose();
+    } catch (e: unknown) {
+      toast({ title: "Failed to save", description: e instanceof Error ? e.message : "Unknown error", variant: "destructive" });
+    } finally { setSaving(false); }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex">
+      <div className="flex-1 bg-black/30" onClick={onClose} />
+      <div className="w-[380px] bg-white shadow-2xl flex flex-col overflow-y-auto">
+        <div className="px-6 py-4 border-b flex items-start justify-between" style={{ background: NAVY }}>
+          <div>
+            <p className="text-white text-sm font-bold flex items-center gap-2"><Ruler className="w-4 h-4" /> Record Mulch Depth</p>
+            <p className="text-white/50 text-[11px] mt-0.5">{assetName}</p>
+          </div>
+          <button onClick={onClose}><X className="w-5 h-5 text-white/40 hover:text-white" /></button>
+        </div>
+        <div className="flex-1 p-6 space-y-5">
+          <button
+            onClick={() => { setIsFresh(true); setDepthMm(String(STD_DEPTH_MM)); }}
+            className="w-full py-3 rounded-xl border-2 font-semibold text-sm flex items-center justify-center gap-2 transition-all"
+            style={isFresh ? { borderColor: BRAND, background: "#e0f7fb", color: BRAND } : { borderColor: "#e5e7eb", background: "white", color: "#374151" }}
+          >
+            <CheckCircle2 className="w-4 h-4" /> Freshly Mulched — set to {STD_DEPTH_MM}mm
+          </button>
+          <div className="relative flex items-center gap-3">
+            <div className="flex-1 h-px bg-gray-200" />
+            <span className="text-[11px] text-gray-400">or enter measured depth</span>
+            <div className="flex-1 h-px bg-gray-200" />
+          </div>
+          <div>
+            <Label className="text-xs font-medium text-gray-500 mb-1.5 block">Current Depth (mm)</Label>
+            <div className="flex items-center gap-2">
+              <Input type="number" min="0" max="200" value={depthMm}
+                onChange={e => { setIsFresh(false); setDepthMm(e.target.value); }}
+                placeholder="e.g. 32" className="rounded-xl flex-1" />
+              <span className="text-sm text-gray-400 font-medium">mm</span>
+            </div>
+          </div>
+          <div>
+            <Label className="text-xs font-medium text-gray-500 mb-1.5 block">Mulch Type</Label>
+            <select value={mulchType} onChange={e => setMulchType(e.target.value)}
+              className="w-full px-3 py-2 text-sm border border-gray-200 rounded-xl outline-none focus:border-[#00AECD] bg-white">
+              {MULCH_TYPES_LIST.map(t => <option key={t}>{t}</option>)}
+            </select>
+            <p className="text-[10px] text-gray-400 mt-1">Decay ~{mulchDecay(mulchType)} mm/month · threshold {ACTION_DEPTH_MM}mm</p>
+          </div>
+          <div>
+            <Label className="text-xs font-medium text-gray-500 mb-1.5 block">Reading Date</Label>
+            <Input type="date" value={recordedAt} onChange={e => setRecordedAt(e.target.value)} className="rounded-xl" />
+          </div>
+          <div>
+            <Label className="text-xs font-medium text-gray-500 mb-1.5 block">Notes (optional)</Label>
+            <Textarea value={notes} onChange={e => setNotes(e.target.value)} rows={2} className="rounded-xl resize-none" />
+          </div>
+          {projectedDate && (
+            <div className={`p-4 rounded-xl border ${isImmediate ? "bg-red-50 border-red-200" : "bg-violet-50 border-violet-200"}`}>
+              <div className="flex items-center gap-2 mb-1">
+                <Calendar className={`w-4 h-4 ${isImmediate ? "text-red-500" : "text-violet-600"}`} />
+                <span className={`text-xs font-bold ${isImmediate ? "text-red-800" : "text-violet-800"}`}>
+                  {isImmediate ? "⚠ Immediate action needed" : "Projected next job"}
+                </span>
+              </div>
+              <p className={`text-lg font-black ${isImmediate ? "text-red-700" : "text-violet-700"}`}>{fmtMulch(projectedDate)}</p>
+              <p className={`text-[10px] mt-0.5 ${isImmediate ? "text-red-500" : "text-violet-500"}`}>
+                {isImmediate
+                  ? `${effectiveDepth}mm is at or below the ${ACTION_DEPTH_MM}mm threshold — job required immediately.`
+                  : `Based on ${effectiveDepth}mm · ${mulchType} · ${mulchDecay(mulchType)} mm/month decay`}
+              </p>
+              <p className={`text-[10px] mt-1 font-medium ${isImmediate ? "text-red-600" : "text-violet-600"}`}>A draft mulching job will be created for this date.</p>
+            </div>
+          )}
+        </div>
+        <div className="px-6 py-4 border-t flex items-center gap-3">
+          <button onClick={onClose} className="flex-1 py-2 rounded-xl text-sm font-semibold border border-gray-200 text-gray-600 hover:bg-gray-50">Cancel</button>
+          <button onClick={handleSave} disabled={saving || (depthMm === "" && !isFresh)}
+            className="flex-1 py-2 rounded-xl text-sm font-semibold text-white disabled:opacity-40" style={{ background: BRAND }}>
+            {saving ? "Saving…" : "Save Reading"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function MulchingTab({ assetId, assetName }: { assetId: string; assetName: string }) {
+  const qc = useQueryClient();
+  const [showForm, setShowForm] = useState(false);
+
+  const { data: readingsData, isLoading: readingsLoading } = useQuery({
+    queryKey: ["/api/mulch-depth-readings", assetId],
+    queryFn: async () => {
+      const r = await fetch(`/api/mulch-depth-readings?assetId=${assetId}`, { credentials: "include" });
+      return r.json() as Promise<{ data: any[] }>;
+    },
+    staleTime: 30_000,
+  });
+
+  const { data: recordsData, isLoading: recordsLoading } = useQuery({
+    queryKey: ["/api/mulching-records", assetId],
+    queryFn: async () => {
+      const r = await fetch(`/api/mulching-records?assetId=${assetId}`, { credentials: "include" });
+      return r.json() as Promise<{ data: any[] }>;
+    },
+    staleTime: 30_000,
+  });
+
+  const readings = readingsData?.data ?? [];
+  const records  = recordsData?.data ?? [];
+  const latest   = readings[0] ?? null;
+
+  const statusLabel = (s: string) => ({
+    due: "Due", scheduled: "Scheduled", completed: "Completed", draft: "Draft", not_required: "Not required",
+  }[s] ?? s);
+  const statusColor = (s: string) => ({
+    due: "bg-amber-100 text-amber-700",
+    draft: "bg-violet-100 text-violet-700",
+    scheduled: "bg-blue-100 text-blue-700",
+    completed: "bg-green-100 text-green-700",
+    not_required: "bg-gray-100 text-gray-500",
+  }[s] ?? "bg-gray-100 text-gray-500");
+
+  return (
+    <div className="flex-1 flex flex-col overflow-hidden">
+      {/* Header */}
+      <div className="flex items-center justify-between px-6 py-4 border-b bg-white flex-shrink-0">
+        <div>
+          <p className="text-sm font-semibold text-gray-900">Mulching</p>
+          <p className="text-xs text-gray-400 mt-0.5">{readings.length} depth reading{readings.length !== 1 ? "s" : ""} · {records.length} job record{records.length !== 1 ? "s" : ""}</p>
+        </div>
+        <button
+          onClick={() => setShowForm(true)}
+          className="text-[11px] font-semibold px-3 py-1.5 rounded-lg border transition-colors flex items-center gap-1.5"
+          style={{ borderColor: BRAND, color: BRAND, background: "white" }}>
+          <Plus className="w-3 h-3" /> Record Depth
+        </button>
+      </div>
+
+      <div className="flex-1 overflow-auto px-6 py-5 space-y-6">
+        {/* Current status card */}
+        {readingsLoading ? (
+          <Skeleton className="h-24 w-full rounded-xl" />
+        ) : latest ? (
+          <div className="bg-white border border-gray-100 rounded-2xl shadow-sm p-5">
+            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-3">Current Mulch Status</p>
+            <div className="space-y-2">
+              <DepthBar depthMm={Number(latest.depthMm)} />
+              <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs mt-3">
+                <span className="text-gray-500">Last reading:</span>
+                <span className="text-gray-800 font-medium">{fmtMulch(latest.recordedAt)}</span>
+                <span className="text-gray-500">Mulch type:</span>
+                <span className="text-gray-800">{latest.mulchType ?? "—"}</span>
+                {latest.isFreshApplication && <>
+                  <span className="text-gray-500">Application:</span>
+                  <span className="text-green-700 font-semibold">Fresh application</span>
+                </>}
+                {latest.projectedJobDate && <>
+                  <span className="text-gray-500">Next job projected:</span>
+                  <span className={Number(latest.depthMm) <= ACTION_DEPTH_MM ? "text-red-600 font-semibold" : "text-violet-700 font-semibold"}>
+                    {fmtMulch(latest.projectedJobDate)}
+                  </span>
+                </>}
+                {latest.recordedByName && <>
+                  <span className="text-gray-500">Recorded by:</span>
+                  <span className="text-gray-800">{latest.recordedByName}</span>
+                </>}
+              </div>
+              {latest.notes && <p className="text-xs text-gray-500 italic mt-2 pt-2 border-t border-gray-50">"{latest.notes}"</p>}
+            </div>
+          </div>
+        ) : (
+          <div className="bg-white border border-dashed border-gray-200 rounded-2xl p-8 flex flex-col items-center justify-center text-center">
+            <Layers className="w-8 h-8 text-gray-300 mb-2" />
+            <p className="text-sm font-medium text-gray-400">No depth readings yet</p>
+            <p className="text-xs text-gray-300 mt-0.5">Record the current mulch depth to track condition over time</p>
+            <button onClick={() => setShowForm(true)}
+              className="mt-4 text-[11px] font-semibold px-4 py-2 rounded-lg text-white" style={{ background: BRAND }}>
+              Record First Reading
+            </button>
+          </div>
+        )}
+
+        {/* Mulching jobs */}
+        {records.length > 0 && (
+          <div>
+            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-3">Mulching Jobs</p>
+            <div className="space-y-2">
+              {records.map((rec: any) => (
+                <div key={rec.id} className="bg-white border border-gray-100 rounded-xl px-4 py-3 flex items-center gap-3 shadow-sm">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${statusColor(rec.status)}`}>
+                        {statusLabel(rec.status)}
+                      </span>
+                      {rec.scheduledDate && (
+                        <span className="text-xs text-gray-500 flex items-center gap-1">
+                          <Calendar className="w-3 h-3" />{fmtMulch(rec.scheduledDate)}
+                        </span>
+                      )}
+                    </div>
+                    <div className="grid grid-cols-2 gap-x-4 text-xs mt-1.5">
+                      {rec.mulchType && <><span className="text-gray-400">Type:</span><span className="text-gray-700">{rec.mulchType}</span></>}
+                      {rec.projectedDepthAtDue != null && <><span className="text-gray-400">Depth at due:</span><span className="text-gray-700">~{rec.projectedDepthAtDue}mm</span></>}
+                    </div>
+                  </div>
+                  {rec.completedDate && (
+                    <span className="text-[10px] text-green-600 font-semibold">Done {fmtMulch(rec.completedDate)}</span>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Readings history */}
+        {readings.length > 1 && (
+          <div>
+            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-3">Depth Reading History</p>
+            <div className="bg-white border border-gray-100 rounded-2xl shadow-sm overflow-hidden">
+              <table className="w-full text-xs">
+                <thead className="bg-gray-50 border-b border-gray-100">
+                  <tr>
+                    <th className="text-left px-4 py-2.5 text-[10px] font-bold text-gray-400 uppercase">Date</th>
+                    <th className="text-left px-4 py-2.5 text-[10px] font-bold text-gray-400 uppercase">Depth</th>
+                    <th className="text-left px-4 py-2.5 text-[10px] font-bold text-gray-400 uppercase">Type</th>
+                    <th className="text-left px-4 py-2.5 text-[10px] font-bold text-gray-400 uppercase hidden sm:table-cell">Recorded by</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-50">
+                  {readings.map((r: any) => (
+                    <tr key={r.id} className="hover:bg-gray-50 transition-colors">
+                      <td className="px-4 py-2.5 text-gray-700">{fmtMulch(r.recordedAt)}</td>
+                      <td className="px-4 py-2.5">
+                        <span className={`font-semibold ${Number(r.depthMm) <= ACTION_DEPTH_MM ? "text-red-600" : Number(r.depthMm) < 40 ? "text-amber-600" : "text-green-600"}`}>
+                          {r.depthMm}mm
+                        </span>
+                        {r.isFreshApplication && <span className="ml-1 text-[9px] text-green-600 font-bold">FRESH</span>}
+                      </td>
+                      <td className="px-4 py-2.5 text-gray-500">{r.mulchType ?? "—"}</td>
+                      <td className="px-4 py-2.5 text-gray-500 hidden sm:table-cell">{r.recordedByName ?? "—"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {showForm && (
+        <RecordDepthPanel
+          assetId={assetId}
+          assetName={assetName}
+          onClose={() => setShowForm(false)}
+          onSaved={() => {
+            qc.invalidateQueries({ queryKey: ["/api/mulch-depth-readings", assetId] });
+            qc.invalidateQueries({ queryKey: ["/api/mulching-records", assetId] });
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
 // ─── Main page ────────────────────────────────────────────────────────────────
 
 export default function AssetDetail() {
   const { id } = useParams<{ id: string }>();
   const [, navigate] = useLocation();
   const [editing, setEditing] = useState(false);
-  const [activeTab, setActiveTab] = useState<"scheduled" | "history" | "changes" | "infill">("history");
+  const [activeTab, setActiveTab] = useState<"scheduled" | "history" | "changes" | "infill" | "mulching">("history");
 
   const { data: asset, isLoading } = useGetAsset(id!, {
     query: { enabled: !!id, queryKey: getGetAssetQueryKey(id!) },
@@ -883,6 +1230,7 @@ export default function AssetDetail() {
   const [scheduledCount, setScheduledCount]   = useState<number | null>(null);
   const [historyCount, setHistoryCount]       = useState<number | null>(null);
   const [infillCount, setInfillCount]         = useState<number | null>(null);
+  const [mulchingCount, setMulchingCount]     = useState<number | null>(null);
 
   useEffect(() => {
     if (!id) return;
@@ -894,6 +1242,8 @@ export default function AssetDetail() {
     ]).then(([j, r]) => setHistoryCount((j.data?.length ?? 0) + (r.data?.length ?? 0))).catch(() => {});
     fetch(`/api/infill-jobs?assetId=${id}`, { credentials: "include" })
       .then(r => r.json()).then(d => setInfillCount((d.data ?? []).length)).catch(() => {});
+    fetch(`/api/mulch-depth-readings?assetId=${id}`, { credentials: "include" })
+      .then(r => r.json()).then(d => setMulchingCount((d.data ?? []).length)).catch(() => {});
   }, [id]);
 
   const tabs = [
@@ -901,6 +1251,7 @@ export default function AssetDetail() {
     { id: "history",   icon: Wrench,        label: "Works History",    count: historyCount },
     { id: "changes",   icon: History,       label: "Asset Edits",      count: null },
     { id: "infill",    icon: Sprout,        label: "Infill Planting",  count: infillCount },
+    { id: "mulching",  icon: Layers,        label: "Mulching",         count: mulchingCount },
   ] as const;
 
   if (isLoading || !asset) {
@@ -1099,6 +1450,13 @@ export default function AssetDetail() {
                 assetId={id!}
                 onJobClick={() => navigate("/programmes")}
                 onNewAssessment={() => navigate(`/programmes?newAssessment=${id}`)}
+              />
+            )}
+            {activeTab === "mulching" && (
+              <MulchingTab
+                key={`mulching-${id}`}
+                assetId={id!}
+                assetName={(asset as any)?.name ?? ""}
               />
             )}
           </div>
