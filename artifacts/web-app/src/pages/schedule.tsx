@@ -276,10 +276,7 @@ function DailyGanttView({
                     <td className="py-1.5 px-3 sticky z-10 text-gray-600 capitalize" style={{ left: 310, background: rowBg, width: 70 }}>{row.frequency}</td>
                     <td className="py-1.5 px-3 sticky z-10 text-gray-600"            style={{ left: 380, background: rowBg, width: 55 }}>{row.jobs[0]?.estimatedTimeMins ?? row.serviceTimeMins}m</td>
                     <td className="py-1.5 px-3 sticky z-10 border-r border-gray-200" style={{ left: 435, background: rowBg, width: 115 }}>
-                      <div className="flex items-center gap-1.5">
-                        <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: color }} />
-                        <span className="text-gray-600 truncate max-w-[90px]">{name}</span>
-                      </div>
+                      <span className="text-gray-600 truncate max-w-[90px]">{name}</span>
                     </td>
                     {days.map(d => {
                       const cellJobs = jobsByAssetDay.get(`${row.assetId}|${d.key}`) ?? [];
@@ -430,7 +427,6 @@ function GanttView({
             const name  = getTeamName(tid);
             return (
               <div key={k} className="bg-white rounded-xl px-4 py-2 shadow-sm border border-gray-100 flex items-center gap-2.5 flex-shrink-0">
-                <div className="w-2.5 h-2.5 rounded-full" style={{ background: color }} />
                 <div>
                   <p className="text-xs font-semibold text-gray-800 leading-tight">{name}</p>
                   <p className="text-[10px] text-gray-500">{teamAssetMap.get(k)} assets · {jobCount} jobs</p>
@@ -506,10 +502,7 @@ function GanttView({
                     <td className="py-2 px-3 sticky z-10 text-gray-600 capitalize" style={{ left: 310, background: rowBg, width: 70 }}>{row.frequency}</td>
                     <td className="py-2 px-3 sticky z-10 text-gray-600"            style={{ left: 380, background: rowBg, width: 55 }}>{row.jobs[0]?.estimatedTimeMins ?? row.serviceTimeMins}m</td>
                     <td className="py-2 px-3 sticky z-10 border-r border-gray-200" style={{ left: 435, background: rowBg, width: 115 }}>
-                      <div className="flex items-center gap-1.5">
-                        <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: color }} />
-                        <span className="text-gray-600 truncate max-w-[90px]">{name}</span>
-                      </div>
+                      <span className="text-gray-600 truncate max-w-[90px]">{name}</span>
                     </td>
                     {weeks.map(w => (
                       <td key={w.key} className="py-2 px-2 border-l border-l-gray-100 align-top" style={{ background: rowBg }}>

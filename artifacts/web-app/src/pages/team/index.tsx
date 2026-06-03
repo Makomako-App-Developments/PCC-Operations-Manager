@@ -510,10 +510,6 @@ function WorkloadTab() {
                   <tr key={row.teamId ?? "all"} className={`hover:bg-gray-50/60 transition-colors ${isAllTeams ? "bg-gray-50/40" : ""}`}>
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-2.5">
-                        <span
-                          className="w-2.5 h-2.5 rounded-full flex-shrink-0"
-                          style={{ background: color }}
-                        />
                         <span className={`text-sm font-semibold ${isAllTeams ? "text-gray-500 italic" : "text-gray-800"}`}>
                           {row.teamName}
                         </span>
