@@ -358,7 +358,7 @@ export function ReactiveJobWizard({ teamsData, assetsData, onClose, onPublished 
         scheduledDate: selectedDate,
         estimatedTimeMins: serviceMin,
         location: location || undefined,
-        status: "raised",
+        status: selectedTeamId ? "assigned" : "raised",
       };
       if (locationType === "asset" && selectedAssetId) {
         rjBody.assetId = selectedAssetId;
