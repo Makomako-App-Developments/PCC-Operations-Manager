@@ -1635,7 +1635,7 @@ function MulchingTab({
               >
                 <option value="">— Select a garden —</option>
                 {assets.slice().sort((a, b) => (a.name ?? "").localeCompare(b.name ?? "")).map((a: any) => (
-                  <option key={a.id} value={a.id}>{a.name}</option>
+                  <option key={a.id} value={a.id}>{a.name}{a.description ? ` — ${a.description}` : ""}</option>
                 ))}
               </select>
             </div>
