@@ -2166,7 +2166,7 @@ export default function Programmes() {
     }
   }, [search]);
 
-  type SortKey = "assetName" | "assessmentNotes" | "totalPlants" | "status" | "teamName";
+  type SortKey = "assetName" | "assessmentNotes" | "totalPlants" | "status" | "teamName" | "plannedDate";
   const [sortKey, setSortKey] = useState<SortKey>("assetName");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
 
@@ -2568,6 +2568,7 @@ export default function Programmes() {
                         { key: "assessmentNotes",  label: "Description" },
                         { key: "totalPlants",      label: "Plants" },
                         { key: "status",           label: "Status" },
+                        { key: "plannedDate",      label: "Scheduled Date" },
                         { key: "teamName",         label: "Team" },
                       ] as { key: SortKey; label: string }[]).map(col => (
                         <th key={col.key}
@@ -2614,19 +2615,17 @@ export default function Programmes() {
                           <td className="px-4 py-3">
                             <StatusBadge status={job.status} />
                           </td>
+                          <td className="px-4 py-3 whitespace-nowrap">
+                            {job.plannedDate
+                              ? <span className="text-xs text-gray-700 flex items-center gap-1"><Calendar className="w-3 h-3 text-gray-400 flex-shrink-0" />{fmt(job.plannedDate)}</span>
+                              : <span className="text-gray-300 text-xs italic">—</span>
+                            }
+                          </td>
                           <td className="px-4 py-3">
-                            {job.teamName ? (
-                              <div>
-                                <div className="text-xs font-medium text-gray-700">{job.teamName}</div>
-                                {job.plannedDate && (
-                                  <div className="text-[10px] text-gray-400 mt-0.5 flex items-center gap-1">
-                                    <Calendar className="w-3 h-3" />{fmt(job.plannedDate)}
-                                  </div>
-                                )}
-                              </div>
-                            ) : (
-                              <span className="text-gray-300 text-xs italic">Unassigned</span>
-                            )}
+                            {job.teamName
+                              ? <span className="text-xs font-medium text-gray-700">{job.teamName}</span>
+                              : <span className="text-gray-300 text-xs italic">Unassigned</span>
+                            }
                           </td>
                           <td className="px-4 py-3" onClick={e => e.stopPropagation()}>
                             <div className="flex items-center gap-1.5 justify-end">
