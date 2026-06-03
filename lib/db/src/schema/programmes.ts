@@ -1,5 +1,5 @@
 import {
-  pgTable, uuid, timestamp, integer, text, numeric, date, varchar, index
+  pgTable, uuid, timestamp, integer, text, numeric, date, varchar, index, boolean
 } from "drizzle-orm/pg-core";
 import { createInsertSchema, createSelectSchema } from "drizzle-zod";
 import { z } from "zod/v4";
@@ -51,36 +51,65 @@ export const infillOrdersTable = pgTable("infill_orders", {
   index("infill_orders_infill_job_id_idx").on(t.infillJobId),
 ]);
 
+// Mulch depth readings — records of measured or freshly-applied depth per asset
+export const mulchDepthReadingsTable = pgTable("mulch_depth_readings", {
+  id:                 uuid("id").primaryKey().defaultRandom(),
+  assetId:            uuid("asset_id").notNull().references(() => assetsTable.id),
+  depthMm:            integer("depth_mm").notNull(),
+  mulchType:          varchar("mulch_type", { length: 100 }),
+  recordedAt:         date("recorded_at").notNull(),
+  recordedById:       uuid("recorded_by_id").references(() => usersTable.id),
+  notes:              text("notes"),
+  isFreshApplication: boolean("is_fresh_application").notNull().default(false),
+  projectedJobDate:   date("projected_job_date"),   // computed: when depth reaches action threshold
+  createdAt:          timestamp("created_at").notNull().defaultNow(),
+}, (t) => [
+  index("mulch_depth_readings_asset_id_idx").on(t.assetId),
+  index("mulch_depth_readings_recorded_at_idx").on(t.recordedAt),
+]);
+
 // Mulching programme records
 export const mulchingRecordsTable = pgTable("mulching_records", {
-  id:            uuid("id").primaryKey().defaultRandom(),
-  assetId:       uuid("asset_id").notNull().references(() => assetsTable.id),
-  scheduledDate: date("scheduled_date"),
-  completedDate: date("completed_date"),
-  volumeM3:      numeric("volume_m3", { precision: 8, scale: 2 }),
-  status:        mulchingStatusEnum("status").notNull().default("due"),
-  mulchType:     varchar("mulch_type", { length: 100 }),
-  contractor:    varchar("contractor", { length: 200 }),
-  costNzd:       numeric("cost_nzd", { precision: 10, scale: 2 }),
-  notes:         text("notes"),
-  createdAt:     timestamp("created_at").notNull().defaultNow(),
-  updatedAt:     timestamp("updated_at").notNull().defaultNow(),
+  id:                  uuid("id").primaryKey().defaultRandom(),
+  assetId:             uuid("asset_id").notNull().references(() => assetsTable.id),
+  scheduledDate:       date("scheduled_date"),
+  completedDate:       date("completed_date"),
+  volumeM3:            numeric("volume_m3", { precision: 8, scale: 2 }),
+  status:              mulchingStatusEnum("status").notNull().default("due"),
+  mulchType:           varchar("mulch_type", { length: 100 }),
+  contractor:          varchar("contractor", { length: 200 }),
+  costNzd:             numeric("cost_nzd", { precision: 10, scale: 2 }),
+  notes:               text("notes"),
+  // FK to the depth reading that triggered this draft record (nullable)
+  sourceReadingId:     uuid("source_reading_id").references(() => mulchDepthReadingsTable.id),
+  // Projected remaining depth at scheduled due date (for display context)
+  projectedDepthAtDue: integer("projected_depth_at_due"),
+  // Scheduling assignment (set when a manager publishes via Review & Schedule)
+  assignedTeamId:      uuid("assigned_team_id").references(() => teamsTable.id),
+  estimatedMins:       integer("estimated_mins"),
+  createdAt:           timestamp("created_at").notNull().defaultNow(),
+  updatedAt:           timestamp("updated_at").notNull().defaultNow(),
 }, (t) => [
   index("mulching_records_asset_id_idx").on(t.assetId),
   index("mulching_records_status_idx").on(t.status),
   index("mulching_records_scheduled_date_idx").on(t.scheduledDate),
+  index("mulching_records_source_reading_id_idx").on(t.sourceReadingId),
 ]);
 
-export const insertInfillJobSchema    = createInsertSchema(infillJobsTable).omit({ id: true, createdAt: true, updatedAt: true });
-export const insertInfillOrderSchema  = createInsertSchema(infillOrdersTable).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertInfillJobSchema      = createInsertSchema(infillJobsTable).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertInfillOrderSchema    = createInsertSchema(infillOrdersTable).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertMulchingRecordSchema = createInsertSchema(mulchingRecordsTable).omit({ id: true, createdAt: true, updatedAt: true });
-export const selectInfillJobSchema    = createSelectSchema(infillJobsTable);
-export const selectInfillOrderSchema  = createSelectSchema(infillOrdersTable);
+export const insertMulchDepthReadingSchema = createInsertSchema(mulchDepthReadingsTable).omit({ id: true, createdAt: true });
+export const selectInfillJobSchema      = createSelectSchema(infillJobsTable);
+export const selectInfillOrderSchema    = createSelectSchema(infillOrdersTable);
 export const selectMulchingRecordSchema = createSelectSchema(mulchingRecordsTable);
+export const selectMulchDepthReadingSchema = createSelectSchema(mulchDepthReadingsTable);
 
-export type InsertInfillJob      = z.infer<typeof insertInfillJobSchema>;
-export type InfillJob            = typeof infillJobsTable.$inferSelect;
-export type InsertInfillOrder    = z.infer<typeof insertInfillOrderSchema>;
-export type InfillOrder          = typeof infillOrdersTable.$inferSelect;
-export type InsertMulchingRecord = z.infer<typeof insertMulchingRecordSchema>;
-export type MulchingRecord       = typeof mulchingRecordsTable.$inferSelect;
+export type InsertInfillJob         = z.infer<typeof insertInfillJobSchema>;
+export type InfillJob               = typeof infillJobsTable.$inferSelect;
+export type InsertInfillOrder       = z.infer<typeof insertInfillOrderSchema>;
+export type InfillOrder             = typeof infillOrdersTable.$inferSelect;
+export type InsertMulchingRecord    = z.infer<typeof insertMulchingRecordSchema>;
+export type MulchingRecord          = typeof mulchingRecordsTable.$inferSelect;
+export type InsertMulchDepthReading = z.infer<typeof insertMulchDepthReadingSchema>;
+export type MulchDepthReading       = typeof mulchDepthReadingsTable.$inferSelect;

@@ -1,10 +1,17 @@
 import { Router } from "express";
-import { db, infillJobsTable, infillOrdersTable, mulchingRecordsTable, assetsTable, teamsTable, usersTable, insertInfillJobSchema, insertInfillOrderSchema, insertMulchingRecordSchema } from "@workspace/db";
-import { eq, and, inArray } from "drizzle-orm";
+import {
+  db, infillJobsTable, infillOrdersTable, mulchingRecordsTable, mulchDepthReadingsTable,
+  assetsTable, teamsTable, usersTable,
+  insertInfillJobSchema, insertInfillOrderSchema, insertMulchingRecordSchema,
+} from "@workspace/db";
+import { eq, and, inArray, desc } from "drizzle-orm";
 import { requireAuth, requireRole } from "../middlewares/auth";
 import { validateBody } from "../middlewares/validate";
 import { z } from "zod/v4";
 import { auditLog } from "../lib/audit";
+import {
+  projectNextJobDate, STANDARD_DEPTH_MM, ACTION_THRESHOLD_MM, decayRateForType,
+} from "../lib/mulch-decay";
 
 const router = Router();
 
@@ -46,7 +53,6 @@ router.get("/infill-jobs", requireAuth, async (req, res) => {
     return;
   }
 
-  // Fetch all species lines for returned jobs
   const jobIds = jobs.map(j => j.id);
   const orders = await db
     .select()
@@ -76,7 +82,6 @@ const createInfillJobSchema = insertInfillJobSchema.extend({
   })).min(1),
 });
 
-// Only mutable fields allowed in PATCH — no arbitrary column overwrite
 const patchInfillJobSchema = z.object({
   assignedTeamId:  z.string().uuid().nullable().optional(),
   plannedDate:     z.string().nullable().optional(),
@@ -85,7 +90,6 @@ const patchInfillJobSchema = z.object({
   status: z.enum(["draft", "scheduled", "in_progress", "completed", "cancelled"]).optional(),
 });
 
-// Valid state-machine transitions for infill jobs
 type InfillJobStatus = "draft" | "scheduled" | "in_progress" | "completed" | "cancelled";
 const ALLOWED_TRANSITIONS: Record<InfillJobStatus, InfillJobStatus[]> = {
   draft:       ["scheduled", "cancelled"],
@@ -107,7 +111,7 @@ router.post(
       const [created] = await tx.insert(infillJobsTable).values({
         ...jobData,
         assessedById: req.auth!.userId,
-        status: "draft", // always create as draft regardless of client input
+        status: "draft",
       }).returning();
 
       await tx.insert(infillOrdersTable).values(
@@ -147,7 +151,6 @@ router.patch(
 
     const patch = (res.locals.body ?? req.body) as z.infer<typeof patchInfillJobSchema>;
 
-    // Enforce state machine if status is being changed
     if (patch.status && patch.status !== before.status) {
       const allowed = ALLOWED_TRANSITIONS[before.status as InfillJobStatus] ?? [];
       if (!allowed.includes(patch.status as InfillJobStatus)) {
@@ -158,7 +161,6 @@ router.patch(
       }
     }
 
-    // Require team + planned date when scheduling
     if (patch.status === "scheduled") {
       const resolvedTeam = patch.assignedTeamId ?? before.assignedTeamId;
       const resolvedDate = patch.plannedDate ?? before.plannedDate;
@@ -197,7 +199,7 @@ router.delete(
   },
 );
 
-// ─── Infill Orders (legacy single-line endpoint) ──────────────────────────────
+// ─── Infill Orders ────────────────────────────────────────────────────────────
 
 router.get("/infill-orders", requireAuth, async (req, res) => {
   const { assetId, status } = req.query as Record<string, string | undefined>;
@@ -271,19 +273,23 @@ router.get("/mulching-records", requireAuth, async (req, res) => {
 
   const rows = await db
     .select({
-      id:            mulchingRecordsTable.id,
-      assetId:       mulchingRecordsTable.assetId,
-      assetName:     assetsTable.name,
-      scheduledDate: mulchingRecordsTable.scheduledDate,
-      completedDate: mulchingRecordsTable.completedDate,
-      volumeM3:      mulchingRecordsTable.volumeM3,
-      status:        mulchingRecordsTable.status,
-      mulchType:     mulchingRecordsTable.mulchType,
-      contractor:    mulchingRecordsTable.contractor,
-      costNzd:       mulchingRecordsTable.costNzd,
-      notes:         mulchingRecordsTable.notes,
-      createdAt:     mulchingRecordsTable.createdAt,
-      updatedAt:     mulchingRecordsTable.updatedAt,
+      id:                  mulchingRecordsTable.id,
+      assetId:             mulchingRecordsTable.assetId,
+      assetName:           assetsTable.name,
+      scheduledDate:       mulchingRecordsTable.scheduledDate,
+      completedDate:       mulchingRecordsTable.completedDate,
+      volumeM3:            mulchingRecordsTable.volumeM3,
+      status:              mulchingRecordsTable.status,
+      mulchType:           mulchingRecordsTable.mulchType,
+      contractor:          mulchingRecordsTable.contractor,
+      costNzd:             mulchingRecordsTable.costNzd,
+      notes:               mulchingRecordsTable.notes,
+      sourceReadingId:     mulchingRecordsTable.sourceReadingId,
+      projectedDepthAtDue: mulchingRecordsTable.projectedDepthAtDue,
+      assignedTeamId:      mulchingRecordsTable.assignedTeamId,
+      estimatedMins:       mulchingRecordsTable.estimatedMins,
+      createdAt:           mulchingRecordsTable.createdAt,
+      updatedAt:           mulchingRecordsTable.updatedAt,
     })
     .from(mulchingRecordsTable)
     .leftJoin(assetsTable, eq(mulchingRecordsTable.assetId, assetsTable.id))
@@ -318,6 +324,137 @@ router.patch(
       .returning();
     if (!updated) { res.status(404).json({ error: "Mulching record not found" }); return; }
     res.json(updated);
+  },
+);
+
+// ─── Mulch Depth Readings ─────────────────────────────────────────────────────
+
+const createDepthReadingSchema = z.object({
+  assetId:            z.string().uuid(),
+  depthMm:            z.number().int().nonnegative(),
+  mulchType:          z.string().max(100).nullable().optional(),
+  recordedAt:         z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  notes:              z.string().nullable().optional(),
+  isFreshApplication: z.boolean().optional().default(false),
+});
+
+router.get("/mulch-depth-readings", requireAuth, async (req, res) => {
+  const { assetId } = req.query as Record<string, string | undefined>;
+  const conditions = [];
+  if (assetId) conditions.push(eq(mulchDepthReadingsTable.assetId, assetId));
+
+  const rows = await db
+    .select({
+      id:                 mulchDepthReadingsTable.id,
+      assetId:            mulchDepthReadingsTable.assetId,
+      assetName:          assetsTable.name,
+      depthMm:            mulchDepthReadingsTable.depthMm,
+      mulchType:          mulchDepthReadingsTable.mulchType,
+      recordedAt:         mulchDepthReadingsTable.recordedAt,
+      recordedById:       mulchDepthReadingsTable.recordedById,
+      recordedByName:     usersTable.name,
+      notes:              mulchDepthReadingsTable.notes,
+      isFreshApplication: mulchDepthReadingsTable.isFreshApplication,
+      projectedJobDate:   mulchDepthReadingsTable.projectedJobDate,
+      createdAt:          mulchDepthReadingsTable.createdAt,
+    })
+    .from(mulchDepthReadingsTable)
+    .leftJoin(assetsTable, eq(mulchDepthReadingsTable.assetId, assetsTable.id))
+    .leftJoin(usersTable,  eq(mulchDepthReadingsTable.recordedById, usersTable.id))
+    .where(conditions.length ? and(...conditions) : undefined)
+    .orderBy(desc(mulchDepthReadingsTable.recordedAt), desc(mulchDepthReadingsTable.createdAt))
+    .limit(200);
+
+  res.json({ data: rows, total: rows.length });
+});
+
+router.post(
+  "/mulch-depth-readings",
+  requireAuth,
+  requireRole("manager", "supervisor"),
+  validateBody(createDepthReadingSchema),
+  async (req, res) => {
+    const body = (res.locals.body ?? req.body) as z.infer<typeof createDepthReadingSchema>;
+
+    const effectiveDepth = body.isFreshApplication ? STANDARD_DEPTH_MM : body.depthMm;
+    const projectedJobDate = projectNextJobDate(effectiveDepth, body.mulchType, body.recordedAt);
+
+    const result = await db.transaction(async tx => {
+      const [reading] = await tx
+        .insert(mulchDepthReadingsTable)
+        .values({
+          assetId:            body.assetId,
+          depthMm:            effectiveDepth,
+          mulchType:          body.mulchType ?? null,
+          recordedAt:         body.recordedAt,
+          recordedById:       req.auth?.userId ?? null,
+          notes:              body.notes ?? null,
+          isFreshApplication: body.isFreshApplication ?? false,
+          projectedJobDate,
+        })
+        .returning();
+
+      // Projected remaining depth at the due date (for display context)
+      const rate = decayRateForType(body.mulchType);
+      const readingDate    = new Date(body.recordedAt + "T00:00:00Z");
+      const projectedDate  = new Date(projectedJobDate + "T00:00:00Z");
+      const monthsToTarget = (projectedDate.getTime() - readingDate.getTime()) / (1000 * 60 * 60 * 24 * 30.44);
+      const projectedDepthAtDue = Math.max(0, Math.round(effectiveDepth - rate * monthsToTarget));
+
+      // Check for an existing draft mulching record for this asset
+      const [existingDraft] = await tx
+        .select()
+        .from(mulchingRecordsTable)
+        .where(and(
+          eq(mulchingRecordsTable.assetId, body.assetId),
+          eq(mulchingRecordsTable.status, "draft"),
+        ))
+        .limit(1);
+
+      let draft;
+      if (existingDraft) {
+        // Update the existing draft's projected date and source reading
+        const [updated] = await tx
+          .update(mulchingRecordsTable)
+          .set({
+            scheduledDate:       projectedJobDate,
+            mulchType:           body.mulchType ?? existingDraft.mulchType,
+            sourceReadingId:     reading.id,
+            projectedDepthAtDue,
+            updatedAt:           new Date(),
+          })
+          .where(eq(mulchingRecordsTable.id, existingDraft.id))
+          .returning();
+        draft = updated;
+      } else {
+        // Create a new draft mulching record
+        const [created] = await tx
+          .insert(mulchingRecordsTable)
+          .values({
+            assetId:             body.assetId,
+            status:              "draft",
+            scheduledDate:       projectedJobDate,
+            mulchType:           body.mulchType ?? null,
+            sourceReadingId:     reading.id,
+            projectedDepthAtDue,
+          })
+          .returning();
+        draft = created;
+      }
+
+      return { reading, draft };
+    });
+
+    await auditLog({
+      tableName:   "mulch_depth_readings",
+      recordId:    result.reading.id,
+      action:      "INSERT",
+      changedById: req.auth?.userId ?? null,
+      newData:     result.reading as Record<string, unknown>,
+      ipAddress:   req.ip ?? null,
+    });
+
+    res.status(201).json(result);
   },
 );
 

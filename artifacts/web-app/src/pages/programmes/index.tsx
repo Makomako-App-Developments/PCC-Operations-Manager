@@ -6,6 +6,7 @@ import {
   useCreateMulchingRecord, useUpdateMulchingRecord,
   useListTeams, getListTeamsQueryKey,
   useGetScheduleWeek, getGetScheduleWeekQueryKey,
+  useUpdateJob,
 } from "@workspace/api-client-react";
 import { CapBar, fmtMins, mondayOf, PRODUCTIVE } from "@/components/reactive-job-wizard";
 import { Button } from "@/components/ui/button";
@@ -27,6 +28,7 @@ import {
   Sprout, Plus, Layers, X, Search, ChevronRight,
   Calendar, Users, Leaf, FileText, AlertTriangle, CheckCircle2,
   Download, ChevronDown, ChevronUp, Package, List, Map as MapIcon, ExternalLink,
+  Ruler, History, ClipboardList, Zap, SkipForward, Trash2, Clock,
 } from "lucide-react";
 import { useLocation, useSearch } from "wouter";
 import { MapContainer, TileLayer, CircleMarker, Polyline, Tooltip, ZoomControl, Marker, useMapEvents } from "react-leaflet";
@@ -130,11 +132,653 @@ const ALLOWED_TRANSITIONS: Record<JobStatus, JobStatus[]> = {
 };
 
 const MULCH_STATUS: Record<string, { label: string; color: string; bg: string }> = {
+  draft:        { label: "Draft — awaiting review", color: "#7c3aed", bg: "#f5f3ff" },
   due:          { label: "Due",          color: "#dc2626", bg: "#fef2f2" },
   scheduled:    { label: "Scheduled",    color: "#2563eb", bg: "#eff6ff" },
   completed:    { label: "Completed",    color: "#16a34a", bg: "#dcfce7" },
   not_required: { label: "Not Required", color: "#6b7280", bg: "#f3f4f6" },
 };
+
+// ─── Mulch decay rate constants (client-side mirror of server logic) ──────────
+
+const MULCH_DECAY_RATE_MM_PER_MONTH: Record<string, number> = {
+  "Bark Mulch": 4,
+  "Wood Chip":  3,
+  "Compost":    7,
+  "Straw":      10,
+  "Pea Gravel": 0.5,
+};
+const STANDARD_DEPTH_MM   = 50;
+const ACTION_THRESHOLD_MM = 25;
+
+function decayRate(mulchType: string): number {
+  return MULCH_DECAY_RATE_MM_PER_MONTH[mulchType] ?? 5;
+}
+
+function addDaysStr(dateStr: string, days: number): string {
+  const d = new Date(dateStr + "T00:00:00Z");
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+function isWeekendStr(dateStr: string): boolean {
+  const day = new Date(dateStr + "T00:00:00Z").getUTCDay();
+  return day === 0 || day === 6;
+}
+function toWeekdayStr(dateStr: string): string {
+  let d = dateStr;
+  while (isWeekendStr(d)) d = addDaysStr(d, 1);
+  return d;
+}
+function projectJobDate(depthMm: number, mulchType: string, readingDate: string): string {
+  const rate = decayRate(mulchType);
+  const depthToLose = Math.max(0, depthMm - ACTION_THRESHOLD_MM);
+  // At/below threshold — job needed immediately, no negative flex
+  if (depthToLose === 0) return toWeekdayStr(readingDate);
+  const monthsUntil = depthToLose / rate;
+  const daysUntil = Math.round(monthsUntil * 30.44);
+  const naturalDate = addDaysStr(readingDate, daysUntil);
+  const flexStart = addDaysStr(naturalDate, -3);
+  // Clamp: flex start must not precede reading date
+  return toWeekdayStr(flexStart >= readingDate ? flexStart : readingDate);
+}
+
+// ─── Record Depth Drawer ──────────────────────────────────────────────────────
+
+function RecordDepthDrawer({
+  assetId, assetName, onClose, onSaved,
+}: {
+  assetId: string;
+  assetName: string;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const { toast } = useToast();
+  const today = new Date().toISOString().slice(0, 10);
+  const [depthMm, setDepthMm] = useState("");
+  const [mulchType, setMulchType] = useState(MULCH_TYPES[0]);
+  const [recordedAt, setRecordedAt] = useState(today);
+  const [notes, setNotes] = useState("");
+  const [isFresh, setIsFresh] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  const effectiveDepth = isFresh ? STANDARD_DEPTH_MM : (depthMm === "" ? 0 : Number(depthMm));
+  // Always show projected date when depth is entered (including at/below threshold = immediate job)
+  const projectedDate = (depthMm !== "" || isFresh) && mulchType && recordedAt
+    ? projectJobDate(effectiveDepth, mulchType, recordedAt)
+    : null;
+  const isImmediate = effectiveDepth <= ACTION_THRESHOLD_MM && effectiveDepth >= 0 && (depthMm !== "" || isFresh);
+
+  const handleFresh = () => {
+    setIsFresh(true);
+    setDepthMm(String(STANDARD_DEPTH_MM));
+  };
+
+  const handleDepthChange = (v: string) => {
+    setIsFresh(false);
+    setDepthMm(v);
+  };
+
+  const handleSave = async () => {
+    if (depthMm === "" && !isFresh) { toast({ title: "Enter a depth in mm", variant: "destructive" }); return; }
+    setSaving(true);
+    try {
+      const r = await fetch("/api/mulch-depth-readings", {
+        method: "POST", credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          assetId, depthMm: isFresh ? STANDARD_DEPTH_MM : effectiveDepth,
+          mulchType, recordedAt, notes: notes || null, isFreshApplication: isFresh,
+        }),
+      });
+      if (!r.ok) throw new Error(await r.text());
+      toast({ title: "Depth recorded", description: projectedDate ? `Draft job projected for ${fmt(projectedDate)}` : "Reading saved" });
+      onSaved();
+      onClose();
+    } catch (e: unknown) {
+      toast({ title: "Failed to save", description: e instanceof Error ? e.message : "Unknown error", variant: "destructive" });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex">
+      <div className="flex-1 bg-black/30" onClick={onClose} />
+      <div className="w-[400px] bg-white shadow-2xl flex flex-col overflow-y-auto">
+        <div className="px-6 py-4 border-b flex items-start justify-between" style={{ background: NAVY }}>
+          <div>
+            <p className="text-white text-sm font-bold flex items-center gap-2">
+              <Ruler className="w-4 h-4" /> Record Mulch Depth
+            </p>
+            <p className="text-white/50 text-[11px] mt-0.5">{assetName}</p>
+          </div>
+          <button onClick={onClose}><X className="w-5 h-5 text-white/40 hover:text-white" /></button>
+        </div>
+
+        <div className="flex-1 p-6 space-y-5">
+          {/* Freshly mulched shortcut */}
+          <button
+            onClick={handleFresh}
+            className="w-full py-3 rounded-xl border-2 font-semibold text-sm flex items-center justify-center gap-2 transition-all"
+            style={isFresh
+              ? { borderColor: BRAND, background: "#e0f7fb", color: BRAND }
+              : { borderColor: "#e5e7eb", background: "white", color: "#374151" }}
+          >
+            <CheckCircle2 className="w-4 h-4" />
+            Freshly Mulched — set to {STANDARD_DEPTH_MM}mm
+          </button>
+
+          <div className="relative flex items-center gap-3">
+            <div className="flex-1 h-px bg-gray-200" />
+            <span className="text-[11px] text-gray-400">or enter measured depth</span>
+            <div className="flex-1 h-px bg-gray-200" />
+          </div>
+
+          {/* Depth input */}
+          <div>
+            <Label className="text-xs font-medium text-gray-500 mb-1.5 block">Current Depth (mm)</Label>
+            <div className="flex items-center gap-2">
+              <Input
+                type="number" min="0" max="200"
+                value={depthMm}
+                onChange={e => handleDepthChange(e.target.value)}
+                placeholder="e.g. 32"
+                className="rounded-xl flex-1"
+              />
+              <span className="text-sm text-gray-400 font-medium">mm</span>
+            </div>
+          </div>
+
+          {/* Mulch type */}
+          <div>
+            <Label className="text-xs font-medium text-gray-500 mb-1.5 block">Mulch Type</Label>
+            <select
+              value={mulchType}
+              onChange={e => setMulchType(e.target.value)}
+              className="w-full px-3 py-2 text-sm border border-gray-200 rounded-xl outline-none focus:border-[#00AECD] bg-white"
+            >
+              {MULCH_TYPES.map(t => <option key={t}>{t}</option>)}
+            </select>
+            <p className="text-[10px] text-gray-400 mt-1">
+              Decay rate: ~{decayRate(mulchType)} mm/month · threshold {ACTION_THRESHOLD_MM}mm
+            </p>
+          </div>
+
+          {/* Reading date */}
+          <div>
+            <Label className="text-xs font-medium text-gray-500 mb-1.5 block">Reading Date</Label>
+            <Input type="date" value={recordedAt} onChange={e => setRecordedAt(e.target.value)} className="rounded-xl" />
+          </div>
+
+          {/* Notes */}
+          <div>
+            <Label className="text-xs font-medium text-gray-500 mb-1.5 block">Notes (optional)</Label>
+            <Textarea value={notes} onChange={e => setNotes(e.target.value)} rows={2} className="rounded-xl resize-none" />
+          </div>
+
+          {/* Live projected date preview — always shown when depth is entered */}
+          {projectedDate && (
+            <div className={`p-4 rounded-xl border ${isImmediate ? "bg-red-50 border-red-200" : "bg-violet-50 border-violet-200"}`}>
+              <div className="flex items-center gap-2 mb-1">
+                <Calendar className={`w-4 h-4 ${isImmediate ? "text-red-500" : "text-violet-600"}`} />
+                <span className={`text-xs font-bold ${isImmediate ? "text-red-800" : "text-violet-800"}`}>
+                  {isImmediate ? "⚠ Immediate action needed — projected job date" : "Projected next job"}
+                </span>
+              </div>
+              <p className={`text-lg font-black ${isImmediate ? "text-red-700" : "text-violet-700"}`}>{fmt(projectedDate)}</p>
+              <p className={`text-[10px] mt-0.5 ${isImmediate ? "text-red-500" : "text-violet-500"}`}>
+                {isImmediate
+                  ? `Depth ${effectiveDepth}mm is at or below the ${ACTION_THRESHOLD_MM}mm threshold — job required immediately.`
+                  : `Based on ${effectiveDepth}mm depth · ${mulchType} · ${decayRate(mulchType)} mm/month decay`}
+              </p>
+              <p className={`text-[10px] mt-1 font-medium ${isImmediate ? "text-red-600" : "text-violet-600"}`}>
+                A draft mulching job will be created for this date.
+              </p>
+            </div>
+          )}
+        </div>
+
+        <div className="px-6 py-4 border-t flex items-center gap-3">
+          <button onClick={onClose} className="flex-1 py-2 rounded-xl text-sm font-semibold border border-gray-200 text-gray-600 hover:bg-gray-50">
+            Cancel
+          </button>
+          <button
+            onClick={handleSave}
+            disabled={saving || (depthMm === "" && !isFresh)}
+            className="flex-1 py-2 rounded-xl text-sm font-semibold text-white disabled:opacity-40"
+            style={{ background: BRAND }}
+          >
+            {saving ? "Saving…" : "Save Reading"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Mulching Review & Schedule Drawer ───────────────────────────────────────
+// Implements the same conflict/capacity resolution flow as the ReactiveJobWizard:
+//   Step 1 – Configure (team, date, estimated minutes)
+//   Step 2 – Capacity check + clash resolution (push +1d / defer +3d / delete / reassign)
+//   Step 3 – Confirm & Publish (applies all actions atomically)
+// Publish is gated: only enabled when resolvedTotal + mulchMins ≤ PRODUCTIVE,
+//   OR when the user explicitly accepts overtime after reviewing the full impact.
+
+type ConflictAction = "none" | "push" | "defer" | "delete" | "reassign";
+
+function MulchingReviewDrawer({
+  record, teams, onClose, onPublished,
+}: {
+  record: any;
+  teams: { id: string; name: string }[];
+  onClose: () => void;
+  onPublished: () => void;
+}) {
+  const { toast } = useToast();
+  const qc = useQueryClient();
+  const updateJob = useUpdateJob();
+
+  // Step 1 fields
+  const [teamId, setTeamId] = useState(record.assignedTeamId ?? (teams[0]?.id ?? ""));
+  const [scheduledDate, setScheduledDate] = useState(record.scheduledDate ?? "");
+  const [estMins, setEstMins] = useState(record.estimatedMins ? String(record.estimatedMins) : "120");
+
+  // Step 2 conflict state
+  const [actions, setActions] = useState<Record<string, ConflictAction>>({});
+  const [reassignTo, setReassignTo] = useState<Record<string, string>>({});
+  const [overtimeAccepted, setOvertimeAccepted] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  // Reset conflict state whenever scheduling inputs change — user must re-resolve
+  useEffect(() => {
+    setActions({});
+    setReassignTo({});
+    setOvertimeAccepted(false);
+  }, [teamId, scheduledDate, estMins]);
+
+  const selectedTeam = teams.find(t => t.id === teamId);
+  const teamName = selectedTeam?.name ?? "Team";
+
+  const weekStr = scheduledDate ? (() => {
+    const d = new Date(scheduledDate + "T00:00:00");
+    const day = d.getDay();
+    const diff = day === 0 ? -6 : 1 - day;
+    d.setDate(d.getDate() + diff);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  })() : "";
+  const dateLabel = scheduledDate ? format(new Date(scheduledDate + "T00:00:00"), "EEE d MMM") : "";
+
+  const { data: weekData, isLoading: weekLoading } = useGetScheduleWeek(
+    { week: weekStr, teamId: teamId || undefined },
+    {
+      query: {
+        queryKey: getGetScheduleWeekQueryKey({ week: weekStr, teamId: teamId || undefined }),
+        enabled: !!weekStr && !!teamId,
+      },
+    },
+  );
+
+  const dayJobs: any[] = useMemo(
+    () => (weekData as any)?.days?.find((d: any) => d.date === scheduledDate)?.jobs ?? [],
+    [weekData, scheduledDate],
+  );
+
+  const mulchMins = parseInt(estMins) || 0;
+  const totalScheduled = dayJobs.reduce((s: number, j: any) => s + (j.serviceTimeMins ?? 0), 0);
+  const totalWithMulch = totalScheduled + mulchMins;
+
+  // Minutes freed by resolved actions (push/defer/delete remove them from this day; reassign too)
+  const resolvedSaved = dayJobs
+    .filter(j => {
+      const a = actions[j.id] ?? "none";
+      return a !== "none" && (a !== "reassign" || reassignTo[j.id]);
+    })
+    .reduce((s: number, j: any) => s + (j.serviceTimeMins ?? 0), 0);
+  const resolvedTotal = totalWithMulch - resolvedSaved;
+
+  const showImpact = !!teamId && !!scheduledDate;
+  const isOverCapacity = resolvedTotal > PRODUCTIVE;
+
+  const setAction = (id: string, a: ConflictAction) => {
+    setActions(prev => ({ ...prev, [id]: a }));
+    if (a !== "reassign") setReassignTo(prev => { const n = { ...prev }; delete n[id]; return n; });
+  };
+
+  // Publish enabled when: team + date set, AND (resolved total ≤ PRODUCTIVE OR overtime explicitly accepted)
+  const canPublish = !!teamId && !!scheduledDate && (!isOverCapacity || overtimeAccepted) && !weekLoading;
+
+  const handlePublish = async () => {
+    if (!teamId || !scheduledDate) { toast({ title: "Select a team and date", variant: "destructive" }); return; }
+    if (isOverCapacity && !overtimeAccepted) {
+      toast({ title: "Capacity conflict", description: "Resolve conflicts or accept overtime before publishing.", variant: "destructive" });
+      return;
+    }
+    setSaving(true);
+    try {
+      // 1. Publish the mulching record
+      const r = await fetch(`/api/mulching-records/${record.id}`, {
+        method: "PATCH", credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          status: "scheduled",
+          scheduledDate,
+          assignedTeamId: teamId,
+          estimatedMins: mulchMins || null,
+          notes: record.notes,
+        }),
+      });
+      if (!r.ok) throw new Error(await r.text());
+
+      // 2. Apply all conflict resolution actions atomically
+      await Promise.all(
+        dayJobs
+          .filter(j => (actions[j.id] ?? "none") !== "none")
+          .map(j => {
+            const a = actions[j.id];
+            if (a === "push")   return (updateJob as any).mutateAsync({ id: j.id, data: { scheduledDate: addDaysStr(j.scheduledDate, 1) } });
+            if (a === "defer")  return (updateJob as any).mutateAsync({ id: j.id, data: { scheduledDate: addDaysStr(j.scheduledDate, 3) } });
+            if (a === "delete") return (updateJob as any).mutateAsync({ id: j.id, data: { status: "skipped" } });
+            if (a === "reassign" && reassignTo[j.id]) return (updateJob as any).mutateAsync({ id: j.id, data: { teamId: reassignTo[j.id] } });
+            return Promise.resolve();
+          }),
+      );
+
+      await Promise.all([
+        qc.invalidateQueries({ queryKey: getListMulchingRecordsQueryKey() }),
+        qc.invalidateQueries({ queryKey: ["/api/schedule/week"] }),
+      ]);
+
+      toast({ title: "Mulching job scheduled", description: `${record.assetName} → ${teamName}, ${dateLabel}` });
+      onPublished();
+      onClose();
+    } catch (e: unknown) {
+      toast({ title: "Failed to schedule", description: e instanceof Error ? e.message : "Unknown error", variant: "destructive" });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const actionColors: Record<ConflictAction, string> = {
+    none: "#6b7280", push: "#2563eb", defer: "#7c3aed", delete: "#dc2626", reassign: "#9333ea",
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex">
+      <div className="flex-1 bg-black/30" onClick={onClose} />
+      <div className="w-[480px] bg-white shadow-2xl flex flex-col overflow-y-auto">
+        {/* Header */}
+        <div className="px-6 py-4 border-b flex items-start justify-between" style={{ background: NAVY }}>
+          <div>
+            <p className="text-white text-sm font-bold flex items-center gap-2">
+              <ClipboardList className="w-4 h-4" /> Review & Schedule Mulching
+            </p>
+            <p className="text-white/50 text-[11px] mt-0.5">{record.assetName}</p>
+          </div>
+          <button onClick={onClose}><X className="w-5 h-5 text-white/40 hover:text-white" /></button>
+        </div>
+
+        <div className="flex-1 p-6 space-y-5 overflow-y-auto">
+          {/* Draft context */}
+          <div className="p-3 rounded-xl bg-violet-50 border border-violet-200 space-y-1">
+            <p className="text-xs font-bold text-violet-800">Draft job from depth reading</p>
+            {record.scheduledDate && (
+              <p className="text-[11px] text-violet-700">Projected date: <strong>{fmt(record.scheduledDate)}</strong></p>
+            )}
+            {record.projectedDepthAtDue != null && (
+              <p className="text-[10px] text-violet-500">
+                Depth at job date: ~{record.projectedDepthAtDue}mm (threshold {ACTION_THRESHOLD_MM}mm)
+              </p>
+            )}
+            {record.mulchType && <p className="text-[10px] text-violet-500">Type: {record.mulchType}</p>}
+          </div>
+
+          {/* Step 1 – Configure */}
+          <div className="space-y-3">
+            <p className="text-[11px] font-bold text-gray-500 uppercase tracking-wider">1 — Configure</p>
+            <div>
+              <Label className="text-[11px] text-gray-500 mb-1.5 block">Assign Team</Label>
+              <select value={teamId} onChange={e => setTeamId(e.target.value)}
+                className="w-full px-3 py-2 text-sm border border-gray-200 rounded-xl outline-none focus:border-[#00AECD] bg-white">
+                <option value="">— Select team —</option>
+                {teams.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+              </select>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label className="text-[11px] text-gray-500 mb-1.5 block">Scheduled Date</Label>
+                <Input type="date" value={scheduledDate} onChange={e => setScheduledDate(e.target.value)} className="rounded-xl text-sm" />
+              </div>
+              <div>
+                <Label className="text-[11px] text-gray-500 mb-1.5 block">Est. time (mins)</Label>
+                <Input type="number" value={estMins} onChange={e => setEstMins(e.target.value)}
+                  placeholder="e.g. 120" min="0" className="rounded-xl text-sm" />
+              </div>
+            </div>
+          </div>
+
+          {/* Step 2 – Capacity & Conflict Resolution */}
+          {showImpact && (
+            <div className="space-y-3">
+              <p className="text-[11px] font-bold text-gray-500 uppercase tracking-wider">2 — Capacity &amp; Conflicts</p>
+              <div className="rounded-xl border border-gray-100 bg-gray-50 p-4 space-y-4">
+                {weekLoading ? (
+                  <div className="h-10 flex items-center justify-center text-gray-400 text-xs">Loading…</div>
+                ) : (
+                  <>
+                    <CapBar total={resolvedTotal} reactive={mulchMins} teamName={teamName} dateLabel={dateLabel} />
+                    <div className="flex items-center gap-2">
+                      <div className="flex-1 text-center p-2.5 rounded-xl bg-white border text-center">
+                        <p className="text-[9px] text-gray-400 mb-0.5">Existing</p>
+                        <p className="text-base font-black text-gray-700">{fmtMins(totalScheduled - resolvedSaved)}</p>
+                      </div>
+                      <span className="text-gray-400 font-bold">+</span>
+                      <div className="flex-1 text-center p-2.5 rounded-xl bg-white border">
+                        <p className="text-[9px] text-gray-400 mb-0.5">Mulch</p>
+                        <p className="text-base font-black text-gray-700">+{fmtMins(mulchMins)}</p>
+                      </div>
+                      <span className="text-gray-400 font-bold">=</span>
+                      <div className="flex-1 text-center p-2.5 rounded-xl bg-white border">
+                        <p className="text-[9px] text-gray-400 mb-0.5">Total</p>
+                        <p className="text-base font-black" style={{ color: isOverCapacity ? "#dc2626" : "#16a34a" }}>
+                          {fmtMins(resolvedTotal)}
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Existing jobs with push/defer/delete/reassign actions */}
+                    {dayJobs.length > 0 && (
+                      <div className="rounded-xl border border-gray-100 overflow-hidden">
+                        <div className="px-4 py-2 bg-gray-100 text-[10px] font-bold text-gray-600 uppercase tracking-wider flex items-center justify-between">
+                          <span>{teamName} — {dateLabel} ({dayJobs.length} jobs)</span>
+                          <span>{fmtMins(totalScheduled)}</span>
+                        </div>
+                        <div className="divide-y divide-gray-50 bg-white">
+                          {dayJobs.map((job: any) => {
+                            const action = actions[job.id] ?? "none";
+                            const resolved = action !== "none";
+                            const jobMins = job.serviceTimeMins ?? 0;
+                            return (
+                              <div key={job.id} className={`px-4 py-3 transition-colors ${resolved ? "bg-green-50/60" : ""}`}>
+                                <div className="flex items-start gap-3">
+                                  <div className="flex-1 min-w-0">
+                                    <p className="text-xs font-semibold text-gray-800">{job.assetName ?? "Job"}</p>
+                                    <p className="text-[10px] text-gray-400 flex items-center gap-1">
+                                      <Clock className="w-2.5 h-2.5" />{fmtMins(jobMins)}
+                                      {job.suburb && <span>· {job.suburb}</span>}
+                                    </p>
+                                    {action === "push"   && <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-blue-50 text-blue-700 mt-1 inline-block">→ {addDaysStr(job.scheduledDate, 1)}</span>}
+                                    {action === "defer"  && <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-purple-50 text-purple-700 mt-1 inline-block">→ {addDaysStr(job.scheduledDate, 3)}</span>}
+                                    {action === "delete" && <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-red-50 text-red-600 mt-1 inline-block">✕ Removed from schedule</span>}
+                                    {action === "reassign" && reassignTo[job.id] && (
+                                      <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-purple-50 text-purple-700 mt-1 inline-block">
+                                        → {teams.find(t => t.id === reassignTo[job.id])?.name ?? "team"}
+                                      </span>
+                                    )}
+                                  </div>
+                                  {resolved && <p className="text-[10px] text-green-600 font-bold flex-shrink-0">-{fmtMins(jobMins)}</p>}
+                                  <div className="flex flex-col gap-1.5 flex-shrink-0">
+                                    <div className="flex items-center gap-1">
+                                      {(["push", "defer", "delete"] as ConflictAction[]).map(a => {
+                                        const active = action === a;
+                                        const iconMap = { push: <SkipForward className="w-2.5 h-2.5" />, defer: <Calendar className="w-2.5 h-2.5" />, delete: <Trash2 className="w-2.5 h-2.5" /> };
+                                        const lblMap = { push: "+1d", defer: "+3d", delete: "Del" };
+                                        return (
+                                          <button key={a} onClick={() => setAction(job.id, active ? "none" : a)}
+                                            className="flex items-center gap-0.5 px-2 py-1 rounded-lg text-[9px] font-bold border transition-all"
+                                            style={active
+                                              ? { background: actionColors[a], color: "white", borderColor: actionColors[a] }
+                                              : { background: "white", color: actionColors[a], borderColor: "#e5e7eb" }}>
+                                            {iconMap[a as keyof typeof iconMap]}{lblMap[a as keyof typeof lblMap]}
+                                          </button>
+                                        );
+                                      })}
+                                    </div>
+                                    <div className="flex items-center gap-1">
+                                      <button
+                                        onClick={() => setAction(job.id, action === "reassign" ? "none" : "reassign")}
+                                        className="flex items-center gap-0.5 px-2 py-1 rounded-lg text-[9px] font-bold border transition-all"
+                                        style={action === "reassign"
+                                          ? { background: actionColors.reassign, color: "white", borderColor: actionColors.reassign }
+                                          : { background: "white", color: actionColors.reassign, borderColor: "#e5e7eb" }}>
+                                        <Users className="w-2.5 h-2.5" />Re
+                                      </button>
+                                      {action === "reassign" && (
+                                        <select value={reassignTo[job.id] ?? ""} onChange={e => setReassignTo(p => ({ ...p, [job.id]: e.target.value }))}
+                                          className="text-[9px] px-1.5 py-1 border rounded-lg bg-white outline-none max-w-[80px]">
+                                          <option value="">Team…</option>
+                                          {teams.filter(t => t.id !== teamId).map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                                        </select>
+                                      )}
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Over-capacity / resolved / overtime */}
+                    {isOverCapacity ? (
+                      <div className="space-y-2">
+                        <div className="p-3 rounded-xl bg-red-50 border border-red-200 flex gap-2">
+                          <AlertTriangle className="w-4 h-4 text-red-500 flex-shrink-0 mt-0.5" />
+                          <div>
+                            <p className="text-xs font-bold text-red-700">
+                              {fmtMins(resolvedTotal - PRODUCTIVE)} over daily target after conflict resolution
+                            </p>
+                            <p className="text-[10px] text-red-600 mt-0.5">
+                              Continue resolving jobs above, adjust the date, or accept overtime.
+                            </p>
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setOvertimeAccepted(v => !v)}
+                          className="w-full py-2.5 rounded-xl border-2 font-bold text-sm flex items-center justify-center gap-2 transition-all"
+                          style={overtimeAccepted
+                            ? { borderColor: "#dc2626", background: "#fef2f2", color: "#dc2626" }
+                            : { borderColor: "#fca5a5", background: "white", color: "#ef4444" }}>
+                          {overtimeAccepted
+                            ? <><CheckCircle2 className="w-4 h-4" /> Overtime authorised — publish unlocked</>
+                            : <><AlertTriangle className="w-4 h-4" /> Accept overtime to unlock publish</>}
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="p-3 rounded-xl bg-green-50 border border-green-200 flex items-center gap-2">
+                        <CheckCircle2 className="w-4 h-4 text-green-600 flex-shrink-0" />
+                        <p className="text-[11px] font-semibold text-green-700">
+                          {resolvedSaved > 0
+                            ? `Conflicts resolved — freed ${fmtMins(resolvedSaved)}. Ready to publish.`
+                            : "Within productive target — ready to publish."}
+                        </p>
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div className="px-6 py-4 border-t flex items-center gap-3">
+          <button onClick={onClose} className="flex-1 py-2 rounded-xl text-sm font-semibold border border-gray-200 text-gray-600 hover:bg-gray-50">
+            Cancel
+          </button>
+          <button
+            onClick={handlePublish}
+            disabled={saving || !canPublish}
+            className="flex-1 py-2 rounded-xl text-sm font-semibold text-white disabled:opacity-40 flex items-center justify-center gap-2"
+            style={{ background: BRAND }}
+          >
+            <Zap className="w-4 h-4" />
+            {saving ? "Scheduling…" : "Publish to Schedule"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Reading History Panel ────────────────────────────────────────────────────
+
+function ReadingHistoryPanel({ assetId }: { assetId: string }) {
+  const [expanded, setExpanded] = useState(false);
+  const { data, isLoading } = useQuery<{ data: any[]; total: number }>({
+    queryKey: ["/api/mulch-depth-readings", assetId],
+    queryFn: () => fetch(`/api/mulch-depth-readings?assetId=${assetId}`, { credentials: "include" }).then(r => r.json()),
+    enabled: expanded,
+  });
+  const readings = data?.data ?? [];
+
+  return (
+    <div className="border rounded-xl overflow-hidden mt-2">
+      <button
+        onClick={() => setExpanded(v => !v)}
+        className="w-full px-4 py-3 bg-gray-50 flex items-center justify-between text-left hover:bg-gray-100 transition-colors"
+      >
+        <span className="flex items-center gap-2 text-xs font-semibold text-gray-700">
+          <History className="w-3.5 h-3.5 text-gray-400" />
+          Reading History
+        </span>
+        {expanded ? <ChevronUp className="w-3.5 h-3.5 text-gray-400" /> : <ChevronDown className="w-3.5 h-3.5 text-gray-400" />}
+      </button>
+      {expanded && (
+        <div className="px-4 py-3">
+          {isLoading ? (
+            <div className="space-y-2">{[1,2].map(i => <Skeleton key={i} className="h-8 w-full rounded" />)}</div>
+          ) : readings.length === 0 ? (
+            <p className="text-[11px] text-gray-400 italic py-2">No depth readings recorded yet.</p>
+          ) : (
+            <div className="space-y-2">
+              {readings.map((r: any) => (
+                <div key={r.id} className="flex items-center justify-between py-2 border-b border-gray-100 last:border-0">
+                  <div>
+                    <p className="text-xs font-semibold text-gray-800">
+                      {r.depthMm}mm
+                      {r.isFreshApplication && (
+                        <span className="ml-1.5 text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-teal-100 text-teal-700">Fresh</span>
+                      )}
+                    </p>
+                    <p className="text-[10px] text-gray-400">{r.mulchType ?? "Type not set"} · {r.recordedByName ?? "Unknown"}</p>
+                    {r.notes && <p className="text-[10px] text-gray-500 italic mt-0.5">{r.notes}</p>}
+                  </div>
+                  <div className="text-right">
+                    <p className="text-[11px] font-medium text-gray-600">{fmt(r.recordedAt)}</p>
+                    {r.projectedJobDate && (
+                      <p className="text-[10px] text-violet-500">→ {fmt(r.projectedJobDate)}</p>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
 
 const MULCH_TYPES = ["Bark Mulch", "Wood Chip", "Compost", "Straw", "Pea Gravel"];
 
@@ -753,7 +1397,12 @@ function JobDetailPanel({
 
 // ─── Mulching tab ─────────────────────────────────────────────────────────────
 
-function MulchingTab({ assets }: { assets: { id: string; name: string; description?: string | null }[] }) {
+function MulchingTab({
+  assets, teams,
+}: {
+  assets: { id: string; name: string; description?: string | null }[];
+  teams: { id: string; name: string }[];
+}) {
   const qc = useQueryClient();
   const { toast } = useToast();
 
@@ -762,73 +1411,169 @@ function MulchingTab({ assets }: { assets: { id: string; name: string; descripti
   });
   const mulchRecords: any[] = (mulchData as any)?.data ?? [];
 
-  const createMulch = useCreateMulchingRecord();
   const updateMulch = useUpdateMulchingRecord();
+  const createMulch = useCreateMulchingRecord();
 
-  const [open, setOpen] = useState(false);
+  const [addOpen, setAddOpen] = useState(false);
   const [form, setForm] = useState({ assetId: "", scheduledDate: "", volumeM3: "", mulchType: "", contractor: "", costNzd: "", notes: "" });
+
+  // Record Depth drawer state
+  const [depthTarget, setDepthTarget] = useState<{ id: string; name: string } | null>(null);
+  // Review & Schedule drawer state
+  const [reviewTarget, setReviewTarget] = useState<any | null>(null);
+  // Expanded history asset
+  const [historyAssetId, setHistoryAssetId] = useState<string | null>(null);
 
   const handleCreate = async () => {
     try {
       await (createMulch.mutateAsync as any)({ data: { assetId: form.assetId, scheduledDate: form.scheduledDate || null, volumeM3: form.volumeM3 || null, mulchType: form.mulchType || null, contractor: form.contractor || null, costNzd: form.costNzd || null, notes: form.notes || null } });
       qc.invalidateQueries({ queryKey: getListMulchingRecordsQueryKey() });
       toast({ title: "Mulching record added" });
-      setOpen(false);
+      setAddOpen(false);
       setForm({ assetId: "", scheduledDate: "", volumeM3: "", mulchType: "", contractor: "", costNzd: "", notes: "" });
     } catch {
       toast({ title: "Failed to add record", variant: "destructive" });
     }
   };
 
+  const handleRefresh = () => {
+    qc.invalidateQueries({ queryKey: getListMulchingRecordsQueryKey() });
+  };
+
+  const draftCount = mulchRecords.filter(r => r.status === "draft").length;
+
   return (
     <div className="space-y-4">
+      {/* Header */}
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-base font-semibold text-gray-800">Mulching Programme</h2>
-          <p className="text-sm text-gray-400">{mulchRecords.length} records</p>
+          <p className="text-sm text-gray-400">
+            {mulchRecords.length} records
+            {draftCount > 0 && (
+              <span className="ml-2 text-[11px] font-bold px-2 py-0.5 rounded-full" style={{ color: "#7c3aed", background: "#f5f3ff" }}>
+                {draftCount} draft{draftCount !== 1 ? "s" : ""} awaiting review
+              </span>
+            )}
+          </p>
         </div>
-        <Button onClick={() => setOpen(true)} style={{ background: BRAND }}>
+        <Button onClick={() => setAddOpen(true)} style={{ background: BRAND }}>
           <Plus className="w-4 h-4 mr-1" /> Add Record
         </Button>
       </div>
 
+      {/* Drawers */}
+      {depthTarget && (
+        <RecordDepthDrawer
+          assetId={depthTarget.id}
+          assetName={depthTarget.name}
+          onClose={() => setDepthTarget(null)}
+          onSaved={handleRefresh}
+        />
+      )}
+      {reviewTarget && (
+        <MulchingReviewDrawer
+          record={reviewTarget}
+          teams={teams}
+          onClose={() => setReviewTarget(null)}
+          onPublished={handleRefresh}
+        />
+      )}
+
+      {/* Records list */}
       {mulchLoading ? (
-        <div className="space-y-2">{[...Array(4)].map((_, i) => <Skeleton key={i} className="h-16 w-full rounded-xl" />)}</div>
+        <div className="space-y-2">{[...Array(4)].map((_, i) => <Skeleton key={i} className="h-20 w-full rounded-xl" />)}</div>
       ) : mulchRecords.length === 0 ? (
         <div className="text-center py-12 text-gray-400">
           <Layers className="w-10 h-10 mx-auto mb-2 opacity-30" />
           <p className="text-sm">No mulching records yet.</p>
         </div>
       ) : (
-        <div className="space-y-2">
+        <div className="space-y-3">
           {mulchRecords.map((r: any) => {
             const st = MULCH_STATUS[r.status] ?? MULCH_STATUS.due;
+            const isDraft = r.status === "draft";
+            const assetObj = assets.find(a => a.id === r.assetId);
+            const showHistory = historyAssetId === r.assetId;
+
             return (
-              <div key={r.id} className="bg-white rounded-xl border px-4 py-3 flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-semibold text-gray-800">{r.assetName ?? "Unknown asset"}</p>
-                  <p className="text-[11px] text-gray-400">
-                    {r.scheduledDate ? fmt(r.scheduledDate) : "No date"} · {r.mulchType ?? "No type"} · {r.volumeM3 ? `${r.volumeM3} m³` : "Vol TBD"}
-                  </p>
-                </div>
-                <div className="flex items-center gap-3">
-                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full"
-                    style={{ color: st.color, background: st.bg }}>{st.label}</span>
-                  {r.status !== "completed" && (
+              <div key={r.id} className="bg-white rounded-xl border overflow-hidden"
+                style={isDraft ? { borderColor: "#c4b5fd", boxShadow: "0 0 0 1px #ede9fe" } : {}}>
+                <div className="px-4 py-3 flex items-start justify-between gap-3">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-semibold text-gray-800">{r.assetName ?? "Unknown asset"}</p>
+                    <p className="text-[11px] text-gray-400 mt-0.5">
+                      {r.scheduledDate ? fmt(r.scheduledDate) : "No date"}
+                      {r.mulchType ? ` · ${r.mulchType}` : ""}
+                      {r.volumeM3 ? ` · ${r.volumeM3} m³` : ""}
+                    </p>
+                    {isDraft && r.projectedDepthAtDue != null && (
+                      <p className="text-[10px] text-violet-500 mt-0.5">
+                        Projected depth at job date: ~{r.projectedDepthAtDue}mm (threshold {ACTION_THRESHOLD_MM}mm)
+                      </p>
+                    )}
+                  </div>
+
+                  <div className="flex items-center gap-2 flex-shrink-0 flex-wrap justify-end">
+                    {/* Status badge */}
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full whitespace-nowrap"
+                      style={{ color: st.color, background: st.bg }}>{st.label}</span>
+
+                    {/* Record Depth button */}
+                    {r.status !== "completed" && assetObj && (
+                      <button
+                        onClick={() => setDepthTarget({ id: r.assetId, name: r.assetName ?? assetObj.name })}
+                        className="flex items-center gap-1 text-[11px] font-semibold px-2.5 py-1 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors"
+                      >
+                        <Ruler className="w-3 h-3" /> Record Depth
+                      </button>
+                    )}
+
+                    {/* Review & Schedule for drafts */}
+                    {isDraft && (
+                      <button
+                        onClick={() => setReviewTarget(r)}
+                        className="flex items-center gap-1 text-[11px] font-bold px-2.5 py-1 rounded-lg transition-colors"
+                        style={{ background: "#7c3aed", color: "white" }}
+                      >
+                        <Zap className="w-3 h-3" /> Review &amp; Schedule
+                      </button>
+                    )}
+
+                    {/* Mark done for non-draft, non-completed */}
+                    {r.status !== "completed" && r.status !== "draft" && (
+                      <button
+                        onClick={() => (updateMulch.mutateAsync as any)({ id: r.id, data: { status: "completed", completedDate: new Date().toISOString().slice(0, 10) } }).then(handleRefresh)}
+                        className="text-[11px] text-green-600 hover:text-green-800 font-medium">
+                        Mark Done
+                      </button>
+                    )}
+
+                    {/* History toggle */}
                     <button
-                      onClick={() => (updateMulch.mutateAsync as any)({ id: r.id, data: { status: "completed", completedDate: new Date().toISOString().slice(0, 10) } }).then(() => qc.invalidateQueries({ queryKey: getListMulchingRecordsQueryKey() }))}
-                      className="text-[11px] text-green-600 hover:text-green-800 font-medium">
-                      Mark Done
+                      onClick={() => setHistoryAssetId(showHistory ? null : r.assetId)}
+                      className="text-gray-300 hover:text-gray-500 transition-colors"
+                      title="View reading history"
+                    >
+                      <History className="w-3.5 h-3.5" />
                     </button>
-                  )}
+                  </div>
                 </div>
+
+                {/* Reading history panel — collapsible */}
+                {showHistory && (
+                  <div className="border-t border-gray-100 px-4 py-3 bg-gray-50">
+                    <ReadingHistoryPanel assetId={r.assetId} />
+                  </div>
+                )}
               </div>
             );
           })}
         </div>
       )}
 
-      <Dialog open={open} onOpenChange={setOpen}>
+      {/* Add record dialog (manual entry) */}
+      <Dialog open={addOpen} onOpenChange={setAddOpen}>
         <DialogContent className="max-w-md rounded-2xl">
           <DialogHeader><DialogTitle>Add Mulching Record</DialogTitle></DialogHeader>
           <div className="space-y-3">
@@ -868,7 +1613,7 @@ function MulchingTab({ assets }: { assets: { id: string; name: string; descripti
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
+            <Button variant="outline" onClick={() => setAddOpen(false)}>Cancel</Button>
             <Button onClick={handleCreate} disabled={!form.assetId} style={{ background: BRAND }}>Add Record</Button>
           </DialogFooter>
         </DialogContent>
@@ -1723,7 +2468,7 @@ export default function Programmes() {
 
         {/* ── Mulching ── */}
         <TabsContent value="mulching">
-          <MulchingTab assets={assets} />
+          <MulchingTab assets={assets} teams={teams} />
         </TabsContent>
       </Tabs>
 

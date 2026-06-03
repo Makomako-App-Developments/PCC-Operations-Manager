@@ -67,6 +67,7 @@ export const infillStatusEnum = pgEnum("infill_status", [
 ]);
 
 export const mulchingStatusEnum = pgEnum("mulching_status", [
+  "draft",
   "due",
   "scheduled",
   "completed",
