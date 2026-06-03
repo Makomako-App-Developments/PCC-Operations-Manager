@@ -573,7 +573,7 @@ function JobDetailPanel({
               <StatusBadge status={job.status} />
               {assetLat != null && assetLng != null && (
                 <button
-                  onClick={() => navigate(`/map?assetId=${job.assetId}`)}
+                  onClick={() => navigate(`/map?assetId=${job.assetId}&jobId=${job.id}`)}
                   className="flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full transition-colors"
                   style={{ background: "rgba(255,255,255,0.12)", color: "rgba(255,255,255,0.75)" }}
                   title="View this site on the main map"
@@ -1214,6 +1214,12 @@ export default function Programmes() {
     if (assetId) {
       setPrefilledAssetId(assetId);
       setDrawerOpen(true);
+      navigate("/programmes", { replace: true });
+      return;
+    }
+    const jobId = params.get("jobId");
+    if (jobId) {
+      setSelectedJobId(jobId);
       navigate("/programmes", { replace: true });
     }
   }, [search]);

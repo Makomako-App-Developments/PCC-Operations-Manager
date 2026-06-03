@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect } from "react";
-import { ChevronDown, ChevronUp, X, Filter, Tag } from "lucide-react";
+import { ChevronDown, ChevronUp, X, Filter, Tag, ArrowLeft } from "lucide-react";
 import { MapContainer, TileLayer, Polygon, CircleMarker, Tooltip, Popup, ZoomControl, useMap } from "react-leaflet";
-import { useSearch } from "wouter";
+import { useSearch, useLocation } from "wouter";
 import "leaflet/dist/leaflet.css";
 import {
   useListAssets,
@@ -234,7 +234,12 @@ function FlyToAsset({ lat, lng }: { lat: number; lng: number }) {
 
 export default function MapPage() {
   const search = useSearch();
-  const linkedAssetId = useMemo(() => new URLSearchParams(search).get("assetId"), [search]);
+  const [, navigate] = useLocation();
+  const searchParams = useMemo(() => new URLSearchParams(search), [search]);
+  const linkedAssetId = useMemo(() => searchParams.get("assetId"), [searchParams]);
+  const linkedJobId   = useMemo(() => searchParams.get("jobId"),   [searchParams]);
+
+  const [bannerDismissed, setBannerDismissed] = useState(false);
 
   const [typeFilter,     setTypeFilter]     = useState<Set<string>>(new Set());
   const [scheduleFilter, setScheduleFilter] = useState<Set<ScheduleState>>(new Set());
@@ -464,6 +469,33 @@ export default function MapPage() {
 
       {/* ── Map ── */}
       <div className="flex-1 relative">
+        {/* Back-to-Programmes banner */}
+        {linkedAssetId && !bannerDismissed && (
+          <div className="absolute top-3 left-3 z-[500] flex items-center gap-2 bg-white border border-gray-200 rounded-xl shadow-sm px-3 py-2 max-w-[280px]">
+            <button
+              onClick={() => {
+                const dest = linkedJobId
+                  ? `/programmes?jobId=${linkedJobId}`
+                  : "/programmes";
+                navigate(dest);
+              }}
+              className="flex items-center gap-1.5 text-xs font-semibold text-gray-700 hover:text-gray-900 transition-colors flex-1 min-w-0"
+            >
+              <ArrowLeft className="w-3.5 h-3.5 flex-shrink-0" style={{ color: BRAND }} />
+              <span className="truncate">
+                Back to{linkedAsset ? ` ${linkedAsset.name}` : " Programmes"}
+              </span>
+            </button>
+            <button
+              onClick={() => setBannerDismissed(true)}
+              className="flex-shrink-0 text-gray-300 hover:text-gray-500 transition-colors"
+              title="Dismiss"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        )}
+
         {/* Legend overlay */}
         <div className="absolute top-3 right-3 z-[500] pointer-events-none">
           <div className="bg-white rounded-xl shadow-sm border border-gray-100 px-4 py-2.5 pointer-events-auto max-w-[340px]">
