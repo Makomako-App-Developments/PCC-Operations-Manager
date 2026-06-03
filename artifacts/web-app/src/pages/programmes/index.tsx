@@ -1575,7 +1575,18 @@ function MulchingTab({
     qc.invalidateQueries({ queryKey: getListMulchingRecordsQueryKey() });
   };
 
-  const draftCount = mulchRecords.filter(r => r.status === "draft").length;
+  const draftCount      = mulchRecords.filter(r => r.status === "draft").length;
+  const scheduledCount  = mulchRecords.filter(r => r.status === "scheduled").length;
+  const inProgressCount = mulchRecords.filter(r => r.status === "in_progress").length;
+  const completedCount  = mulchRecords.filter(r => r.status === "completed").length;
+
+  const sumVol = (pred: (r: any) => boolean) =>
+    mulchRecords.filter(pred).reduce((acc, r) => acc + (parseFloat(r.volumeM3) || 0), 0);
+
+  const totalRequired = sumVol(r => r.status === "scheduled" || r.status === "in_progress");
+  const totalApplied  = sumVol(r => r.status === "completed");
+
+  const fmtVol = (v: number) => v % 1 === 0 ? `${v}` : v.toFixed(2).replace(/\.?0+$/, "");
 
   const sortedMulchRecords = useMemo(() => {
     const arr = [...mulchRecords];
@@ -1618,6 +1629,25 @@ function MulchingTab({
           </button>
         </div>
       </div>
+
+      {/* Summary stats */}
+      {!mulchLoading && mulchRecords.length > 0 && (
+        <div className="grid grid-cols-5 gap-3">
+          {[
+            { label: "Scheduled",     value: scheduledCount,          unit: "jobs",    color: "#00AECD", bg: "#e6f7fb" },
+            { label: "In Progress",   value: inProgressCount,         unit: "jobs",    color: "#d97706", bg: "#fef3c7" },
+            { label: "Completed",     value: completedCount,          unit: "jobs",    color: "#16a34a", bg: "#dcfce7" },
+            { label: "m³ Required",   value: fmtVol(totalRequired),   unit: "m³",      color: "#6366f1", bg: "#eef2ff" },
+            { label: "m³ Applied",    value: fmtVol(totalApplied),    unit: "m³",      color: "#0f2a36", bg: "#f1f5f9" },
+          ].map(s => (
+            <div key={s.label} className="rounded-xl px-4 py-3 flex flex-col gap-0.5" style={{ background: s.bg }}>
+              <p className="text-[11px] font-medium" style={{ color: s.color }}>{s.label}</p>
+              <p className="text-xl font-black" style={{ color: s.color }}>{s.value}</p>
+              <p className="text-[10px]" style={{ color: s.color, opacity: 0.7 }}>{s.unit}</p>
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* Standalone depth picker dialog */}
       {depthPickerOpen && (
