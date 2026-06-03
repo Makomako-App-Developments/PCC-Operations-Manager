@@ -190,6 +190,14 @@ export default function RouteOptimisationPage() {
   const teams = teamsData ?? [];
 
   const [selectedTeamId, setSelectedTeamId] = useState<string>("");
+
+  // Default to CBD team on first load
+  useEffect(() => {
+    if (selectedTeamId || teams.length === 0) return;
+    const cbd = teams.find(t => t.name.toLowerCase().includes("cbd"));
+    if (cbd) setSelectedTeamId(cbd.id);
+    else setSelectedTeamId(teams[0].id);
+  }, [teams]);
   const [assets, setAssets]                 = useState<RouteAsset[]>([]);
   const [loadingAssets, setLoadingAssets]   = useState(false);
   const [saving, setSaving]                 = useState(false);
