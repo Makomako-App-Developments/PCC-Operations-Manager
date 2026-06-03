@@ -48,6 +48,10 @@ export function mondayOf(dateStr: string) {
   return localDateStr(d);
 }
 
+function fmtDateStr(dateStr: string, fmt = "d MMM") {
+  try { return format(new Date(dateStr + "T00:00:00"), fmt); } catch { return dateStr; }
+}
+
 export function addDaysStr(dateStr: string, days: number) {
   const d = new Date(dateStr + "T00:00:00");
   d.setDate(d.getDate() + days);
@@ -830,7 +834,7 @@ export function ReactiveJobWizard({ teamsData, assetsData, onClose, onPublished 
 
                     <div className="mt-5 flex items-center gap-2">
                       <div className="flex-1 text-center p-3 rounded-xl bg-gray-50">
-                        <p className="text-[11px] text-gray-400 mb-1">Scheduled today</p>
+                        <p className="text-[11px] text-gray-400 mb-1">Scheduled {dateLabel}</p>
                         <p className="text-xl font-black" style={{ color: "#374151" }}>{fmtMins(totalScheduled)}</p>
                       </div>
                       <span className="text-xl font-bold text-gray-400 flex-shrink-0">+</span>
@@ -881,9 +885,9 @@ export function ReactiveJobWizard({ teamsData, assetsData, onClose, onPublished 
                                 <p className="text-sm font-bold text-green-800">
                                   Scheduled maintenance due{" "}
                                   {assetDayJob.date === selectedDate
-                                    ? "today"
+                                    ? "on the same day"
                                     : `in ${assetDayJobWorkingDays} working day${assetDayJobWorkingDays !== 1 ? "s" : ""}`}{" "}
-                                  ({assetDayJob.date})
+                                  ({fmtDateStr(assetDayJob.date, "d MMM yyyy")})
                                 </p>
                                 <p className="text-xs text-green-700 mt-0.5">
                                   Within the {COMBINE_THRESHOLD}-day window. Combine into a single
@@ -1065,7 +1069,7 @@ export function ReactiveJobWizard({ teamsData, assetsData, onClose, onPublished 
                                 >
                                   {windowBreach(1)
                                     ? "⚠ May breach service window"
-                                    : `✓ Pushed → ${addDaysStr(job.scheduledDate, 1)}`}
+                                    : `✓ Pushed → ${fmtDateStr(addDaysStr(job.scheduledDate, 1))}`}
                                 </span>
                               )}
                               {action === "defer" && (
@@ -1074,7 +1078,7 @@ export function ReactiveJobWizard({ teamsData, assetsData, onClose, onPublished 
                                 >
                                   {windowBreach(3)
                                     ? "⚠ May breach service window"
-                                    : `✓ Deferred → ${addDaysStr(job.scheduledDate, 3)}`}
+                                    : `✓ Deferred → ${fmtDateStr(addDaysStr(job.scheduledDate, 3))}`}
                                 </span>
                               )}
                               {action === "reassign" && reassignTo[job.id] && (
@@ -1242,9 +1246,9 @@ export function ReactiveJobWizard({ teamsData, assetsData, onClose, onPublished 
                       const a = actions[job.id];
                       const desc =
                         a === "push"
-                          ? `Pushed to ${addDaysStr(job.scheduledDate, 1)} (+1 day)`
+                          ? `Pushed to ${fmtDateStr(addDaysStr(job.scheduledDate, 1))} (+1 day)`
                           : a === "defer"
-                          ? `Deferred to ${addDaysStr(job.scheduledDate, 3)} (+3 days)`
+                          ? `Deferred to ${fmtDateStr(addDaysStr(job.scheduledDate, 3))} (+3 days)`
                           : a === "delete"
                           ? "Removed from schedule"
                           : `Reassigned to ${
@@ -1310,9 +1314,9 @@ export function ReactiveJobWizard({ teamsData, assetsData, onClose, onPublished 
                         actions[j.id] === "delete"
                           ? "removed from schedule"
                           : actions[j.id] === "push"
-                          ? `moved to ${addDaysStr(j.scheduledDate, 1)}`
+                          ? `moved to ${fmtDateStr(addDaysStr(j.scheduledDate, 1))}`
                           : actions[j.id] === "defer"
-                          ? `deferred to ${addDaysStr(j.scheduledDate, 3)}`
+                          ? `deferred to ${fmtDateStr(addDaysStr(j.scheduledDate, 3))}`
                           : `reassigned to ${
                               teamsData.find(t => t.id === reassignTo[j.id])?.name ?? "team"
                             }`
