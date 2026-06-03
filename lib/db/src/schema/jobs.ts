@@ -7,6 +7,7 @@ import { jobTypeEnum, jobStatusEnum, reactivePriorityEnum, reactiveJobStatusEnum
 import { assetsTable } from "./assets";
 import { teamsTable } from "./teams";
 import { usersTable } from "./users";
+import { mulchingRecordsTable } from "./programmes";
 
 // Scheduled + recurring jobs
 export const jobsTable = pgTable("jobs", {
@@ -97,13 +98,14 @@ export const reactiveJobsTable = pgTable("reactive_jobs", {
 
 // Photo evidence attached to jobs
 export const jobPhotosTable = pgTable("job_photos", {
-  id:        uuid("id").primaryKey().defaultRandom(),
-  jobId:     uuid("job_id").references(() => jobsTable.id),
-  reactiveJobId: uuid("reactive_job_id").references(() => reactiveJobsTable.id),
-  uploadedBy: uuid("uploaded_by").notNull().references(() => usersTable.id),
-  blobUrl:   text("blob_url").notNull(),
-  caption:   text("caption"),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
+  id:               uuid("id").primaryKey().defaultRandom(),
+  jobId:            uuid("job_id").references(() => jobsTable.id),
+  reactiveJobId:    uuid("reactive_job_id").references(() => reactiveJobsTable.id),
+  mulchingRecordId: uuid("mulching_record_id").references(() => mulchingRecordsTable.id),
+  uploadedBy:       uuid("uploaded_by").notNull().references(() => usersTable.id),
+  blobUrl:          text("blob_url").notNull(),
+  caption:          text("caption"),
+  createdAt:        timestamp("created_at").notNull().defaultNow(),
 });
 
 export const insertJobSchema                  = createInsertSchema(jobsTable).omit({ id: true, createdAt: true, updatedAt: true });

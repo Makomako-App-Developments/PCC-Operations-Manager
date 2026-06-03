@@ -494,8 +494,7 @@ export default function JobDetailScreen() {
 
   const handleComplete = () => {
     setPhotoError(false);
-    // Mulching jobs don't require photo evidence
-    if (!isMulching && photoCount === 0) {
+    if (photoCount === 0) {
       setPhotoError(true);
       return;
     }
@@ -802,8 +801,8 @@ export default function JobDetailScreen() {
           </View>
         ) : null}
 
-        {/* Photo evidence — only shown while active or done, not for mulching jobs */}
-        {!isMulching && (isActive || isPaused || isDone) && id && (
+        {/* Photo evidence — shown while actionable or done (including mulching jobs) */}
+        {(isActive || isPaused || isDone || mulchingCanAct) && id && (
           <>
             <PhotoSection jobId={id} readOnly={isDone} />
             {photoError && (
