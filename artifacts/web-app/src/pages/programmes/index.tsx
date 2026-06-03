@@ -1558,10 +1558,6 @@ function MulchingTab({
   const mulchRecords: any[] = (mulchData as any)?.data ?? [];
 
   const updateMulch = useUpdateMulchingRecord();
-  const createMulch = useCreateMulchingRecord();
-
-  const [addOpen, setAddOpen] = useState(false);
-  const [form, setForm] = useState({ assetId: "", scheduledDate: "", volumeM3: "", mulchType: "", contractor: "", costNzd: "", notes: "" });
 
   // Record Depth drawer state
   const [depthTarget, setDepthTarget] = useState<{ id: string; name: string } | null>(null);
@@ -1574,18 +1570,6 @@ function MulchingTab({
   const [selectedMulch, setSelectedMulch] = useState<any | null>(null);
   // Sort state
   const [mulchSort, setMulchSort] = useState<{ key: string; dir: "asc" | "desc" }>({ key: "scheduledDate", dir: "asc" });
-
-  const handleCreate = async () => {
-    try {
-      await (createMulch.mutateAsync as any)({ data: { assetId: form.assetId, scheduledDate: form.scheduledDate || null, volumeM3: form.volumeM3 || null, mulchType: form.mulchType || null, contractor: form.contractor || null, costNzd: form.costNzd || null, notes: form.notes || null } });
-      qc.invalidateQueries({ queryKey: getListMulchingRecordsQueryKey() });
-      toast({ title: "Mulching record added" });
-      setAddOpen(false);
-      setForm({ assetId: "", scheduledDate: "", volumeM3: "", mulchType: "", contractor: "", costNzd: "", notes: "" });
-    } catch {
-      toast({ title: "Failed to add record", variant: "destructive" });
-    }
-  };
 
   const handleRefresh = () => {
     qc.invalidateQueries({ queryKey: getListMulchingRecordsQueryKey() });
@@ -1632,9 +1616,6 @@ function MulchingTab({
           >
             <Ruler className="w-4 h-4" /> Record Depth
           </button>
-          <Button onClick={() => setAddOpen(true)} style={{ background: BRAND }}>
-            <Plus className="w-4 h-4 mr-1" /> Add Record
-          </Button>
         </div>
       </div>
 
@@ -1920,52 +1901,6 @@ function MulchingTab({
         );
       })()}
 
-      {/* Add record dialog (manual entry) */}
-      <Dialog open={addOpen} onOpenChange={setAddOpen}>
-        <DialogContent className="max-w-md rounded-2xl">
-          <DialogHeader><DialogTitle>Add Mulching Record</DialogTitle></DialogHeader>
-          <div className="space-y-3">
-            <div>
-              <Label className="text-xs text-gray-500">Garden Asset</Label>
-              <select value={form.assetId} onChange={e => setForm(f => ({ ...f, assetId: e.target.value }))}
-                className="mt-1 w-full px-3 py-2 text-sm border rounded-xl bg-white">
-                <option value="">— Select asset —</option>
-                {assets.map(a => <option key={a.id} value={a.id}>{a.name}{a.description ? `, ${a.description}` : ""}</option>)}
-              </select>
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <Label className="text-xs text-gray-500">Scheduled Date</Label>
-                <Input type="date" value={form.scheduledDate} onChange={e => setForm(f => ({ ...f, scheduledDate: e.target.value }))} className="mt-1" />
-              </div>
-              <div>
-                <Label className="text-xs text-gray-500">Volume (m³)</Label>
-                <Input type="number" value={form.volumeM3} onChange={e => setForm(f => ({ ...f, volumeM3: e.target.value }))} className="mt-1" placeholder="e.g. 2.5" />
-              </div>
-            </div>
-            <div>
-              <Label className="text-xs text-gray-500">Mulch Type</Label>
-              <select value={form.mulchType} onChange={e => setForm(f => ({ ...f, mulchType: e.target.value }))}
-                className="mt-1 w-full px-3 py-2 text-sm border rounded-xl bg-white">
-                <option value="">— Select type —</option>
-                {MULCH_TYPES.map(t => <option key={t}>{t}</option>)}
-              </select>
-            </div>
-            <div>
-              <Label className="text-xs text-gray-500">Contractor</Label>
-              <Input value={form.contractor} onChange={e => setForm(f => ({ ...f, contractor: e.target.value }))} className="mt-1" placeholder="Optional" />
-            </div>
-            <div>
-              <Label className="text-xs text-gray-500">Notes</Label>
-              <Textarea value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} className="mt-1 resize-none" rows={2} />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setAddOpen(false)}>Cancel</Button>
-            <Button onClick={handleCreate} disabled={!form.assetId} style={{ background: BRAND }}>Add Record</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }
