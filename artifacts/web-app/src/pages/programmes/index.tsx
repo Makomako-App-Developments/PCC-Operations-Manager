@@ -2431,7 +2431,7 @@ export default function Programmes() {
   };
 
   return (
-    <div className="p-6 max-w-5xl mx-auto">
+    <div className="p-6 max-w-7xl mx-auto">
       <div className="mb-6">
         <h1 className="text-xl font-bold" style={{ color: NAVY }}>Programmes</h1>
         <p className="text-sm text-gray-500">Infill planting assessments and mulching records</p>
