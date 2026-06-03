@@ -16,8 +16,8 @@
  * Schema changes are applied by running `cd lib/db && pnpm push-force`.
  */
 
-export const STANDARD_DEPTH_MM = 50;
-export const ACTION_THRESHOLD_MM = 25;
+export const STANDARD_DEPTH_MM = 100;
+export const ACTION_THRESHOLD_MM = 50;
 const DUE_DATE_FLEX_DAYS = 3;
 
 export const MULCH_DECAY_RATE_MM_PER_MONTH: Record<string, number> = {

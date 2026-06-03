@@ -870,8 +870,8 @@ const MULCH_TYPES_LIST = ["Bark Mulch", "Wood Chip", "Compost", "Straw", "Pea Gr
 const MULCH_DECAY_RATES: Record<string, number> = {
   "Bark Mulch": 4, "Wood Chip": 3, "Compost": 7, "Straw": 10, "Pea Gravel": 0.5,
 };
-const STD_DEPTH_MM    = 50;
-const ACTION_DEPTH_MM = 25;
+const STD_DEPTH_MM    = 100;
+const ACTION_DEPTH_MM = 50;
 
 function mulchDecay(t: string) { return MULCH_DECAY_RATES[t] ?? 5; }
 

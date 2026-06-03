@@ -152,8 +152,8 @@ const MULCH_DECAY_RATE_MM_PER_MONTH: Record<string, number> = {
   "Straw":      10,
   "Pea Gravel": 0.5,
 };
-const STANDARD_DEPTH_MM   = 50;
-const ACTION_THRESHOLD_MM = 25;
+const STANDARD_DEPTH_MM   = 100;
+const ACTION_THRESHOLD_MM = 50;
 
 function decayRate(mulchType: string): number {
   return MULCH_DECAY_RATE_MM_PER_MONTH[mulchType] ?? 5;
