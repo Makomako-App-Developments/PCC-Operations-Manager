@@ -1716,8 +1716,8 @@ function MulchingTab({
                     <span className="text-[10px] font-bold px-2 py-0.5 rounded-full whitespace-nowrap"
                       style={{ color: st.color, background: st.bg }}>{st.label}</span>
 
-                    {/* Record Depth button */}
-                    {r.status !== "completed" && assetObj && (
+                    {/* Record Depth button — not shown on drafts (depth was already recorded to create the draft) */}
+                    {r.status !== "completed" && r.status !== "draft" && assetObj && (
                       <button
                         onClick={() => setDepthTarget({ id: r.assetId, name: r.assetName ?? assetObj.name })}
                         className="flex items-center gap-1 text-[11px] font-semibold px-2.5 py-1 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors"
