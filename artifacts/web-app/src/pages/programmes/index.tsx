@@ -136,7 +136,7 @@ const ALLOWED_TRANSITIONS: Record<JobStatus, JobStatus[]> = {
 };
 
 const MULCH_STATUS: Record<string, { label: string; color: string; bg: string }> = {
-  draft:        { label: "Draft — awaiting review", color: "#7c3aed", bg: "#f5f3ff" },
+  draft:        { label: "Draft — awaiting review", color: "#6b7280", bg: "#f3f4f6" },
   due:          { label: "Due",          color: "#dc2626", bg: "#fef2f2" },
   scheduled:    { label: "Scheduled",    color: "#2563eb", bg: "#eff6ff" },
   completed:    { label: "Completed",    color: "#16a34a", bg: "#dcfce7" },

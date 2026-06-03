@@ -38,13 +38,13 @@ import { useToast } from "@/hooks/use-toast";
 const BRAND = "#00AECD";
 
 const TEAM_COLORS = [
-  "#00AECD", "#8b5cf6", "#10b981", "#f59e0b", "#ec4899", "#06b6d4",
+  "#00AECD", "#f97316", "#10b981", "#f59e0b", "#ec4899", "#06b6d4",
 ];
 
 const TYPE_BADGES: Record<string, string> = {
   roses_perennials:  "bg-pink-100 text-pink-700",
   annuals:           "bg-yellow-100 text-yellow-700",
-  ornamental:        "bg-purple-100 text-purple-700",
+  ornamental:        "bg-orange-100 text-orange-700",
   amenity:           "bg-cyan-100 text-cyan-700",
   rain_garden:       "bg-sky-100 text-sky-700",
   reveg:             "bg-lime-100 text-lime-700",
