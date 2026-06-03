@@ -2,6 +2,7 @@ import { Router } from "express";
 import {
   db, assetsTable, jobsTable, teamMembersTable, teamAvailabilityTable,
   systemSettingsTable, jobTeamCompletionsTable, infillJobsTable, mulchingRecordsTable,
+  reactiveJobsTable,
 } from "@workspace/db";
 import { eq, and, gte, lte, inArray, sql, notInArray, or, isNull } from "drizzle-orm";
 import { z } from "zod";
@@ -743,6 +744,86 @@ router.get(
       };
       dayMap.get(mr.scheduledDate)?.push(mapped as any);
     }
+    // ── Merge reactive (unscheduled) jobs into day buckets ────────────────────
+    const reactiveWeekRows = await db
+      .select({
+        id:                reactiveJobsTable.id,
+        assetId:           reactiveJobsTable.assetId,
+        scheduledDate:     sql<string>`to_char(${reactiveJobsTable.scheduledDate}, 'YYYY-MM-DD')`,
+        status:            reactiveJobsTable.status,
+        assignedTeamId:    reactiveJobsTable.assignedTeamId,
+        estimatedTimeMins: reactiveJobsTable.estimatedTimeMins,
+        issueType:         reactiveJobsTable.issueType,
+        description:       reactiveJobsTable.description,
+        location:          reactiveJobsTable.location,
+        createdAt:         reactiveJobsTable.createdAt,
+        updatedAt:         reactiveJobsTable.updatedAt,
+        assetName:         assetsTable.name,
+        assetDesc:         assetsTable.description,
+        gardenType:        assetsTable.gardenType,
+        suburb:            assetsTable.suburb,
+        streetAddress:     assetsTable.streetAddress,
+        lat:               assetsTable.lat,
+        lng:               assetsTable.lng,
+        serviceTimeMins:   assetsTable.serviceTimeMins,
+        routeOrder:        assetsTable.routeOrder,
+        frequency:         assetsTable.frequency,
+      })
+      .from(reactiveJobsTable)
+      .leftJoin(assetsTable, eq(reactiveJobsTable.assetId, assetsTable.id))
+      .where(
+        and(
+          gte(reactiveJobsTable.scheduledDate, weekStart),
+          lte(reactiveJobsTable.scheduledDate, weekEnd),
+          notInArray(reactiveJobsTable.status, ["cancelled"]),
+          ...(teamId ? [eq(reactiveJobsTable.assignedTeamId, teamId)] : []),
+        ),
+      )
+      .orderBy(
+        reactiveJobsTable.scheduledDate,
+        sql`${assetsTable.routeOrder} NULLS LAST`,
+        assetsTable.name,
+      );
+
+    const reactiveStatusMap: Record<string, string> = {
+      raised:      "pending",
+      assigned:    "pending",
+      in_progress: "in_progress",
+      completed:   "completed",
+    };
+
+    for (const rj of reactiveWeekRows) {
+      const mapped = {
+        id:                rj.id,
+        assetId:           rj.assetId,
+        jobType:           "unscheduled" as const,
+        status:            reactiveStatusMap[rj.status] ?? "pending",
+        teamId:            rj.assignedTeamId,
+        isAllTeams:        false,
+        assignedUserId:    null,
+        scheduledDate:     rj.scheduledDate,
+        startedAt:         null,
+        completedAt:       null,
+        actualTimeMins:    null,
+        estimatedTimeMins: rj.estimatedTimeMins,
+        crewStatus:        null,
+        notes:             rj.description,
+        createdAt:         rj.createdAt,
+        updatedAt:         rj.updatedAt,
+        assetName:         rj.assetName ?? rj.location ?? rj.issueType,
+        assetDesc:         rj.assetDesc ?? rj.description,
+        gardenType:        rj.gardenType ?? "other",
+        suburb:            rj.suburb ?? null,
+        streetAddress:     rj.streetAddress ?? null,
+        lat:               rj.lat ?? null,
+        lng:               rj.lng ?? null,
+        serviceTimeMins:   rj.estimatedTimeMins ?? rj.serviceTimeMins ?? 0,
+        routeOrder:        rj.routeOrder ?? null,
+        frequency:         rj.frequency ?? "reactive",
+        teamCompletions:   [],
+      };
+      dayMap.get(rj.scheduledDate)?.push(mapped as any);
+    }
     // ─────────────────────────────────────────────────────────────────────────
 
     const days = Array.from(dayMap.entries()).map(([date, jobs]) => ({ date, jobs }));
@@ -751,8 +832,8 @@ router.get(
       weekStart,
       weekEnd,
       days,
-      totalJobs:     rows.length + infillRows.length + mulchRows.length,
-      completedJobs: rows.filter(r => r.status === "completed").length + infillRows.filter(r => r.status === "completed").length + mulchRows.filter(r => r.status === "completed").length,
+      totalJobs:     rows.length + infillRows.length + mulchRows.length + reactiveWeekRows.length,
+      completedJobs: rows.filter(r => r.status === "completed").length + infillRows.filter(r => r.status === "completed").length + mulchRows.filter(r => r.status === "completed").length + reactiveWeekRows.filter(r => r.status === "completed").length,
       settings: {
         productiveTimeMins: settings?.productiveTimeMins ?? 390,
         standardCrewSize:   settings?.standardCrewSize   ?? 2,
@@ -953,6 +1034,71 @@ router.get(
         estimatedTimeMins: ir.estimatedMins,
         teamId:            ir.assignedTeamId,
         notes:             ir.notes,
+      });
+    }
+    // ── Merge reactive (unscheduled) jobs into the Gantt range ───────────────
+    // Only jobs linked to an asset appear here (Gantt is asset-centric).
+    // Non-asset reactive jobs are visible in the Day / Week views.
+    const reactiveRangeRows = await db
+      .select({
+        id:                reactiveJobsTable.id,
+        assetId:           reactiveJobsTable.assetId,
+        scheduledDate:     sql<string>`to_char(${reactiveJobsTable.scheduledDate}, 'YYYY-MM-DD')`,
+        status:            reactiveJobsTable.status,
+        assignedTeamId:    reactiveJobsTable.assignedTeamId,
+        estimatedTimeMins: reactiveJobsTable.estimatedTimeMins,
+        issueType:         reactiveJobsTable.issueType,
+        description:       reactiveJobsTable.description,
+        assetName:         assetsTable.name,
+        assetDesc:         assetsTable.description,
+        gardenType:        assetsTable.gardenType,
+        standard:          assetsTable.standard,
+        frequency:         assetsTable.frequency,
+        serviceTimeMins:   assetsTable.serviceTimeMins,
+        routeOrder:        assetsTable.routeOrder,
+      })
+      .from(reactiveJobsTable)
+      .innerJoin(assetsTable, eq(reactiveJobsTable.assetId, assetsTable.id))
+      .where(
+        and(
+          gte(reactiveJobsTable.scheduledDate, from),
+          lte(reactiveJobsTable.scheduledDate, to),
+          notInArray(reactiveJobsTable.status, ["cancelled"]),
+          ...(teamId ? [eq(reactiveJobsTable.assignedTeamId, teamId)] : []),
+        ),
+      )
+      .orderBy(
+        sql`${assetsTable.routeOrder} NULLS LAST`,
+        assetsTable.name,
+        reactiveJobsTable.scheduledDate,
+      );
+
+    const reactiveRangeStatusMap: Record<string, string> = {
+      raised:      "pending",
+      assigned:    "pending",
+      in_progress: "in_progress",
+      completed:   "completed",
+    };
+
+    for (const rj of reactiveRangeRows) {
+      if (!rj.assetId) continue;
+      if (!assetMap.has(rj.assetId)) {
+        assetMap.set(rj.assetId, {
+          assetId: rj.assetId, assetName: rj.assetName, assetDesc: rj.assetDesc,
+          gardenType: rj.gardenType, standard: rj.standard, frequency: rj.frequency,
+          serviceTimeMins: rj.serviceTimeMins, teamId: rj.assignedTeamId, routeOrder: rj.routeOrder,
+          jobs: [],
+        });
+      }
+      assetMap.get(rj.assetId)!.jobs.push({
+        id:                rj.id,
+        scheduledDate:     rj.scheduledDate,
+        status:            reactiveRangeStatusMap[rj.status] ?? "pending",
+        jobType:           "unscheduled",
+        crewStatus:        null,
+        estimatedTimeMins: rj.estimatedTimeMins,
+        teamId:            rj.assignedTeamId,
+        notes:             rj.description,
       });
     }
     // ─────────────────────────────────────────────────────────────────────────

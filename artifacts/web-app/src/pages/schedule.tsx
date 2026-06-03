@@ -294,22 +294,30 @@ function DailyGanttView({
                           {cellJobs.length > 0 && (
                             <div className="flex flex-col gap-0.5 items-center">
                               {cellJobs.map(job => {
-                                const done        = job.status === "completed";
-                                const inProgress  = job.status === "in_progress";
-                                const overdue     = job.status === "overdue";
-                                const isMulching  = job.jobType === "mulching";
-                                const isInfill    = job.jobType === "infill_planting";
-                                const MULCH_COLOR = "#92400e";
-                                const INFILL_COLOR = "#166534";
-                                const bg = done       ? "#10b981"
-                                         : isMulching ? "#fef3c7"
-                                         : isInfill   ? "#f0fdf4"
-                                         : overdue    ? "#ef4444"
-                                         : inProgress ? "#00AECD"
+                                const done          = job.status === "completed";
+                                const inProgress    = job.status === "in_progress";
+                                const overdue       = job.status === "overdue";
+                                const isMulching    = job.jobType === "mulching";
+                                const isInfill      = job.jobType === "infill_planting";
+                                const isUnscheduled = job.jobType === "unscheduled";
+                                const MULCH_COLOR   = "#92400e";
+                                const INFILL_COLOR  = "#166534";
+                                const UNSCHED_COLOR = "#c2410c";
+                                const bg = done          ? "#10b981"
+                                         : isMulching    ? "#fef3c7"
+                                         : isInfill      ? "#f0fdf4"
+                                         : isUnscheduled ? "#fff7ed"
+                                         : overdue       ? "#ef4444"
+                                         : inProgress    ? "#00AECD"
                                          : "#64748b";
-                                const textColor = isMulching && !done ? MULCH_COLOR
-                                               : isInfill && !done   ? INFILL_COLOR
+                                const textColor = isMulching && !done    ? MULCH_COLOR
+                                               : isInfill && !done      ? INFILL_COLOR
+                                               : isUnscheduled && !done ? UNSCHED_COLOR
                                                : "white";
+                                const borderCol = isMulching && !done    ? "#fde68a"
+                                               : isInfill && !done      ? "#86efac"
+                                               : isUnscheduled && !done ? "#fed7aa"
+                                               : "transparent";
                                 const effectiveTeamId = job.teamId ?? row.teamId;
                                 return (
                                   <button
@@ -321,19 +329,17 @@ function DailyGanttView({
                                       serviceTimeMins: row.serviceTimeMins,
                                     })}
                                     className="w-6 h-6 rounded-full flex items-center justify-center hover:opacity-80 transition-opacity flex-shrink-0 border"
-                                    style={{
-                                      background: bg,
-                                      color: textColor,
-                                      borderColor: isMulching && !done ? "#fde68a" : isInfill && !done ? "#86efac" : "transparent",
-                                    }}
-                                    title={`${row.assetName} — ${isMulching ? "Mulching" : isInfill ? "Infill Planting" : job.status.replace("_", " ")}`}
+                                    style={{ background: bg, color: textColor, borderColor: borderCol }}
+                                    title={`${row.assetName} — ${isMulching ? "Mulching" : isInfill ? "Infill Planting" : isUnscheduled ? "Unscheduled" : job.status.replace("_", " ")}`}
                                   >
                                     {done
-                                      ? <CheckCircle className="w-3.5 h-3.5" style={{ color: (isMulching || isInfill) ? (isMulching ? MULCH_COLOR : INFILL_COLOR) : "white" }} />
+                                      ? <CheckCircle className="w-3.5 h-3.5" style={{ color: (isMulching || isInfill || isUnscheduled) ? (isMulching ? MULCH_COLOR : isInfill ? INFILL_COLOR : UNSCHED_COLOR) : "white" }} />
                                       : isMulching
                                       ? <span className="text-[8px] font-bold leading-none">🌱</span>
                                       : isInfill
                                       ? <span className="text-[8px] font-bold leading-none">🌿</span>
+                                      : isUnscheduled
+                                      ? <span className="text-[8px] font-bold leading-none">⚡</span>
                                       : <span className="text-[9px] font-bold text-white">{job.estimatedTimeMins ?? row.serviceTimeMins}m</span>
                                     }
                                   </button>
@@ -954,34 +960,39 @@ function WeekView({
                           <div className="absolute left-[22px] top-6 bottom-2 w-px bg-gray-100" />
                           <div className="space-y-0">
                             {sorted.map((job: any, idx: number) => {
-                              const done        = job.status === "completed";
-                              const overdue     = job.status === "overdue";
-                              const inProg      = job.status === "in_progress";
-                              const crewNone    = job.crewStatus === "none";
-                              const crewReduced = job.crewStatus === "reduced";
-                              const isMulching  = job.jobType === "mulching";
-                              const isInfill    = job.jobType === "infill_planting";
-                              const displayTime = job.estimatedTimeMins ?? job.serviceTimeMins;
+                              const done          = job.status === "completed";
+                              const overdue       = job.status === "overdue";
+                              const inProg        = job.status === "in_progress";
+                              const crewNone      = job.crewStatus === "none";
+                              const crewReduced   = job.crewStatus === "reduced";
+                              const isMulching    = job.jobType === "mulching";
+                              const isInfill      = job.jobType === "infill_planting";
+                              const isUnscheduled = job.jobType === "unscheduled";
+                              const displayTime   = job.estimatedTimeMins ?? job.serviceTimeMins;
 
-                              const MULCH_COLOR  = "#92400e";
-                              const INFILL_COLOR = "#166534";
-                              const dotBg     = done      ? "#d1fae5"
-                                              : isMulching && !done ? "#fef3c7"
-                                              : isInfill && !done   ? "#f0fdf4"
-                                              : inProg    ? color + "22"
-                                              : overdue   ? "#fee2e2"
+                              const MULCH_COLOR   = "#92400e";
+                              const INFILL_COLOR  = "#166534";
+                              const UNSCHED_COLOR = "#c2410c";
+                              const dotBg     = done           ? "#d1fae5"
+                                              : isMulching    && !done ? "#fef3c7"
+                                              : isInfill      && !done ? "#f0fdf4"
+                                              : isUnscheduled && !done ? "#fff7ed"
+                                              : inProg        ? color + "22"
+                                              : overdue       ? "#fee2e2"
                                               : "#f1f5f9";
-                              const dotBorder = done      ? "#a7f3d0"
-                                              : isMulching && !done ? "#fde68a"
-                                              : isInfill && !done   ? "#86efac"
-                                              : inProg    ? color
-                                              : overdue   ? "#fca5a5"
+                              const dotBorder = done           ? "#a7f3d0"
+                                              : isMulching    && !done ? "#fde68a"
+                                              : isInfill      && !done ? "#86efac"
+                                              : isUnscheduled && !done ? "#fed7aa"
+                                              : inProg        ? color
+                                              : overdue       ? "#fca5a5"
                                               : "#e2e8f0";
-                              const dotColor  = done      ? "#059669"
-                                              : isMulching && !done ? MULCH_COLOR
-                                              : isInfill && !done   ? INFILL_COLOR
-                                              : inProg    ? color
-                                              : overdue   ? "#ef4444"
+                              const dotColor  = done           ? "#059669"
+                                              : isMulching    && !done ? MULCH_COLOR
+                                              : isInfill      && !done ? INFILL_COLOR
+                                              : isUnscheduled && !done ? UNSCHED_COLOR
+                                              : inProg        ? color
+                                              : overdue       ? "#ef4444"
                                               : "#94a3b8";
 
                               return (
@@ -989,8 +1000,9 @@ function WeekView({
                                   key={job.id}
                                   onClick={() => onJobClick(job)}
                                   className={`flex items-start gap-3 py-2 px-1 rounded-xl cursor-pointer transition-colors hover:bg-gray-50 ${
-                                    isMulching && !done ? "bg-amber-50/20 hover:bg-amber-50/40" :
-                                    isInfill   && !done ? "bg-green-50/20 hover:bg-green-50/40" :
+                                    isMulching    && !done ? "bg-amber-50/20 hover:bg-amber-50/40" :
+                                    isInfill      && !done ? "bg-green-50/20 hover:bg-green-50/40" :
+                                    isUnscheduled && !done ? "bg-orange-50/20 hover:bg-orange-50/40" :
                                     crewNone    ? "bg-red-50/40 hover:bg-red-50/60" :
                                     crewReduced ? "bg-amber-50/30 hover:bg-amber-50/50" :
                                     done        ? "opacity-50" : ""
