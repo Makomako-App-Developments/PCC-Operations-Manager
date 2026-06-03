@@ -226,9 +226,9 @@ export default function Audits() {
         />
         <StatCard
           icon={BookOpen}
-          label="Most Failed Specification"
-          value={topSpec ? topSpec.title : "—"}
-          sub={topSpec ? `${topSpec.count} total fail${topSpec.count !== 1 ? "s" : ""} in this section` : "No failures recorded"}
+          label="Most Failed KPI"
+          value={topKpi ? topKpi.label : "—"}
+          sub={topKpi ? `Failed ${topKpi.count} time${topKpi.count !== 1 ? "s" : ""} across all audits` : "No failures recorded"}
           iconBg={`${BRAND}1a`}
           iconColor={BRAND}
           loading={statsLoading}
