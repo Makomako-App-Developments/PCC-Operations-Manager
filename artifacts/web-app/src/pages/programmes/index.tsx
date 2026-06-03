@@ -1570,8 +1570,10 @@ function MulchingTab({
   const [depthPickerAssetId, setDepthPickerAssetId] = useState("");
   // Review & Schedule drawer state
   const [reviewTarget, setReviewTarget] = useState<any | null>(null);
-  // Expanded history asset
-  const [historyAssetId, setHistoryAssetId] = useState<string | null>(null);
+  // Detail panel
+  const [selectedMulch, setSelectedMulch] = useState<any | null>(null);
+  // Sort state
+  const [mulchSort, setMulchSort] = useState<{ key: string; dir: "asc" | "desc" }>({ key: "scheduledDate", dir: "asc" });
 
   const handleCreate = async () => {
     try {
@@ -1590,6 +1592,22 @@ function MulchingTab({
   };
 
   const draftCount = mulchRecords.filter(r => r.status === "draft").length;
+
+  const sortedMulchRecords = useMemo(() => {
+    const arr = [...mulchRecords];
+    const { key, dir } = mulchSort;
+    arr.sort((a, b) => {
+      const av = a[key] ?? "";
+      const bv = b[key] ?? "";
+      const cmp = String(av).localeCompare(String(bv), undefined, { numeric: true });
+      return dir === "asc" ? cmp : -cmp;
+    });
+    return arr;
+  }, [mulchRecords, mulchSort]);
+
+  const toggleMulchSort = (key: string) => {
+    setMulchSort(s => s.key === key ? { key, dir: s.dir === "asc" ? "desc" : "asc" } : { key, dir: "asc" });
+  };
 
   return (
     <div className="space-y-4">
@@ -1677,97 +1695,238 @@ function MulchingTab({
         />
       )}
 
-      {/* Records list */}
+      {/* Records table */}
       {mulchLoading ? (
-        <div className="space-y-2">{[...Array(4)].map((_, i) => <Skeleton key={i} className="h-20 w-full rounded-xl" />)}</div>
+        <div className="space-y-2">{[...Array(4)].map((_, i) => <Skeleton key={i} className="h-10 w-full rounded-xl" />)}</div>
       ) : mulchRecords.length === 0 ? (
         <div className="text-center py-12 text-gray-400">
           <Layers className="w-10 h-10 mx-auto mb-2 opacity-30" />
           <p className="text-sm">No mulching records yet.</p>
         </div>
       ) : (
-        <div className="space-y-3">
-          {mulchRecords.map((r: any) => {
-            const st = MULCH_STATUS[r.status] ?? MULCH_STATUS.due;
-            const isDraft = r.status === "draft";
-            const assetObj = assets.find(a => a.id === r.assetId);
-            const showHistory = historyAssetId === r.assetId;
-
-            return (
-              <div key={r.id} className="bg-white rounded-xl border overflow-hidden"
-                style={isDraft ? { borderColor: "#c4b5fd", boxShadow: "0 0 0 1px #ede9fe" } : {}}>
-                <div className="px-4 py-3 flex items-start justify-between gap-3">
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-semibold text-gray-800">{r.assetName ?? "Unknown asset"}</p>
-                    <p className="text-[11px] text-gray-400 mt-0.5">
-                      {r.scheduledDate ? fmt(r.scheduledDate) : "No date"}
-                      {r.mulchType ? ` · ${r.mulchType}` : ""}
-                      {r.volumeM3 ? ` · ${r.volumeM3} m³` : ""}
-                    </p>
-                    {isDraft && r.projectedDepthAtDue != null && (
-                      <p className="text-[10px] text-violet-500 mt-0.5">
-                        Projected depth at job date: ~{r.projectedDepthAtDue}mm (threshold {ACTION_THRESHOLD_MM}mm)
-                      </p>
-                    )}
-                  </div>
-
-                  <div className="flex items-center gap-2 flex-shrink-0 flex-wrap justify-end">
-                    {/* Status badge */}
-                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full whitespace-nowrap"
-                      style={{ color: st.color, background: st.bg }}>{st.label}</span>
-
-                    {/* Record Depth button — not shown on drafts (depth was already recorded to create the draft) */}
-                    {r.status !== "completed" && r.status !== "draft" && assetObj && (
-                      <button
-                        onClick={() => setDepthTarget({ id: r.assetId, name: r.assetName ?? assetObj.name })}
-                        className="flex items-center gap-1 text-[11px] font-semibold px-2.5 py-1 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors"
-                      >
-                        <Ruler className="w-3 h-3" /> Record Depth
-                      </button>
-                    )}
-
-                    {/* Review & Schedule for drafts */}
-                    {isDraft && (
-                      <button
-                        onClick={() => setReviewTarget(r)}
-                        className="flex items-center gap-1 text-[11px] font-bold px-2.5 py-1 rounded-lg transition-colors"
-                        style={{ background: "#7c3aed", color: "white" }}
-                      >
-                        <Zap className="w-3 h-3" /> Review &amp; Schedule
-                      </button>
-                    )}
-
-                    {/* Mark done for non-draft, non-completed */}
-                    {r.status !== "completed" && r.status !== "draft" && (
-                      <button
-                        onClick={() => (updateMulch.mutateAsync as any)({ id: r.id, data: { status: "completed", completedDate: new Date().toISOString().slice(0, 10) } }).then(handleRefresh)}
-                        className="text-[11px] text-green-600 hover:text-green-800 font-medium">
-                        Mark Done
-                      </button>
-                    )}
-
-                    {/* History toggle */}
-                    <button
-                      onClick={() => setHistoryAssetId(showHistory ? null : r.assetId)}
-                      className="text-gray-300 hover:text-gray-500 transition-colors"
-                      title="View reading history"
-                    >
-                      <History className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-                </div>
-
-                {/* Reading history panel — collapsible */}
-                {showHistory && (
-                  <div className="border-t border-gray-100 px-4 py-3 bg-gray-50">
-                    <ReadingHistoryPanel assetId={r.assetId} />
-                  </div>
-                )}
-              </div>
-            );
-          })}
+        <div className="rounded-xl border border-gray-200 overflow-hidden bg-white">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="bg-gray-50 border-b border-gray-200">
+                {([
+                  { key: "assetName", label: "Site" },
+                  { key: "scheduledDate", label: "Date" },
+                  { key: "mulchType", label: "Type" },
+                  { key: "volumeM3", label: "Volume" },
+                  { key: "status", label: "Status" },
+                ] as { key: string; label: string }[]).map(col => (
+                  <th key={col.key}
+                    className="text-left px-4 py-2.5 text-xs font-semibold text-gray-500 cursor-pointer select-none whitespace-nowrap hover:text-gray-700"
+                    onClick={() => toggleMulchSort(col.key)}
+                  >
+                    <span className="inline-flex items-center gap-1">
+                      {col.label}
+                      {mulchSort.key === col.key
+                        ? mulchSort.dir === "asc"
+                          ? <ChevronUp className="w-3 h-3" />
+                          : <ChevronDown className="w-3 h-3" />
+                        : <span className="w-3 h-3 inline-block" />}
+                    </span>
+                  </th>
+                ))}
+                <th className="px-4 py-2.5 text-xs font-semibold text-gray-500 text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100">
+              {sortedMulchRecords.map((r: any) => {
+                const st = MULCH_STATUS[r.status] ?? MULCH_STATUS.due;
+                const isDraft = r.status === "draft";
+                const assetObj = assets.find(a => a.id === r.assetId);
+                return (
+                  <tr key={r.id}
+                    onClick={() => setSelectedMulch(r)}
+                    className="hover:bg-gray-50 cursor-pointer transition-colors"
+                    style={isDraft ? { background: "#faf5ff" } : undefined}
+                  >
+                    <td className="px-4 py-3">
+                      <p className="font-medium text-gray-800 text-sm">{r.assetName ?? "Unknown"}</p>
+                      {isDraft && <p className="text-[10px] text-violet-500 mt-0.5">Draft — awaiting review</p>}
+                    </td>
+                    <td className="px-4 py-3 text-gray-600 whitespace-nowrap">
+                      {r.scheduledDate ? fmt(r.scheduledDate) : <span className="text-gray-400">—</span>}
+                    </td>
+                    <td className="px-4 py-3 text-gray-600">
+                      {r.mulchType ?? <span className="text-gray-400">—</span>}
+                    </td>
+                    <td className="px-4 py-3 text-gray-600 whitespace-nowrap">
+                      {r.volumeM3 ? `${r.volumeM3} m³` : <span className="text-gray-400">—</span>}
+                    </td>
+                    <td className="px-4 py-3">
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full whitespace-nowrap"
+                        style={{ color: st.color, background: st.bg }}>{st.label}</span>
+                    </td>
+                    <td className="px-4 py-3 text-right" onClick={e => e.stopPropagation()}>
+                      <div className="flex items-center justify-end gap-2">
+                        {r.status !== "completed" && !isDraft && assetObj && (
+                          <button
+                            onClick={() => setDepthTarget({ id: r.assetId, name: r.assetName ?? assetObj.name })}
+                            className="flex items-center gap-1 text-[11px] font-semibold px-2 py-1 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-100 transition-colors"
+                          >
+                            <Ruler className="w-3 h-3" /> Depth
+                          </button>
+                        )}
+                        {isDraft && (
+                          <button
+                            onClick={() => setReviewTarget(r)}
+                            className="flex items-center gap-1 text-[11px] font-bold px-2 py-1 rounded-lg transition-colors"
+                            style={{ background: "#7c3aed", color: "white" }}
+                          >
+                            <Zap className="w-3 h-3" /> Review
+                          </button>
+                        )}
+                        {r.status !== "completed" && !isDraft && (
+                          <button
+                            onClick={() => (updateMulch.mutateAsync as any)({ id: r.id, data: { status: "completed", completedDate: new Date().toISOString().slice(0, 10) } }).then(handleRefresh)}
+                            className="text-[11px] text-green-600 hover:text-green-800 font-semibold"
+                          >
+                            Done
+                          </button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
         </div>
       )}
+
+      {/* Detail dialog */}
+      {selectedMulch && (() => {
+        const r = selectedMulch;
+        const st = MULCH_STATUS[r.status] ?? MULCH_STATUS.due;
+        const isDraft = r.status === "draft";
+        const assetObj = assets.find(a => a.id === r.assetId);
+        const team = teams.find(t => t.id === r.assignedTeamId);
+        return (
+          <Dialog open onOpenChange={open => { if (!open) setSelectedMulch(null); }}>
+            <DialogContent className="max-w-lg rounded-2xl">
+              <DialogHeader>
+                <DialogTitle className="flex items-center justify-between gap-3 pr-6">
+                  <span className="truncate">{r.assetName ?? "Mulching Job"}</span>
+                  <span className="text-[11px] font-bold px-2 py-0.5 rounded-full shrink-0"
+                    style={{ color: st.color, background: st.bg }}>{st.label}</span>
+                </DialogTitle>
+              </DialogHeader>
+
+              <div className="space-y-4 text-sm">
+                {/* Key fields */}
+                <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
+                  <div>
+                    <p className="text-xs text-gray-400 mb-0.5">Scheduled Date</p>
+                    <p className="font-medium text-gray-800">{r.scheduledDate ? fmt(r.scheduledDate) : "—"}</p>
+                  </div>
+                  {r.completedDate && (
+                    <div>
+                      <p className="text-xs text-gray-400 mb-0.5">Completed</p>
+                      <p className="font-medium text-gray-800">{fmt(r.completedDate)}</p>
+                    </div>
+                  )}
+                  <div>
+                    <p className="text-xs text-gray-400 mb-0.5">Mulch Type</p>
+                    <p className="font-medium text-gray-800">{r.mulchType ?? "—"}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-gray-400 mb-0.5">Volume</p>
+                    <p className="font-medium text-gray-800">{r.volumeM3 ? `${r.volumeM3} m³` : "—"}</p>
+                  </div>
+                  {team && (
+                    <div>
+                      <p className="text-xs text-gray-400 mb-0.5">Team</p>
+                      <p className="font-medium text-gray-800">{team.name}</p>
+                    </div>
+                  )}
+                  {r.estimatedMins && (
+                    <div>
+                      <p className="text-xs text-gray-400 mb-0.5">Est. Time</p>
+                      <p className="font-medium text-gray-800">{fmtMins(r.estimatedMins)}</p>
+                    </div>
+                  )}
+                  {r.contractor && (
+                    <div>
+                      <p className="text-xs text-gray-400 mb-0.5">Contractor</p>
+                      <p className="font-medium text-gray-800">{r.contractor}</p>
+                    </div>
+                  )}
+                  {r.costNzd && (
+                    <div>
+                      <p className="text-xs text-gray-400 mb-0.5">Cost</p>
+                      <p className="font-medium text-gray-800">${r.costNzd} NZD</p>
+                    </div>
+                  )}
+                </div>
+
+                {/* Projected depth — drafts only */}
+                {isDraft && r.projectedDepthAtDue != null && (
+                  <div className="rounded-lg px-3 py-2 text-xs" style={{ background: "#f5f3ff", color: "#7c3aed" }}>
+                    <span className="font-semibold">Projected depth at job date:</span> ~{r.projectedDepthAtDue}mm (action threshold {ACTION_THRESHOLD_MM}mm)
+                  </div>
+                )}
+
+                {/* Notes */}
+                {r.notes && (
+                  <div>
+                    <p className="text-xs text-gray-400 mb-1">Notes</p>
+                    <p className="text-gray-700 leading-relaxed">{r.notes}</p>
+                  </div>
+                )}
+
+                {/* Reading history */}
+                <div>
+                  <p className="text-xs font-semibold text-gray-500 mb-2 flex items-center gap-1.5">
+                    <History className="w-3.5 h-3.5" /> Depth Reading History
+                  </p>
+                  <ReadingHistoryPanel assetId={r.assetId} />
+                </div>
+              </div>
+
+              <DialogFooter className="flex gap-2 pt-2">
+                {r.status !== "completed" && !isDraft && assetObj && (
+                  <button
+                    onClick={() => { setDepthTarget({ id: r.assetId, name: r.assetName ?? assetObj.name }); setSelectedMulch(null); }}
+                    className="flex items-center gap-1.5 text-sm font-semibold px-3 py-2 rounded-lg border transition-colors"
+                    style={{ borderColor: BRAND, color: BRAND }}
+                  >
+                    <Ruler className="w-4 h-4" /> Record Depth
+                  </button>
+                )}
+                {isDraft && (
+                  <button
+                    onClick={() => { setReviewTarget(r); setSelectedMulch(null); }}
+                    className="flex items-center gap-1.5 text-sm font-bold px-3 py-2 rounded-lg transition-colors"
+                    style={{ background: "#7c3aed", color: "white" }}
+                  >
+                    <Zap className="w-4 h-4" /> Review &amp; Schedule
+                  </button>
+                )}
+                {r.status !== "completed" && !isDraft && (
+                  <button
+                    onClick={() => {
+                      (updateMulch.mutateAsync as any)({ id: r.id, data: { status: "completed", completedDate: new Date().toISOString().slice(0, 10) } })
+                        .then(() => { handleRefresh(); setSelectedMulch(null); });
+                    }}
+                    className="flex items-center gap-1.5 text-sm font-semibold px-3 py-2 rounded-lg bg-green-50 text-green-700 hover:bg-green-100 transition-colors"
+                  >
+                    <CheckCircle2 className="w-4 h-4" /> Mark Done
+                  </button>
+                )}
+                <button
+                  onClick={() => setSelectedMulch(null)}
+                  className="ml-auto text-sm text-gray-500 hover:text-gray-700 px-3 py-2 rounded-lg hover:bg-gray-50 transition-colors"
+                >
+                  Close
+                </button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+        );
+      })()}
 
       {/* Add record dialog (manual entry) */}
       <Dialog open={addOpen} onOpenChange={setAddOpen}>
