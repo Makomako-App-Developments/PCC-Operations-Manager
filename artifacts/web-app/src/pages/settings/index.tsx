@@ -1,17 +1,15 @@
 import { useState } from "react";
-import { Shield, Users, Clock, Route, Sunrise, Zap, UsersRound, Lock } from "lucide-react";
+import { Shield, Users, Clock, Route, Sunrise, Zap, Lock } from "lucide-react";
 import UsersPage from "@/pages/users/index";
 import AuditLogPage from "@/pages/audit-log/index";
 import ProductiveTimePage from "./ProductiveTimePage";
 import RouteOptimisationPage from "./RouteOptimisationPage";
 import WorkHoursPage from "./WorkHoursPage";
 import ReactivePrioritiesPage from "./ReactivePrioritiesPage";
-import TeamsPage from "./TeamsPage";
 import RolesPermissionsPage from "./RolesPermissionsPage";
 
 const TABS = [
   { id: "users",                label: "Users",                icon: Users       },
-  { id: "teams",                label: "Teams",                icon: UsersRound  },
   { id: "roles",                label: "Roles & Permissions",  icon: Lock        },
   { id: "audit-log",            label: "Audit Log",            icon: Shield      },
   { id: "work-hours",           label: "Work Hours",           icon: Sunrise     },
@@ -51,7 +49,6 @@ export default function SettingsPage() {
 
       <div className="flex-1">
         {tab === "users"              && <UsersPage embedded />}
-        {tab === "teams"              && <TeamsPage />}
         {tab === "roles"              && <RolesPermissionsPage />}
         {tab === "audit-log"          && <AuditLogPage embedded />}
         {tab === "work-hours"         && <WorkHoursPage />}
