@@ -87,6 +87,10 @@ export const mulchingRecordsTable = pgTable("mulching_records", {
   // Scheduling assignment (set when a manager publishes via Review & Schedule)
   assignedTeamId:      uuid("assigned_team_id").references(() => teamsTable.id),
   estimatedMins:       integer("estimated_mins"),
+  // Schedule alignment — set when the draft date is snapped to an existing maintenance visit
+  // alignedJobId is intentionally left without a FK reference to avoid a circular schema import
+  alignedJobId:        uuid("aligned_job_id"),
+  alignedJobDate:      date("aligned_job_date"),
   createdAt:           timestamp("created_at").notNull().defaultNow(),
   updatedAt:           timestamp("updated_at").notNull().defaultNow(),
 }, (t) => [

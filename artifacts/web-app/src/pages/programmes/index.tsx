@@ -1756,7 +1756,12 @@ function MulchingTab({
                   >
                     <td className="px-4 py-3">
                       <p className="font-medium text-gray-800 text-sm">{r.assetName ?? "Unknown"}</p>
-                      {isDraft && <p className="text-[10px] text-violet-500 mt-0.5">Draft — awaiting review</p>}
+                      {isDraft && !r.alignedJobDate && <p className="text-[10px] text-violet-500 mt-0.5">Draft — awaiting review</p>}
+                      {isDraft && r.alignedJobDate && (
+                        <p className="text-[10px] mt-0.5 font-semibold" style={{ color: BRAND }}>
+                          📅 Aligned to maintenance visit · {fmt(r.alignedJobDate)}
+                        </p>
+                      )}
                     </td>
                     <td className="px-4 py-3 text-gray-600 whitespace-nowrap">
                       {r.scheduledDate ? fmt(r.scheduledDate) : <span className="text-gray-400">—</span>}
@@ -1824,6 +1829,11 @@ function MulchingTab({
                   <div>
                     <p className="text-xs text-gray-400 mb-0.5">Scheduled Date</p>
                     <p className="font-medium text-gray-800">{r.scheduledDate ? fmt(r.scheduledDate) : "—"}</p>
+                    {r.alignedJobDate && (
+                      <p className="text-[10px] font-semibold mt-0.5" style={{ color: BRAND }}>
+                        📅 Aligned to maintenance visit
+                      </p>
+                    )}
                   </div>
                   {r.completedDate && (
                     <div>

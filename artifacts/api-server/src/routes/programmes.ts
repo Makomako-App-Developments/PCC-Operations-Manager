@@ -1,10 +1,10 @@
 import { Router } from "express";
 import {
   db, infillJobsTable, infillOrdersTable, mulchingRecordsTable, mulchDepthReadingsTable,
-  assetsTable, teamsTable, usersTable,
+  assetsTable, teamsTable, usersTable, jobsTable,
   insertInfillJobSchema, insertInfillOrderSchema, insertMulchingRecordSchema,
 } from "@workspace/db";
-import { eq, and, inArray, desc } from "drizzle-orm";
+import { eq, and, inArray, desc, gte, lte } from "drizzle-orm";
 import { requireAuth, requireRole } from "../middlewares/auth";
 import { validateBody } from "../middlewares/validate";
 import { z } from "zod/v4";
@@ -288,6 +288,8 @@ router.get("/mulching-records", requireAuth, async (req, res) => {
       projectedDepthAtDue: mulchingRecordsTable.projectedDepthAtDue,
       assignedTeamId:      mulchingRecordsTable.assignedTeamId,
       estimatedMins:       mulchingRecordsTable.estimatedMins,
+      alignedJobId:        mulchingRecordsTable.alignedJobId,
+      alignedJobDate:      mulchingRecordsTable.alignedJobDate,
       createdAt:           mulchingRecordsTable.createdAt,
       updatedAt:           mulchingRecordsTable.updatedAt,
     })
@@ -379,6 +381,34 @@ router.post(
     const effectiveDepth = body.isFreshApplication ? STANDARD_DEPTH_MM : body.depthMm;
     const projectedJobDate = projectNextJobDate(effectiveDepth, body.mulchType, body.recordedAt);
 
+    // ── Schedule alignment: look for an existing maintenance visit within ±14 days ──
+    const ALIGN_FLEX_DAYS = 14;
+    const projMs = new Date(projectedJobDate + "T00:00:00Z").getTime();
+    const rangeStart = new Date(projMs - ALIGN_FLEX_DAYS * 86400000).toISOString().slice(0, 10);
+    const rangeEnd   = new Date(projMs + ALIGN_FLEX_DAYS * 86400000).toISOString().slice(0, 10);
+
+    const nearbyJobs = await db
+      .select({ id: jobsTable.id, scheduledDate: jobsTable.scheduledDate })
+      .from(jobsTable)
+      .where(and(
+        eq(jobsTable.assetId, body.assetId),
+        inArray(jobsTable.status, ["pending", "in_progress"]),
+        gte(jobsTable.scheduledDate, rangeStart),
+        lte(jobsTable.scheduledDate, rangeEnd),
+      ));
+
+    // Pick the nearest job by absolute date difference
+    const nearestJob = nearbyJobs.reduce<{ id: string; scheduledDate: string } | null>((best, job) => {
+      const diff    = Math.abs(new Date(job.scheduledDate + "T00:00:00Z").getTime() - projMs);
+      const bestDiff = best ? Math.abs(new Date(best.scheduledDate + "T00:00:00Z").getTime() - projMs) : Infinity;
+      return diff < bestDiff ? job : best;
+    }, null);
+
+    // Use aligned date if a nearby job exists, otherwise use the projected date
+    const finalJobDate  = nearestJob ? nearestJob.scheduledDate : projectedJobDate;
+    const alignedJobId   = nearestJob?.id ?? null;
+    const alignedJobDate = nearestJob?.scheduledDate ?? null;
+
     const result = await db.transaction(async tx => {
       const [reading] = await tx
         .insert(mulchDepthReadingsTable)
@@ -394,11 +424,11 @@ router.post(
         })
         .returning();
 
-      // Projected remaining depth at the due date (for display context)
+      // Projected remaining depth at the final (possibly aligned) due date
       const rate = decayRateForType(body.mulchType);
       const readingDate    = new Date(body.recordedAt + "T00:00:00Z");
-      const projectedDate  = new Date(projectedJobDate + "T00:00:00Z");
-      const monthsToTarget = (projectedDate.getTime() - readingDate.getTime()) / (1000 * 60 * 60 * 24 * 30.44);
+      const finalDate      = new Date(finalJobDate + "T00:00:00Z");
+      const monthsToTarget = (finalDate.getTime() - readingDate.getTime()) / (1000 * 60 * 60 * 24 * 30.44);
       const projectedDepthAtDue = Math.max(0, Math.round(effectiveDepth - rate * monthsToTarget));
 
       // Check for an existing draft mulching record for this asset
@@ -417,10 +447,12 @@ router.post(
         const [updated] = await tx
           .update(mulchingRecordsTable)
           .set({
-            scheduledDate:       projectedJobDate,
+            scheduledDate:       finalJobDate,
             mulchType:           body.mulchType ?? existingDraft.mulchType,
             sourceReadingId:     reading.id,
             projectedDepthAtDue,
+            alignedJobId,
+            alignedJobDate,
             updatedAt:           new Date(),
           })
           .where(eq(mulchingRecordsTable.id, existingDraft.id))
@@ -433,10 +465,12 @@ router.post(
           .values({
             assetId:             body.assetId,
             status:              "draft",
-            scheduledDate:       projectedJobDate,
+            scheduledDate:       finalJobDate,
             mulchType:           body.mulchType ?? null,
             sourceReadingId:     reading.id,
             projectedDepthAtDue,
+            alignedJobId,
+            alignedJobDate,
           })
           .returning();
         draft = created;
