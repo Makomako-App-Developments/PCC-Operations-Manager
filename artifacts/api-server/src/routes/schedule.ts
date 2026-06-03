@@ -782,6 +782,7 @@ router.get(
         jobId:             jobsTable.id,
         scheduledDate:     sql<string>`to_char(${jobsTable.scheduledDate}, 'YYYY-MM-DD')`,
         status:            jobsTable.status,
+        jobType:           jobsTable.jobType,
         crewStatus:        jobsTable.crewStatus,
         assetId:           assetsTable.id,
         assetName:         assetsTable.name,
@@ -793,6 +794,7 @@ router.get(
         estimatedTimeMins: jobsTable.estimatedTimeMins,
         teamId:            assetsTable.teamId,
         routeOrder:        assetsTable.routeOrder,
+        notes:             jobsTable.notes,
       })
       .from(jobsTable)
       .innerJoin(assetsTable, eq(jobsTable.assetId, assetsTable.id))
@@ -809,11 +811,17 @@ router.get(
         jobsTable.scheduledDate,
       );
 
+    type RangeJob = {
+      id: string; scheduledDate: string; status: string; jobType: string;
+      crewStatus: string | null; estimatedTimeMins: number | null;
+      teamId?: string | null; notes?: string | null; mulchType?: string | null;
+    };
+
     const assetMap = new Map<string, {
       assetId: string; assetName: string; assetDesc: string | null;
       gardenType: string; standard: string; frequency: string;
       serviceTimeMins: number; teamId: string | null; routeOrder: number | null;
-      jobs: { id: string; scheduledDate: string; status: string; crewStatus: string | null; estimatedTimeMins: number | null }[];
+      jobs: RangeJob[];
     }>();
 
     for (const row of rows) {
@@ -827,9 +835,73 @@ router.get(
       }
       assetMap.get(row.assetId)!.jobs.push({
         id: row.jobId, scheduledDate: row.scheduledDate, status: row.status,
-        crewStatus: row.crewStatus, estimatedTimeMins: row.estimatedTimeMins,
+        jobType: row.jobType, crewStatus: row.crewStatus, estimatedTimeMins: row.estimatedTimeMins,
+        teamId: row.teamId, notes: row.notes,
       });
     }
+
+    // ── Merge mulching records into the Gantt range ───────────────────────────
+    const mulchRows = await db
+      .select({
+        id:              mulchingRecordsTable.id,
+        assetId:         mulchingRecordsTable.assetId,
+        scheduledDate:   sql<string>`to_char(${mulchingRecordsTable.scheduledDate}, 'YYYY-MM-DD')`,
+        status:          mulchingRecordsTable.status,
+        assignedTeamId:  mulchingRecordsTable.assignedTeamId,
+        estimatedMins:   mulchingRecordsTable.estimatedMins,
+        notes:           mulchingRecordsTable.notes,
+        mulchType:       mulchingRecordsTable.mulchType,
+        assetName:       assetsTable.name,
+        assetDesc:       assetsTable.description,
+        gardenType:      assetsTable.gardenType,
+        standard:        assetsTable.standard,
+        frequency:       assetsTable.frequency,
+        serviceTimeMins: assetsTable.serviceTimeMins,
+        routeOrder:      assetsTable.routeOrder,
+      })
+      .from(mulchingRecordsTable)
+      .innerJoin(assetsTable, eq(mulchingRecordsTable.assetId, assetsTable.id))
+      .where(
+        and(
+          gte(mulchingRecordsTable.scheduledDate, from),
+          lte(mulchingRecordsTable.scheduledDate, to),
+          inArray(mulchingRecordsTable.status, ["scheduled", "completed"]),
+          ...(teamId ? [eq(mulchingRecordsTable.assignedTeamId, teamId)] : []),
+        ),
+      )
+      .orderBy(
+        sql`${assetsTable.routeOrder} NULLS LAST`,
+        assetsTable.name,
+        mulchingRecordsTable.scheduledDate,
+      );
+
+    const mulchStatusMap: Record<string, string> = {
+      scheduled: "pending",
+      completed: "completed",
+    };
+
+    for (const mr of mulchRows) {
+      if (!assetMap.has(mr.assetId)) {
+        assetMap.set(mr.assetId, {
+          assetId: mr.assetId, assetName: mr.assetName, assetDesc: mr.assetDesc,
+          gardenType: mr.gardenType, standard: mr.standard, frequency: mr.frequency,
+          serviceTimeMins: mr.serviceTimeMins, teamId: mr.assignedTeamId, routeOrder: mr.routeOrder,
+          jobs: [],
+        });
+      }
+      assetMap.get(mr.assetId)!.jobs.push({
+        id:                mr.id,
+        scheduledDate:     mr.scheduledDate,
+        status:            mulchStatusMap[mr.status] ?? "pending",
+        jobType:           "mulching",
+        crewStatus:        null,
+        estimatedTimeMins: mr.estimatedMins,
+        teamId:            mr.assignedTeamId,
+        notes:             mr.notes,
+        mulchType:         mr.mulchType,
+      });
+    }
+    // ─────────────────────────────────────────────────────────────────────────
 
     res.json({ from, to, rows: Array.from(assetMap.values()) });
   },

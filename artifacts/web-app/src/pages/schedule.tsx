@@ -71,7 +71,17 @@ interface GanttAssetRow {
   serviceTimeMins: number;
   routeOrder: number | null;
   teamId: string | null;
-  jobs: { id: string; scheduledDate: string; status: string }[];
+  jobs: {
+    id: string;
+    scheduledDate: string;
+    status: string;
+    jobType?: string;
+    estimatedTimeMins?: number | null;
+    crewStatus?: string | null;
+    teamId?: string | null;
+    notes?: string | null;
+    mulchType?: string | null;
+  }[];
 }
 
 interface GanttData {
@@ -287,21 +297,40 @@ function DailyGanttView({
                           {cellJobs.length > 0 && (
                             <div className="flex flex-col gap-0.5 items-center">
                               {cellJobs.map(job => {
-                                const done       = job.status === "completed";
-                                const inProgress = job.status === "in_progress";
-                                const overdue    = job.status === "overdue";
-                                const bg = done ? "#10b981" : overdue ? "#ef4444" : inProgress ? "#00AECD" : "#64748b";
+                                const done        = job.status === "completed";
+                                const inProgress  = job.status === "in_progress";
+                                const overdue     = job.status === "overdue";
+                                const isMulching  = job.jobType === "mulching";
+                                const MULCH_COLOR = "#92400e";
+                                const bg = done       ? "#10b981"
+                                         : isMulching ? "#fef3c7"
+                                         : overdue    ? "#ef4444"
+                                         : inProgress ? "#00AECD"
+                                         : "#64748b";
+                                const textColor = isMulching && !done ? MULCH_COLOR : "white";
+                                const effectiveTeamId = job.teamId ?? row.teamId;
                                 return (
                                   <button
                                     key={job.id}
-                                    onClick={() => onJobClick({ ...job, assetName: row.assetName, teamId: row.teamId })}
-                                    className="w-6 h-6 rounded-full flex items-center justify-center text-white hover:opacity-80 transition-opacity flex-shrink-0"
-                                    style={{ background: bg }}
-                                    title={`${row.assetName} — ${job.status.replace("_", " ")}`}
+                                    onClick={() => onJobClick({
+                                      ...job,
+                                      assetName: row.assetName,
+                                      teamId: effectiveTeamId,
+                                      serviceTimeMins: row.serviceTimeMins,
+                                    })}
+                                    className="w-6 h-6 rounded-full flex items-center justify-center hover:opacity-80 transition-opacity flex-shrink-0 border"
+                                    style={{
+                                      background: bg,
+                                      color: textColor,
+                                      borderColor: isMulching && !done ? "#fde68a" : "transparent",
+                                    }}
+                                    title={`${row.assetName} — ${isMulching ? "Mulching" : job.status.replace("_", " ")}`}
                                   >
                                     {done
-                                      ? <CheckCircle className="w-3.5 h-3.5" />
-                                      : <span className="text-[9px] font-bold">{job.estimatedTimeMins ?? row.serviceTimeMins}m</span>
+                                      ? <CheckCircle className="w-3.5 h-3.5" style={{ color: isMulching ? MULCH_COLOR : "white" }} />
+                                      : isMulching
+                                      ? <span className="text-[8px] font-bold leading-none">🌱</span>
+                                      : <span className="text-[9px] font-bold text-white">{job.estimatedTimeMins ?? row.serviceTimeMins}m</span>
                                     }
                                   </button>
                                 );
