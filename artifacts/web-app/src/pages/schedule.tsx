@@ -229,7 +229,7 @@ function DailyGanttView({
                 <th className="text-center py-2 px-1 border-b border-gray-200 sticky bg-white z-30" style={{ left: 0, minWidth: 40, width: 40 }}>
                   <Tooltip>
                     <TooltipTrigger asChild>
-                      <span className="cursor-help">#</span>
+                      <span className="cursor-help">GS #</span>
                     </TooltipTrigger>
                     <TooltipContent side="right">Geosequence number</TooltipContent>
                   </Tooltip>
@@ -454,7 +454,7 @@ function GanttView({
                 <th className="text-center py-2.5 px-1 border-b border-gray-200 sticky bg-white z-30" style={{ left: 0, minWidth: 40, width: 40 }}>
                   <Tooltip>
                     <TooltipTrigger asChild>
-                      <span className="cursor-help">#</span>
+                      <span className="cursor-help">GS #</span>
                     </TooltipTrigger>
                     <TooltipContent side="right">Geosequence number</TooltipContent>
                   </Tooltip>
