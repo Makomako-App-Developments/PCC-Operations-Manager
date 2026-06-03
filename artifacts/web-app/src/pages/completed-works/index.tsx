@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useSearch } from "wouter";
-import { Search, X, Clock, Camera, FileText, ChevronRight, CheckCircle2, ArrowUpRight, ArrowDownRight, Minus, ChevronsUpDown, ChevronUp, ChevronDown } from "lucide-react";
+import { Search, X, Clock, Camera, FileText, ChevronRight, CheckCircle2, ArrowUpRight, ArrowDownRight, Minus, ChevronsUpDown, ChevronUp, ChevronDown, MapPin, Maximize2 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -348,6 +348,23 @@ export default function CompletedWorks() {
     });
   }, [data, search, sortKey, sortDir]);
 
+  const stats = useMemo(() => {
+    const uniqueAssets = new Map<string, number | null>();
+    let totalActualMins = 0;
+    for (const r of rows) {
+      if (r.assetId && !uniqueAssets.has(r.assetId)) {
+        uniqueAssets.set(r.assetId, r.areaM2);
+      }
+      totalActualMins += r.actualTimeMins ?? 0;
+    }
+    const totalAreaM2 = [...uniqueAssets.values()].reduce((s, a) => s + (a ?? 0), 0);
+    return {
+      gardens: uniqueAssets.size,
+      hours: totalActualMins / 60,
+      areaM2: totalAreaM2,
+    };
+  }, [rows]);
+
   function clearFilters() {
     setSearch("");
     setTeamId("all");
@@ -443,6 +460,45 @@ export default function CompletedWorks() {
               onChange={e => setTo(e.target.value)}
               className="h-9 rounded-md border border-input bg-background px-3 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#00AECD] focus:ring-offset-0"
             />
+          </div>
+        </div>
+
+        {/* Summary stats */}
+        <div className="px-8 py-4 bg-[#f5f7f9] border-b border-gray-200 flex-shrink-0">
+          <div className="flex gap-4">
+            <div className="flex-1 bg-white rounded-xl border border-gray-200 px-5 py-3.5 flex items-center gap-3.5">
+              <div className="w-9 h-9 rounded-lg bg-[#00AECD]/10 flex items-center justify-center flex-shrink-0">
+                <MapPin className="w-4.5 h-4.5 text-[#00AECD]" style={{ width: 18, height: 18 }} />
+              </div>
+              <div>
+                <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Gardens Serviced</p>
+                <p className="text-xl font-bold text-gray-900 leading-tight">
+                  {isLoading ? "—" : stats.gardens.toLocaleString()}
+                </p>
+              </div>
+            </div>
+            <div className="flex-1 bg-white rounded-xl border border-gray-200 px-5 py-3.5 flex items-center gap-3.5">
+              <div className="w-9 h-9 rounded-lg bg-[#00AECD]/10 flex items-center justify-center flex-shrink-0">
+                <Clock className="w-4.5 h-4.5 text-[#00AECD]" style={{ width: 18, height: 18 }} />
+              </div>
+              <div>
+                <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Total Service Hours</p>
+                <p className="text-xl font-bold text-gray-900 leading-tight">
+                  {isLoading ? "—" : `${stats.hours.toFixed(1)} hrs`}
+                </p>
+              </div>
+            </div>
+            <div className="flex-1 bg-white rounded-xl border border-gray-200 px-5 py-3.5 flex items-center gap-3.5">
+              <div className="w-9 h-9 rounded-lg bg-[#00AECD]/10 flex items-center justify-center flex-shrink-0">
+                <Maximize2 className="w-4.5 h-4.5 text-[#00AECD]" style={{ width: 18, height: 18 }} />
+              </div>
+              <div>
+                <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Total Area</p>
+                <p className="text-xl font-bold text-gray-900 leading-tight">
+                  {isLoading ? "—" : `${stats.areaM2.toLocaleString()} m²`}
+                </p>
+              </div>
+            </div>
           </div>
         </div>
 
