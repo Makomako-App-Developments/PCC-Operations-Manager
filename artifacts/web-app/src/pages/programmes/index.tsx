@@ -1762,14 +1762,6 @@ function MulchingTab({
                     </td>
                     <td className="px-4 py-3 text-right" onClick={e => e.stopPropagation()}>
                       <div className="flex items-center justify-end gap-2">
-                        {r.status !== "completed" && !isDraft && assetObj && (
-                          <button
-                            onClick={() => setDepthTarget({ id: r.assetId, name: r.assetName ?? assetObj.name })}
-                            className="flex items-center gap-1 text-[11px] font-semibold px-2 py-1 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-100 transition-colors"
-                          >
-                            <Ruler className="w-3 h-3" /> Depth
-                          </button>
-                        )}
                         {isDraft && (
                           <button
                             onClick={() => setReviewTarget(r)}
