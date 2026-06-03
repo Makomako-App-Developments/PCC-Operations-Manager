@@ -12,6 +12,7 @@ import {
   AlertTriangle, CheckCircle2, Clock, MapPin, Plus, ArrowRight,
   Trash2, Users, Bell, Calendar, X, AlertCircle, Zap,
   SkipForward, Shield, Info, Search, RotateCcw,
+  Paperclip, FileText, Image as ImageIcon,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
@@ -244,6 +245,7 @@ export function ReactiveJobWizard({ teamsData, assetsData, onClose, onPublished 
   const [priority, setPriority] = useState<string>("urgent");
   const [notes, setNotes] = useState("");
 
+  const [attachments, setAttachments] = useState<File[]>([]);
   const [actions, setActions] = useState<Record<string, JobAction>>({});
   const [reassignTo, setReassignTo] = useState<Record<string, string>>({});
   const [isPublishing, setIsPublishing] = useState(false);
@@ -364,9 +366,24 @@ export function ReactiveJobWizard({ teamsData, assetsData, onClose, onPublished 
         rjBody.assetId = selectedAssetId;
       }
 
-      await (
-        createRJ as { mutateAsync: (d: unknown) => Promise<unknown> }
+      const newJob = await (
+        createRJ as { mutateAsync: (d: unknown) => Promise<{ id: string }> }
       ).mutateAsync({ data: rjBody });
+
+      // Upload any attachments collected in Step 1
+      if (attachments.length > 0 && newJob?.id) {
+        await Promise.all(
+          attachments.map(file => {
+            const fd = new FormData();
+            fd.append("photo", file);
+            return fetch(`/api/reactive-jobs/${newJob.id}/photos`, {
+              method: "POST",
+              credentials: "include",
+              body: fd,
+            });
+          }),
+        );
+      }
 
       await Promise.all(
         dayJobs
@@ -765,6 +782,92 @@ export function ReactiveJobWizard({ teamsData, assetsData, onClose, onPublished 
                     />
                   </div>
                 </div>
+              </div>
+
+              {/* ── Attachments ──────────────────────────────────────────── */}
+              <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
+                <h2 className="text-sm font-bold text-gray-900 mb-4 flex items-center gap-2">
+                  <Paperclip className="w-4 h-4" style={{ color: BRAND }} />
+                  Attachments
+                  <span className="text-xs font-normal text-gray-400 ml-1">optional</span>
+                </h2>
+
+                {/* Drop / click zone */}
+                <label
+                  className="flex flex-col items-center justify-center gap-2 w-full border-2 border-dashed border-gray-200 rounded-xl py-6 px-4 cursor-pointer hover:border-[#00AECD] hover:bg-[#00AECD]/5 transition-colors"
+                  onDragOver={e => e.preventDefault()}
+                  onDrop={e => {
+                    e.preventDefault();
+                    const files = Array.from(e.dataTransfer.files);
+                    setAttachments(prev => {
+                      const existing = new Set(prev.map(f => f.name + f.size));
+                      return [...prev, ...files.filter(f => !existing.has(f.name + f.size))];
+                    });
+                  }}
+                >
+                  <input
+                    type="file"
+                    multiple
+                    accept="image/*,application/pdf,.doc,.docx,.xls,.xlsx"
+                    className="hidden"
+                    onChange={e => {
+                      const files = Array.from(e.target.files ?? []);
+                      setAttachments(prev => {
+                        const existing = new Set(prev.map(f => f.name + f.size));
+                        return [...prev, ...files.filter(f => !existing.has(f.name + f.size))];
+                      });
+                      e.target.value = "";
+                    }}
+                  />
+                  <Paperclip className="w-5 h-5 text-gray-300" />
+                  <p className="text-sm text-gray-500 text-center">
+                    <span className="font-semibold text-[#00AECD]">Click to browse</span> or drag files here
+                  </p>
+                  <p className="text-[11px] text-gray-400">Images, PDF, Word, Excel — max 20 MB each</p>
+                </label>
+
+                {/* File list */}
+                {attachments.length > 0 && (
+                  <div className="mt-3 space-y-2">
+                    {attachments.map((file, idx) => {
+                      const isImage = file.type.startsWith("image/");
+                      const previewUrl = isImage ? URL.createObjectURL(file) : null;
+                      const sizeMb = (file.size / 1024 / 1024).toFixed(1);
+                      return (
+                        <div
+                          key={idx}
+                          className="flex items-center gap-3 bg-gray-50 rounded-xl px-3 py-2.5 border border-gray-100"
+                        >
+                          {previewUrl ? (
+                            <img
+                              src={previewUrl}
+                              alt={file.name}
+                              className="w-10 h-10 rounded-lg object-cover flex-shrink-0 border border-gray-200"
+                            />
+                          ) : (
+                            <div className="w-10 h-10 rounded-lg bg-blue-50 border border-blue-100 flex items-center justify-center flex-shrink-0">
+                              {file.type === "application/pdf"
+                                ? <FileText className="w-5 h-5 text-red-500" />
+                                : <FileText className="w-5 h-5 text-blue-500" />}
+                            </div>
+                          )}
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium text-gray-800 truncate">{file.name}</p>
+                            <p className="text-[11px] text-gray-400">{sizeMb} MB</p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => setAttachments(prev => prev.filter((_, i) => i !== idx))}
+                            className="flex-shrink-0 w-6 h-6 rounded-full flex items-center justify-center text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors"
+                            title="Remove"
+                          >
+                            <X className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
 
               <div className="flex justify-end">
