@@ -9,7 +9,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, Camera, MapPin, Locate, X, CheckCircle2, XCircle, MinusCircle, ChevronDown, ChevronUp, Ruler } from "lucide-react";
-import { KPI_SECTIONS, ALL_KPIS, ResponseState, KpiResult, emptyResponse, calcAuditScore } from "./kpi-config";
+import { KPI_SECTIONS, ALL_KPIS, ResponseState, KpiResult, emptyResponse, calcAuditScore, PEST_PLANTS_LIST } from "./kpi-config";
 import { format } from "date-fns";
 import { MapContainer, TileLayer, Marker, useMapEvents, GeoJSON, useMap } from "react-leaflet";
 import L from "leaflet";
@@ -96,6 +96,7 @@ function KpiCard({ kpi, state, onChange, showError, assetBoundary }: KpiCardProp
   const [pinModal, setPinModal] = useState(false);
   const [locating, setLocating] = useState(false);
   const [expanded, setExpanded] = useState(true);
+  const [pestSearch, setPestSearch] = useState("");
 
   const set = useCallback((patch: Partial<ResponseState>) => onChange({ ...state, ...patch }), [state, onChange]);
 
@@ -192,6 +193,48 @@ function KpiCard({ kpi, state, onChange, showError, assetBoundary }: KpiCardProp
                 <span className="text-sm text-gray-400 font-medium">mm</span>
               </div>
               <p className="text-[10px] text-gray-400 mt-1.5">If entered, a depth reading will be saved against this garden automatically.</p>
+            </div>
+          )}
+
+          {/* Pest plants present — only for the plant_pests KPI */}
+          {kpi.key === "plant_pests" && (
+            <div className="bg-orange-50/60 border border-orange-100 rounded-xl p-4 space-y-2">
+              <label className="text-xs font-semibold text-orange-700 block">
+                Pest plants present <span className="text-gray-400 font-normal">(select all that apply)</span>
+              </label>
+              {state.pestPlantsPresent.length > 0 && (
+                <div className="flex flex-wrap gap-1">
+                  {state.pestPlantsPresent.map((p) => (
+                    <span key={p} className="inline-flex items-center gap-1 text-[10px] font-semibold bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full">
+                      {p}
+                      <button type="button" onClick={() => set({ pestPlantsPresent: state.pestPlantsPresent.filter((x) => x !== p) })} className="hover:text-orange-900 leading-none">×</button>
+                    </span>
+                  ))}
+                </div>
+              )}
+              <input
+                type="text"
+                placeholder="Search pest plants…"
+                value={pestSearch}
+                onChange={(e) => setPestSearch(e.target.value)}
+                className="w-full text-xs border border-gray-200 rounded-lg px-3 py-1.5 bg-white outline-none focus:border-orange-300"
+              />
+              <div className="max-h-40 overflow-y-auto rounded-lg border border-gray-100 bg-white divide-y divide-gray-50">
+                {PEST_PLANTS_LIST.filter((p) => !pestSearch || p.toLowerCase().includes(pestSearch.toLowerCase())).map((plant) => (
+                  <label key={plant} className="flex items-center gap-2 px-3 py-1.5 cursor-pointer hover:bg-orange-50 text-xs text-gray-700">
+                    <input
+                      type="checkbox"
+                      className="rounded"
+                      checked={state.pestPlantsPresent.includes(plant)}
+                      onChange={(e) => {
+                        if (e.target.checked) set({ pestPlantsPresent: [...state.pestPlantsPresent, plant] });
+                        else set({ pestPlantsPresent: state.pestPlantsPresent.filter((x) => x !== plant) });
+                      }}
+                    />
+                    {plant}
+                  </label>
+                ))}
+              </div>
             </div>
           )}
 
@@ -364,6 +407,7 @@ export default function NewAudit() {
           notes: r.notes || undefined,
           failLat: r.failLat ?? undefined,
           failLng: r.failLng ?? undefined,
+          pestPlantsPresent: k.key === "plant_pests" && r.pestPlantsPresent.length ? r.pestPlantsPresent : undefined,
         };
       });
       const detail = await saveMutation.mutateAsync({ id: auditId, data: { responses: responseArray } as any }) as any;

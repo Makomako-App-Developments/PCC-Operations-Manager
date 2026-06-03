@@ -175,7 +175,7 @@ router.put("/audits/:id/responses", requireAuth, requireRole("manager", "supervi
   const [audit] = await db.select().from(auditsTable).where(eq(auditsTable.id, auditId)).limit(1);
   if (!audit) { res.status(404).json({ error: "Audit not found" }); return; }
 
-  const { responses } = req.body as { responses: Array<{ criterion: string; result: string; notes?: string; failLat?: number; failLng?: number }> };
+  const { responses } = req.body as { responses: Array<{ criterion: string; result: string; notes?: string; failLat?: number; failLng?: number; pestPlantsPresent?: string[] }> };
   if (!Array.isArray(responses)) { res.status(400).json({ error: "responses array required" }); return; }
 
   // Upsert each response
@@ -191,6 +191,7 @@ router.put("/audits/:id/responses", requireAuth, requireRole("manager", "supervi
       notes: r.notes ?? null,
       failLat: r.failLat != null ? String(r.failLat) : null,
       failLng: r.failLng != null ? String(r.failLng) : null,
+      pestPlantsPresent: r.pestPlantsPresent?.length ? JSON.stringify(r.pestPlantsPresent) : null,
       updatedAt: new Date(),
     };
 
@@ -294,7 +295,7 @@ router.get("/audits/:id/pdf", requireAuth, async (req, res) => {
     "Plant Support & Protection": ["stakes_ties", "damage"],
   };
   const KPI_LABELS: Record<string, string> = {
-    litter: "Litter", weeds: "Weeds", plant_pests: "Plant Pests", mulch: "Mulch",
+    litter: "Litter", weeds: "Weeds", plant_pests: "Pest Plants", mulch: "Mulch",
     pruning: "Pruning", dead_heading: "Dead Heading", pests_diseases: "Pests & Diseases",
     edging: "Edging", stakes_ties: "Stakes & Ties", damage: "Damage",
   };

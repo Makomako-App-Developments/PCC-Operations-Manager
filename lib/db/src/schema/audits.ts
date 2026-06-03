@@ -36,10 +36,11 @@ export const auditItemsTable = pgTable("audit_items", {
   criterion: varchar("criterion", { length: 200 }).notNull(),
   result:    auditResultEnum("result").notNull(),
   notes:     text("notes"),
-  failLat:   numeric("fail_lat", { precision: 9, scale: 6 }),
-  failLng:   numeric("fail_lng", { precision: 9, scale: 6 }),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
-  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  failLat:            numeric("fail_lat", { precision: 9, scale: 6 }),
+  failLng:            numeric("fail_lng", { precision: 9, scale: 6 }),
+  pestPlantsPresent:  text("pest_plants_present"),
+  createdAt:          timestamp("created_at").notNull().defaultNow(),
+  updatedAt:          timestamp("updated_at").notNull().defaultNow(),
 }, (t) => [
   index("audit_items_audit_id_idx").on(t.auditId),
 ]);

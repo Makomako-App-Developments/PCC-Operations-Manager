@@ -1,3 +1,24 @@
+export const PEST_PLANTS_LIST: string[] = [
+  "African club moss", "African feather grass", "African fountain grass", "Apple of Sodom",
+  "Artemisia", "Artillery plant", "Arum lily", "Asiatic knotweed", "Australian sedge",
+  "Barberry", "Bathurst bur", "Blackberry", "Blue morning glory", "Bomarea", "Boxthorn",
+  "Broom", "Brush wattle", "Buddleia", "Californian arrowhead", "Californian bulrush",
+  "Cape honey flower", "Cape ivy", "Cape tulip", "Chilean flame creeper", "Chinese pennisetum",
+  "Chocolate vine", "Climbing asparagus", "Climbing dock", "Cotoneaster", "Crack willow",
+  "Darwin's barberry", "Delta arrowhead", "Didymo", "Elaeagnus", "Evergreen buckthorn",
+  "German ivy", "Giant knotweed", "Giant Hogweed", "Gorse", "Great bindweed", "Gunnera",
+  "Hawaiian arrowhead", "Hawthorn", "Hemlock", "Himalayan honeysuckle", "Hornwort",
+  "Houttuynia", "Hydrilla", "Japanese honeysuckle", "Japanese spindletree", "Johnson grass",
+  "Lagarosiphon", "Madeira vine", "Manchurian wild rice", "Marram grass", "Mexican daisy",
+  "Mile-a-minute", "Mist flower", "Monkey apple", "Montbretia", "Nasturtium",
+  "Nodding thistle", "Noogoora bur", "Pampas grass", "Parrot's feather", "Perennial nettle",
+  "Periwinkle", "Phragmites", "Plectranthus", "Polypodium (common polypody)", "Purple ragwort",
+  "Pussy willow", "Pyp grass", "Ragwort", "Saffron thistle", "Salvinia", "Silver poplar",
+  "Smilax", "Spanish heath", "Stinking iris", "Sweet pea shrub", "Sycamore", "Tradescantia",
+  "Tuber ladder fern", "Variegated thistle", "Velvet groundsel", "Water hyacinth",
+  "White bryony", "White edged nightshade", "Wild ginger", "Wild onion",
+];
+
 export interface KpiDef {
   key: string;
   label: string;
@@ -30,7 +51,7 @@ export const KPI_SECTIONS: KpiSection[] = [
       },
       {
         key: "plant_pests",
-        label: "Plant Pests",
+        label: "Pest Plants",
         description: "None allowed.",
         allowNA: false,
       },
@@ -109,10 +130,11 @@ export interface ResponseState {
   photos: File[];
   existingPhotos: { id: string; blobUrl: string }[];
   depthMm: string;
+  pestPlantsPresent: string[];
 }
 
 export function emptyResponse(): ResponseState {
-  return { result: null, notes: "", failLat: null, failLng: null, photos: [], existingPhotos: [], depthMm: "" };
+  return { result: null, notes: "", failLat: null, failLng: null, photos: [], existingPhotos: [], depthMm: "", pestPlantsPresent: [] };
 }
 
 export function calcAuditScore(responses: Record<string, ResponseState>): number | null {
