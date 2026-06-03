@@ -17,6 +17,7 @@ export const auditsTable = pgTable("audits", {
   conductedAt:   timestamp("conducted_at").notNull().defaultNow(),
   completedDate: date("completed_date"),
   overallScore:  numeric("overall_score", { precision: 5, scale: 2 }),
+  auditType:     text("audit_type"),
   status:        auditStatusEnum("status").notNull().default("pending"),
   notes:         text("notes"),
   createdAt:     timestamp("created_at").notNull().defaultNow(),

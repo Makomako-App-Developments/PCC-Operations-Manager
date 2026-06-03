@@ -126,6 +126,15 @@ export default function AuditDetail() {
             <div className="flex items-start justify-between mb-4">
               <div>
                 <h1 className="text-2xl font-bold text-gray-900">Garden Audit Report</h1>
+                {a.auditType && (
+                  <span className={`inline-flex items-center text-xs font-bold px-2.5 py-1 rounded-full mt-2 ${
+                    a.auditType === "completed-works"
+                      ? "bg-[#e0f7fb] text-[#00AECD]"
+                      : "bg-purple-50 text-purple-700"
+                  }`}>
+                    {a.auditType === "completed-works" ? "Completed Works Audit" : "Outcomes Based Audit"}
+                  </span>
+                )}
               </div>
               <div className="text-right">
                 <ScoreBadge score={a.overallScore} />

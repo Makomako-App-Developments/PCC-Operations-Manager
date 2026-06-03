@@ -55,6 +55,7 @@ router.get("/jobs", requireAuth, validateQuery(jobQuerySchema), async (req, res)
 
 // GET /api/completed-works  — enriched view joining jobs + assets + teams
 const completedWorksQuerySchema = z.object({
+  assetId:    z.string().uuid().optional(),
   teamId:     z.string().uuid().optional(),
   ward:       z.string().optional(),
   gardenType: z.string().optional(),
@@ -69,6 +70,7 @@ router.get("/completed-works", requireAuth, validateQuery(completedWorksQuerySch
   const q = res.locals.query as z.infer<typeof completedWorksQuerySchema>;
 
   const conditions: ReturnType<typeof eq>[] = [eq(jobsTable.status, "completed")];
+  if (q.assetId)    conditions.push(eq(jobsTable.assetId, q.assetId) as any);
   if (q.teamId)     conditions.push(eq(jobsTable.teamId, q.teamId) as any);
   if (q.from)       conditions.push(gte(jobsTable.scheduledDate, q.from) as any);
   if (q.to)         conditions.push(lte(jobsTable.scheduledDate, q.to) as any);

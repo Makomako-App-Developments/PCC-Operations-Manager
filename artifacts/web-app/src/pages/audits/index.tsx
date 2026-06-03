@@ -177,7 +177,7 @@ export default function Audits() {
       <header className="bg-white border-b px-8 py-4 flex items-center justify-between sticky top-0 z-10 flex-shrink-0">
         <div>
           <h1 className="text-lg font-semibold text-gray-900">Audit Results</h1>
-          <p className="text-xs text-gray-400">Porirua Gardens Baseline Audit results</p>
+          <p className="text-xs text-gray-400">Porirua Gardens audit results</p>
         </div>
         <div className="flex gap-2">
           <Button variant="outline" size="sm" className="gap-1.5 h-9 text-sm" onClick={handleExportCsv}>

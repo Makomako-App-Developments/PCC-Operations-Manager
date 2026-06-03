@@ -1,5 +1,6 @@
-import { useState, useRef, useCallback, useEffect } from "react";
+import { useState, useRef, useCallback, useEffect, useMemo } from "react";
 import { useLocation } from "wouter";
+import { useQuery } from "@tanstack/react-query";
 import { useListAssets, useListTeams, useCreateAudit, useSaveAuditResponses } from "@workspace/api-client-react";
 import { useAuth } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
@@ -274,6 +275,26 @@ export default function NewAudit() {
 
   const selectedAsset = assets.find((a) => a.id === assetId);
 
+  const { data: lastServiceData } = useQuery({
+    queryKey: ["/api/completed-works/last-service", assetId],
+    queryFn: async () => {
+      if (!assetId) return null;
+      const res = await fetch(`/api/completed-works?assetId=${assetId}&limit=1`, { credentials: "include" });
+      if (!res.ok) return null;
+      return res.json() as Promise<{ data: { completedAt: string | null; scheduledDate: string }[] }>;
+    },
+    enabled: !!assetId,
+    staleTime: 30_000,
+  });
+
+  const lastServiceDate: string | null = lastServiceData?.data?.[0]?.completedAt ?? lastServiceData?.data?.[0]?.scheduledDate ?? null;
+
+  const auditType = useMemo(() => {
+    if (!lastServiceDate) return null;
+    const diffDays = Math.floor((Date.now() - new Date(lastServiceDate).getTime()) / (1000 * 60 * 60 * 24));
+    return diffDays <= 3 ? "completed-works" : "outcomes";
+  }, [lastServiceDate]);
+
   const filteredAssets = assets.filter((a) => {
     const q = assetSearch.toLowerCase();
     return !q || a.name?.toLowerCase().includes(q) || a.description?.toLowerCase().includes(q);
@@ -310,7 +331,7 @@ export default function NewAudit() {
 
       // 1. Create audit
       const audit = await createMutation.mutateAsync({
-        data: { assetId, teamId, conductedAt: new Date(conductedAt).toISOString() } as any,
+        data: { assetId, teamId, conductedAt: new Date(conductedAt).toISOString(), auditType: auditType ?? undefined } as any,
       });
       const auditId = (audit as any).id;
 
@@ -387,7 +408,18 @@ export default function NewAudit() {
         <div className="max-w-2xl mx-auto px-4 py-8 space-y-6">
           {/* Title */}
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">Garden Baseline Audit</h1>
+            <div className="flex items-center gap-3 flex-wrap">
+              <h1 className="text-2xl font-bold text-gray-900">Garden Audit</h1>
+              {auditType && (
+                <span className={`inline-flex items-center text-xs font-bold px-2.5 py-1 rounded-full ${
+                  auditType === "completed-works"
+                    ? "bg-[#e0f7fb] text-[#00AECD]"
+                    : "bg-purple-50 text-purple-700"
+                }`}>
+                  {auditType === "completed-works" ? "Completed Works Audit" : "Outcomes Based Audit"}
+                </span>
+              )}
+            </div>
             <p className="text-sm text-gray-400 mt-1">{format(new Date(), "d MMMM yyyy")} · Score: {score != null ? `${score}%` : "0%"}</p>
           </div>
 
@@ -439,6 +471,10 @@ export default function NewAudit() {
                   {selectedAsset.standard && <><span className="text-gray-500">Specification:</span><span className="text-gray-800 capitalize">{selectedAsset.standard}</span></>}
                   {selectedAsset.gardenType && <><span className="text-gray-500">Garden Type:</span><span className="text-gray-800 capitalize">{selectedAsset.gardenType.replace(/_/g, " ")}</span></>}
                   {selectedAsset.suburb && <><span className="text-gray-500">Suburb:</span><span className="text-gray-800">{selectedAsset.suburb}</span></>}
+                  <span className="text-gray-500">Last serviced:</span>
+                  <span className={lastServiceDate ? (auditType === "completed-works" ? "text-[#00AECD] font-semibold" : "text-gray-800") : "text-gray-400 italic"}>
+                    {lastServiceDate ? format(new Date(lastServiceDate), "EEEE do MMMM") : "No service on record"}
+                  </span>
                 </div>
               </div>
             )}
@@ -448,6 +484,12 @@ export default function NewAudit() {
               <div className="rounded-xl overflow-hidden border border-gray-200 h-48">
                 <MapContainer center={[Number(selectedAsset.lat), Number(selectedAsset.lng)]} zoom={17} style={{ height: "100%", width: "100%" }} zoomControl>
                   <TileLayer url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}" attribution="Esri" maxZoom={19} />
+                  {selectedAsset.boundary && (
+                    <>
+                      <GeoJSON key={selectedAsset.id} data={selectedAsset.boundary} style={{ color: "#00AECD", weight: 2.5, fillColor: "#00AECD", fillOpacity: 0.15 }} />
+                      <BoundaryFit boundary={selectedAsset.boundary} />
+                    </>
+                  )}
                   <Marker position={[Number(selectedAsset.lat), Number(selectedAsset.lng)]} />
                 </MapContainer>
               </div>

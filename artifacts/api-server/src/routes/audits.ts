@@ -125,7 +125,7 @@ router.get("/audits/:id", requireAuth, async (req, res) => {
 
 // ── POST /api/audits ──────────────────────────────────────────────────────────
 router.post("/audits", requireAuth, requireRole("manager", "supervisor", "team_leader"), async (req, res) => {
-  const { assetId, teamId, conductedAt, notes } = req.body as Record<string, string>;
+  const { assetId, teamId, conductedAt, notes, auditType } = req.body as Record<string, string>;
   if (!assetId) { res.status(400).json({ error: "assetId required" }); return; }
   const [created] = await db
     .insert(auditsTable)
@@ -136,6 +136,7 @@ router.post("/audits", requireAuth, requireRole("manager", "supervisor", "team_l
       conductedAt: conductedAt ? new Date(conductedAt) : new Date(),
       status: "pending",
       notes: notes ?? null,
+      auditType: (auditType as any) ?? null,
     })
     .returning();
   await auditLog({ tableName: "audits", recordId: created.id, action: "INSERT", changedById: req.auth?.userId ?? null, newData: created as Record<string, unknown>, ipAddress: req.ip ?? null });
@@ -147,13 +148,14 @@ router.patch("/audits/:id", requireAuth, requireRole("manager", "supervisor", "t
   const id = String(req.params.id);
   const [before] = await db.select().from(auditsTable).where(eq(auditsTable.id, id)).limit(1);
   if (!before) { res.status(404).json({ error: "Audit not found" }); return; }
-  const { teamId, conductedAt, overallScore, status, notes } = req.body as Record<string, any>;
+  const { teamId, conductedAt, overallScore, status, notes, auditType } = req.body as Record<string, any>;
   const updateData: Record<string, unknown> = { updatedAt: new Date() };
   if (teamId !== undefined) updateData.teamId = teamId;
   if (conductedAt !== undefined) updateData.conductedAt = new Date(conductedAt);
   if (overallScore !== undefined) updateData.overallScore = String(overallScore);
   if (status !== undefined) updateData.status = status;
   if (notes !== undefined) updateData.notes = notes;
+  if (auditType !== undefined) updateData.auditType = auditType;
   const [updated] = await db.update(auditsTable).set(updateData).where(eq(auditsTable.id, id)).returning();
   await auditLog({ tableName: "audits", recordId: id, action: "UPDATE", changedById: req.auth?.userId ?? null, oldData: before as Record<string, unknown>, newData: updated as Record<string, unknown>, ipAddress: req.ip ?? null });
   res.json(updated);
@@ -258,7 +260,10 @@ router.get("/audits/:id/pdf", requireAuth, async (req, res) => {
   doc.pipe(res);
 
   // Header
-  doc.fontSize(20).font("Helvetica-Bold").text("Garden Baseline Audit", 50, 50);
+  const auditLabel = (detail as any).auditType === "completed-works" ? "Completed Works Audit"
+    : (detail as any).auditType === "outcomes" ? "Outcomes Based Audit"
+    : "Garden Audit";
+  doc.fontSize(20).font("Helvetica-Bold").text(auditLabel, 50, 50);
   doc.fontSize(10).font("Helvetica").fillColor("#666").text("Porirua City Council", 50, 75);
 
   // Score
