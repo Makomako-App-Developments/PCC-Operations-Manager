@@ -31,6 +31,10 @@ import {
   Ruler, History, ClipboardList, Zap, SkipForward, Trash2, Clock,
 } from "lucide-react";
 import { useLocation, useSearch } from "wouter";
+import {
+  ResponsiveContainer, LineChart, Line, XAxis, YAxis,
+  ReferenceLine, Tooltip as RechartsTooltip, CartesianGrid, Dot,
+} from "recharts";
 import { MapContainer, TileLayer, CircleMarker, Polyline, Tooltip, ZoomControl, Marker, useMapEvents } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
@@ -723,6 +727,145 @@ function MulchingReviewDrawer({
 
 // ─── Reading History Panel ────────────────────────────────────────────────────
 
+interface DepthReading {
+  id: string;
+  recordedAt: string;
+  depthMm: number;
+  projectedJobDate: string | null;
+  isFreshApplication: boolean;
+  mulchType: string | null;
+  recordedByName: string | null;
+  notes: string | null;
+}
+
+function dateToTs(dateStr: string): number {
+  try { return parseISO(dateStr).getTime(); } catch { return 0; }
+}
+function fmtTs(ts: number): string {
+  try { return format(new Date(ts), "d MMM yy"); } catch { return ""; }
+}
+
+function MulchDepthChart({ readings }: { readings: DepthReading[] }) {
+  const sorted = [...readings].sort((a, b) => a.recordedAt.localeCompare(b.recordedAt));
+
+  const latestProjected = [...sorted].reverse().find(r => r.projectedJobDate)?.projectedJobDate ?? null;
+  const projectedTs = latestProjected ? dateToTs(latestProjected) : null;
+
+  const chartData = sorted.map(r => ({
+    ts: dateToTs(r.recordedAt),
+    depth: r.depthMm,
+    fresh: r.isFreshApplication,
+    label: fmtTs(dateToTs(r.recordedAt)),
+  }));
+
+  const maxDepth = Math.max(...chartData.map(d => d.depth), ACTION_THRESHOLD_MM + 10, 100);
+  const yDomain = [0, Math.ceil(maxDepth / 10) * 10];
+
+  const minTs = chartData[0]?.ts ?? Date.now();
+  const maxTs = projectedTs
+    ? Math.max(chartData[chartData.length - 1]?.ts ?? projectedTs, projectedTs)
+    : chartData[chartData.length - 1]?.ts ?? Date.now();
+  const padding = Math.max((maxTs - minTs) * 0.08, 7 * 24 * 60 * 60 * 1000);
+  const xDomain = [minTs - padding, maxTs + padding];
+
+  const CustomDot = (props: any) => {
+    const { cx, cy, payload } = props;
+    if (!cx || !cy) return null;
+    if (payload.fresh) {
+      return <circle cx={cx} cy={cy} r={5} fill="#0d9488" stroke="white" strokeWidth={1.5} />;
+    }
+    return <circle cx={cx} cy={cy} r={4} fill={BRAND} stroke="white" strokeWidth={1.5} />;
+  };
+
+  const CustomTooltip = ({ active, payload }: any) => {
+    if (!active || !payload?.length) return null;
+    const d = payload[0].payload;
+    return (
+      <div className="bg-white border border-gray-200 rounded-lg px-2.5 py-2 shadow-md text-[11px]">
+        <p className="font-semibold text-gray-800">{d.label}</p>
+        <p className="text-gray-600">{d.depth}mm depth</p>
+        {d.fresh && <p className="text-teal-600 font-medium">Fresh application</p>}
+      </div>
+    );
+  };
+
+  return (
+    <div className="mb-4">
+      <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-2">Depth Trend</p>
+      <ResponsiveContainer width="100%" height={160}>
+        <LineChart data={chartData} margin={{ top: 8, right: 24, left: -10, bottom: 0 }}>
+          <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" vertical={false} />
+          <XAxis
+            dataKey="ts"
+            type="number"
+            scale="time"
+            domain={xDomain}
+            tickFormatter={fmtTs}
+            tick={{ fontSize: 9, fill: "#9ca3af" }}
+            axisLine={false}
+            tickLine={false}
+            tickCount={4}
+          />
+          <YAxis
+            domain={yDomain}
+            tick={{ fontSize: 9, fill: "#9ca3af" }}
+            axisLine={false}
+            tickLine={false}
+            tickFormatter={v => `${v}mm`}
+          />
+          <RechartsTooltip content={<CustomTooltip />} />
+          <ReferenceLine
+            y={ACTION_THRESHOLD_MM}
+            stroke="#f97316"
+            strokeDasharray="4 3"
+            strokeWidth={1.5}
+            label={{ value: "25mm", position: "insideTopRight", fontSize: 9, fill: "#f97316" }}
+          />
+          {projectedTs && (
+            <ReferenceLine
+              x={projectedTs}
+              stroke="#8b5cf6"
+              strokeDasharray="4 3"
+              strokeWidth={1.5}
+              label={{ value: fmtTs(projectedTs), position: "insideTopLeft", fontSize: 9, fill: "#8b5cf6" }}
+            />
+          )}
+          <Line
+            type="monotone"
+            dataKey="depth"
+            stroke={BRAND}
+            strokeWidth={2}
+            dot={<CustomDot />}
+            activeDot={{ r: 5 }}
+            isAnimationActive={false}
+            connectNulls
+          />
+        </LineChart>
+      </ResponsiveContainer>
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-1.5">
+        <span className="flex items-center gap-1 text-[9px] text-gray-400">
+          <span className="inline-block w-3 h-0.5 rounded" style={{ background: BRAND }} />
+          Depth reading
+        </span>
+        <span className="flex items-center gap-1 text-[9px] text-gray-400">
+          <span className="inline-block w-2 h-2 rounded-full bg-teal-500" />
+          Fresh application
+        </span>
+        <span className="flex items-center gap-1 text-[9px] text-orange-400">
+          <span className="inline-block w-3 border-t-2 border-orange-400 border-dashed" />
+          25mm action threshold
+        </span>
+        {projectedTs && (
+          <span className="flex items-center gap-1 text-[9px] text-violet-400">
+            <span className="inline-block w-3 border-t-2 border-violet-400 border-dashed" />
+            Projected job {fmtTs(projectedTs)}
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function ReadingHistoryPanel({ assetId }: { assetId: string }) {
   const [expanded, setExpanded] = useState(false);
   const { data, isLoading } = useQuery<{ data: any[]; total: number }>({
@@ -751,28 +894,31 @@ function ReadingHistoryPanel({ assetId }: { assetId: string }) {
           ) : readings.length === 0 ? (
             <p className="text-[11px] text-gray-400 italic py-2">No depth readings recorded yet.</p>
           ) : (
-            <div className="space-y-2">
-              {readings.map((r: any) => (
-                <div key={r.id} className="flex items-center justify-between py-2 border-b border-gray-100 last:border-0">
-                  <div>
-                    <p className="text-xs font-semibold text-gray-800">
-                      {r.depthMm}mm
-                      {r.isFreshApplication && (
-                        <span className="ml-1.5 text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-teal-100 text-teal-700">Fresh</span>
+            <>
+              <MulchDepthChart readings={readings} />
+              <div className="space-y-2">
+                {readings.map((r: any) => (
+                  <div key={r.id} className="flex items-center justify-between py-2 border-b border-gray-100 last:border-0">
+                    <div>
+                      <p className="text-xs font-semibold text-gray-800">
+                        {r.depthMm}mm
+                        {r.isFreshApplication && (
+                          <span className="ml-1.5 text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-teal-100 text-teal-700">Fresh</span>
+                        )}
+                      </p>
+                      <p className="text-[10px] text-gray-400">{r.mulchType ?? "Type not set"} · {r.recordedByName ?? "Unknown"}</p>
+                      {r.notes && <p className="text-[10px] text-gray-500 italic mt-0.5">{r.notes}</p>}
+                    </div>
+                    <div className="text-right">
+                      <p className="text-[11px] font-medium text-gray-600">{fmt(r.recordedAt)}</p>
+                      {r.projectedJobDate && (
+                        <p className="text-[10px] text-violet-500">→ {fmt(r.projectedJobDate)}</p>
                       )}
-                    </p>
-                    <p className="text-[10px] text-gray-400">{r.mulchType ?? "Type not set"} · {r.recordedByName ?? "Unknown"}</p>
-                    {r.notes && <p className="text-[10px] text-gray-500 italic mt-0.5">{r.notes}</p>}
+                    </div>
                   </div>
-                  <div className="text-right">
-                    <p className="text-[11px] font-medium text-gray-600">{fmt(r.recordedAt)}</p>
-                    {r.projectedJobDate && (
-                      <p className="text-[10px] text-violet-500">→ {fmt(r.projectedJobDate)}</p>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            </>
           )}
         </div>
       )}
