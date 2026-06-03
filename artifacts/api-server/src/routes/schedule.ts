@@ -901,6 +901,60 @@ router.get(
         mulchType:         mr.mulchType,
       });
     }
+    // ── Merge infill planting jobs into the Gantt range ──────────────────────
+    const infillRows = await db
+      .select({
+        id:              infillJobsTable.id,
+        assetId:         infillJobsTable.assetId,
+        scheduledDate:   sql<string>`to_char(${infillJobsTable.plannedDate}, 'YYYY-MM-DD')`,
+        status:          infillJobsTable.status,
+        assignedTeamId:  infillJobsTable.assignedTeamId,
+        estimatedMins:   infillJobsTable.estimatedMins,
+        notes:           infillJobsTable.assessmentNotes,
+        assetName:       assetsTable.name,
+        assetDesc:       assetsTable.description,
+        gardenType:      assetsTable.gardenType,
+        standard:        assetsTable.standard,
+        frequency:       assetsTable.frequency,
+        serviceTimeMins: assetsTable.serviceTimeMins,
+        routeOrder:      assetsTable.routeOrder,
+      })
+      .from(infillJobsTable)
+      .innerJoin(assetsTable, eq(infillJobsTable.assetId, assetsTable.id))
+      .where(
+        and(
+          gte(infillJobsTable.plannedDate, from),
+          lte(infillJobsTable.plannedDate, to),
+          inArray(infillJobsTable.status, ["scheduled", "completed"]),
+          ...(teamId ? [eq(infillJobsTable.assignedTeamId, teamId)] : []),
+        ),
+      )
+      .orderBy(
+        sql`${assetsTable.routeOrder} NULLS LAST`,
+        assetsTable.name,
+        infillJobsTable.plannedDate,
+      );
+
+    for (const ir of infillRows) {
+      if (!assetMap.has(ir.assetId)) {
+        assetMap.set(ir.assetId, {
+          assetId: ir.assetId, assetName: ir.assetName, assetDesc: ir.assetDesc,
+          gardenType: ir.gardenType, standard: ir.standard, frequency: ir.frequency,
+          serviceTimeMins: ir.serviceTimeMins, teamId: ir.assignedTeamId, routeOrder: ir.routeOrder,
+          jobs: [],
+        });
+      }
+      assetMap.get(ir.assetId)!.jobs.push({
+        id:                ir.id,
+        scheduledDate:     ir.scheduledDate,
+        status:            ir.status === "completed" ? "completed" : "pending",
+        jobType:           "infill_planting",
+        crewStatus:        null,
+        estimatedTimeMins: ir.estimatedMins,
+        teamId:            ir.assignedTeamId,
+        notes:             ir.notes,
+      });
+    }
     // ─────────────────────────────────────────────────────────────────────────
 
     res.json({ from, to, rows: Array.from(assetMap.values()) });
