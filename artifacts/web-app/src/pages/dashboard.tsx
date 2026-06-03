@@ -341,23 +341,54 @@ export default function Dashboard() {
             <ScheduleStateChart completionPct={completionRate} />
 
             {/* Pest Plant Sightings */}
-            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-              <div className="px-5 py-4 border-b flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Leaf className="w-4 h-4 text-red-400" />
-                  <div>
-                    <h3 className="text-sm font-bold" style={{ color: NAVY }}>Pest Plant Sightings</h3>
-                    <p className="text-[11px] text-gray-400">Logged by field workers during sign-off</p>
+            {(() => {
+              const allSightings: { itemId: string; assetId: string; assetName: string; conductedAt: string; plantNames: string[] }[] = (summary as any)?.pestSightings ?? [];
+              const periodSightings = allSightings.filter(s => inPeriod(s.conductedAt instanceof Date ? (s.conductedAt as Date).toISOString() : String(s.conductedAt)));
+              return (
+                <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+                  <div className="px-5 py-4 border-b flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Leaf className="w-4 h-4 text-red-400" />
+                      <div>
+                        <h3 className="text-sm font-bold" style={{ color: NAVY }}>Pest Plant Sightings</h3>
+                        <p className="text-[11px] text-gray-400">From audit Pest Plants KPI failures</p>
+                      </div>
+                    </div>
+                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${periodSightings.length > 0 ? "bg-red-50 text-red-600" : "bg-gray-100 text-gray-400"}`}>
+                      {periodSightings.length} this {period}
+                    </span>
                   </div>
+                  {periodSightings.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center py-10 text-gray-400">
+                      <TriangleAlert className="w-7 h-7 mb-2 opacity-30" />
+                      <p className="text-sm font-medium">No pest sightings this {period}</p>
+                    </div>
+                  ) : (
+                    <div className="divide-y divide-gray-50 max-h-72 overflow-y-auto">
+                      {periodSightings.map(s => (
+                        <div key={s.itemId} className="px-5 py-3">
+                          <div className="flex items-start justify-between gap-2">
+                            <p className="text-[12px] font-semibold text-gray-800 leading-snug">{s.assetName}</p>
+                            <span className="text-[10px] text-gray-400 shrink-0 mt-0.5">
+                              {(() => { try { return format(new Date(s.conductedAt), "d MMM"); } catch { return ""; } })()}
+                            </span>
+                          </div>
+                          {s.plantNames.length > 0 ? (
+                            <div className="flex flex-wrap gap-1 mt-1">
+                              {s.plantNames.map(p => (
+                                <span key={p} className="text-[10px] bg-orange-50 text-orange-700 font-medium px-1.5 py-0.5 rounded-full">{p}</span>
+                              ))}
+                            </div>
+                          ) : (
+                            <p className="text-[11px] text-gray-400 mt-0.5">Pest plants present (no species recorded)</p>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
-                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-red-50 text-red-600">0 this {period}</span>
-              </div>
-              <div className="flex flex-col items-center justify-center py-10 text-gray-400">
-                <TriangleAlert className="w-7 h-7 mb-2 opacity-30" />
-                <p className="text-sm font-medium">No pest sightings logged</p>
-                <p className="text-[11px] text-gray-300 mt-1">Reported via the field app</p>
-              </div>
-            </div>
+              );
+            })()}
           </div>
 
           {/* Right column */}

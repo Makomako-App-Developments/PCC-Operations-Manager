@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { db, assetsTable, jobsTable, reactiveJobsTable, teamsTable } from "@workspace/db";
+import { db, assetsTable, jobsTable, reactiveJobsTable, teamsTable, auditsTable, auditItemsTable } from "@workspace/db";
 import { eq, and, gte, lte, sql, count } from "drizzle-orm";
 import { requireAuth } from "../middlewares/auth";
 
@@ -103,6 +103,21 @@ router.get("/dashboard/summary", requireAuth, async (_req, res) => {
 
   const completedMap = new Map(completedByTeamRows.map((r) => [r.teamId, r.completedCount]));
 
+  // Pest plant sightings — all time, dashboard filters by period client-side
+  const pestSightingRows = await db
+    .select({
+      itemId:            auditItemsTable.id,
+      assetId:           auditsTable.assetId,
+      assetName:         assetsTable.name,
+      conductedAt:       auditsTable.conductedAt,
+      pestPlantsPresent: auditItemsTable.pestPlantsPresent,
+    })
+    .from(auditItemsTable)
+    .innerJoin(auditsTable, eq(auditItemsTable.auditId, auditsTable.id))
+    .innerJoin(assetsTable, eq(auditsTable.assetId, assetsTable.id))
+    .where(and(eq(auditItemsTable.criterion, "plant_pests"), eq(auditItemsTable.result, "fail")))
+    .orderBy(sql`${auditsTable.conductedAt} desc`);
+
   res.json({
     totalAssets:       Number(totalRow.count),
     activeAssets:      Number(activeRow.count),
@@ -119,6 +134,13 @@ router.get("/dashboard/summary", requireAuth, async (_req, res) => {
       teamName:       r.teamName,
       jobCount:       Number(r.jobCount),
       completedCount: Number(completedMap.get(r.teamId) ?? 0),
+    })),
+    pestSightings: pestSightingRows.map((r) => ({
+      itemId:      r.itemId,
+      assetId:     r.assetId,
+      assetName:   r.assetName,
+      conductedAt: r.conductedAt,
+      plantNames:  r.pestPlantsPresent ? (() => { try { return JSON.parse(r.pestPlantsPresent as string) as string[]; } catch { return [] as string[]; } })() : [] as string[],
     })),
   });
 });
