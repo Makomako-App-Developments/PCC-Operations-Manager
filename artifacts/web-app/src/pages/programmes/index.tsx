@@ -1646,13 +1646,14 @@ function MulchingTab({
 
       {/* Summary stats */}
       {!mulchLoading && mulchRecords.length > 0 && (
-        <div className="grid grid-cols-5 gap-3">
+        <div className="grid grid-cols-6 gap-3">
           {([
-            { key: "draft",       label: "Draft",       value: draftCount,            unit: "jobs", color: MULCH_STATUS.draft.color,     bg: MULCH_STATUS.draft.bg },
-            { key: "scheduled",   label: "Scheduled",   value: scheduledCount,        unit: "jobs", color: MULCH_STATUS.scheduled.color, bg: MULCH_STATUS.scheduled.bg },
-            { key: "in_progress", label: "In Progress", value: inProgressCount,       unit: "jobs", color: "#d97706",                    bg: "#fef3c7" },
-            { key: "completed",   label: "Completed",   value: completedCount,        unit: "jobs", color: MULCH_STATUS.completed.color, bg: MULCH_STATUS.completed.bg },
-            { key: null,          label: "m³ Applied",  value: fmtVol(totalApplied),  unit: "m³",   color: "#0f2a36",                    bg: "#f1f5f9" },
+            { key: "draft",       label: "Draft",        value: draftCount,            unit: "jobs", color: MULCH_STATUS.draft.color,     bg: MULCH_STATUS.draft.bg },
+            { key: "scheduled",   label: "Scheduled",    value: scheduledCount,        unit: "jobs", color: MULCH_STATUS.scheduled.color, bg: MULCH_STATUS.scheduled.bg },
+            { key: "in_progress", label: "In Progress",  value: inProgressCount,       unit: "jobs", color: "#d97706",                    bg: "#fef3c7" },
+            { key: "completed",   label: "Completed",    value: completedCount,        unit: "jobs", color: MULCH_STATUS.completed.color, bg: MULCH_STATUS.completed.bg },
+            { key: null,          label: "m³ Required",  value: fmtVol(totalRequired), unit: "m³",   color: "#6366f1",                    bg: "#eef2ff" },
+            { key: null,          label: "m³ Applied",   value: fmtVol(totalApplied),  unit: "m³",   color: "#0f2a36",                    bg: "#f1f5f9" },
           ] as { key: string | null; label: string; value: string | number; unit: string; color: string; bg: string }[]).map(s => {
             const active = s.key !== null && mulchStatusFilter === s.key;
             return (
