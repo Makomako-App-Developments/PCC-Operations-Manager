@@ -8,7 +8,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Camera, MapPin, Locate, X, CheckCircle2, XCircle, MinusCircle, ChevronDown, ChevronUp } from "lucide-react";
+import { ArrowLeft, Camera, MapPin, Locate, X, CheckCircle2, XCircle, MinusCircle, ChevronDown, ChevronUp, Ruler } from "lucide-react";
 import { KPI_SECTIONS, ALL_KPIS, ResponseState, KpiResult, emptyResponse, calcAuditScore } from "./kpi-config";
 import { format } from "date-fns";
 import { MapContainer, TileLayer, Marker, useMapEvents, GeoJSON, useMap } from "react-leaflet";
@@ -174,6 +174,26 @@ function KpiCard({ kpi, state, onChange, showError, assetBoundary }: KpiCardProp
               className="text-sm resize-none"
             />
           </div>
+
+          {/* Mulch depth — only for the mulch KPI */}
+          {kpi.key === "mulch" && (
+            <div className="bg-[#f0fbfd] border border-[#b3e8f0] rounded-xl p-4">
+              <label className="text-xs font-semibold text-[#00AECD] flex items-center gap-1.5 mb-2">
+                <Ruler className="w-3.5 h-3.5" /> Mulch Depth <span className="text-gray-400 font-normal">(optional)</span>
+              </label>
+              <div className="flex items-center gap-2">
+                <input
+                  type="number" min="0" max="200"
+                  value={state.depthMm}
+                  onChange={e => set({ depthMm: e.target.value })}
+                  placeholder="e.g. 40"
+                  className="h-9 rounded-xl border border-gray-200 bg-white px-3 text-sm flex-1 outline-none focus:border-[#00AECD]"
+                />
+                <span className="text-sm text-gray-400 font-medium">mm</span>
+              </div>
+              <p className="text-[10px] text-gray-400 mt-1.5">If entered, a depth reading will be saved against this garden automatically.</p>
+            </div>
+          )}
 
           {/* Photos */}
           <div>
@@ -347,6 +367,25 @@ export default function NewAudit() {
         };
       });
       const detail = await saveMutation.mutateAsync({ id: auditId, data: { responses: responseArray } as any }) as any;
+
+      // 2b. Save mulch depth reading if entered on the Mulch KPI
+      const mulchDepth = responses["mulch"]?.depthMm;
+      if (mulchDepth && Number(mulchDepth) > 0) {
+        try {
+          await fetch("/api/mulch-depth-readings", {
+            method: "POST", credentials: "include",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              assetId,
+              depthMm: Number(mulchDepth),
+              mulchType: null,
+              recordedAt: new Date(conductedAt).toISOString().slice(0, 10),
+              notes: `Recorded during ${auditType === "completed-works" ? "Completed Works Audit" : "Outcomes Based Audit"}`,
+              isFreshApplication: false,
+            }),
+          });
+        } catch {}
+      }
 
       // 3. Upload photos
       const uploadPromises: Promise<void>[] = [];

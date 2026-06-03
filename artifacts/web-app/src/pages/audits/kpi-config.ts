@@ -108,10 +108,11 @@ export interface ResponseState {
   failLng: number | null;
   photos: File[];
   existingPhotos: { id: string; blobUrl: string }[];
+  depthMm: string;
 }
 
 export function emptyResponse(): ResponseState {
-  return { result: null, notes: "", failLat: null, failLng: null, photos: [], existingPhotos: [] };
+  return { result: null, notes: "", failLat: null, failLng: null, photos: [], existingPhotos: [], depthMm: "" };
 }
 
 export function calcAuditScore(responses: Record<string, ResponseState>): number | null {

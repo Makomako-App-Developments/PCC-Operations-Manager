@@ -1565,6 +1565,9 @@ function MulchingTab({
 
   // Record Depth drawer state
   const [depthTarget, setDepthTarget] = useState<{ id: string; name: string } | null>(null);
+  // Standalone "Record Depth" asset picker
+  const [depthPickerOpen, setDepthPickerOpen] = useState(false);
+  const [depthPickerAssetId, setDepthPickerAssetId] = useState("");
   // Review & Schedule drawer state
   const [reviewTarget, setReviewTarget] = useState<any | null>(null);
   // Expanded history asset
@@ -1603,10 +1606,58 @@ function MulchingTab({
             )}
           </p>
         </div>
-        <Button onClick={() => setAddOpen(true)} style={{ background: BRAND }}>
-          <Plus className="w-4 h-4 mr-1" /> Add Record
-        </Button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => { setDepthPickerAssetId(""); setDepthPickerOpen(true); }}
+            className="flex items-center gap-1.5 text-sm font-semibold px-3 py-2 rounded-lg border transition-colors"
+            style={{ borderColor: BRAND, color: BRAND, background: "white" }}
+          >
+            <Ruler className="w-4 h-4" /> Record Depth
+          </button>
+          <Button onClick={() => setAddOpen(true)} style={{ background: BRAND }}>
+            <Plus className="w-4 h-4 mr-1" /> Add Record
+          </Button>
+        </div>
       </div>
+
+      {/* Standalone depth picker dialog */}
+      {depthPickerOpen && (
+        <div className="fixed inset-0 z-40 bg-black/30 flex items-center justify-center" onClick={() => setDepthPickerOpen(false)}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm mx-4 p-6" onClick={e => e.stopPropagation()}>
+            <p className="text-sm font-bold text-gray-800 mb-1">Record Mulch Depth</p>
+            <p className="text-xs text-gray-400 mb-4">Select any garden to record a depth reading for it.</p>
+            <div>
+              <label className="text-xs font-medium text-gray-500 block mb-1.5">Garden</label>
+              <select
+                value={depthPickerAssetId}
+                onChange={e => setDepthPickerAssetId(e.target.value)}
+                className="w-full px-3 py-2 text-sm border border-gray-200 rounded-xl outline-none focus:border-[#00AECD] bg-white"
+              >
+                <option value="">— Select a garden —</option>
+                {assets.slice().sort((a, b) => (a.name ?? "").localeCompare(b.name ?? "")).map((a: any) => (
+                  <option key={a.id} value={a.id}>{a.name}</option>
+                ))}
+              </select>
+            </div>
+            <div className="flex gap-3 mt-5">
+              <button onClick={() => setDepthPickerOpen(false)} className="flex-1 py-2 rounded-xl text-sm font-semibold border border-gray-200 text-gray-600 hover:bg-gray-50">
+                Cancel
+              </button>
+              <button
+                disabled={!depthPickerAssetId}
+                onClick={() => {
+                  const a = assets.find((x: any) => x.id === depthPickerAssetId);
+                  if (a) { setDepthTarget({ id: a.id, name: a.name ?? a.id }); setDepthPickerOpen(false); }
+                }}
+                className="flex-1 py-2 rounded-xl text-sm font-semibold text-white disabled:opacity-40"
+                style={{ background: BRAND }}
+              >
+                Continue
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Drawers */}
       {depthTarget && (
