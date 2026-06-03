@@ -126,6 +126,14 @@ const DEFAULT_TASKS = [
   "Plant coverage — ≥95%",
 ];
 
+const MULCHING_TASKS = [
+  "Clear area of weeds and debris before applying",
+  "Apply mulch to specified depth (50–125 mm)",
+  "Keep mulch clear of plant stems and tree trunks",
+  "Ensure even coverage across the full bed",
+  "Check and clear edge restraints",
+];
+
 // ─── Types ───────────────────────────────────────────────────────────────────
 
 interface JobPhoto {
@@ -467,7 +475,10 @@ export default function JobDetailScreen() {
     return () => { if (timerRef.current) clearInterval(timerRef.current); };
   }, [job?.status, (job as any)?.startedAt, (job as any)?.pausedElapsedSecs, asset?.serviceTimeMins]);
 
-  const tasks = TASKS_BY_GARDEN_TYPE[asset?.gardenType ?? ""] ?? DEFAULT_TASKS;
+  const isMulching = (job as any)?.jobType === "mulching";
+  const tasks = isMulching
+    ? MULCHING_TASKS
+    : (TASKS_BY_GARDEN_TYPE[asset?.gardenType ?? ""] ?? DEFAULT_TASKS);
   const checkedCount = Object.values(checkedTasks).filter(Boolean).length;
   const photoCount = photosData?.data?.length ?? 0;
 
@@ -483,8 +494,8 @@ export default function JobDetailScreen() {
 
   const handleComplete = () => {
     setPhotoError(false);
-    // Check photos
-    if (photoCount === 0) {
+    // Mulching jobs don't require photo evidence
+    if (!isMulching && photoCount === 0) {
       setPhotoError(true);
       return;
     }
@@ -584,6 +595,8 @@ export default function JobDetailScreen() {
   const isPaused = status === "paused";
   const isDone = status === "completed" || status === "skipped";
   const isActionable = isPending || isActive || isPaused;
+  // Mulching jobs skip start/pause — tasks are always checkable and Complete is available from pending
+  const mulchingCanAct = isMulching && isPending;
 
   const formatTimer = (secs: number) => {
     const isOver = secs < 0;
@@ -706,6 +719,20 @@ export default function JobDetailScreen() {
           </View>
         )}
 
+        {/* Mulching banner */}
+        {isMulching && (
+          <View style={[styles.allTeamsBanner, { backgroundColor: "#78350f18", borderColor: "#92400e40" }]}>
+            <Feather name="layers" size={15} color="#92400e" />
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.allTeamsBannerTitle, { color: "#92400e" }]}>Mulching Job</Text>
+              <Text style={[styles.allTeamsBannerSub, { color: "#92400e" }]}>
+                {(job as any).mulchType ? `Mulch type: ${(job as any).mulchType}. ` : ""}
+                Check all tasks and mark complete when done.
+              </Text>
+            </View>
+          </View>
+        )}
+
         {/* Garden Boundary Map */}
         {((asset as any).boundary || asset.lat) && (
           <View style={[styles.section, { backgroundColor: colors.card, borderColor: colors.border, borderRadius: colors.radius, overflow: "hidden", padding: 0 }]}>
@@ -723,14 +750,14 @@ export default function JobDetailScreen() {
           </View>
         )}
 
-        {/* Task list — read-only (preview) or checkable (active/paused) */}
+        {/* Task list — read-only (preview) or checkable (active/paused/mulching) */}
         <View style={[styles.section, { backgroundColor: colors.card, borderColor: colors.border, borderRadius: colors.radius }]}>
           <View style={styles.sectionHeader}>
-            <Feather name={isActive || isPaused ? "check-square" : "list"} size={16} color={colors.primary} />
+            <Feather name={isActive || isPaused || mulchingCanAct ? "check-square" : "list"} size={16} color={colors.primary} />
             <Text style={[styles.sectionTitle, { color: colors.foreground }]}>
-              {isActive || isPaused ? "Task Checklist" : "Tasks to Complete"}
+              {isActive || isPaused || mulchingCanAct ? "Task Checklist" : "Tasks to Complete"}
             </Text>
-            {(isActive || isPaused) && (
+            {(isActive || isPaused || mulchingCanAct) && (
               <Text style={[styles.sectionCount, { color: colors.mutedForeground }]}>
                 {checkedCount}/{tasks.length}
               </Text>
@@ -738,7 +765,7 @@ export default function JobDetailScreen() {
           </View>
           {tasks.map((task, i) => {
             const isChecked = !!checkedTasks[i];
-            const canCheck = isActive || isPaused;
+            const canCheck = isActive || isPaused || mulchingCanAct;
             return (
               <TouchableOpacity
                 key={i}
@@ -775,8 +802,8 @@ export default function JobDetailScreen() {
           </View>
         ) : null}
 
-        {/* Photo evidence — only shown while active or done */}
-        {(isActive || isPaused || isDone) && id && (
+        {/* Photo evidence — only shown while active or done, not for mulching jobs */}
+        {!isMulching && (isActive || isPaused || isDone) && id && (
           <>
             <PhotoSection jobId={id} readOnly={isDone} />
             {photoError && (
@@ -792,7 +819,7 @@ export default function JobDetailScreen() {
       </ScrollView>
 
       {/* Action bar */}
-      {isActionable && (
+      {(isActionable || mulchingCanAct) && (
         <View style={[styles.actionBar, { backgroundColor: colors.card, borderTopColor: colors.border, paddingBottom: bottomPad }]}>
           {pendingAction ? (
             // Inline confirmation
@@ -840,7 +867,7 @@ export default function JobDetailScreen() {
               </View>
             </View>
           ) : isPending ? (
-            // Preview state: Start + Skip
+            // Preview state: Start + Skip (or Complete for mulching)
             <View style={styles.actionRow}>
               <TouchableOpacity
                 style={[styles.secondaryBtn, { borderColor: colors.border, borderRadius: colors.radius, flex: 1 }]}
@@ -850,15 +877,33 @@ export default function JobDetailScreen() {
                 <Feather name="skip-forward" size={16} color={colors.mutedForeground} />
                 <Text style={[styles.secondaryBtnText, { color: colors.mutedForeground }]}>Skip</Text>
               </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.primaryBtn, { backgroundColor: colors.primary, borderRadius: colors.radius, flex: 2 }]}
-                onPress={handleStart}
-                activeOpacity={0.85}
-                disabled={isMutating}
-              >
-                <Feather name="play" size={18} color="#fff" />
-                <Text style={styles.primaryBtnText}>Start Job</Text>
-              </TouchableOpacity>
+              {isMulching ? (
+                <TouchableOpacity
+                  style={[styles.primaryBtn, { backgroundColor: "#22c55e", borderRadius: colors.radius, flex: 2 }]}
+                  onPress={handleComplete}
+                  activeOpacity={0.85}
+                  disabled={isMutating}
+                >
+                  {isMutating ? (
+                    <ActivityIndicator color="#fff" />
+                  ) : (
+                    <>
+                      <Feather name="check-circle" size={18} color="#fff" />
+                      <Text style={styles.primaryBtnText}>Mark Complete</Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+              ) : (
+                <TouchableOpacity
+                  style={[styles.primaryBtn, { backgroundColor: colors.primary, borderRadius: colors.radius, flex: 2 }]}
+                  onPress={handleStart}
+                  activeOpacity={0.85}
+                  disabled={isMutating}
+                >
+                  <Feather name="play" size={18} color="#fff" />
+                  <Text style={styles.primaryBtnText}>Start Job</Text>
+                </TouchableOpacity>
+              )}
             </View>
           ) : isPaused ? (
             // Paused state: Resume

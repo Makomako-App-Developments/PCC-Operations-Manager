@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { db, jobsTable, reactiveJobsTable, insertJobSchema, insertReactiveJobSchema, assetsTable, teamsTable, usersTable, jobTeamCompletionsTable, jobTaskSkipReasonsTable } from "@workspace/db";
+import { db, jobsTable, reactiveJobsTable, insertJobSchema, insertReactiveJobSchema, assetsTable, teamsTable, usersTable, jobTeamCompletionsTable, jobTaskSkipReasonsTable, mulchingRecordsTable } from "@workspace/db";
 import { eq, and, inArray, or, gte, lte, ilike, desc } from "drizzle-orm";
 import { z } from "zod";
 import { requireAuth, requireRole } from "../middlewares/auth";
@@ -116,11 +116,57 @@ router.get("/completed-works", requireAuth, validateQuery(completedWorksQuerySch
 });
 
 // GET /api/jobs/:id
+// Falls through to mulching_records when the id is not in the jobs table.
 router.get("/jobs/:id", requireAuth, async (req, res) => {
   const id = String(req.params.id);
   const [job] = await db.select().from(jobsTable).where(eq(jobsTable.id, id)).limit(1);
-  if (!job) { res.status(404).json({ error: "Job not found" }); return; }
-  res.json(job);
+  if (job) { res.json(job); return; }
+
+  // Fallback: check mulching_records
+  const [mr] = await db
+    .select({
+      id:                mulchingRecordsTable.id,
+      assetId:           mulchingRecordsTable.assetId,
+      status:            mulchingRecordsTable.status,
+      teamId:            mulchingRecordsTable.assignedTeamId,
+      scheduledDate:     mulchingRecordsTable.scheduledDate,
+      completedDate:     mulchingRecordsTable.completedDate,
+      estimatedTimeMins: mulchingRecordsTable.estimatedMins,
+      notes:             mulchingRecordsTable.notes,
+      mulchType:         mulchingRecordsTable.mulchType,
+      createdAt:         mulchingRecordsTable.createdAt,
+      updatedAt:         mulchingRecordsTable.updatedAt,
+      assetName:         assetsTable.name,
+      assetDesc:         assetsTable.description,
+      gardenType:        assetsTable.gardenType,
+      suburb:            assetsTable.suburb,
+      streetAddress:     assetsTable.streetAddress,
+      lat:               assetsTable.lat,
+      lng:               assetsTable.lng,
+      serviceTimeMins:   assetsTable.serviceTimeMins,
+      routeOrder:        assetsTable.routeOrder,
+    })
+    .from(mulchingRecordsTable)
+    .innerJoin(assetsTable, eq(mulchingRecordsTable.assetId, assetsTable.id))
+    .where(eq(mulchingRecordsTable.id, id))
+    .limit(1);
+
+  if (!mr) { res.status(404).json({ error: "Job not found" }); return; }
+
+  const mulchStatusMap: Record<string, string> = { scheduled: "pending", completed: "completed" };
+  res.json({
+    ...mr,
+    jobType:           "mulching",
+    status:            mulchStatusMap[mr.status] ?? "pending",
+    isAllTeams:        false,
+    assignedUserId:    null,
+    startedAt:         null,
+    pausedAt:          null,
+    completedAt:       mr.completedDate ? new Date(`${mr.completedDate}T00:00:00Z`) : null,
+    actualTimeMins:    null,
+    pausedElapsedSecs: 0,
+    crewStatus:        null,
+  });
 });
 
 // POST /api/jobs
@@ -145,7 +191,59 @@ router.post(
 router.patch("/jobs/:id", requireAuth, async (req, res) => {
   const id = String(req.params.id);
   const [before] = await db.select().from(jobsTable).where(eq(jobsTable.id, id)).limit(1);
-  if (!before) { res.status(404).json({ error: "Job not found" }); return; }
+
+  // Fallback: if the ID belongs to a mulching record, handle completion there
+  if (!before) {
+    const [mr] = await db
+      .select()
+      .from(mulchingRecordsTable)
+      .where(eq(mulchingRecordsTable.id, id))
+      .limit(1);
+
+    if (!mr) { res.status(404).json({ error: "Job not found" }); return; }
+
+    const patch = req.body as Record<string, unknown>;
+    const toStatus = patch.status as string | undefined;
+
+    // Map field-app status → mulching_records status
+    const mulchUpdates: Record<string, unknown> = { updatedAt: new Date() };
+    if (toStatus === "completed" && mr.status !== "completed") {
+      mulchUpdates.status = "completed";
+      mulchUpdates.completedDate = new Date().toISOString().slice(0, 10);
+    } else if (toStatus === "pending" || toStatus === "in_progress") {
+      // Allow re-opening (e.g. start → in_progress treated as still scheduled)
+      mulchUpdates.status = "scheduled";
+    }
+
+    const [updated] = await db
+      .update(mulchingRecordsTable)
+      .set(mulchUpdates)
+      .where(eq(mulchingRecordsTable.id, id))
+      .returning();
+
+    await auditLog({
+      tableName: "mulching_records", recordId: id, action: "UPDATE",
+      changedById: req.auth?.userId ?? null,
+      oldData: mr as Record<string, unknown>, newData: updated as Record<string, unknown>,
+      ipAddress: req.ip ?? null,
+    });
+
+    const mulchStatusMap: Record<string, string> = { scheduled: "pending", completed: "completed" };
+    res.json({
+      ...updated,
+      jobType:           "mulching",
+      status:            mulchStatusMap[updated.status] ?? "pending",
+      isAllTeams:        false,
+      startedAt:         null,
+      pausedAt:          null,
+      completedAt:       updated.completedDate ? new Date(`${updated.completedDate}T00:00:00Z`) : null,
+      actualTimeMins:    null,
+      pausedElapsedSecs: 0,
+      crewStatus:        null,
+      assignedUserId:    null,
+    });
+    return;
+  }
 
   const patch = req.body as Record<string, unknown>;
 

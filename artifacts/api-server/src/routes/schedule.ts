@@ -1,7 +1,7 @@
 import { Router } from "express";
 import {
   db, assetsTable, jobsTable, teamMembersTable, teamAvailabilityTable,
-  systemSettingsTable, jobTeamCompletionsTable, infillJobsTable,
+  systemSettingsTable, jobTeamCompletionsTable, infillJobsTable, mulchingRecordsTable,
 } from "@workspace/db";
 import { eq, and, gte, lte, inArray, sql, notInArray, or, isNull } from "drizzle-orm";
 import { z } from "zod";
@@ -664,6 +664,85 @@ router.get(
       };
       dayMap.get(ir.plannedDate)?.push(mapped as any);
     }
+
+    // ── Merge mulching jobs into day buckets ──────────────────────────────────
+    const mulchConditions = and(
+      gte(mulchingRecordsTable.scheduledDate, weekStart),
+      lte(mulchingRecordsTable.scheduledDate, weekEnd),
+      inArray(mulchingRecordsTable.status, ["scheduled", "completed"]),
+      ...(teamId ? [eq(mulchingRecordsTable.assignedTeamId, teamId)] : []),
+    );
+
+    const mulchRows = await db
+      .select({
+        id:             mulchingRecordsTable.id,
+        assetId:        mulchingRecordsTable.assetId,
+        scheduledDate:  sql<string>`to_char(${mulchingRecordsTable.scheduledDate}, 'YYYY-MM-DD')`,
+        completedDate:  mulchingRecordsTable.completedDate,
+        status:         mulchingRecordsTable.status,
+        assignedTeamId: mulchingRecordsTable.assignedTeamId,
+        estimatedMins:  mulchingRecordsTable.estimatedMins,
+        notes:          mulchingRecordsTable.notes,
+        mulchType:      mulchingRecordsTable.mulchType,
+        createdAt:      mulchingRecordsTable.createdAt,
+        updatedAt:      mulchingRecordsTable.updatedAt,
+        assetName:      assetsTable.name,
+        assetDesc:      assetsTable.description,
+        gardenType:     assetsTable.gardenType,
+        suburb:         assetsTable.suburb,
+        streetAddress:  assetsTable.streetAddress,
+        lat:            assetsTable.lat,
+        lng:            assetsTable.lng,
+        serviceTimeMins:assetsTable.serviceTimeMins,
+        routeOrder:     assetsTable.routeOrder,
+        frequency:      assetsTable.frequency,
+      })
+      .from(mulchingRecordsTable)
+      .innerJoin(assetsTable, eq(mulchingRecordsTable.assetId, assetsTable.id))
+      .where(mulchConditions)
+      .orderBy(
+        mulchingRecordsTable.scheduledDate,
+        sql`${assetsTable.routeOrder} NULLS LAST`,
+        assetsTable.name,
+      );
+
+    const mulchStatusMap: Record<string, string> = {
+      scheduled: "pending",
+      completed: "completed",
+    };
+
+    for (const mr of mulchRows) {
+      const mapped = {
+        id:                mr.id,
+        assetId:           mr.assetId,
+        jobType:           "mulching" as const,
+        status:            mulchStatusMap[mr.status] ?? "pending",
+        teamId:            mr.assignedTeamId,
+        isAllTeams:        false,
+        assignedUserId:    null,
+        scheduledDate:     mr.scheduledDate,
+        startedAt:         null,
+        completedAt:       mr.completedDate ? new Date(`${mr.completedDate}T00:00:00Z`) : null,
+        actualTimeMins:    null,
+        estimatedTimeMins: mr.estimatedMins,
+        crewStatus:        null,
+        notes:             mr.notes,
+        createdAt:         mr.createdAt,
+        updatedAt:         mr.updatedAt,
+        assetName:         mr.assetName,
+        assetDesc:         mr.assetDesc,
+        gardenType:        mr.gardenType,
+        suburb:            mr.suburb,
+        streetAddress:     mr.streetAddress,
+        lat:               mr.lat,
+        lng:               mr.lng,
+        serviceTimeMins:   mr.estimatedMins ?? mr.serviceTimeMins,
+        routeOrder:        mr.routeOrder,
+        frequency:         mr.frequency,
+        teamCompletions:   [],
+      };
+      dayMap.get(mr.scheduledDate)?.push(mapped as any);
+    }
     // ─────────────────────────────────────────────────────────────────────────
 
     const days = Array.from(dayMap.entries()).map(([date, jobs]) => ({ date, jobs }));
@@ -672,8 +751,8 @@ router.get(
       weekStart,
       weekEnd,
       days,
-      totalJobs:     rows.length + infillRows.length,
-      completedJobs: rows.filter(r => r.status === "completed").length + infillRows.filter(r => r.status === "completed").length,
+      totalJobs:     rows.length + infillRows.length + mulchRows.length,
+      completedJobs: rows.filter(r => r.status === "completed").length + infillRows.filter(r => r.status === "completed").length + mulchRows.filter(r => r.status === "completed").length,
       settings: {
         productiveTimeMins: settings?.productiveTimeMins ?? 390,
         standardCrewSize:   settings?.standardCrewSize   ?? 2,

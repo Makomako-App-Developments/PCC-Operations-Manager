@@ -156,6 +156,7 @@ export default function TodayScreen() {
                     status={job.status}
                     scheduledDate={job.scheduledDate}
                     isAllTeams={(job as any).isAllTeams ?? false}
+                    jobType={(job as any).jobType}
                     geoSeq={idx + 1}
                   />
                 ))}
@@ -187,6 +188,7 @@ export default function TodayScreen() {
                     status={job.status}
                     scheduledDate={job.scheduledDate}
                     isAllTeams={(job as any).isAllTeams ?? false}
+                    jobType={(job as any).jobType}
                   />
                 ))}
               </View>

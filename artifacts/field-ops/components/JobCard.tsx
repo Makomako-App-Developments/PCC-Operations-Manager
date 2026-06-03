@@ -19,6 +19,7 @@ interface JobCardProps {
   status: string;
   scheduledDate: string;
   isAllTeams?: boolean;
+  jobType?: string | null;
   geoSeq?: number;
 }
 
@@ -97,6 +98,7 @@ export function JobCard({
   serviceTimeMins,
   status,
   isAllTeams,
+  jobType,
   geoSeq,
 }: JobCardProps) {
   const colors = useColors();
@@ -159,6 +161,12 @@ export function JobCard({
         <View style={[styles.allTeamsBadge, { backgroundColor: "#00AECD18", borderColor: "#00AECD40" }]}>
           <Feather name="users" size={10} color="#00AECD" />
           <Text style={[styles.allTeamsText, { color: "#00AECD" }]}>All Teams Job</Text>
+        </View>
+      )}
+      {jobType === "mulching" && (
+        <View style={[styles.allTeamsBadge, { backgroundColor: "#78350f18", borderColor: "#92400e40" }]}>
+          <Feather name="layers" size={10} color="#92400e" />
+          <Text style={[styles.allTeamsText, { color: "#92400e" }]}>Mulching</Text>
         </View>
       )}
 
