@@ -1568,8 +1568,9 @@ function MulchingTab({
   const [reviewTarget, setReviewTarget] = useState<any | null>(null);
   // Detail panel
   const [selectedMulch, setSelectedMulch] = useState<any | null>(null);
-  // Sort state
+  // Sort + filter state
   const [mulchSort, setMulchSort] = useState<{ key: string; dir: "asc" | "desc" }>({ key: "scheduledDate", dir: "asc" });
+  const [mulchStatusFilter, setMulchStatusFilter] = useState<string>("all");
 
   const handleRefresh = () => {
     qc.invalidateQueries({ queryKey: getListMulchingRecordsQueryKey() });
@@ -1604,6 +1605,11 @@ function MulchingTab({
     setMulchSort(s => s.key === key ? { key, dir: s.dir === "asc" ? "desc" : "asc" } : { key, dir: "asc" });
   };
 
+  const filteredMulchRecords = useMemo(
+    () => mulchStatusFilter === "all" ? sortedMulchRecords : sortedMulchRecords.filter((r: any) => r.status === mulchStatusFilter),
+    [sortedMulchRecords, mulchStatusFilter],
+  );
+
   return (
     <div className="space-y-4">
       {/* Header */}
@@ -1633,19 +1639,31 @@ function MulchingTab({
       {/* Summary stats */}
       {!mulchLoading && mulchRecords.length > 0 && (
         <div className="grid grid-cols-5 gap-3">
-          {[
-            { label: "Scheduled",     value: scheduledCount,          unit: "jobs",    color: "#00AECD", bg: "#e6f7fb" },
-            { label: "In Progress",   value: inProgressCount,         unit: "jobs",    color: "#d97706", bg: "#fef3c7" },
-            { label: "Completed",     value: completedCount,          unit: "jobs",    color: "#16a34a", bg: "#dcfce7" },
-            { label: "m³ Required",   value: fmtVol(totalRequired),   unit: "m³",      color: "#6366f1", bg: "#eef2ff" },
-            { label: "m³ Applied",    value: fmtVol(totalApplied),    unit: "m³",      color: "#0f2a36", bg: "#f1f5f9" },
-          ].map(s => (
-            <div key={s.label} className="rounded-xl px-4 py-3 flex flex-col gap-0.5" style={{ background: s.bg }}>
-              <p className="text-[11px] font-medium" style={{ color: s.color }}>{s.label}</p>
-              <p className="text-xl font-black" style={{ color: s.color }}>{s.value}</p>
-              <p className="text-[10px]" style={{ color: s.color, opacity: 0.7 }}>{s.unit}</p>
-            </div>
-          ))}
+          {([
+            { key: "draft",       label: "Draft",       value: draftCount,            unit: "jobs", color: MULCH_STATUS.draft.color,     bg: MULCH_STATUS.draft.bg },
+            { key: "scheduled",   label: "Scheduled",   value: scheduledCount,        unit: "jobs", color: MULCH_STATUS.scheduled.color, bg: MULCH_STATUS.scheduled.bg },
+            { key: "in_progress", label: "In Progress", value: inProgressCount,       unit: "jobs", color: "#d97706",                    bg: "#fef3c7" },
+            { key: "completed",   label: "Completed",   value: completedCount,        unit: "jobs", color: MULCH_STATUS.completed.color, bg: MULCH_STATUS.completed.bg },
+            { key: null,          label: "m³ Applied",  value: fmtVol(totalApplied),  unit: "m³",   color: "#0f2a36",                    bg: "#f1f5f9" },
+          ] as { key: string | null; label: string; value: string | number; unit: string; color: string; bg: string }[]).map(s => {
+            const active = s.key !== null && mulchStatusFilter === s.key;
+            return (
+              <button
+                key={s.label}
+                onClick={s.key ? () => setMulchStatusFilter(f => f === s.key ? "all" : s.key!) : undefined}
+                className="rounded-xl border p-3 text-left transition-all"
+                style={{
+                  borderColor: active ? s.color : "#e5e7eb",
+                  background:  active ? s.bg   : "white",
+                  cursor:      s.key ? "pointer" : "default",
+                }}
+              >
+                <p className="text-xl font-bold" style={{ color: s.color }}>{s.value}</p>
+                <p className="text-[11px] text-gray-500 mt-0.5">{s.label}</p>
+                <p className="text-[10px] mt-0.5" style={{ color: s.color, opacity: 0.7 }}>{s.unit}</p>
+              </button>
+            );
+          })}
         </div>
       )}
 
@@ -1744,7 +1762,7 @@ function MulchingTab({
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {sortedMulchRecords.map((r: any) => {
+              {filteredMulchRecords.map((r: any) => {
                 const st = MULCH_STATUS[r.status] ?? MULCH_STATUS.due;
                 const isDraft = r.status === "draft";
                 const assetObj = assets.find(a => a.id === r.assetId);
