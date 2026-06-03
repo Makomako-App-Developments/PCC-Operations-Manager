@@ -238,6 +238,7 @@ export default function MapPage() {
   const searchParams = useMemo(() => new URLSearchParams(search), [search]);
   const linkedAssetId = useMemo(() => searchParams.get("assetId"), [searchParams]);
   const linkedJobId   = useMemo(() => searchParams.get("jobId"),   [searchParams]);
+  const fromParam     = useMemo(() => searchParams.get("from"),    [searchParams]);
 
   const [bannerDismissed, setBannerDismissed] = useState(false);
 
@@ -469,21 +470,27 @@ export default function MapPage() {
 
       {/* ── Map ── */}
       <div className="flex-1 relative">
-        {/* Back-to-Programmes banner */}
+        {/* Back banner — supports ?from=asset (→ /assets/:id) and default Programmes */}
         {linkedAssetId && !bannerDismissed && (
           <div className="absolute top-3 left-3 z-[500] flex items-center gap-2 bg-white border border-gray-200 rounded-xl shadow-sm px-3 py-2 max-w-[280px]">
             <button
               onClick={() => {
-                const dest = linkedJobId
-                  ? `/programmes?jobId=${linkedJobId}`
-                  : "/programmes";
-                navigate(dest);
+                if (fromParam === "asset" && linkedAssetId) {
+                  navigate(`/assets/${linkedAssetId}`);
+                } else {
+                  const dest = linkedJobId
+                    ? `/programmes?jobId=${linkedJobId}`
+                    : "/programmes";
+                  navigate(dest);
+                }
               }}
               className="flex items-center gap-1.5 text-xs font-semibold text-gray-700 hover:text-gray-900 transition-colors flex-1 min-w-0"
             >
               <ArrowLeft className="w-3.5 h-3.5 flex-shrink-0" style={{ color: BRAND }} />
               <span className="truncate">
-                Back to{linkedAsset ? ` ${linkedAsset.name}` : " Programmes"}
+                {fromParam === "asset"
+                  ? `← Back to ${linkedAsset?.name ?? "Asset"}`
+                  : `Back to${linkedAsset ? ` ${linkedAsset.name}` : " Programmes"}`}
               </span>
             </button>
             <button

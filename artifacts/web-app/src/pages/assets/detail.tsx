@@ -1037,6 +1037,17 @@ export default function AssetDetail() {
                 >
                   <Pencil className="w-3 h-3" />Edit
                 </Button>
+                {(asset.lat != null || (asset as any).boundary) && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => navigate(`/map?assetId=${asset.id}&from=asset`)}
+                    className="flex items-center gap-1.5 text-xs px-3 h-8"
+                    style={{ borderColor: BRAND, color: BRAND }}
+                  >
+                    <MapPin className="w-3 h-3" />View on Map
+                  </Button>
+                )}
                 <Button
                   size="sm"
                   onClick={() => navigate(`/audits/new?assetId=${asset.id}`)}
