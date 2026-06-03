@@ -930,17 +930,32 @@ function WeekView({
                               const inProg      = job.status === "in_progress";
                               const crewNone    = job.crewStatus === "none";
                               const crewReduced = job.crewStatus === "reduced";
+                              const isMulching  = job.jobType === "mulching";
                               const displayTime = job.estimatedTimeMins ?? job.serviceTimeMins;
 
-                              const dotBg     = done   ? "#d1fae5" : inProg ? color + "22" : overdue ? "#fee2e2" : "#f1f5f9";
-                              const dotBorder = done   ? "#a7f3d0" : inProg ? color        : overdue ? "#fca5a5" : "#e2e8f0";
-                              const dotColor  = done   ? "#059669" : inProg ? color        : overdue ? "#ef4444" : "#94a3b8";
+                              const MULCH_COLOR = "#92400e";
+                              const dotBg     = done      ? "#d1fae5"
+                                              : isMulching && !done ? "#fef3c7"
+                                              : inProg    ? color + "22"
+                                              : overdue   ? "#fee2e2"
+                                              : "#f1f5f9";
+                              const dotBorder = done      ? "#a7f3d0"
+                                              : isMulching && !done ? "#fde68a"
+                                              : inProg    ? color
+                                              : overdue   ? "#fca5a5"
+                                              : "#e2e8f0";
+                              const dotColor  = done      ? "#059669"
+                                              : isMulching && !done ? MULCH_COLOR
+                                              : inProg    ? color
+                                              : overdue   ? "#ef4444"
+                                              : "#94a3b8";
 
                               return (
                                 <div
                                   key={job.id}
                                   onClick={() => onJobClick(job)}
                                   className={`flex items-start gap-3 py-2 px-1 rounded-xl cursor-pointer transition-colors hover:bg-gray-50 ${
+                                    isMulching && !done ? "bg-amber-50/20 hover:bg-amber-50/40" :
                                     crewNone    ? "bg-red-50/40 hover:bg-red-50/60" :
                                     crewReduced ? "bg-amber-50/30 hover:bg-amber-50/50" :
                                     done        ? "opacity-50" : ""
@@ -961,6 +976,7 @@ function WeekView({
                                     </p>
                                     <p className="text-[10px] text-gray-400 mt-0.5 truncate">{(job as any).assetDesc}</p>
                                     <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+                                      {isMulching  && <span className="text-[9px] px-1 py-0.5 rounded font-semibold" style={{ background: "#fef3c7", color: "#92400e" }}>Mulching</span>}
                                       {overdue     && <span className="text-[9px] px-1 py-0.5 rounded bg-red-100 text-red-700 font-semibold">Overdue</span>}
                                       {crewNone    && <span className="text-[9px] px-1 py-0.5 rounded bg-red-100 text-red-700 font-semibold flex items-center gap-0.5"><XCircle className="w-2 h-2" />No crew</span>}
                                       {crewReduced && <span className="text-[9px] px-1 py-0.5 rounded bg-amber-100 text-amber-700 font-semibold flex items-center gap-0.5"><AlertTriangle className="w-2 h-2" />Reduced</span>}
@@ -1550,7 +1566,46 @@ export default function Schedule() {
             </SheetDescription>
           </SheetHeader>
 
-          {selectedJob && (
+          {selectedJob && selectedJob.jobType === "mulching" ? (
+            /* ── Mulching job — read-only info panel ── */
+            <div className="flex-1 overflow-y-auto py-5 space-y-5">
+              <div className="rounded-lg px-4 py-3 border flex items-center gap-2 text-sm font-medium" style={{ background: "#fef3c7", borderColor: "#fde68a", color: "#92400e" }}>
+                <span className="text-base">🌱</span>
+                Mulching job — managed via the field app
+              </div>
+              <dl className="space-y-3 text-sm">
+                <div className="flex justify-between">
+                  <dt className="text-gray-500 font-medium">Date</dt>
+                  <dd className="text-gray-900 font-semibold">
+                    {selectedJob.scheduledDate ? format(new Date(selectedJob.scheduledDate + "T00:00:00"), "EEEE d MMM yyyy") : "—"}
+                  </dd>
+                </div>
+                <div className="flex justify-between">
+                  <dt className="text-gray-500 font-medium">Team</dt>
+                  <dd className="text-gray-900 font-semibold">{getTeamName(selectedJob.teamId)}</dd>
+                </div>
+                <div className="flex justify-between">
+                  <dt className="text-gray-500 font-medium">Est. time</dt>
+                  <dd className="text-gray-900 font-semibold flex items-center gap-1">
+                    <Clock className="w-3.5 h-3.5 text-gray-400" />
+                    {selectedJob.estimatedTimeMins ?? selectedJob.serviceTimeMins ?? "—"}m
+                  </dd>
+                </div>
+                <div className="flex justify-between">
+                  <dt className="text-gray-500 font-medium">Status</dt>
+                  <dd className="font-semibold capitalize" style={{ color: selectedJob.status === "completed" ? "#10b981" : "#92400e" }}>
+                    {selectedJob.status === "completed" ? "Completed" : "Scheduled"}
+                  </dd>
+                </div>
+                {selectedJob.notes && (
+                  <div>
+                    <dt className="text-gray-500 font-medium mb-1">Notes</dt>
+                    <dd className="text-gray-700 text-xs bg-gray-50 rounded-lg px-3 py-2">{selectedJob.notes}</dd>
+                  </div>
+                )}
+              </dl>
+            </div>
+          ) : selectedJob && (
             <div className="flex-1 overflow-y-auto py-5 space-y-5">
               {/* Info pills */}
               <div className="flex flex-wrap gap-2">
@@ -1644,15 +1699,19 @@ export default function Schedule() {
           )}
 
           <SheetFooter className="pt-4 border-t gap-2">
-            <Button variant="outline" onClick={() => setSelectedJob(null)}>Cancel</Button>
-            <Button
-              style={{ background: BRAND }}
-              className="text-white hover:opacity-90 flex-1"
-              onClick={handleJobSave}
-              disabled={updateJob.isPending || !jobStatus}
-            >
-              {updateJob.isPending ? "Saving…" : "Save changes"}
+            <Button variant="outline" onClick={() => setSelectedJob(null)}>
+              {selectedJob?.jobType === "mulching" ? "Close" : "Cancel"}
             </Button>
+            {selectedJob?.jobType !== "mulching" && (
+              <Button
+                style={{ background: BRAND }}
+                className="text-white hover:opacity-90 flex-1"
+                onClick={handleJobSave}
+                disabled={updateJob.isPending || !jobStatus}
+              >
+                {updateJob.isPending ? "Saving…" : "Save changes"}
+              </Button>
+            )}
           </SheetFooter>
         </SheetContent>
       </Sheet>
