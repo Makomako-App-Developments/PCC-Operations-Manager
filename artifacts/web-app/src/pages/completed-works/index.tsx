@@ -351,17 +351,20 @@ export default function CompletedWorks() {
   const stats = useMemo(() => {
     const uniqueAssets = new Map<string, number | null>();
     let totalActualMins = 0;
+    let totalScheduledMins = 0;
     for (const r of rows) {
       if (r.assetId && !uniqueAssets.has(r.assetId)) {
         uniqueAssets.set(r.assetId, r.areaM2);
       }
       totalActualMins += r.actualTimeMins ?? 0;
+      totalScheduledMins += r.estimatedTimeMins ?? 0;
     }
     const totalAreaM2 = [...uniqueAssets.values()].reduce((s, a) => s + (a ?? 0), 0);
     return {
       gardens: uniqueAssets.size,
       hours: totalActualMins / 60,
       areaM2: totalAreaM2,
+      varianceMins: totalActualMins - totalScheduledMins,
     };
   }, [rows]);
 
@@ -497,6 +500,34 @@ export default function CompletedWorks() {
                 <p className="text-xl font-bold text-gray-900 leading-tight">
                   {isLoading ? "—" : `${stats.areaM2.toLocaleString()} m²`}
                 </p>
+              </div>
+            </div>
+            <div className="flex-1 bg-white rounded-xl border border-gray-200 px-5 py-3.5 flex items-center gap-3.5">
+              <div className={`w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 ${
+                !isLoading && stats.varianceMins < 0 ? "bg-green-50" : !isLoading && stats.varianceMins > 0 ? "bg-red-50" : "bg-gray-100"
+              }`}>
+                {!isLoading && stats.varianceMins < 0
+                  ? <ArrowDownRight style={{ width: 18, height: 18 }} className="text-green-600" />
+                  : !isLoading && stats.varianceMins > 0
+                  ? <ArrowUpRight style={{ width: 18, height: 18 }} className="text-red-500" />
+                  : <Minus style={{ width: 18, height: 18 }} className="text-gray-400" />}
+              </div>
+              <div>
+                <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Time Variance</p>
+                {isLoading ? (
+                  <p className="text-xl font-bold text-gray-900 leading-tight">—</p>
+                ) : (
+                  <>
+                    <p className={`text-xl font-bold leading-tight ${
+                      stats.varianceMins < 0 ? "text-green-600" : stats.varianceMins > 0 ? "text-red-500" : "text-gray-500"
+                    }`}>
+                      {stats.varianceMins === 0 ? "On time" : `${stats.varianceMins > 0 ? "+" : ""}${formatMins(Math.abs(stats.varianceMins))}`}
+                    </p>
+                    <p className="text-[10px] text-gray-400 mt-0.5">
+                      {stats.varianceMins < 0 ? "under scheduled" : stats.varianceMins > 0 ? "over scheduled" : ""}
+                    </p>
+                  </>
+                )}
               </div>
             </div>
           </div>
