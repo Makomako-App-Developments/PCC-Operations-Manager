@@ -2346,7 +2346,7 @@ export default function Programmes() {
   const [speciesScope, setSpeciesScope]         = useState<SpeciesScope>("all");
   const [speciesSortKey, setSpeciesSortKey]     = useState<SpeciesSortKey>("totalQty");
   const [speciesSortDir, setSpeciesSortDir]     = useState<"asc" | "desc">("desc");
-  const [speciesExpanded, setSpeciesExpanded]   = useState(true);
+  const [speciesExpanded, setSpeciesExpanded]   = useState(false);
 
   const handleSpeciesSort = (key: SpeciesSortKey) => {
     if (speciesSortKey === key) setSpeciesSortDir(d => d === "asc" ? "desc" : "asc");
