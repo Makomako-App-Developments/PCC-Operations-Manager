@@ -543,12 +543,12 @@ function WorkloadTab() {
                           <div className="flex-1 max-w-[80px] bg-gray-100 rounded-full h-1.5 overflow-hidden">
                             <div
                               className="h-full rounded-full"
-                              style={{ width: `${Math.min(100, (row.ftesRequired / 4) * 100)}%`, background: color }}
+                              style={{ width: `${Math.min(100, (row.ftesRequired / 4) * 100)}%`, background: BRAND }}
                             />
                           </div>
                           <span
                             className="text-sm font-bold tabular-nums"
-                            style={{ color }}
+                            style={{ color: BRAND }}
                           >
                             {row.ftesRequired.toFixed(2)}
                           </span>
