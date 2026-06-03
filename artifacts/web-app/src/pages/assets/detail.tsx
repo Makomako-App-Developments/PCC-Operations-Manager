@@ -1032,6 +1032,7 @@ function RecordDepthPanel({
 
 function MulchingTab({ assetId, assetName }: { assetId: string; assetName: string }) {
   const qc = useQueryClient();
+  const [, navigate] = useLocation();
   const [showForm, setShowForm] = useState(false);
 
   const { data: readingsData, isLoading: readingsLoading } = useQuery({
@@ -1132,29 +1133,39 @@ function MulchingTab({ assetId, assetName }: { assetId: string; assetName: strin
           <div>
             <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-3">Mulching Jobs</p>
             <div className="space-y-2">
-              {records.map((rec: any) => (
-                <div key={rec.id} className="bg-white border border-gray-100 rounded-xl px-4 py-3 flex items-center gap-3 shadow-sm">
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${statusColor(rec.status)}`}>
-                        {statusLabel(rec.status)}
-                      </span>
-                      {rec.scheduledDate && (
-                        <span className="text-xs text-gray-500 flex items-center gap-1">
-                          <Calendar className="w-3 h-3" />{fmtMulch(rec.scheduledDate)}
+              {records.map((rec: any) => {
+                const isDraft = rec.status === "draft";
+                return (
+                  <div
+                    key={rec.id}
+                    onClick={isDraft ? () => navigate(`/programmes?tab=mulching&review=${rec.id}`) : undefined}
+                    className={`bg-white border rounded-xl px-4 py-3 flex items-center gap-3 shadow-sm transition-colors ${isDraft ? "border-violet-200 cursor-pointer hover:bg-violet-50" : "border-gray-100"}`}
+                  >
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${statusColor(rec.status)}`}>
+                          {statusLabel(rec.status)}
                         </span>
-                      )}
+                        {rec.scheduledDate && (
+                          <span className="text-xs text-gray-500 flex items-center gap-1">
+                            <Calendar className="w-3 h-3" />{fmtMulch(rec.scheduledDate)}
+                          </span>
+                        )}
+                        {isDraft && (
+                          <span className="text-[10px] text-violet-500 font-medium">Click to review & schedule →</span>
+                        )}
+                      </div>
+                      <div className="grid grid-cols-2 gap-x-4 text-xs mt-1.5">
+                        {rec.mulchType && <><span className="text-gray-400">Type:</span><span className="text-gray-700">{rec.mulchType}</span></>}
+                        {rec.projectedDepthAtDue != null && <><span className="text-gray-400">Depth at due:</span><span className="text-gray-700">~{rec.projectedDepthAtDue}mm</span></>}
+                      </div>
                     </div>
-                    <div className="grid grid-cols-2 gap-x-4 text-xs mt-1.5">
-                      {rec.mulchType && <><span className="text-gray-400">Type:</span><span className="text-gray-700">{rec.mulchType}</span></>}
-                      {rec.projectedDepthAtDue != null && <><span className="text-gray-400">Depth at due:</span><span className="text-gray-700">~{rec.projectedDepthAtDue}mm</span></>}
-                    </div>
+                    {rec.completedDate && (
+                      <span className="text-[10px] text-green-600 font-semibold">Done {fmtMulch(rec.completedDate)}</span>
+                    )}
                   </div>
-                  {rec.completedDate && (
-                    <span className="text-[10px] text-green-600 font-semibold">Done {fmtMulch(rec.completedDate)}</span>
-                  )}
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         )}

@@ -1544,10 +1544,11 @@ function JobDetailPanel({
 // ─── Mulching tab ─────────────────────────────────────────────────────────────
 
 function MulchingTab({
-  assets, teams,
+  assets, teams, initialReviewId,
 }: {
   assets: { id: string; name: string; description?: string | null }[];
   teams: { id: string; name: string }[];
+  initialReviewId?: string;
 }) {
   const qc = useQueryClient();
   const { toast } = useToast();
@@ -1568,6 +1569,13 @@ function MulchingTab({
   const [reviewTarget, setReviewTarget] = useState<any | null>(null);
   // Detail panel
   const [selectedMulch, setSelectedMulch] = useState<any | null>(null);
+
+  // Auto-open review drawer when arriving via ?review=<id> deep-link
+  useEffect(() => {
+    if (!initialReviewId || mulchLoading || reviewTarget) return;
+    const target = mulchRecords.find((r: any) => r.id === initialReviewId && r.status === "draft");
+    if (target) setReviewTarget(target);
+  }, [initialReviewId, mulchLoading, mulchRecords, reviewTarget]);
   // Sort + filter state
   const [mulchSort, setMulchSort] = useState<{ key: string; dir: "asc" | "desc" }>({ key: "scheduledDate", dir: "asc" });
   const [mulchStatusFilter, setMulchStatusFilter] = useState<string>("all");
@@ -2242,6 +2250,9 @@ export default function Programmes() {
   const { toast } = useToast();
   const search = useSearch();
   const [, navigate] = useLocation();
+  const params = new URLSearchParams(search);
+  const initialReviewId = params.get("review") ?? undefined;
+  const [activeTab, setActiveTab] = useState<string>(params.get("tab") === "mulching" ? "mulching" : "infill");
 
   // Infill jobs
   const { data: jobsData, isLoading: jobsLoading } = useQuery<{ data: InfillJob[]; total: number }>({
@@ -2465,7 +2476,7 @@ export default function Programmes() {
         <p className="text-sm text-gray-500">Infill planting assessments and mulching records</p>
       </div>
 
-      <Tabs defaultValue="infill">
+      <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsList className="mb-6">
           <TabsTrigger value="infill" className="flex items-center gap-1.5">
             <Sprout className="w-4 h-4" /> Infill Planting
@@ -2808,7 +2819,7 @@ export default function Programmes() {
 
         {/* ── Mulching ── */}
         <TabsContent value="mulching">
-          <MulchingTab assets={assets} teams={teams} />
+          <MulchingTab assets={assets} teams={teams} initialReviewId={initialReviewId} />
         </TabsContent>
       </Tabs>
 
