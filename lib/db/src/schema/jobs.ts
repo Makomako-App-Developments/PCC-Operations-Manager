@@ -85,9 +85,10 @@ export const reactiveJobsTable = pgTable("reactive_jobs", {
   startedAt:         timestamp("started_at"),
   completedAt:       timestamp("completed_at"),
   actualTimeMins:    integer("actual_time_mins"),
-  notes:             text("notes"),
-  createdAt:         timestamp("created_at").notNull().defaultNow(),
-  updatedAt:         timestamp("updated_at").notNull().defaultNow(),
+  notes:              text("notes"),
+  pestPlantsPresent:  text("pest_plants_present"),
+  createdAt:          timestamp("created_at").notNull().defaultNow(),
+  updatedAt:          timestamp("updated_at").notNull().defaultNow(),
 }, (t) => [
   index("reactive_jobs_asset_id_idx").on(t.assetId),
   index("reactive_jobs_status_idx").on(t.status),

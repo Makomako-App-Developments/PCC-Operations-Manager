@@ -104,7 +104,8 @@ router.get("/dashboard/summary", requireAuth, async (_req, res) => {
   const completedMap = new Map(completedByTeamRows.map((r) => [r.teamId, r.completedCount]));
 
   // Pest plant sightings — all time, dashboard filters by period client-side
-  const pestSightingRows = await db
+  // Source 1: audit items where plant_pests KPI was failed
+  const auditSightingRows = await db
     .select({
       itemId:            auditItemsTable.id,
       assetId:           auditsTable.assetId,
@@ -117,6 +118,22 @@ router.get("/dashboard/summary", requireAuth, async (_req, res) => {
     .innerJoin(assetsTable, eq(auditsTable.assetId, assetsTable.id))
     .where(and(eq(auditItemsTable.criterion, "plant_pests"), eq(auditItemsTable.result, "fail")))
     .orderBy(sql`${auditsTable.conductedAt} desc`);
+
+  // Source 2: reactive jobs of type pest_plant_sighting from field workers
+  const reactiveSightingRows = await db
+    .select({
+      itemId:            reactiveJobsTable.id,
+      assetId:           reactiveJobsTable.assetId,
+      assetName:         assetsTable.name,
+      conductedAt:       reactiveJobsTable.raisedAt,
+      pestPlantsPresent: reactiveJobsTable.pestPlantsPresent,
+    })
+    .from(reactiveJobsTable)
+    .innerJoin(assetsTable, eq(reactiveJobsTable.assetId, assetsTable.id))
+    .where(eq(reactiveJobsTable.issueType, "pest_plant_sighting"))
+    .orderBy(sql`${reactiveJobsTable.raisedAt} desc`);
+
+  const pestSightingRows = [...auditSightingRows, ...reactiveSightingRows];
 
   res.json({
     totalAssets:       Number(totalRow.count),
