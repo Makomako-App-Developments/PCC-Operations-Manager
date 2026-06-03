@@ -137,7 +137,7 @@ function DetailPanel({ job, onClose }: { job: CompletedWork; onClose: () => void
           {job.suburb && <InfoBlock label="Suburb" value={job.suburb} />}
           {job.areaM2 != null && <InfoBlock label="Area" value={`${job.areaM2.toLocaleString()} m²`} />}
           <InfoBlock
-            label="Crew Status"
+            label="Team"
             value={job.crewStatus === "full" ? "Full crew" : job.crewStatus === "reduced" ? "Reduced crew" : "No crew"}
           />
         </div>
