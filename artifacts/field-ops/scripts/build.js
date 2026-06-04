@@ -43,7 +43,7 @@ try {
   });
   console.log("Build complete! Output written to dist/");
 
-  // Patch dist/index.html: add viewport-fit=cover and lock horizontal overflow
+  // Patch dist/index.html: viewport-fit=cover + full overflow lock for iOS Safari
   const indexPath = path.join(projectRoot, "dist", "index.html");
   let html = fs.readFileSync(indexPath, "utf8");
 
@@ -56,18 +56,34 @@ try {
     }
   );
 
-  // Inject max-width + overflow-x constraints into the expo-reset style block
+  // Replace the entire expo-reset style block with a hardened version
   html = html.replace(
-    /(html,\s*\n\s*body \{)/,
-    "$1\n        max-width: 100vw;\n        overflow-x: hidden;"
-  );
-  html = html.replace(
-    /(#root \{[^}]*)(})/,
-    "$1  max-width: 100vw;\n        overflow-x: hidden;\n      $2"
+    /<style id="expo-reset">[\s\S]*?<\/style>/,
+    `<style id="expo-reset">
+      html {
+        height: 100%;
+        width: 100%;
+        overflow: hidden;
+      }
+      body {
+        height: 100%;
+        width: 100%;
+        overflow: hidden;
+        margin: 0;
+        padding: 0;
+      }
+      #root {
+        display: flex;
+        height: 100%;
+        width: 100%;
+        flex: 1;
+        overflow: hidden;
+      }
+    </style>`
   );
 
   fs.writeFileSync(indexPath, html, "utf8");
-  console.log("Patched dist/index.html with viewport-fit=cover and overflow-x fix.");
+  console.log("Patched dist/index.html with viewport-fit=cover and iOS Safari overflow fix.");
 } catch (error) {
   console.error("Build failed:", error.message);
   process.exit(1);
