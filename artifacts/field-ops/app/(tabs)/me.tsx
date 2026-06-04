@@ -41,7 +41,12 @@ export default function MeScreen() {
     setNotifEnabled(user?.pushNotificationsEnabled !== false);
   }, [user?.pushNotificationsEnabled]);
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    if (Platform.OS === "web") {
+      await logout();
+      router.replace("/login");
+      return;
+    }
     Alert.alert("Sign Out", "Are you sure you want to sign out?", [
       { text: "Cancel", style: "cancel" },
       {
