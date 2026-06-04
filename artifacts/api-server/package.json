@@ -12,6 +12,7 @@
     "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
+    "@google-cloud/storage": "^7.19.0",
     "@sentry/node": "^10.51.0",
     "@types/bcryptjs": "^3.0.0",
     "@types/express-rate-limit": "^6.0.2",
@@ -26,6 +27,7 @@
     "expo-server-sdk": "^6.1.0",
     "express": "^5",
     "express-rate-limit": "^8.4.1",
+    "google-auth-library": "^10.7.0",
     "helmet": "^8.1.0",
     "jsonwebtoken": "^9.0.3",
     "multer": "^2.1.1",

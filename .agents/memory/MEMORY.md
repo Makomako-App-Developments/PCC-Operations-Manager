@@ -4,3 +4,4 @@
 - [Geosequence-first scheduler](geosequence-scheduler.md) — scheduler uses ±3-day flex window; generate always deletes pending jobs first for a clean slate.
 - [Expo Auth Routing](expo-auth-routing.md) — use AuthGuard in _layout.tsx; never bare Redirect/router.replace on login screen or it escapes to web app
 - [Artifact path conflicts](artifact-path-conflicts.md) — Expo's broad service paths (/node_modules/, /assets/) hijack sibling web-app requests on the main proxy; narrow to previewPath only.
+- [Photo storage — GCS not local disk](photo-storage-gcs.md) — photos use multer memoryStorage + GCS upload; Express 5 wildcard *splat returns array, join it.

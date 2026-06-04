@@ -1,10 +1,11 @@
 import { Router } from "express";
 import multer from "multer";
 import path from "path";
-import fs from "fs";
+import { randomUUID } from "crypto";
 import { db, jobPhotosTable, jobsTable, mulchingRecordsTable, reactiveJobsTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { requireAuth } from "../middlewares/auth";
+import { objectStorageClient } from "../lib/objectStorage";
 
 function isPrivilegedRole(role: string): boolean {
   return ["administrator", "manager", "supervisor"].includes(role);
@@ -12,21 +13,8 @@ function isPrivilegedRole(role: string): boolean {
 
 const router = Router();
 
-const UPLOADS_DIR = path.resolve(process.cwd(), "uploads");
-fs.mkdirSync(UPLOADS_DIR, { recursive: true });
-
-const storage = multer.diskStorage({
-  destination: (_req, _file, cb) => cb(null, UPLOADS_DIR),
-  filename: (_req, file, cb) => {
-    const ext = path.extname(file.originalname);
-    cb(null, `${Date.now()}-${Math.random().toString(36).slice(2)}${ext}`);
-  },
-});
-
 const ALLOWED_MIME_TYPES = new Set([
-  // Images
   "image/jpeg", "image/jpg", "image/png", "image/webp", "image/gif", "image/heic", "image/heif",
-  // Documents
   "application/pdf",
   "application/msword",
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
@@ -35,13 +23,36 @@ const ALLOWED_MIME_TYPES = new Set([
 ]);
 
 const upload = multer({
-  storage,
-  limits: { fileSize: 20 * 1024 * 1024 }, // 20 MB
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 20 * 1024 * 1024 },
   fileFilter: (_req, file, cb) => {
     if (ALLOWED_MIME_TYPES.has(file.mimetype)) cb(null, true);
     else cb(new Error("File type not allowed. Accepted: images, PDF, Word, Excel."));
   },
 });
+
+/** Upload buffer to GCS and return the blobUrl (/api/uploads/<objectName>). */
+async function uploadToGCS(
+  buffer: Buffer,
+  mimetype: string,
+  originalName: string,
+): Promise<string> {
+  const bucketId = process.env["DEFAULT_OBJECT_STORAGE_BUCKET_ID"];
+  if (!bucketId) throw new Error("DEFAULT_OBJECT_STORAGE_BUCKET_ID not set");
+
+  const ext = path.extname(originalName) || ".bin";
+  const objectName = `uploads/${Date.now()}-${randomUUID()}${ext}`;
+
+  const bucket = objectStorageClient.bucket(bucketId);
+  const file = bucket.file(objectName);
+
+  await file.save(buffer, {
+    metadata: { contentType: mimetype },
+    resumable: false,
+  });
+
+  return `/api/uploads/${objectName}`;
+}
 
 /** Resolve whether :id belongs to a regular job or a mulching record. */
 async function resolveJobKind(id: string): Promise<"job" | "mulching" | "unknown"> {
@@ -60,7 +71,6 @@ router.get("/jobs/:id/photos", requireAuth, async (req, res) => {
   const kind = await resolveJobKind(id);
   if (kind === "unknown") { res.status(404).json({ error: "Job or mulching record not found" }); return; }
 
-  // Authorization: non-privileged users may only read photos for their own team's jobs
   if (!isPrivilegedRole(req.auth!.role)) {
     const callerTeamId = req.auth!.teamId;
     if (kind === "job") {
@@ -100,7 +110,6 @@ router.post(
     const kind = await resolveJobKind(id);
     if (kind === "unknown") { res.status(404).json({ error: "Job or mulching record not found" }); return; }
 
-    // Authorization: non-privileged users may only upload photos for their own team's jobs
     if (!isPrivilegedRole(req.auth!.role)) {
       const callerTeamId = req.auth!.teamId;
       if (kind === "job") {
@@ -116,7 +125,7 @@ router.post(
       }
     }
 
-    const blobUrl = `/api/uploads/${req.file.filename}`;
+    const blobUrl = await uploadToGCS(req.file.buffer, req.file.mimetype, req.file.originalname);
     const caption = typeof req.body.caption === "string" ? req.body.caption : null;
     const values = kind === "mulching"
       ? { mulchingRecordId: id, uploadedBy: userId, blobUrl, caption }
@@ -135,7 +144,6 @@ router.get("/reactive-jobs/:id/photos", requireAuth, async (req, res) => {
   const [rj] = await db.select({ id: reactiveJobsTable.id, assignedTeamId: reactiveJobsTable.assignedTeamId }).from(reactiveJobsTable).where(eq(reactiveJobsTable.id, id)).limit(1);
   if (!rj) { res.status(404).json({ error: "Reactive job not found" }); return; }
 
-  // Authorization: non-privileged users may only read photos for their own team's reactive jobs
   if (!isPrivilegedRole(req.auth!.role)) {
     const callerTeamId = req.auth!.teamId;
     if (rj.assignedTeamId !== callerTeamId) {
@@ -161,7 +169,6 @@ router.post(
     const [rj] = await db.select({ id: reactiveJobsTable.id, assignedTeamId: reactiveJobsTable.assignedTeamId }).from(reactiveJobsTable).where(eq(reactiveJobsTable.id, id)).limit(1);
     if (!rj) { res.status(404).json({ error: "Reactive job not found" }); return; }
 
-    // Authorization: non-privileged users may only upload photos for their team's reactive jobs
     if (!isPrivilegedRole(req.auth!.role)) {
       const callerTeamId = req.auth!.teamId;
       if (rj.assignedTeamId !== callerTeamId) {
@@ -169,7 +176,7 @@ router.post(
       }
     }
 
-    const blobUrl = `/api/uploads/${req.file.filename}`;
+    const blobUrl = await uploadToGCS(req.file.buffer, req.file.mimetype, req.file.originalname);
     const caption = typeof req.body.caption === "string" ? req.body.caption : null;
 
     const [photo] = await db

@@ -4,8 +4,10 @@ import cookieParser from "cookie-parser";
 import helmet from "helmet";
 import rateLimit from "express-rate-limit";
 import path from "path";
+import { Readable } from "stream";
 import router from "./routes";
 import { initSentry, Sentry } from "./lib/sentry";
+import { objectStorageClient } from "./lib/objectStorage";
 
 initSentry();
 
@@ -53,11 +55,37 @@ const authLimiter = rateLimit({
 app.use("/api", generalLimiter);
 app.use("/api/auth", authLimiter);
 
-// ── Static uploads (photo evidence, dev only) ─────────────────────────────────
-app.use(
-  "/api/uploads",
-  express.static(path.resolve(process.cwd(), "uploads"), { maxAge: "1d" }),
-);
+// ── Photo/upload serving — proxy from GCS object storage ─────────────────────
+// blobUrl format stored in DB: /api/uploads/uploads/<uuid>.<ext>
+// GCS object name: uploads/<uuid>.<ext>  (inside DEFAULT_OBJECT_STORAGE_BUCKET_ID)
+app.get("/api/uploads/*splat", async (req: Request, res: Response) => {
+  try {
+    const bucketId = process.env["DEFAULT_OBJECT_STORAGE_BUCKET_ID"];
+    if (!bucketId) { res.status(503).json({ error: "Object storage not configured" }); return; }
+
+    // Express 5 wildcard: *splat captures an array of path segments
+    const rawSplat = (req.params as any).splat ?? (req.params as any)[0] ?? "";
+    const splat = Array.isArray(rawSplat) ? rawSplat.join("/") : String(rawSplat);
+    const objectName = splat.startsWith("/") ? splat.slice(1) : splat;
+    if (!objectName) { res.status(404).end(); return; }
+
+    const bucket = objectStorageClient.bucket(bucketId);
+    const file   = bucket.file(objectName);
+    const [exists] = await file.exists();
+    if (!exists) { res.status(404).json({ error: "Photo not found" }); return; }
+
+    const [metadata] = await file.getMetadata();
+    const contentType = (metadata.contentType as string) || "application/octet-stream";
+    res.setHeader("Content-Type", contentType);
+    res.setHeader("Cache-Control", "private, max-age=86400");
+    if (metadata.size) res.setHeader("Content-Length", String(metadata.size));
+
+    Readable.from(file.createReadStream()).pipe(res);
+  } catch (err) {
+    console.error("[uploads proxy]", err);
+    res.status(500).json({ error: "Failed to serve photo" });
+  }
+});
 
 // ── Routes ────────────────────────────────────────────────────────────────────
 app.use("/api", router);
