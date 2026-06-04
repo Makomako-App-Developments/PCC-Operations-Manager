@@ -1,6 +1,6 @@
 import { useState, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { ChevronLeft, ChevronRight, ChevronDown, Users, UsersRound, BarChart3, MapPin, Ruler, Clock, UserCheck, AlertTriangle, Loader2, RefreshCw, Pencil, Trash2, Plus, Check, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, ChevronDown, Users, UsersRound, BarChart3, MapPin, Ruler, Clock, UserCheck, AlertTriangle, Loader2, RefreshCw, Pencil, Trash2, Plus, Check, X, UserPlus, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -165,7 +165,32 @@ interface CrewMember {
   personName: string;
   teamId:     string;
   hasAccount: boolean;
+  role:       string;
 }
+
+interface UserSafe {
+  id:       string;
+  name:     string;
+  email:    string;
+  initials: string;
+  role:     string;
+  teamId:   string | null;
+  isActive: boolean;
+}
+
+const ROLE_LABELS: Record<string, string> = {
+  administrator: "Administrator",
+  manager:       "Manager",
+  supervisor:    "Supervisor",
+  field_worker:  "Field Worker",
+};
+
+const ROLE_COLOURS: Record<string, { bg: string; text: string }> = {
+  administrator: { bg: "#fef3c7", text: "#92400e" },
+  manager:       { bg: "#e0f2fe", text: "#0369a1" },
+  supervisor:    { bg: "#ede9fe", text: "#7c3aed" },
+  field_worker:  { bg: "#dcfce7", text: "#16a34a" },
+};
 
 function CompositionTab() {
   const qc = useQueryClient();
@@ -189,103 +214,156 @@ function CompositionTab() {
     },
   });
 
-  const [editingId, setEditingId]     = useState<string | null>(null);
-  const [editName, setEditName]       = useState("");
-  const [creating, setCreating]       = useState(false);
-  const [newName, setNewName]         = useState("");
-  const [expandedTeams, setExpandedTeams] = useState<Set<string>>(new Set());
+  const { data: usersData } = useQuery<{ data: UserSafe[] }>({
+    queryKey: ["users"],
+    queryFn: async () => {
+      const res = await fetch("/api/users", { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to load users");
+      return res.json();
+    },
+    staleTime: 60_000,
+  });
+  const allUsers = usersData?.data ?? [];
 
-  const toggleExpand = (id: string) =>
-    setExpandedTeams(prev => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id); else next.add(id);
-      return next;
-    });
+  // Team CRUD state
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editName, setEditName]   = useState("");
+  const [creating, setCreating]   = useState(false);
+  const [newName, setNewName]     = useState("");
+
+  // Member management state
+  const [addingToTeam, setAddingToTeam] = useState<string | null>(null);
+  const [addMode, setAddMode]           = useState<"assign" | "new">("assign");
+  const [newCrewName, setNewCrewName]   = useState("");
+  const [assignSearch, setAssignSearch] = useState("");
+
+  // ── Team mutations ──────────────────────────────────────────────────────────
 
   const rename = useMutation({
     mutationFn: async ({ id, name }: { id: string; name: string }) => {
       const res = await fetch(`/api/teams/${id}`, {
-        method: "PATCH",
-        credentials: "include",
+        method: "PATCH", credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name }),
       });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error((err as { error?: string }).error ?? "Failed to rename team");
-      }
+      if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error((e as any).error ?? "Failed to rename"); }
       return res.json();
     },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["teams-with-counts"] });
-      qc.invalidateQueries({ queryKey: ["teams"] });
-      setEditingId(null);
-      toast({ title: "Team renamed" });
-    },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["teams-with-counts"] }); qc.invalidateQueries({ queryKey: ["teams"] }); setEditingId(null); toast({ title: "Team renamed" }); },
     onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
   });
 
-  const create = useMutation({
+  const createTeam = useMutation({
     mutationFn: async (name: string) => {
       const res = await fetch("/api/teams", {
-        method: "POST",
-        credentials: "include",
+        method: "POST", credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name }),
       });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error((err as { error?: string }).error ?? "Failed to create team");
-      }
+      if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error((e as any).error ?? "Failed to create"); }
       return res.json();
     },
-    onSuccess: (t: TeamWithCount) => {
-      qc.invalidateQueries({ queryKey: ["teams-with-counts"] });
-      qc.invalidateQueries({ queryKey: ["teams"] });
-      setCreating(false);
-      setNewName("");
-      toast({ title: "Team created", description: t.name });
-    },
+    onSuccess: (t: TeamWithCount) => { qc.invalidateQueries({ queryKey: ["teams-with-counts"] }); qc.invalidateQueries({ queryKey: ["teams"] }); setCreating(false); setNewName(""); toast({ title: "Team created", description: t.name }); },
     onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
   });
 
-  const remove = useMutation({
+  const deleteTeam = useMutation({
     mutationFn: async (id: string) => {
-      const res = await fetch(`/api/teams/${id}`, {
-        method: "DELETE",
-        credentials: "include",
-      });
-      if (res.status === 409) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error((err as { error?: string }).error ?? "Cannot delete team");
-      }
+      const res = await fetch(`/api/teams/${id}`, { method: "DELETE", credentials: "include" });
+      if (res.status === 409) { const e = await res.json().catch(() => ({})); throw new Error((e as any).error ?? "Cannot delete"); }
       if (!res.ok) throw new Error("Failed to delete team");
     },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["teams-with-counts"] });
-      qc.invalidateQueries({ queryKey: ["teams"] });
-      toast({ title: "Team deleted" });
-    },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["teams-with-counts"] }); qc.invalidateQueries({ queryKey: ["teams"] }); toast({ title: "Team deleted" }); },
     onError: (err: Error) => toast({ title: "Cannot delete", description: err.message, variant: "destructive" }),
   });
 
+  // ── Member mutations ────────────────────────────────────────────────────────
+
+  const addCrewMember = useMutation({
+    mutationFn: async ({ personName, teamId }: { personName: string; teamId: string }) => {
+      const res = await fetch("/api/team-members", {
+        method: "POST", credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ personName, teamId }),
+      });
+      if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error((e as any).error ?? "Failed to add member"); }
+      return res.json();
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["crew-members"] });
+      qc.invalidateQueries({ queryKey: ["teams-with-counts"] });
+      setNewCrewName(""); setAddingToTeam(null);
+      toast({ title: "Crew member added" });
+    },
+    onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+  });
+
+  const assignUserToTeam = useMutation({
+    mutationFn: async ({ userId, teamId }: { userId: string; teamId: string }) => {
+      const res = await fetch(`/api/users/${userId}`, {
+        method: "PATCH", credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ teamId }),
+      });
+      if (!res.ok) throw new Error("Failed to assign");
+      return res.json();
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["crew-members"] });
+      qc.invalidateQueries({ queryKey: ["users"] });
+      qc.invalidateQueries({ queryKey: ["teams-with-counts"] });
+      setAddingToTeam(null); setAssignSearch("");
+      toast({ title: "Staff member assigned" });
+    },
+    onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+  });
+
+  const removeMember = useMutation({
+    mutationFn: async (m: CrewMember) => {
+      if (!m.hasAccount) {
+        const res = await fetch(`/api/team-members/${m.id}`, { method: "DELETE", credentials: "include" });
+        if (!res.ok) throw new Error("Failed to remove");
+      } else {
+        const res = await fetch(`/api/users/${m.id}`, {
+          method: "PATCH", credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ teamId: null }),
+        });
+        if (!res.ok) throw new Error("Failed to remove");
+      }
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["crew-members"] });
+      qc.invalidateQueries({ queryKey: ["users"] });
+      qc.invalidateQueries({ queryKey: ["teams-with-counts"] });
+      toast({ title: "Removed from team" });
+    },
+    onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+  });
+
+  // ── Helpers ─────────────────────────────────────────────────────────────────
+
   const startEdit = (team: TeamWithCount) => { setEditingId(team.id); setEditName(team.name); };
   const cancelEdit = () => setEditingId(null);
-  const saveEdit = () => { if (!editingId || !editName.trim()) return; rename.mutate({ id: editingId, name: editName.trim() }); };
+  const saveEdit   = () => { if (!editingId || !editName.trim()) return; rename.mutate({ id: editingId, name: editName.trim() }); };
 
-  const handleCreateKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter") { e.preventDefault(); if (newName.trim()) create.mutate(newName.trim()); }
-    if (e.key === "Escape") { setCreating(false); setNewName(""); }
+  const closeAddPanel = () => { setAddingToTeam(null); setNewCrewName(""); setAssignSearch(""); };
+
+  const openAddPanel = (teamId: string) => {
+    setAddingToTeam(teamId); setAddMode("assign"); setAssignSearch(""); setNewCrewName("");
   };
-  const handleEditKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter") { e.preventDefault(); saveEdit(); }
-    if (e.key === "Escape") cancelEdit();
-  };
+
+  const teamNameMap = Object.fromEntries(teams.map(t => [t.id, t.name]));
+
+  // ── Render ──────────────────────────────────────────────────────────────────
 
   return (
     <div className="max-w-2xl">
       <div className="flex items-center justify-between mb-5">
-        <p className="text-sm text-gray-500">Create teams, rename them, and see who's in each one. Move staff between teams via the Users tab in Settings.</p>
+        <p className="text-sm text-gray-500">
+          Manage who is on each team. To create a login account, go to{" "}
+          <a href="/settings" className="text-[#00AECD] hover:underline font-medium">Settings → Users</a>.
+        </p>
         {!creating && (
           <Button
             size="sm"
@@ -299,27 +377,38 @@ function CompositionTab() {
         )}
       </div>
 
-      <div className="bg-white rounded-xl border border-gray-200 shadow-sm divide-y divide-gray-100">
+      <div className="space-y-3">
         {isLoading ? (
-          <div className="flex items-center justify-center py-12 text-gray-400">
+          <div className="bg-white rounded-xl border border-gray-200 shadow-sm flex items-center justify-center py-12 text-gray-400">
             <Loader2 className="w-5 h-5 animate-spin mr-2" />Loading…
           </div>
         ) : teams.length === 0 && !creating ? (
-          <div className="flex flex-col items-center justify-center py-16 text-gray-400">
+          <div className="bg-white rounded-xl border border-gray-200 shadow-sm flex flex-col items-center justify-center py-16 text-gray-400">
             <UsersRound className="w-8 h-8 mb-2 opacity-30" />
-            <p className="text-sm">No teams yet</p>
+            <p className="text-sm">No teams yet — create one to get started</p>
           </div>
         ) : (
           <>
             {teams.map(team => {
               const members = crewMembers.filter(m => m.teamId === team.id);
-              const isExpanded = expandedTeams.has(team.id);
+              const isAddingHere = addingToTeam === team.id;
+
+              const assignableUsers = allUsers.filter(u =>
+                u.isActive &&
+                u.teamId !== team.id &&
+                !members.find(m => m.hasAccount && m.id === u.id) &&
+                u.name.toLowerCase().includes(assignSearch.toLowerCase()),
+              );
+
               return (
-                <div key={team.id} className="divide-y divide-gray-50">
+                <div key={team.id} className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+                  {/* Team header */}
                   <div className="flex items-center gap-3 px-5 py-3.5 group">
                     {editingId === team.id ? (
                       <>
-                        <Input autoFocus value={editName} onChange={e => setEditName(e.target.value)} onKeyDown={handleEditKeyDown} className="h-8 text-sm flex-1 max-w-xs" />
+                        <Input autoFocus value={editName} onChange={e => setEditName(e.target.value)}
+                          onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); saveEdit(); } if (e.key === "Escape") cancelEdit(); }}
+                          className="h-8 text-sm flex-1 max-w-xs" />
                         <button onClick={saveEdit} disabled={rename.isPending || !editName.trim()} className="p-1.5 rounded-md hover:bg-emerald-50 text-emerald-600 disabled:opacity-40 transition-colors" title="Save">
                           {rename.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
                         </button>
@@ -329,50 +418,188 @@ function CompositionTab() {
                       </>
                     ) : (
                       <>
-                        {members.length > 0 ? (
-                          <button onClick={() => toggleExpand(team.id)} className="p-0.5 rounded text-gray-400 hover:text-gray-600 transition-colors flex-shrink-0">
-                            {isExpanded ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
-                          </button>
-                        ) : (
-                          <div className="w-5 flex-shrink-0" />
-                        )}
-                        <span className="flex-1 text-sm font-medium text-gray-800">{team.name}</span>
-                        <span className="text-xs text-gray-400 mr-2">{team.memberCount} active member{team.memberCount !== 1 ? "s" : ""}</span>
+                        <UsersRound className="w-4 h-4 text-gray-300 flex-shrink-0" />
+                        <span className="flex-1 text-sm font-semibold text-gray-800">{team.name}</span>
+                        <span className="text-xs text-gray-400 mr-1">{members.length} member{members.length !== 1 ? "s" : ""}</span>
                         <button onClick={() => startEdit(team)} className="p-1.5 rounded-md opacity-0 group-hover:opacity-100 hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-all" title="Rename">
                           <Pencil className="w-3.5 h-3.5" />
                         </button>
-                        <button onClick={() => remove.mutate(team.id)} disabled={remove.isPending} className="p-1.5 rounded-md opacity-0 group-hover:opacity-100 hover:bg-red-50 text-gray-400 hover:text-red-500 transition-all disabled:opacity-40" title={team.memberCount > 0 ? "Cannot delete — has members" : "Delete team"}>
+                        <button
+                          onClick={() => deleteTeam.mutate(team.id)}
+                          disabled={deleteTeam.isPending || members.length > 0}
+                          className="p-1.5 rounded-md opacity-0 group-hover:opacity-100 hover:bg-red-50 text-gray-400 hover:text-red-500 transition-all disabled:opacity-40"
+                          title={members.length > 0 ? "Remove all members before deleting" : "Delete team"}
+                        >
                           <Trash2 className="w-3.5 h-3.5" />
                         </button>
                       </>
                     )}
                   </div>
-                  {isExpanded && members.length > 0 && (
-                    <div className="bg-gray-50/60 px-5 py-2 space-y-1.5">
-                      {members.map(m => (
-                        <div key={m.id} className="flex items-center gap-2.5">
-                          <div className="w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-bold text-white flex-shrink-0" style={{ backgroundColor: m.hasAccount ? BRAND : "#9ca3af" }}>
-                            {m.personName.split(" ").map(n => n[0]).join("").slice(0, 2).toUpperCase()}
+
+                  {/* Member list */}
+                  {members.length === 0 ? (
+                    <div className="border-t border-gray-100 px-5 py-3 text-xs text-gray-400 italic">
+                      No members yet
+                    </div>
+                  ) : (
+                    <div className="border-t border-gray-100 divide-y divide-gray-50">
+                      {members.map(m => {
+                        const initials = m.personName.split(" ").map(n => n[0]).join("").slice(0, 2).toUpperCase();
+                        const roleConf = ROLE_COLOURS[m.role] ?? ROLE_COLOURS.field_worker;
+                        return (
+                          <div key={m.id} className="flex items-center gap-3 px-5 py-2.5 group/row">
+                            <div
+                              className="w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold text-white flex-shrink-0"
+                              style={{ backgroundColor: m.hasAccount ? BRAND : "#9ca3af" }}
+                            >
+                              {initials}
+                            </div>
+                            <span className="flex-1 text-sm text-gray-800">{m.personName}</span>
+                            <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full" style={{ background: roleConf.bg, color: roleConf.text }}>
+                              {ROLE_LABELS[m.role] ?? "Field Worker"}
+                            </span>
+                            {m.hasAccount ? (
+                              <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-teal-50 text-teal-700 border border-teal-100">Has account</span>
+                            ) : (
+                              <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-gray-100 text-gray-400 border border-gray-200">Crew only</span>
+                            )}
+                            <button
+                              onClick={() => removeMember.mutate(m)}
+                              disabled={removeMember.isPending}
+                              className="opacity-0 group-hover/row:opacity-100 p-1 rounded hover:bg-red-50 text-gray-400 hover:text-red-500 transition-all disabled:opacity-40 flex-shrink-0"
+                              title="Remove from team"
+                            >
+                              <X className="w-3.5 h-3.5" />
+                            </button>
                           </div>
-                          <span className="text-xs text-gray-700 flex-1">{m.personName}</span>
-                          {m.hasAccount ? (
-                            <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-teal-50 text-teal-700 border border-teal-100">Has account</span>
-                          ) : (
-                            <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-gray-100 text-gray-400 border border-gray-200">Crew only</span>
-                          )}
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   )}
+
+                  {/* Add member section */}
+                  <div className="border-t border-gray-100">
+                    {isAddingHere ? (
+                      <div className="px-5 py-3 bg-gray-50/60">
+                        {/* Mode toggle */}
+                        <div className="flex gap-1 mb-3 bg-gray-100 rounded-lg p-1 w-fit">
+                          <button
+                            onClick={() => setAddMode("assign")}
+                            className={`text-xs px-3 py-1.5 rounded-md font-medium transition-colors ${addMode === "assign" ? "bg-white text-gray-800 shadow-sm" : "text-gray-500 hover:text-gray-700"}`}
+                          >
+                            Assign existing staff
+                          </button>
+                          <button
+                            onClick={() => setAddMode("new")}
+                            className={`text-xs px-3 py-1.5 rounded-md font-medium transition-colors ${addMode === "new" ? "bg-white text-gray-800 shadow-sm" : "text-gray-500 hover:text-gray-700"}`}
+                          >
+                            New crew-only person
+                          </button>
+                        </div>
+
+                        {addMode === "assign" ? (
+                          <div className="space-y-2">
+                            <div className="relative">
+                              <Search className="absolute left-2.5 top-2 w-3.5 h-3.5 text-gray-400" />
+                              <Input
+                                autoFocus
+                                placeholder="Search by name…"
+                                value={assignSearch}
+                                onChange={e => setAssignSearch(e.target.value)}
+                                className="pl-8 h-8 text-xs"
+                              />
+                            </div>
+                            <div className="max-h-44 overflow-y-auto bg-white border border-gray-200 rounded-lg divide-y divide-gray-50">
+                              {assignableUsers.length === 0 ? (
+                                <p className="px-3 py-3 text-xs text-gray-400 italic">
+                                  {allUsers.filter(u => u.isActive && u.teamId !== team.id).length === 0
+                                    ? "All active staff are already in this team"
+                                    : "No matching staff"}
+                                </p>
+                              ) : assignableUsers.map(u => (
+                                <button
+                                  key={u.id}
+                                  onClick={() => assignUserToTeam.mutate({ userId: u.id, teamId: team.id })}
+                                  disabled={assignUserToTeam.isPending}
+                                  className="w-full flex items-center gap-2.5 px-3 py-2 text-left hover:bg-gray-50 transition-colors disabled:opacity-50"
+                                >
+                                  <div className="w-6 h-6 rounded-full flex items-center justify-center text-[9px] font-bold text-white flex-shrink-0" style={{ backgroundColor: BRAND }}>
+                                    {u.initials}
+                                  </div>
+                                  <div className="flex-1 min-w-0">
+                                    <p className="text-xs font-medium text-gray-800 truncate">{u.name}</p>
+                                    <p className="text-[10px] text-gray-400 truncate">
+                                      {ROLE_LABELS[u.role] ?? u.role}
+                                      {u.teamId ? ` · ${teamNameMap[u.teamId] ?? "another team"}` : " · unassigned"}
+                                    </p>
+                                  </div>
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        ) : (
+                          <form
+                            onSubmit={e => {
+                              e.preventDefault();
+                              if (!newCrewName.trim()) return;
+                              addCrewMember.mutate({ personName: newCrewName.trim(), teamId: team.id });
+                            }}
+                            className="flex gap-2"
+                          >
+                            <Input
+                              autoFocus
+                              placeholder="Full name…"
+                              value={newCrewName}
+                              onChange={e => setNewCrewName(e.target.value)}
+                              className="h-8 text-xs flex-1"
+                            />
+                            <button
+                              type="submit"
+                              disabled={addCrewMember.isPending || !newCrewName.trim()}
+                              className="p-1.5 rounded-md hover:bg-emerald-50 text-emerald-600 disabled:opacity-40 transition-colors flex-shrink-0"
+                              title="Add"
+                            >
+                              {addCrewMember.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+                            </button>
+                          </form>
+                        )}
+
+                        <button onClick={closeAddPanel} className="mt-2.5 text-xs text-gray-400 hover:text-gray-600 transition-colors">
+                          Cancel
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => openAddPanel(team.id)}
+                        className="w-full flex items-center gap-2 px-5 py-2.5 text-xs text-gray-400 hover:text-[#00AECD] hover:bg-gray-50/60 transition-colors"
+                      >
+                        <UserPlus className="w-3.5 h-3.5" />
+                        Add member
+                      </button>
+                    )}
+                  </div>
                 </div>
               );
             })}
+
+            {/* New team input */}
             {creating && (
-              <div className="flex items-center gap-3 px-5 py-3.5">
-                <div className="w-5 flex-shrink-0" />
-                <Input id="new-team-input" autoFocus placeholder="Team name…" value={newName} onChange={e => setNewName(e.target.value)} onKeyDown={handleCreateKeyDown} className="h-8 text-sm flex-1 max-w-xs" />
-                <button onClick={() => { if (newName.trim()) create.mutate(newName.trim()); }} disabled={create.isPending || !newName.trim()} className="p-1.5 rounded-md hover:bg-emerald-50 text-emerald-600 disabled:opacity-40 transition-colors" title="Create">
-                  {create.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+              <div className="bg-white rounded-xl border border-gray-200 shadow-sm flex items-center gap-3 px-5 py-3.5">
+                <UsersRound className="w-4 h-4 text-gray-300 flex-shrink-0" />
+                <Input
+                  id="new-team-input"
+                  autoFocus
+                  placeholder="Team name…"
+                  value={newName}
+                  onChange={e => setNewName(e.target.value)}
+                  onKeyDown={e => {
+                    if (e.key === "Enter") { e.preventDefault(); if (newName.trim()) createTeam.mutate(newName.trim()); }
+                    if (e.key === "Escape") { setCreating(false); setNewName(""); }
+                  }}
+                  className="h-8 text-sm flex-1 max-w-xs"
+                />
+                <button onClick={() => { if (newName.trim()) createTeam.mutate(newName.trim()); }} disabled={createTeam.isPending || !newName.trim()} className="p-1.5 rounded-md hover:bg-emerald-50 text-emerald-600 disabled:opacity-40 transition-colors" title="Create">
+                  {createTeam.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
                 </button>
                 <button onClick={() => { setCreating(false); setNewName(""); }} className="p-1.5 rounded-md hover:bg-gray-100 text-gray-400 transition-colors" title="Cancel">
                   <X className="w-4 h-4" />

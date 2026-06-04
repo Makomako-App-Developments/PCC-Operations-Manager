@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { format } from "date-fns";
-import { Users as UsersIcon, Plus, ToggleLeft, ToggleRight, Loader2, Search, ChevronDown, HardHat } from "lucide-react";
+import { Users as UsersIcon, Plus, ToggleLeft, ToggleRight, Loader2, Search } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -20,13 +20,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 
@@ -64,12 +57,6 @@ const ROLE_COLOURS: Record<string, { bg: string; text: string }> = {
   field_worker:  { bg: "#dcfce7", text: "#16a34a" },
 };
 
-interface CrewMember {
-  id:         string;
-  personName: string;
-  teamId:     string;
-  hasAccount: boolean;
-}
 
 function useUsers() {
   return useQuery<{ data: UserSafe[]; total: number }>({
@@ -82,16 +69,6 @@ function useUsers() {
   });
 }
 
-function useCrewMembers() {
-  return useQuery<CrewMember[]>({
-    queryKey: ["crew-members"],
-    queryFn: async () => {
-      const res = await fetch("/api/team-members", { credentials: "include" });
-      if (!res.ok) throw new Error("Failed to load crew members");
-      return res.json();
-    },
-  });
-}
 
 function useTeams() {
   return useQuery<Team[]>({
@@ -154,59 +131,6 @@ function useCreateUser() {
   });
 }
 
-function TeamCell({ user, teams }: { user: UserSafe; teams: Team[] }) {
-  const updateUser = useUpdateUser();
-  const { toast } = useToast();
-  const currentTeam = teams.find(t => t.id === user.teamId);
-
-  const assign = async (teamId: string | null) => {
-    try {
-      await updateUser.mutateAsync({ id: user.id, teamId });
-      toast({
-        title: teamId ? "Team assigned" : "Removed from team",
-        description: teamId ? `${user.name} → ${teams.find(t => t.id === teamId)?.name}` : user.name,
-      });
-    } catch {
-      toast({ title: "Error", description: "Could not update team.", variant: "destructive" });
-    }
-  };
-
-  return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <button
-          className="flex items-center gap-1 text-xs rounded px-2 py-1 hover:bg-gray-100 transition-colors max-w-[140px] border border-transparent hover:border-gray-200"
-          title="Change team"
-        >
-          <span className={`truncate ${currentTeam ? "text-gray-700 font-medium" : "text-gray-400 italic"}`}>
-            {currentTeam?.name ?? "Unassigned"}
-          </span>
-          <ChevronDown className="w-3 h-3 text-gray-400 flex-shrink-0" />
-        </button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="start" className="w-44">
-        {teams.map(t => (
-          <DropdownMenuItem
-            key={t.id}
-            onClick={() => assign(t.id)}
-            className={t.id === user.teamId ? "font-semibold text-[#00AECD]" : ""}
-          >
-            {t.name}
-            {t.id === user.teamId && <span className="ml-auto text-[10px] text-[#00AECD]">current</span>}
-          </DropdownMenuItem>
-        ))}
-        {user.teamId && (
-          <>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={() => assign(null)} className="text-gray-400">
-              Remove from team
-            </DropdownMenuItem>
-          </>
-        )}
-      </DropdownMenuContent>
-    </DropdownMenu>
-  );
-}
 
 const EMPTY_FORM = { name: "", email: "", initials: "", password: "", role: "field_worker", teamId: "" };
 
@@ -297,7 +221,6 @@ function CreateUserDialog({ open, onClose, teams }: { open: boolean; onClose: ()
 export default function UsersPage({ embedded }: { embedded?: boolean } = {}) {
   const { data, isLoading } = useUsers();
   const { data: teams = [] } = useTeams();
-  const { data: crewMembers = [] } = useCrewMembers();
   const updateUser = useUpdateUser();
   const { toast } = useToast();
   const [search, setSearch] = useState("");
@@ -311,11 +234,6 @@ export default function UsersPage({ embedded }: { embedded?: boolean } = {}) {
         u.role.includes(search.toLowerCase())
       )
     : users;
-
-  // Crew-only members: no system account
-  const crewOnly = crewMembers.filter(m => !m.hasAccount && (
-    !search || m.personName.toLowerCase().includes(search.toLowerCase())
-  ));
 
   const toggleActive = async (user: UserSafe) => {
     try {
@@ -434,7 +352,14 @@ export default function UsersPage({ embedded }: { embedded?: boolean } = {}) {
                         </span>
                       </td>
                       <td className="px-4 py-3.5">
-                        <TeamCell user={user} teams={teams} />
+                        {(() => {
+                          const t = teams.find(tm => tm.id === user.teamId);
+                          return (
+                            <span className={`text-xs ${t ? "text-gray-700 font-medium" : "text-gray-400 italic"}`}>
+                              {t?.name ?? "Unassigned"}
+                            </span>
+                          );
+                        })()}
                       </td>
                       <td className="px-4 py-3.5 text-xs text-gray-400">
                         {format(new Date(user.createdAt), "d MMM yyyy")}
@@ -468,51 +393,6 @@ export default function UsersPage({ embedded }: { embedded?: boolean } = {}) {
                   );
                 })}
 
-                {/* Crew-only members — no system account */}
-                {crewOnly.length > 0 && (
-                  <>
-                    <tr>
-                      <td colSpan={7} className="px-5 pt-4 pb-1.5">
-                        <div className="flex items-center gap-2">
-                          <HardHat className="w-3.5 h-3.5 text-gray-400" />
-                          <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400">
-                            Crew members — no system account
-                          </span>
-                        </div>
-                      </td>
-                    </tr>
-                    {crewOnly.map(m => {
-                      const team = teams.find(t => t.id === m.teamId);
-                      const initials = m.personName.split(" ").map(n => n[0]).join("").slice(0, 2).toUpperCase();
-                      return (
-                        <tr key={m.id} className="border-b border-gray-100 bg-gray-50/40 opacity-70">
-                          <td className="px-5 py-3">
-                            <div className="flex items-center gap-3">
-                              <div className="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold flex-shrink-0 bg-gray-300">
-                                {initials}
-                              </div>
-                              <span className="font-medium text-gray-500">{m.personName}</span>
-                            </div>
-                          </td>
-                          <td className="px-4 py-3 text-gray-400 text-xs italic">No PCC account</td>
-                          <td className="px-4 py-3">
-                            <span className="text-[11px] font-semibold px-2.5 py-1 rounded-full bg-gray-100 text-gray-400">
-                              Field Worker
-                            </span>
-                          </td>
-                          <td className="px-4 py-3 text-xs text-gray-400">{team?.name ?? "—"}</td>
-                          <td className="px-4 py-3 text-xs text-gray-300">—</td>
-                          <td className="px-4 py-3">
-                            <span className="text-[11px] font-semibold px-2.5 py-1 rounded-full bg-gray-100 text-gray-400">
-                              Crew only
-                            </span>
-                          </td>
-                          <td className="px-4 py-3 text-xs text-gray-400 text-right italic">No login</td>
-                        </tr>
-                      );
-                    })}
-                  </>
-                )}
               </tbody>
             </table>
           )}
@@ -521,7 +401,6 @@ export default function UsersPage({ embedded }: { embedded?: boolean } = {}) {
         {!isLoading && data && (
           <p className="text-xs text-gray-400 mt-3 text-right">
             {data.total} staff account{data.total !== 1 ? "s" : ""}
-            {crewOnly.length > 0 && ` · ${crewOnly.length} crew-only`}
           </p>
         )}
       </div>

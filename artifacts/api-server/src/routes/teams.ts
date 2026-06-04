@@ -94,7 +94,6 @@ router.get("/teams/with-counts", requireAuth, async (_req, res) => {
 
 // GET /api/team-members — crew roster + system account users, merged and deduplicated
 router.get("/team-members", requireAuth, requireRole("manager", "supervisor"), async (_req, res) => {
-  // Crew-roster entries (team_members table)
   const crewRows = await db
     .select({
       id:         teamMembersTable.id,
@@ -103,27 +102,29 @@ router.get("/team-members", requireAuth, requireRole("manager", "supervisor"), a
     })
     .from(teamMembersTable);
 
-  // System account users that are assigned to a team
   const accountRows = await db
     .select({
       id:     usersTable.id,
       name:   usersTable.name,
       teamId: usersTable.teamId,
+      role:   usersTable.role,
     })
     .from(usersTable)
     .where(sql`${usersTable.teamId} is not null`);
 
-  // Name set of everyone already in the crew roster (to avoid duplicates)
   const crewNameSet = new Set(crewRows.map(m => m.personName.toLowerCase().trim()));
 
-  const crewWithFlag = crewRows.map(m => ({
-    id:         m.id,
-    personName: m.personName,
-    teamId:     m.teamId,
-    hasAccount: accountRows.some(u => u.name.toLowerCase().trim() === m.personName.toLowerCase().trim()),
-  }));
+  const crewWithFlag = crewRows.map(m => {
+    const match = accountRows.find(u => u.name.toLowerCase().trim() === m.personName.toLowerCase().trim());
+    return {
+      id:         m.id,
+      personName: m.personName,
+      teamId:     m.teamId,
+      hasAccount: !!match,
+      role:       match?.role ?? "field_worker",
+    };
+  });
 
-  // Add account users who don't already have a crew-roster entry
   const accountOnly = accountRows
     .filter(u => !crewNameSet.has(u.name.toLowerCase().trim()) && u.teamId)
     .map(u => ({
@@ -131,10 +132,39 @@ router.get("/team-members", requireAuth, requireRole("manager", "supervisor"), a
       personName: u.name,
       teamId:     u.teamId as string,
       hasAccount: true,
+      role:       u.role as string,
     }));
 
   res.json([...crewWithFlag, ...accountOnly]);
 });
+
+// POST /api/team-members — add a crew-only member to a team
+router.post(
+  "/team-members",
+  requireAuth,
+  requireRole("manager"),
+  validateBody(z.object({ personName: z.string().min(1).max(100), teamId: z.string().uuid() })),
+  async (req, res) => {
+    const { personName, teamId } = req.body as { personName: string; teamId: string };
+    const [created] = await db
+      .insert(teamMembersTable)
+      .values({ personName: personName.trim(), teamId })
+      .returning();
+    res.status(201).json(created);
+  },
+);
+
+// DELETE /api/team-members/:id — remove a crew-only member
+router.delete(
+  "/team-members/:id",
+  requireAuth,
+  requireRole("manager"),
+  async (req, res) => {
+    const id = String(req.params.id);
+    await db.delete(teamMembersTable).where(eq(teamMembersTable.id, id));
+    res.status(204).end();
+  },
+);
 
 // GET /api/teams/:id/members
 router.get("/teams/:id/members", requireAuth, requireRole("manager", "supervisor"), async (req, res) => {
@@ -184,12 +214,17 @@ router.delete(
   requireRole("manager"),
   async (req, res) => {
     const id = String(req.params.id);
-    const [members] = await db
+    const [accountCount] = await db
       .select({ count: sql<number>`cast(count(*) as int)` })
       .from(usersTable)
       .where(eq(usersTable.teamId, id));
-    if (members && members.count > 0) {
-      res.status(409).json({ error: `Cannot delete — ${members.count} staff member(s) still assigned to this team.` });
+    const [crewCount] = await db
+      .select({ count: sql<number>`cast(count(*) as int)` })
+      .from(teamMembersTable)
+      .where(eq(teamMembersTable.teamId, id));
+    const total = (accountCount?.count ?? 0) + (crewCount?.count ?? 0);
+    if (total > 0) {
+      res.status(409).json({ error: `Cannot delete — ${total} member(s) still assigned to this team.` });
       return;
     }
     await db.delete(teamsTable).where(eq(teamsTable.id, id));
