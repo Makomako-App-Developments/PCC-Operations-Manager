@@ -320,7 +320,18 @@ function PhotoSection({ jobId, readOnly }: { jobId: string; readOnly: boolean })
 
   const takePhoto = async () => {
     if (Platform.OS === "web") {
-      Alert.alert("Not supported", "Camera capture is not available on web. Use the library picker instead.");
+      const input = document.createElement("input");
+      input.type = "file";
+      input.accept = "image/*";
+      (input as any).capture = "environment";
+      input.onchange = async (e: Event) => {
+        const file = (e.target as HTMLInputElement).files?.[0];
+        if (file) {
+          const uri = URL.createObjectURL(file);
+          uploadPhoto.mutate({ uri, file });
+        }
+      };
+      input.click();
       return;
     }
     const { status } = await ImagePicker.requestCameraPermissionsAsync();
