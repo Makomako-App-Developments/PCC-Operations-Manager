@@ -10,7 +10,7 @@ import {
   useCreateJob,
   useListAssets,
 } from "@workspace/api-client-react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -29,7 +29,7 @@ import {
 import {
   ChevronLeft, ChevronRight, ChevronDown, Route, CheckCircle2, Clock,
   CalendarRange, CalendarDays, Calendar, LayoutGrid, CheckCircle, AlertTriangle, XCircle,
-  Zap, RotateCcw, PlayCircle, Search, X, Users,
+  Zap, RotateCcw, PlayCircle, Search, X, Users, MapPin, FileText, Paperclip,
 } from "lucide-react";
 import { ReactiveJobWizard } from "@/components/reactive-job-wizard";
 import type { AssetStub, TeamStub } from "@/components/reactive-job-wizard";
@@ -1172,11 +1172,77 @@ export default function Schedule() {
     },
   });
 
+  // ── Reactive job detail (when an unscheduled job is clicked in schedule) ────
+  const isUnscheduledSelected = selectedJob?.jobType === "unscheduled";
+
+  const { data: reactiveJobDetail, isLoading: rjLoading } = useQuery<any>({
+    queryKey: ["/api/reactive-jobs", selectedJob?.id],
+    queryFn: async () => {
+      const r = await fetch(`/api/reactive-jobs/${selectedJob!.id}`, { credentials: "include" });
+      if (!r.ok) throw new Error("Failed to load reactive job");
+      return r.json();
+    },
+    enabled: isUnscheduledSelected && !!selectedJob?.id,
+  });
+
+  const { data: reactivePhotos } = useQuery<any[]>({
+    queryKey: ["/api/reactive-jobs", selectedJob?.id, "photos"],
+    queryFn: async () => {
+      const r = await fetch(`/api/reactive-jobs/${selectedJob!.id}/photos`, { credentials: "include" });
+      if (!r.ok) return [];
+      return r.json();
+    },
+    enabled: isUnscheduledSelected && !!selectedJob?.id,
+  });
+
+  const [rjStatus, setRjStatus] = useState("");
+
+  const updateReactiveJob = useMutation({
+    mutationFn: async ({ id, status }: { id: string; status: string }) => {
+      const r = await fetch(`/api/reactive-jobs/${id}`, {
+        method: "PATCH",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status }),
+      });
+      if (!r.ok) throw new Error("Failed to update");
+      return r.json();
+    },
+    onSuccess: () => {
+      setSelectedJob(null);
+      toast({ title: "Unscheduled job updated" });
+      queryClient.invalidateQueries({ queryKey: ["/api/schedule/range"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/reactive-jobs"] });
+    },
+    onError: () => {
+      toast({ title: "Update failed", variant: "destructive" });
+    },
+  });
+
+  const RJ_STATUS_OPTIONS = [
+    { value: "raised",      label: "Raised",      color: "#f97316" },
+    { value: "assigned",    label: "Assigned",    color: "#3b82f6" },
+    { value: "in_progress", label: "In Progress", color: "#00AECD" },
+    { value: "completed",   label: "Completed",   color: "#10b981" },
+    { value: "cancelled",   label: "Cancelled",   color: "#ef4444" },
+  ];
+
+  const RJ_PRIORITY_CONFIG: Record<string, { label: string; bg: string; text: string }> = {
+    critical: { label: "Critical", bg: "#fee2e2", text: "#b91c1c" },
+    high:     { label: "High",     bg: "#ffedd5", text: "#c2410c" },
+    medium:   { label: "Medium",   bg: "#fef9c3", text: "#92400e" },
+    low:      { label: "Low",      bg: "#f0fdf4", text: "#166534" },
+  };
+
   const handleJobClick = (job: any) => {
     setSelectedJob(job);
-    setJobStatus(job.status);
-    setJobActualTime(job.actualTimeMins ? String(job.actualTimeMins) : "");
-    setJobNotes(job.notes ?? "");
+    if (job.jobType === "unscheduled") {
+      setRjStatus(job.status ?? "raised");
+    } else {
+      setJobStatus(job.status);
+      setJobActualTime(job.actualTimeMins ? String(job.actualTimeMins) : "");
+      setJobNotes(job.notes ?? "");
+    }
   };
 
   const handleJobSave = () => {
@@ -1606,11 +1672,18 @@ export default function Schedule() {
       <Sheet open={!!selectedJob} onOpenChange={open => { if (!open) setSelectedJob(null); }}>
         <SheetContent className="w-[420px] sm:w-[460px] flex flex-col">
           <SheetHeader className="pb-4 border-b">
-            <SheetTitle className="text-base font-semibold text-gray-900">
-              {selectedJob?.assetName ?? "Job"}
+            <SheetTitle className="text-base font-semibold text-gray-900 flex items-center gap-2">
+              {selectedJob?.jobType === "unscheduled" && <Zap className="w-4 h-4 text-orange-500 flex-shrink-0" />}
+              {selectedJob?.jobType === "unscheduled"
+                ? (reactiveJobDetail?.issueType
+                    ? reactiveJobDetail.issueType.replace(/_/g, " ").replace(/\b\w/g, (c: string) => c.toUpperCase())
+                    : "Unscheduled Work")
+                : (selectedJob?.assetName ?? "Job")}
             </SheetTitle>
             <SheetDescription className="text-xs text-gray-400 font-mono">
-              {selectedJob?.scheduledDate ? format(new Date(selectedJob.scheduledDate + "T00:00:00"), "EEEE d MMM yyyy") : ""}
+              {selectedJob?.jobType === "unscheduled"
+                ? (selectedJob?.assetName ?? "")
+                : (selectedJob?.scheduledDate ? format(new Date(selectedJob.scheduledDate + "T00:00:00"), "EEEE d MMM yyyy") : "")}
             </SheetDescription>
           </SheetHeader>
 
@@ -1693,6 +1766,139 @@ export default function Schedule() {
                   </div>
                 )}
               </dl>
+            </div>
+          ) : selectedJob && selectedJob.jobType === "unscheduled" ? (
+            /* ── Unscheduled / reactive job — full detail panel ── */
+            <div className="flex-1 overflow-y-auto py-5 space-y-5">
+              {rjLoading ? (
+                <div className="space-y-3">
+                  {Array.from({ length: 5 }).map((_, i) => (
+                    <div key={i} className="h-8 bg-gray-100 rounded-lg animate-pulse" />
+                  ))}
+                </div>
+              ) : reactiveJobDetail ? (
+                <>
+                  {/* Orange callout */}
+                  <div className="rounded-lg px-4 py-3 border flex items-center gap-2 text-sm font-medium" style={{ background: "#fff7ed", borderColor: "#fed7aa", color: "#c2410c" }}>
+                    <Zap className="w-4 h-4 flex-shrink-0" />
+                    Unscheduled work — requires crew attendance &amp; photo evidence
+                  </div>
+
+                  {/* Priority + issue type */}
+                  <div className="flex items-center gap-2 flex-wrap">
+                    {reactiveJobDetail.priority && (() => {
+                      const p = RJ_PRIORITY_CONFIG[reactiveJobDetail.priority] ?? { label: reactiveJobDetail.priority, bg: "#f3f4f6", text: "#374151" };
+                      return (
+                        <span className="text-xs font-semibold px-2.5 py-1 rounded-full" style={{ background: p.bg, color: p.text }}>
+                          {p.label}
+                        </span>
+                      );
+                    })()}
+                    {reactiveJobDetail.issueType && (
+                      <span className="text-xs px-2.5 py-1 rounded-full bg-gray-100 text-gray-700 font-medium capitalize">
+                        {reactiveJobDetail.issueType.replace(/_/g, " ")}
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Key info */}
+                  <dl className="space-y-2.5 text-sm">
+                    {reactiveJobDetail.location && (
+                      <div className="flex items-start gap-2">
+                        <MapPin className="w-3.5 h-3.5 text-gray-400 mt-0.5 flex-shrink-0" />
+                        <span className="text-gray-700">{reactiveJobDetail.location}</span>
+                      </div>
+                    )}
+                    <div className="flex justify-between">
+                      <dt className="text-gray-500 font-medium">Scheduled date</dt>
+                      <dd className="text-gray-900 font-semibold">
+                        {selectedJob.scheduledDate ? format(new Date(selectedJob.scheduledDate + "T00:00:00"), "d MMM yyyy") : "—"}
+                      </dd>
+                    </div>
+                    <div className="flex justify-between">
+                      <dt className="text-gray-500 font-medium">Team</dt>
+                      <dd className="text-gray-900 font-semibold">{getTeamName(selectedJob.teamId)}</dd>
+                    </div>
+                    {selectedJob.estimatedTimeMins && (
+                      <div className="flex justify-between">
+                        <dt className="text-gray-500 font-medium">Est. time</dt>
+                        <dd className="text-gray-900 font-semibold flex items-center gap-1">
+                          <Clock className="w-3.5 h-3.5 text-gray-400" />
+                          {selectedJob.estimatedTimeMins}m
+                        </dd>
+                      </div>
+                    )}
+                  </dl>
+
+                  {/* Description */}
+                  {reactiveJobDetail.description && (
+                    <div className="space-y-1.5">
+                      <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide flex items-center gap-1.5">
+                        <FileText className="w-3.5 h-3.5" />Description
+                      </p>
+                      <p className="text-sm text-gray-700 bg-gray-50 rounded-lg px-3 py-2.5 leading-relaxed">
+                        {reactiveJobDetail.description}
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Notes */}
+                  {reactiveJobDetail.notes && (
+                    <div className="space-y-1.5">
+                      <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Notes</p>
+                      <p className="text-sm text-gray-700 bg-gray-50 rounded-lg px-3 py-2.5 leading-relaxed">
+                        {reactiveJobDetail.notes}
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Attachments */}
+                  {reactivePhotos && reactivePhotos.length > 0 && (
+                    <div className="space-y-2">
+                      <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide flex items-center gap-1.5">
+                        <Paperclip className="w-3.5 h-3.5" />Attachments ({reactivePhotos.length})
+                      </p>
+                      <div className="flex gap-2 flex-wrap">
+                        {reactivePhotos.map((ph: any) => {
+                          const isImage = ph.mimeType?.startsWith("image/");
+                          return isImage ? (
+                            <a key={ph.id} href={ph.url} target="_blank" rel="noreferrer" className="block w-16 h-16 rounded-lg overflow-hidden border border-gray-200 hover:opacity-80 transition-opacity flex-shrink-0">
+                              <img src={ph.url} alt={ph.filename} className="w-full h-full object-cover" />
+                            </a>
+                          ) : (
+                            <a key={ph.id} href={ph.url} target="_blank" rel="noreferrer" className="flex items-center gap-1.5 px-2.5 py-2 rounded-lg border border-gray-200 bg-gray-50 hover:bg-gray-100 transition-colors text-xs text-gray-700 flex-shrink-0">
+                              <FileText className="w-3.5 h-3.5 text-gray-400" />
+                              <span className="max-w-[100px] truncate">{ph.filename}</span>
+                            </a>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Status update */}
+                  <div className="space-y-2 pt-1">
+                    <p className="text-xs font-semibold text-gray-700 uppercase tracking-wide">Update status</p>
+                    <div className="grid grid-cols-2 gap-2">
+                      {RJ_STATUS_OPTIONS.map(opt => (
+                        <button
+                          key={opt.value}
+                          onClick={() => setRjStatus(opt.value)}
+                          className={`px-3 py-2 rounded-lg border text-xs font-medium transition-all ${
+                            rjStatus === opt.value
+                              ? "border-[#00AECD] bg-[#00AECD]/5 text-[#00AECD] shadow-sm"
+                              : "border-gray-200 text-gray-600 hover:border-gray-300 hover:bg-gray-50"
+                          }`}
+                        >
+                          {opt.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <p className="text-sm text-gray-400 italic text-center py-8">Could not load job details.</p>
+              )}
             </div>
           ) : selectedJob && (
             <div className="flex-1 overflow-y-auto py-5 space-y-5">
@@ -1791,7 +1997,16 @@ export default function Schedule() {
             <Button variant="outline" onClick={() => setSelectedJob(null)}>
               {(selectedJob?.jobType === "mulching" || selectedJob?.jobType === "infill_planting") ? "Close" : "Cancel"}
             </Button>
-            {selectedJob?.jobType !== "mulching" && selectedJob?.jobType !== "infill_planting" && (
+            {selectedJob?.jobType === "unscheduled" ? (
+              <Button
+                style={{ background: "#c2410c" }}
+                className="text-white hover:opacity-90 flex-1"
+                onClick={() => updateReactiveJob.mutate({ id: selectedJob.id, status: rjStatus })}
+                disabled={updateReactiveJob.isPending || !reactiveJobDetail}
+              >
+                {updateReactiveJob.isPending ? "Saving…" : "Save status"}
+              </Button>
+            ) : selectedJob?.jobType !== "mulching" && selectedJob?.jobType !== "infill_planting" && (
               <Button
                 style={{ background: BRAND }}
                 className="text-white hover:opacity-90 flex-1"
