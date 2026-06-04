@@ -1539,11 +1539,12 @@ const styles = StyleSheet.create({
   },
   seqBtnText: { fontFamily: "Inter_600SemiBold", fontSize: 14 },
   // Observations section
-  obsField: { paddingHorizontal: 14, paddingVertical: 12 },
+  obsField: { paddingHorizontal: 14, paddingVertical: 12, alignSelf: "stretch", overflow: "hidden" },
   obsLabel: { fontFamily: "Inter_500Medium", fontSize: 12, marginBottom: 6, textTransform: "uppercase", letterSpacing: 0.4 },
   obsInput: {
     borderWidth: 1, paddingHorizontal: 10, paddingVertical: 8,
     fontFamily: "Inter_400Regular", fontSize: 14, lineHeight: 20, minHeight: 72,
+    width: "100%", alignSelf: "stretch",
   },
   obsReadOnly: { fontFamily: "Inter_400Regular", fontSize: 14, lineHeight: 20 },
 });
