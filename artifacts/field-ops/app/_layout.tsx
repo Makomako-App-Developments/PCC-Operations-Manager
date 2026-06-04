@@ -40,7 +40,7 @@ function AuthGuard() {
 
     const seg = segments[0];
     const onLoginScreen = seg === "login";
-    const inAuthenticatedArea = seg === "(tabs)" || seg === "job";
+    const inAuthenticatedArea = seg === "(tabs)" || seg === "job" || seg === "reactive-job";
 
     if (!user && !onLoginScreen) {
       router.replace("/login");
@@ -60,6 +60,10 @@ function RootLayoutNav() {
       <Stack.Screen name="login" options={{ headerShown: false }} />
       <Stack.Screen
         name="job/[id]"
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="reactive-job/[id]"
         options={{ headerShown: false }}
       />
     </Stack>
