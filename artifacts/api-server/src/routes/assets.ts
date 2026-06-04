@@ -114,14 +114,18 @@ router.post("/assets", requireAuth, requireRole("manager", "supervisor"), valida
   res.status(201).json(created);
 });
 
+const routeOrderSchema = z.object({
+  updates: z.array(z.object({
+    id: z.string().uuid(),
+    routeOrder: z.number().int(),
+  })).min(1),
+});
+
 // PATCH /api/assets/route-order
 // Must be registered BEFORE /assets/:id to avoid Express matching "route-order" as an id.
 // Body: { updates: [{ id: string, routeOrder: number }] }
-router.patch("/assets/route-order", requireAuth, requireRole("manager", "supervisor"), async (req, res) => {
-  const { updates } = req.body as { updates: { id: string; routeOrder: number }[] };
-  if (!Array.isArray(updates) || updates.length === 0) {
-    res.status(400).json({ error: "updates array required" }); return;
-  }
+router.patch("/assets/route-order", requireAuth, requireRole("manager", "supervisor"), validateBody(routeOrderSchema), async (req, res) => {
+  const { updates } = req.body as z.infer<typeof routeOrderSchema>;
 
   const ids    = updates.map(u => u.id);
   const orders = updates.map(u => u.routeOrder);
@@ -131,8 +135,8 @@ router.patch("/assets/route-order", requireAuth, requireRole("manager", "supervi
     SET route_order = v.ord,
         updated_at  = NOW()
     FROM (
-      SELECT unnest(${sql.raw(`ARRAY[${ids.map(id => `'${id}'`).join(",")}]::uuid[]`)}) AS id,
-             unnest(${sql.raw(`ARRAY[${orders.join(",")}]::int[]`)})                    AS ord
+      SELECT unnest(${ids}::uuid[]) AS id,
+             unnest(${orders}::int[]) AS ord
     ) v
     WHERE assets.id = v.id
   `);
