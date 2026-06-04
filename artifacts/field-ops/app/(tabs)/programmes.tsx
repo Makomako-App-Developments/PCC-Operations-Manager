@@ -3,6 +3,7 @@ import React, { useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  KeyboardAvoidingView,
   Modal,
   Platform,
   RefreshControl,
@@ -297,6 +298,301 @@ function DepthModal({ visible, assetId, assetName, onClose, onSubmit }: DepthMod
   );
 }
 
+// ─── New Assessment Modal ─────────────────────────────────────────────────────
+
+const SPECIES_CATEGORIES = ["Tree", "Shrub", "Groundcover", "Grass", "Fern", "Other"];
+
+interface SpeciesRow { speciesName: string; speciesCategory: string; quantity: string; }
+
+interface NewAssessmentModalProps {
+  visible: boolean;
+  token: string | null;
+  onClose: () => void;
+  onSuccess: () => void;
+}
+
+function NewAssessmentModal({ visible, token, onClose, onSuccess }: NewAssessmentModalProps) {
+  const colors = useColors();
+  const [assetQuery, setAssetQuery] = useState("");
+  const [selectedAsset, setSelectedAsset] = useState<{ id: string; name: string } | null>(null);
+  const [assessmentDate, setAssessmentDate] = useState(() => localDateStr(new Date()));
+  const [notes, setNotes] = useState("");
+  const [species, setSpecies] = useState<SpeciesRow[]>([{ speciesName: "", speciesCategory: "", quantity: "" }]);
+  const [submitting, setSubmitting] = useState(false);
+
+  const { data: assetResults, isFetching: fetchingAssets } = useQuery({
+    queryKey: ["asset-search-assessment", assetQuery],
+    queryFn: async () => {
+      const res = await fetch(getApiUrl(`/api/assets?search=${encodeURIComponent(assetQuery)}&limit=10`), {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) return { data: [] };
+      return res.json() as Promise<{ data: any[] }>;
+    },
+    enabled: !!token && assetQuery.trim().length >= 2 && !selectedAsset,
+    staleTime: 30000,
+  });
+  const assetOptions: any[] = assetResults?.data ?? [];
+
+  const reset = () => {
+    setAssetQuery("");
+    setSelectedAsset(null);
+    setAssessmentDate(localDateStr(new Date()));
+    setNotes("");
+    setSpecies([{ speciesName: "", speciesCategory: "", quantity: "" }]);
+    setSubmitting(false);
+  };
+
+  const handleClose = () => { reset(); onClose(); };
+
+  const updateRow = (idx: number, field: keyof SpeciesRow, value: string) =>
+    setSpecies(prev => prev.map((r, i) => i === idx ? { ...r, [field]: value } : r));
+  const addRow = () => setSpecies(prev => [...prev, { speciesName: "", speciesCategory: "", quantity: "" }]);
+  const removeRow = (idx: number) => setSpecies(prev => prev.filter((_, i) => i !== idx));
+
+  const handleSubmit = async () => {
+    if (!selectedAsset) { Alert.alert("Site required", "Search and select a site."); return; }
+    if (!assessmentDate || !/^\d{4}-\d{2}-\d{2}$/.test(assessmentDate)) {
+      Alert.alert("Invalid date", "Enter a date in YYYY-MM-DD format (e.g. 2026-06-15).");
+      return;
+    }
+    const validSpecies = species.filter(s => s.speciesName.trim() && s.speciesCategory.trim() && parseInt(s.quantity, 10) > 0);
+    if (validSpecies.length === 0) {
+      Alert.alert("Species required", "Add at least one species with a name, category, and quantity greater than zero.");
+      return;
+    }
+    setSubmitting(true);
+    try {
+      const res = await fetch(getApiUrl("/api/infill-jobs"), {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          assetId: selectedAsset.id,
+          assessmentDate,
+          assessmentNotes: notes.trim() || undefined,
+          species: validSpecies.map(s => ({
+            speciesName: s.speciesName.trim(),
+            speciesCategory: s.speciesCategory.trim(),
+            quantity: parseInt(s.quantity, 10),
+          })),
+        }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error((err as any).error ?? "Failed to create assessment");
+      }
+      onSuccess();
+      reset();
+    } catch (e: any) {
+      Alert.alert("Failed to save", e.message ?? "Please try again.");
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={handleClose}>
+      <KeyboardAvoidingView style={{ flex: 1, backgroundColor: colors.background }} behavior={Platform.OS === "ios" ? "padding" : "height"}>
+        {/* Header */}
+        <View style={[naStyles.header, { backgroundColor: colors.card, borderBottomColor: colors.border }]}>
+          <View style={{ flex: 1 }}>
+            <Text style={[naStyles.headerSub, { color: colors.mutedForeground }]}>Infill Planting</Text>
+            <Text style={[naStyles.headerTitle, { color: colors.foreground }]}>New Assessment</Text>
+          </View>
+          <TouchableOpacity onPress={handleClose} style={{ padding: 4 }} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+            <Feather name="x" size={22} color={colors.foreground} />
+          </TouchableOpacity>
+        </View>
+
+        <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 18, gap: 20, paddingBottom: 40 }} keyboardShouldPersistTaps="handled">
+          {/* Site picker */}
+          <View>
+            <Text style={[naStyles.sectionLabel, { color: colors.foreground }]}>Site <Text style={{ color: "#ef4444" }}>*</Text></Text>
+            {selectedAsset ? (
+              <View style={[naStyles.selectedSite, { backgroundColor: colors.primary + "18", borderColor: colors.primary, borderRadius: colors.radius }]}>
+                <Feather name="map-pin" size={14} color={colors.primary} />
+                <Text style={[naStyles.selectedSiteName, { color: colors.primary, flex: 1 }]} numberOfLines={1}>{selectedAsset.name}</Text>
+                <TouchableOpacity onPress={() => { setSelectedAsset(null); setAssetQuery(""); }} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                  <Feather name="x-circle" size={16} color={colors.primary} />
+                </TouchableOpacity>
+              </View>
+            ) : (
+              <View>
+                <View style={[naStyles.searchRow, { borderColor: colors.border, borderRadius: colors.radius, backgroundColor: colors.card }]}>
+                  <Feather name="search" size={16} color={colors.mutedForeground} />
+                  <TextInput
+                    style={[naStyles.searchInput, { color: colors.foreground, flex: 1 }]}
+                    value={assetQuery}
+                    onChangeText={setAssetQuery}
+                    placeholder="Search site name…"
+                    placeholderTextColor={colors.mutedForeground}
+                    autoCorrect={false}
+                  />
+                  {fetchingAssets && <ActivityIndicator size="small" color={colors.primary} />}
+                </View>
+                {assetQuery.trim().length >= 2 && (
+                  <View style={[naStyles.resultsList, { borderColor: colors.border, backgroundColor: colors.card, borderRadius: colors.radius }]}>
+                    {assetOptions.length === 0 ? (
+                      <Text style={[naStyles.noResults, { color: colors.mutedForeground }]}>No sites found</Text>
+                    ) : (
+                      assetOptions.map((a: any) => (
+                        <TouchableOpacity
+                          key={a.id}
+                          style={[naStyles.resultRow, { borderBottomColor: colors.border }]}
+                          onPress={() => { setSelectedAsset({ id: a.id, name: a.name }); setAssetQuery(""); }}
+                          activeOpacity={0.7}
+                        >
+                          <Text style={[naStyles.resultName, { color: colors.foreground }]} numberOfLines={1}>{a.name}</Text>
+                          {a.suburb && <Text style={[naStyles.resultSub, { color: colors.mutedForeground }]}>{a.suburb}</Text>}
+                        </TouchableOpacity>
+                      ))
+                    )}
+                  </View>
+                )}
+              </View>
+            )}
+          </View>
+
+          {/* Assessment date */}
+          <View>
+            <Text style={[naStyles.sectionLabel, { color: colors.foreground }]}>Assessment Date <Text style={{ color: "#ef4444" }}>*</Text></Text>
+            <TextInput
+              style={[naStyles.dateInput, { borderColor: colors.border, color: colors.foreground, backgroundColor: colors.card, borderRadius: colors.radius }]}
+              value={assessmentDate}
+              onChangeText={setAssessmentDate}
+              placeholder="YYYY-MM-DD"
+              placeholderTextColor={colors.mutedForeground}
+              keyboardType="numbers-and-punctuation"
+            />
+          </View>
+
+          {/* Notes */}
+          <View>
+            <Text style={[naStyles.sectionLabel, { color: colors.foreground }]}>
+              Notes <Text style={[naStyles.optional, { color: colors.mutedForeground }]}>(optional)</Text>
+            </Text>
+            <TextInput
+              style={[naStyles.notesInput, { borderColor: colors.border, color: colors.foreground, backgroundColor: colors.card, borderRadius: colors.radius }]}
+              value={notes}
+              onChangeText={setNotes}
+              placeholder="Assessment observations…"
+              placeholderTextColor={colors.mutedForeground}
+              multiline
+              textAlignVertical="top"
+            />
+          </View>
+
+          {/* Species rows */}
+          <View>
+            <View style={naStyles.speciesHeader}>
+              <Text style={[naStyles.sectionLabel, { color: colors.foreground }]}>
+                Species / Qty <Text style={{ color: "#ef4444" }}>*</Text>
+              </Text>
+              <Text style={[naStyles.speciesHint, { color: colors.mutedForeground }]}>At least one required</Text>
+            </View>
+
+            {species.map((row, idx) => (
+              <View key={idx} style={[naStyles.speciesCard, { backgroundColor: colors.card, borderColor: colors.border, borderRadius: colors.radius }]}>
+                <View style={naStyles.speciesCardHeader}>
+                  <Text style={[naStyles.speciesIdx, { color: colors.mutedForeground }]}>#{idx + 1}</Text>
+                  {species.length > 1 && (
+                    <TouchableOpacity onPress={() => removeRow(idx)} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
+                      <Feather name="trash-2" size={15} color="#ef4444" />
+                    </TouchableOpacity>
+                  )}
+                </View>
+
+                <Text style={[naStyles.rowLabel, { color: colors.mutedForeground }]}>Species Name</Text>
+                <TextInput
+                  style={[naStyles.rowInput, { borderColor: colors.border, color: colors.foreground, backgroundColor: colors.background, borderRadius: colors.radius / 2 }]}
+                  value={row.speciesName}
+                  onChangeText={v => updateRow(idx, "speciesName", v)}
+                  placeholder="e.g. Coprosma robusta"
+                  placeholderTextColor={colors.mutedForeground}
+                />
+
+                <Text style={[naStyles.rowLabel, { color: colors.mutedForeground }]}>Category</Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 8 }}>
+                  <View style={{ flexDirection: "row", gap: 6 }}>
+                    {SPECIES_CATEGORIES.map(cat => (
+                      <TouchableOpacity
+                        key={cat}
+                        style={[
+                          naStyles.catChip,
+                          row.speciesCategory === cat
+                            ? { backgroundColor: colors.primary, borderColor: colors.primary }
+                            : { backgroundColor: "transparent", borderColor: colors.border },
+                        ]}
+                        onPress={() => updateRow(idx, "speciesCategory", cat)}
+                      >
+                        <Text style={[naStyles.catChipText, { color: row.speciesCategory === cat ? "#fff" : colors.foreground }]}>{cat}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </ScrollView>
+                {!SPECIES_CATEGORIES.includes(row.speciesCategory) && row.speciesCategory.length > 0 && (
+                  <Text style={[naStyles.catCustom, { color: colors.primary }]}>Custom: {row.speciesCategory}</Text>
+                )}
+                <TextInput
+                  style={[naStyles.rowInput, { borderColor: colors.border, color: colors.foreground, backgroundColor: colors.background, borderRadius: colors.radius / 2 }]}
+                  value={!SPECIES_CATEGORIES.includes(row.speciesCategory) ? row.speciesCategory : ""}
+                  onChangeText={v => updateRow(idx, "speciesCategory", v)}
+                  placeholder="Or type a custom category…"
+                  placeholderTextColor={colors.mutedForeground}
+                />
+
+                <Text style={[naStyles.rowLabel, { color: colors.mutedForeground }]}>Quantity</Text>
+                <TextInput
+                  style={[naStyles.rowInput, { borderColor: colors.border, color: colors.foreground, backgroundColor: colors.background, borderRadius: colors.radius / 2 }]}
+                  value={row.quantity}
+                  onChangeText={v => updateRow(idx, "quantity", v.replace(/[^0-9]/g, ""))}
+                  placeholder="e.g. 5"
+                  placeholderTextColor={colors.mutedForeground}
+                  keyboardType="number-pad"
+                />
+              </View>
+            ))}
+
+            <TouchableOpacity
+              style={[naStyles.addRowBtn, { borderColor: colors.primary, borderRadius: colors.radius }]}
+              onPress={addRow}
+              activeOpacity={0.7}
+            >
+              <Feather name="plus" size={15} color={colors.primary} />
+              <Text style={[naStyles.addRowText, { color: colors.primary }]}>Add species</Text>
+            </TouchableOpacity>
+          </View>
+        </ScrollView>
+
+        {/* Footer */}
+        <View style={[naStyles.footer, { borderTopColor: colors.border, backgroundColor: colors.card }]}>
+          <TouchableOpacity
+            style={[naStyles.cancelBtn, { borderColor: colors.border, borderRadius: colors.radius }]}
+            onPress={handleClose}
+            activeOpacity={0.8}
+          >
+            <Text style={[naStyles.cancelBtnText, { color: colors.mutedForeground }]}>Cancel</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[naStyles.submitBtn, { backgroundColor: submitting ? colors.primary + "80" : colors.primary, borderRadius: colors.radius, flex: 1 }]}
+            onPress={handleSubmit}
+            disabled={submitting}
+            activeOpacity={0.85}
+          >
+            {submitting ? (
+              <ActivityIndicator size="small" color="#fff" />
+            ) : (
+              <>
+                <Feather name="check" size={16} color="#fff" />
+                <Text style={naStyles.submitBtnText}>Save Assessment</Text>
+              </>
+            )}
+          </TouchableOpacity>
+        </View>
+      </KeyboardAvoidingView>
+    </Modal>
+  );
+}
+
 // ─── Main Screen ──────────────────────────────────────────────────────────────
 
 type ActiveTab = "infill" | "mulch";
@@ -307,10 +603,13 @@ export default function ProgrammesScreen() {
   const { user, token } = useAuth();
   const qc = useQueryClient();
 
+  const isPrivileged = ["administrator", "manager", "supervisor"].includes(user?.role ?? "");
+
   const [activeTab, setActiveTab] = useState<ActiveTab>("infill");
   const [depthModal, setDepthModal] = useState<{ assetId: string; assetName: string } | null>(null);
   const [scheduleModal, setScheduleModal] = useState<any | null>(null);
   const [expandedInfill, setExpandedInfill] = useState<Set<string>>(new Set());
+  const [showNewAssessment, setShowNewAssessment] = useState(false);
 
   const bottomPad = insets.bottom + (Platform.OS === "web" ? 84 : 100);
 
@@ -445,6 +744,7 @@ export default function ProgrammesScreen() {
 
       {/* Infill tab */}
       {activeTab === "infill" && (
+        <View style={{ flex: 1 }}>
         <ScrollView
           style={styles.scroll}
           contentContainerStyle={{ padding: 16, gap: 10, paddingBottom: bottomPad }}
@@ -539,6 +839,16 @@ export default function ProgrammesScreen() {
             })
           )}
         </ScrollView>
+        {isPrivileged && (
+          <TouchableOpacity
+            style={[naStyles.fab, { backgroundColor: colors.primary }]}
+            onPress={() => setShowNewAssessment(true)}
+            activeOpacity={0.85}
+          >
+            <Feather name="plus" size={22} color="#fff" />
+          </TouchableOpacity>
+        )}
+        </View>
       )}
 
       {/* Mulching tab */}
@@ -624,6 +934,17 @@ export default function ProgrammesScreen() {
           }}
         />
       )}
+
+      {/* New assessment modal */}
+      <NewAssessmentModal
+        visible={showNewAssessment}
+        token={token}
+        onClose={() => setShowNewAssessment(false)}
+        onSuccess={() => {
+          setShowNewAssessment(false);
+          qc.invalidateQueries({ queryKey: ["infill-jobs-all-mobile"] });
+        }}
+      />
     </View>
   );
 }
@@ -728,4 +1049,153 @@ const styles = StyleSheet.create({
 
   modalSubmitBtn: { marginTop: 8, paddingVertical: 14, borderRadius: 10, alignItems: "center" },
   modalSubmitText: { fontFamily: "Inter_700Bold", fontSize: 15, color: "#fff" },
+});
+
+// ─── New Assessment Styles ────────────────────────────────────────────────────
+
+const naStyles = StyleSheet.create({
+  // FAB
+  fab: {
+    position: "absolute",
+    bottom: 110,
+    right: 20,
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.2,
+    shadowRadius: 6,
+    elevation: 6,
+  },
+
+  // Modal header
+  header: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  headerSub: { fontFamily: "Inter_400Regular", fontSize: 12 },
+  headerTitle: { fontFamily: "Inter_700Bold", fontSize: 18 },
+
+  // Section labels
+  sectionLabel: { fontFamily: "Inter_600SemiBold", fontSize: 14, marginBottom: 8 },
+  optional: { fontFamily: "Inter_400Regular", fontSize: 13 },
+
+  // Asset picker
+  selectedSite: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 11,
+    borderWidth: 1,
+  },
+  selectedSiteName: { fontFamily: "Inter_500Medium", fontSize: 14 },
+  searchRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderWidth: 1,
+  },
+  searchInput: { fontFamily: "Inter_400Regular", fontSize: 14, paddingVertical: 0 },
+  resultsList: {
+    marginTop: 4,
+    borderWidth: 1,
+    overflow: "hidden",
+  },
+  resultRow: {
+    paddingHorizontal: 14,
+    paddingVertical: 11,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  resultName: { fontFamily: "Inter_500Medium", fontSize: 14 },
+  resultSub: { fontFamily: "Inter_400Regular", fontSize: 12, marginTop: 1 },
+  noResults: { fontFamily: "Inter_400Regular", fontSize: 13, padding: 14, textAlign: "center" },
+
+  // Date + notes
+  dateInput: {
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 11,
+    fontFamily: "Inter_400Regular",
+    fontSize: 14,
+  },
+  notesInput: {
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontFamily: "Inter_400Regular",
+    fontSize: 14,
+    minHeight: 72,
+    textAlignVertical: "top",
+  },
+
+  // Species section
+  speciesHeader: { flexDirection: "row", alignItems: "baseline", justifyContent: "space-between", marginBottom: 8 },
+  speciesHint: { fontFamily: "Inter_400Regular", fontSize: 12 },
+  speciesCard: { borderWidth: 1, padding: 12, marginBottom: 10 },
+  speciesCardHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 10 },
+  speciesIdx: { fontFamily: "Inter_600SemiBold", fontSize: 12, textTransform: "uppercase" },
+  rowLabel: { fontFamily: "Inter_500Medium", fontSize: 12, marginBottom: 5 },
+  rowInput: {
+    borderWidth: 1,
+    paddingHorizontal: 10,
+    paddingVertical: 9,
+    fontFamily: "Inter_400Regular",
+    fontSize: 14,
+    marginBottom: 10,
+    width: "100%",
+    alignSelf: "stretch",
+  },
+  catChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 14,
+    borderWidth: 1,
+  },
+  catChipText: { fontFamily: "Inter_500Medium", fontSize: 12 },
+  catCustom: { fontFamily: "Inter_400Regular", fontSize: 11, marginBottom: 4 },
+  addRowBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    paddingVertical: 11,
+    borderWidth: 1,
+    borderStyle: "dashed",
+  },
+  addRowText: { fontFamily: "Inter_600SemiBold", fontSize: 13 },
+
+  // Footer
+  footer: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    padding: 16,
+    paddingBottom: 24,
+    borderTopWidth: StyleSheet.hairlineWidth,
+  },
+  cancelBtn: {
+    borderWidth: 1,
+    paddingHorizontal: 18,
+    paddingVertical: 13,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  cancelBtnText: { fontFamily: "Inter_600SemiBold", fontSize: 14 },
+  submitBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    paddingVertical: 13,
+  },
+  submitBtnText: { fontFamily: "Inter_700Bold", fontSize: 14, color: "#fff" },
 });
