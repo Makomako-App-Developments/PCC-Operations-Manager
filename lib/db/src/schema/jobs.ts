@@ -28,6 +28,7 @@ export const jobsTable = pgTable("jobs", {
   isAllTeams:         boolean("is_all_teams").notNull().default(false),
   notes:              text("notes"),
   skipReason:         text("skip_reason"),
+  outOfSequenceReason: text("out_of_sequence_reason"),
   createdAt:          timestamp("created_at").notNull().defaultNow(),
   updatedAt:          timestamp("updated_at").notNull().defaultNow(),
 }, (t) => [

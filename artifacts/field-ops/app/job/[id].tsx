@@ -2,6 +2,7 @@ import { Feather } from "@expo/vector-icons";
 import {
   useGetAsset,
   useGetJob,
+  useGetScheduleWeek,
   useUpdateJob,
   getGetJobQueryKey,
   getListJobsQueryKey,
@@ -10,7 +11,7 @@ import {
 import * as Haptics from "expo-haptics";
 import * as ImagePicker from "expo-image-picker";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -30,6 +31,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 
 import { StatusBadge } from "@/components/StatusBadge";
 import { BoundaryMap } from "@/components/BoundaryMap";
+import { useAuth } from "@/context/auth";
 import { useColors } from "@/hooks/useColors";
 import { getApiUrl } from "@/lib/api";
 
@@ -505,7 +507,114 @@ function JobSkipReasonModal({ onConfirm, onCancel }: JobSkipReasonModalProps) {
   );
 }
 
-const TODAY = new Date().toISOString().split("T")[0]!;
+function localDateStr(): string {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+const TODAY = localDateStr();
+
+// ─── Out-of-sequence warning modal ───────────────────────────────────────────
+
+function OutOfSequenceModal({
+  visible,
+  onConfirm,
+  onCancel,
+}: {
+  visible: boolean;
+  onConfirm: (reason: string) => void;
+  onCancel: () => void;
+}) {
+  const colors = useColors();
+  const [step, setStep] = useState<"confirm" | "reason">("confirm");
+  const [reason, setReason] = useState("");
+
+  useEffect(() => {
+    if (visible) { setStep("confirm"); setReason(""); }
+  }, [visible]);
+
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onCancel}>
+      <KeyboardAvoidingView
+        style={styles.seqOverlay}
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
+      >
+        <View style={[styles.seqCard, { backgroundColor: colors.card, borderRadius: colors.radius }]}>
+          {step === "confirm" ? (
+            <>
+              <View style={styles.seqIconRow}>
+                <Feather name="alert-triangle" size={26} color="#f59e0b" />
+              </View>
+              <Text style={[styles.seqTitle, { color: colors.foreground }]}>Out of sequence</Text>
+              <Text style={[styles.seqBody, { color: colors.mutedForeground }]}>
+                This isn't the next job on the run. Are you sure you want to start this job?
+              </Text>
+              <View style={styles.seqButtons}>
+                <TouchableOpacity
+                  style={[styles.seqBtn, { borderWidth: 1, borderColor: colors.border }]}
+                  onPress={onCancel}
+                  activeOpacity={0.85}
+                >
+                  <Text style={[styles.seqBtnText, { color: colors.foreground }]}>No, go back</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.seqBtn, { backgroundColor: "#f59e0b" }]}
+                  onPress={() => setStep("reason")}
+                  activeOpacity={0.85}
+                >
+                  <Text style={[styles.seqBtnText, { color: "#fff" }]}>Yes, continue</Text>
+                </TouchableOpacity>
+              </View>
+            </>
+          ) : (
+            <>
+              <Text style={[styles.seqTitle, { color: colors.foreground }]}>Reason required</Text>
+              <Text style={[styles.seqBody, { color: colors.mutedForeground }]}>
+                Why are you starting out of sequence?
+              </Text>
+              <TextInput
+                style={[styles.seqInput, {
+                  backgroundColor: colors.background,
+                  borderColor: reason.trim() ? colors.primary : colors.border,
+                  color: colors.foreground,
+                  borderRadius: colors.radius,
+                }]}
+                placeholder="Enter reason…"
+                placeholderTextColor={colors.mutedForeground}
+                value={reason}
+                onChangeText={setReason}
+                multiline
+                numberOfLines={3}
+                textAlignVertical="top"
+                autoFocus
+              />
+              <View style={styles.seqButtons}>
+                <TouchableOpacity
+                  style={[styles.seqBtn, { borderWidth: 1, borderColor: colors.border }]}
+                  onPress={() => setStep("confirm")}
+                  activeOpacity={0.85}
+                >
+                  <Text style={[styles.seqBtnText, { color: colors.foreground }]}>Back</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.seqBtn, { backgroundColor: colors.primary, opacity: reason.trim() ? 1 : 0.4 }]}
+                  onPress={() => { if (reason.trim()) onConfirm(reason.trim()); }}
+                  disabled={!reason.trim()}
+                  activeOpacity={0.85}
+                >
+                  <Text style={[styles.seqBtnText, { color: "#fff" }]}>Start Job</Text>
+                </TouchableOpacity>
+              </View>
+            </>
+          )}
+        </View>
+      </KeyboardAvoidingView>
+    </Modal>
+  );
+}
 
 // ─── Main Screen ─────────────────────────────────────────────────────────────
 
@@ -514,6 +623,7 @@ export default function JobDetailScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
+  const { user } = useAuth();
 
   const [checkedTasks, setCheckedTasks] = useState<Record<number, boolean>>({});
   const [pendingAction, setPendingAction] = useState<"start" | "complete" | "pause" | "resume" | "skip" | null>(null);
@@ -521,6 +631,7 @@ export default function JobDetailScreen() {
   const [skipTasks, setSkipTasks] = useState<{ index: number; label: string }[] | null>(null);
   const [showJobSkipModal, setShowJobSkipModal] = useState(false);
   const [jobSkipReason, setJobSkipReason] = useState("");
+  const [showOutOfSeqModal, setShowOutOfSeqModal] = useState(false);
   const [photoError, setPhotoError] = useState(false);
   const [remainingSeconds, setRemainingSeconds] = useState<number | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -588,12 +699,56 @@ export default function JobDetailScreen() {
   const checkedCount = Object.values(checkedTasks).filter(Boolean).length;
   const photoCount = photosData?.data?.length ?? 0;
 
+  // Geosequence check — only needed when job is pending and scheduled today
+  const isScheduledToday = job?.scheduledDate === TODAY;
+  const teamParam = user?.teamId ? { teamId: user.teamId } : {};
+  const { data: todaySchedule } = useGetScheduleWeek(
+    { week: TODAY, ...teamParam },
+    { query: { enabled: isPending && isScheduledToday && !isMulching } as any },
+  );
+  const isNextInSequence = useMemo(() => {
+    if (!todaySchedule?.days) return true;
+    const todayDay = (todaySchedule.days as { date: string; jobs: any[] }[])
+      .find(d => d.date === TODAY);
+    if (!todayDay) return true;
+    const pendingJobs = todayDay.jobs.filter((j: any) => j.status === "pending");
+    if (pendingJobs.length === 0) return true;
+    return pendingJobs[0].id === id;
+  }, [todaySchedule, id]);
+
   const toggleTask = (index: number) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setCheckedTasks(prev => ({ ...prev, [index]: !prev[index] }));
   };
 
-  const handleStart = () => setPendingAction("start");
+  const handleStart = () => {
+    if (isPending && isScheduledToday && !isMulching && !isNextInSequence) {
+      setShowOutOfSeqModal(true);
+      return;
+    }
+    setPendingAction("start");
+  };
+
+  const handleOutOfSeqConfirmed = (reason: string) => {
+    setShowOutOfSeqModal(false);
+    if (!id) return;
+    updateJob.mutate(
+      { id, data: { status: "in_progress", outOfSequenceReason: reason } as any },
+      {
+        onSuccess: () => {
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+          invalidateJob();
+        },
+        onError: () => Alert.alert("Error", "Could not start job. Please try again."),
+      },
+    );
+  };
+
+  const handleOutOfSeqCancel = () => {
+    setShowOutOfSeqModal(false);
+    router.back();
+  };
+
   const handlePause = () => setPendingAction("pause");
   const handleResume = () => setPendingAction("resume");
   const handleSkipJob = () => setShowJobSkipModal(true);
@@ -1066,6 +1221,13 @@ export default function JobDetailScreen() {
         </View>
       )}
 
+      {/* Out-of-sequence warning modal */}
+      <OutOfSequenceModal
+        visible={showOutOfSeqModal}
+        onConfirm={handleOutOfSeqConfirmed}
+        onCancel={handleOutOfSeqCancel}
+      />
+
       {/* Job skip reason modal */}
       {showJobSkipModal && (
         <JobSkipReasonModal
@@ -1234,4 +1396,30 @@ const styles = StyleSheet.create({
     gap: 8, paddingVertical: 13,
   },
   skipNextText: { fontFamily: "Inter_700Bold", fontSize: 15, color: "#fff" },
+  // Out-of-sequence modal
+  seqOverlay: {
+    flex: 1, backgroundColor: "rgba(0,0,0,0.55)",
+    justifyContent: "center", alignItems: "center", padding: 28,
+  },
+  seqCard: {
+    width: "100%", padding: 24,
+    shadowColor: "#000", shadowOpacity: 0.18, shadowRadius: 24, elevation: 12,
+  },
+  seqIconRow: { alignItems: "center", marginBottom: 14 },
+  seqTitle: { fontFamily: "Inter_700Bold", fontSize: 18, textAlign: "center", marginBottom: 8 },
+  seqBody: {
+    fontFamily: "Inter_400Regular", fontSize: 14, lineHeight: 20,
+    textAlign: "center", marginBottom: 22,
+  },
+  seqInput: {
+    borderWidth: 1.5, padding: 12,
+    fontFamily: "Inter_400Regular", fontSize: 14, lineHeight: 20,
+    minHeight: 88, marginBottom: 18,
+  },
+  seqButtons: { flexDirection: "row", gap: 10 },
+  seqBtn: {
+    flex: 1, paddingVertical: 13, borderRadius: 8,
+    alignItems: "center", justifyContent: "center",
+  },
+  seqBtnText: { fontFamily: "Inter_600SemiBold", fontSize: 14 },
 });
