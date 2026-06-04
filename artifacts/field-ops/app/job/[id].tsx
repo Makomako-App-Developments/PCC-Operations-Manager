@@ -25,6 +25,7 @@ import {
   TouchableOpacity,
   View,
   KeyboardAvoidingView,
+  useWindowDimensions,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -740,6 +741,7 @@ function OutOfSequenceModal({
 export default function JobDetailScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
+  const { height: windowHeight } = useWindowDimensions();
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
   const { user } = useAuth();
@@ -1043,7 +1045,7 @@ export default function JobDetailScreen() {
   }
 
   return (
-    <View style={[styles.root, { backgroundColor: colors.background }]}>
+    <View style={[styles.root, { backgroundColor: colors.background, ...(Platform.OS === "web" ? { height: windowHeight } : {}) }]}>
       {/* Nav bar */}
       <View style={[styles.navBar, { backgroundColor: colors.card, borderBottomColor: colors.border, paddingTop: topPad + 8 }]}>
         <TouchableOpacity
@@ -1410,7 +1412,7 @@ export default function JobDetailScreen() {
 // ─── Styles ───────────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
-  root: { flex: 1 },
+  root: { flex: 1, overflow: "hidden" },
   loadingRoot: { flex: 1, alignItems: "center", justifyContent: "center" },
   errorText: { fontFamily: "Inter_400Regular", fontSize: 16 },
   navBar: {
