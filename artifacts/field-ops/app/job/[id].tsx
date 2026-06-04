@@ -653,8 +653,8 @@ export default function JobDetailScreen() {
     if (id) {
       queryClient.invalidateQueries({ queryKey: getGetJobQueryKey(id) });
       queryClient.invalidateQueries({ queryKey: getListJobsQueryKey() });
-      // Invalidate the schedule week so the Today screen reflects the new status
-      queryClient.invalidateQueries({ queryKey: getGetScheduleWeekQueryKey({ week: TODAY }) });
+      // Invalidate all schedule week queries (no-arg key = prefix match, catches teamId variants)
+      queryClient.invalidateQueries({ queryKey: getGetScheduleWeekQueryKey() });
     }
   };
 
