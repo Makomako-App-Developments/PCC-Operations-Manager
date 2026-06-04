@@ -18,6 +18,7 @@ const allowlist = [
   "drizzle-orm",
   "drizzle-zod",
   "express",
+  "expo-server-sdk",
   "express-rate-limit",
   "express-session",
   "jsonwebtoken",
