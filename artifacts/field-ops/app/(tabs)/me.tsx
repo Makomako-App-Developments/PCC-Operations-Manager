@@ -137,6 +137,7 @@ export default function MeScreen() {
             </View>
           </View>
 
+          {["administrator", "manager", "supervisor"].includes(user?.role ?? "") && (
           <View
             style={[
               styles.card,
@@ -171,6 +172,7 @@ export default function MeScreen() {
               />
             </View>
           </View>
+          )}
 
           <View
             style={[
