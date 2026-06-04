@@ -1031,17 +1031,6 @@ export default function JobDetailScreen() {
             </View>
           ) : null}
 
-          {/* Suburb */}
-          <View style={[styles.infoTile, { backgroundColor: colors.card, borderColor: colors.border, borderRadius: colors.radius }]}>
-            <View style={styles.infoTileHeader}>
-              <Feather name="map-pin" size={13} color={colors.primary} />
-              <Text style={[styles.infoTileLabel, { color: colors.mutedForeground }]}>Suburb</Text>
-            </View>
-            <Text style={[styles.infoTileValue, { color: colors.foreground }]}>
-              {asset.suburb ?? (asset as any).streetAddress ?? "—"}
-            </Text>
-          </View>
-
           {/* Specification — tappable */}
           <TouchableOpacity
             style={[styles.infoTile, styles.infoTileTappable, { backgroundColor: colors.card, borderColor: colors.primary + "60", borderRadius: colors.radius }]}
