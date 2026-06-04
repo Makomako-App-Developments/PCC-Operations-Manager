@@ -30,7 +30,6 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 
 import { StatusBadge } from "@/components/StatusBadge";
 import { BoundaryMap } from "@/components/BoundaryMap";
-import { SpecModal } from "@/components/SpecModal";
 import { useColors } from "@/hooks/useColors";
 import { getApiUrl } from "@/lib/api";
 
@@ -495,7 +494,6 @@ export default function JobDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
 
   const [checkedTasks, setCheckedTasks] = useState<Record<number, boolean>>({});
-  const [specModalOpen, setSpecModalOpen] = useState(false);
   const [pendingAction, setPendingAction] = useState<"start" | "complete" | "pause" | "resume" | "skip" | null>(null);
   const [skipTasks, setSkipTasks] = useState<{ index: number; label: string }[] | null>(null);
   const [showJobSkipModal, setShowJobSkipModal] = useState(false);
@@ -764,7 +762,7 @@ export default function JobDetailScreen() {
           {/* Specification — tappable */}
           <TouchableOpacity
             style={[styles.infoTile, styles.infoTileTappable, { backgroundColor: colors.card, borderColor: colors.primary + "60", borderRadius: colors.radius }]}
-            onPress={() => setSpecModalOpen(true)}
+            onPress={() => router.push("/(tabs)/spec")}
             activeOpacity={0.75}
           >
             <View style={styles.infoTileHeader}>
@@ -1043,13 +1041,6 @@ export default function JobDetailScreen() {
           )}
         </View>
       )}
-
-      {/* Spec modal */}
-      <SpecModal
-        visible={specModalOpen}
-        gardenType={asset.gardenType}
-        onClose={() => setSpecModalOpen(false)}
-      />
 
       {/* Job skip reason modal */}
       {showJobSkipModal && (
