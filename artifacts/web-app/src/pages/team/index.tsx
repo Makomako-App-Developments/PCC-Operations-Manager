@@ -505,7 +505,7 @@ function CompositionTab() {
                             onClick={() => setAddMode("assign")}
                             className={`text-xs px-3 py-1.5 rounded-md font-medium transition-colors ${addMode === "assign" ? "bg-white text-gray-800 shadow-sm" : "text-gray-500 hover:text-gray-700"}`}
                           >
-                            Assign existing staff
+                            Staff with account
                           </button>
                           <button
                             onClick={() => setAddMode("new")}
