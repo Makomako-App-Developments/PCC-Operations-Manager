@@ -57,8 +57,8 @@ export default function AssetsScreen() {
     );
   }, [assets, search]);
 
-  const topPad = insets.top + (Platform.OS === "web" ? 67 : 0);
-  const bottomPad = insets.bottom + (Platform.OS === "web" ? 34 : 84);
+  const topPad = insets.top;
+  const bottomPad = insets.bottom + (Platform.OS === "web" ? 84 : 84);
 
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>

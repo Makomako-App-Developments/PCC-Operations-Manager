@@ -68,7 +68,7 @@ export default function LoginScreen() {
         style={[
           styles.inner,
           {
-            paddingTop: insets.top + (Platform.OS === "web" ? 67 : 0),
+            paddingTop: insets.top,
             paddingBottom: insets.bottom + (Platform.OS === "web" ? 34 : 0),
           },
         ]}

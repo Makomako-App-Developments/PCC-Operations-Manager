@@ -63,9 +63,8 @@ export default function TodayScreen() {
     (j) => j.status === "completed" || j.status === "skipped",
   );
 
-  const topPad =
-    insets.top + (Platform.OS === "web" ? 67 : 0);
-  const bottomPad = insets.bottom + (Platform.OS === "web" ? 34 : 160);
+  const topPad = insets.top;
+  const bottomPad = insets.bottom + (Platform.OS === "web" ? 84 : 160);
 
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>

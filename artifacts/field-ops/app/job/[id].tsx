@@ -691,7 +691,7 @@ export default function JobDetailScreen() {
     return isOver ? `-${parts}` : parts;
   };
 
-  const topPad = insets.top + (Platform.OS === "web" ? 67 : 0);
+  const topPad = insets.top;
   const bottomPad = insets.bottom + (Platform.OS === "web" ? 34 : 16);
 
   const hrs = asset ? Math.floor(asset.serviceTimeMins / 60) : 0;

@@ -270,8 +270,8 @@ export default function ReportScreen() {
     isPestSighting ? pestPlantsSelected.length > 0 : description.trim().length > 0
   );
 
-  const topPad = insets.top + (Platform.OS === "web" ? 67 : 0);
-  const bottomPad = insets.bottom + (Platform.OS === "web" ? 34 : 84);
+  const topPad = insets.top;
+  const bottomPad = insets.bottom + (Platform.OS === "web" ? 84 : 84);
 
   const selectedPriority = PRIORITIES.find((p) => p.value === priority);
   const selectedIssue = ISSUE_TYPES.find((t) => t.value === issueType);
