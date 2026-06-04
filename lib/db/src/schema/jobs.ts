@@ -27,6 +27,7 @@ export const jobsTable = pgTable("jobs", {
   crewStatus:         crewStatusEnum("crew_status").notNull().default("full"),
   isAllTeams:         boolean("is_all_teams").notNull().default(false),
   notes:              text("notes"),
+  skipReason:         text("skip_reason"),
   createdAt:          timestamp("created_at").notNull().defaultNow(),
   updatedAt:          timestamp("updated_at").notNull().defaultNow(),
 }, (t) => [

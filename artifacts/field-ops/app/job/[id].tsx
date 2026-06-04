@@ -411,6 +411,79 @@ function TaskSkipReasonModal({ tasks, onConfirm, onCancel }: SkipReasonModalProp
   );
 }
 
+// ─── Job Skip Reason Modal ────────────────────────────────────────────────────
+
+interface JobSkipReasonModalProps {
+  onConfirm: (reason: string) => void;
+  onCancel: () => void;
+}
+
+function JobSkipReasonModal({ onConfirm, onCancel }: JobSkipReasonModalProps) {
+  const colors = useColors();
+  const [reason, setReason] = useState("");
+
+  return (
+    <Modal visible animationType="slide" presentationStyle="pageSheet" onRequestClose={onCancel}>
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : "height"}>
+        <View style={[styles.skipModalRoot, { backgroundColor: colors.background }]}>
+          <View style={[styles.skipModalHeader, { borderBottomColor: colors.border, backgroundColor: colors.card }]}>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.skipModalSub, { color: colors.mutedForeground }]}>Skip job</Text>
+              <Text style={[styles.skipModalTitle, { color: colors.foreground }]}>Reason required</Text>
+            </View>
+            <TouchableOpacity onPress={onCancel} style={{ padding: 4 }}>
+              <Feather name="x" size={20} color={colors.foreground} />
+            </TouchableOpacity>
+          </View>
+
+          <View style={styles.skipModalBody}>
+            <View style={[styles.skipTaskCard, { backgroundColor: "#fef2f2", borderColor: "#fecaca", borderRadius: colors.radius }]}>
+              <Feather name="alert-triangle" size={16} color="#ef4444" />
+              <Text style={[styles.skipTaskLabel, { color: "#dc2626" }]}>
+                This job will be marked as skipped and rescheduled.
+              </Text>
+            </View>
+
+            <Text style={[styles.skipReasonLabel, { color: colors.mutedForeground }]}>
+              Why is this job being skipped?
+            </Text>
+            <TextInput
+              style={[styles.skipReasonInput, { color: colors.foreground, borderColor: reason.trim() ? "#ef4444" : colors.border, borderRadius: colors.radius, backgroundColor: colors.background }]}
+              value={reason}
+              onChangeText={setReason}
+              placeholder="e.g. Access blocked, unsafe conditions, equipment fault…"
+              placeholderTextColor={colors.mutedForeground}
+              multiline
+              numberOfLines={4}
+              textAlignVertical="top"
+              autoFocus
+            />
+          </View>
+
+          <View style={[styles.skipModalFooter, { borderTopColor: colors.border, backgroundColor: colors.card }]}>
+            <TouchableOpacity
+              style={[styles.skipCancelBtn, { borderColor: colors.border, borderRadius: colors.radius }]}
+              onPress={onCancel}
+              activeOpacity={0.8}
+            >
+              <Text style={[styles.skipCancelText, { color: colors.mutedForeground }]}>Cancel</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.skipNextBtn, { backgroundColor: reason.trim() ? "#ef4444" : colors.border, borderRadius: colors.radius }]}
+              onPress={() => { if (reason.trim()) onConfirm(reason.trim()); }}
+              disabled={!reason.trim()}
+              activeOpacity={0.85}
+            >
+              <Text style={styles.skipNextText}>Continue</Text>
+              <Feather name="arrow-right" size={16} color="#fff" />
+            </TouchableOpacity>
+          </View>
+        </View>
+      </KeyboardAvoidingView>
+    </Modal>
+  );
+}
+
 const TODAY = new Date().toISOString().split("T")[0]!;
 
 // ─── Main Screen ─────────────────────────────────────────────────────────────
@@ -425,6 +498,8 @@ export default function JobDetailScreen() {
   const [specModalOpen, setSpecModalOpen] = useState(false);
   const [pendingAction, setPendingAction] = useState<"start" | "complete" | "pause" | "resume" | "skip" | null>(null);
   const [skipTasks, setSkipTasks] = useState<{ index: number; label: string }[] | null>(null);
+  const [showJobSkipModal, setShowJobSkipModal] = useState(false);
+  const [jobSkipReason, setJobSkipReason] = useState("");
   const [photoError, setPhotoError] = useState(false);
   const [remainingSeconds, setRemainingSeconds] = useState<number | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -490,7 +565,13 @@ export default function JobDetailScreen() {
   const handleStart = () => setPendingAction("start");
   const handlePause = () => setPendingAction("pause");
   const handleResume = () => setPendingAction("resume");
-  const handleSkipJob = () => setPendingAction("skip");
+  const handleSkipJob = () => setShowJobSkipModal(true);
+
+  const handleJobSkipReasonConfirmed = (reason: string) => {
+    setJobSkipReason(reason);
+    setShowJobSkipModal(false);
+    setPendingAction("skip");
+  };
 
   const handleComplete = () => {
     setPhotoError(false);
@@ -544,11 +625,12 @@ export default function JobDetailScreen() {
       execMutate("paused");
     } else if (pendingAction === "skip") {
       updateJob.mutate(
-        { id, data: { status: "skipped" } as any },
+        { id, data: { status: "skipped", skipReason: jobSkipReason } as any },
         {
           onSuccess: () => {
             Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
             setPendingAction(null);
+            setJobSkipReason("");
             invalidateJob();
             router.back();
           },
@@ -968,6 +1050,14 @@ export default function JobDetailScreen() {
         gardenType={asset.gardenType}
         onClose={() => setSpecModalOpen(false)}
       />
+
+      {/* Job skip reason modal */}
+      {showJobSkipModal && (
+        <JobSkipReasonModal
+          onConfirm={handleJobSkipReasonConfirmed}
+          onCancel={() => setShowJobSkipModal(false)}
+        />
+      )}
 
       {/* Task skip reason modal */}
       {skipTasks && (
