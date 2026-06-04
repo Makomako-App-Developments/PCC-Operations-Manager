@@ -1105,6 +1105,21 @@ function NewAssessmentDrawer({
   const [notes, setNotes] = useState("");
   const [species, setSpecies] = useState<SelectedSpecies[]>([]);
   const [showPicker, setShowPicker] = useState(false);
+  const [assetSearch, setAssetSearch] = useState(() => {
+    if (initialAssetId) {
+      const found = assets.find(a => a.id === initialAssetId);
+      return found ? `${found.name}${found.description ? `, ${found.description}` : ""}` : "";
+    }
+    return "";
+  });
+  const [showAssetDropdown, setShowAssetDropdown] = useState(false);
+
+  const sortedAssets = assets.slice().sort((a, b) => (a.name ?? "").localeCompare(b.name ?? ""));
+  const filteredAssets = assetSearch.trim()
+    ? sortedAssets.filter(a =>
+        `${a.name ?? ""} ${a.description ?? ""}`.toLowerCase().includes(assetSearch.toLowerCase())
+      )
+    : sortedAssets;
 
   const asset = assets.find(a => a.id === assetId);
   const totalPlants = species.reduce((s, sp) => s + sp.qty, 0);
@@ -1156,11 +1171,54 @@ function NewAssessmentDrawer({
             <>
               <div>
                 <Label className="text-xs font-medium text-gray-500 mb-1.5 block">Garden Asset</Label>
-                <select value={assetId} onChange={e => setAssetId(e.target.value)}
-                  className="w-full px-3 py-2 text-sm border border-gray-200 rounded-xl outline-none focus:border-[#00AECD] bg-white">
-                  <option value="">— Select an asset —</option>
-                  {assets.slice().sort((a, b) => (a.name ?? "").localeCompare(b.name ?? "")).map(a => <option key={a.id} value={a.id}>{a.name}{a.description ? `, ${a.description}` : ""}</option>)}
-                </select>
+                <div className="relative">
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 pointer-events-none" />
+                    <Input
+                      value={assetSearch}
+                      onChange={e => {
+                        setAssetSearch(e.target.value);
+                        setAssetId("");
+                        setShowAssetDropdown(true);
+                      }}
+                      onFocus={() => setShowAssetDropdown(true)}
+                      onBlur={() => setTimeout(() => setShowAssetDropdown(false), 150)}
+                      placeholder="Search for an asset…"
+                      className="rounded-xl pl-8 pr-7 text-sm"
+                    />
+                    {assetSearch && (
+                      <button
+                        type="button"
+                        onMouseDown={e => { e.preventDefault(); setAssetSearch(""); setAssetId(""); setShowAssetDropdown(true); }}
+                        className="absolute right-2.5 top-1/2 -translate-y-1/2"
+                      >
+                        <X className="w-3.5 h-3.5 text-gray-400 hover:text-gray-600" />
+                      </button>
+                    )}
+                  </div>
+                  {showAssetDropdown && (
+                    <div className="absolute z-50 top-full mt-1 w-full bg-white border border-gray-200 rounded-xl shadow-lg max-h-56 overflow-y-auto">
+                      {filteredAssets.length > 0 ? filteredAssets.map(a => (
+                        <button
+                          key={a.id}
+                          type="button"
+                          onMouseDown={e => { e.preventDefault(); }}
+                          onClick={() => {
+                            setAssetId(a.id);
+                            setAssetSearch(`${a.name}${a.description ? `, ${a.description}` : ""}`);
+                            setShowAssetDropdown(false);
+                          }}
+                          className={`w-full text-left px-3 py-2 text-sm hover:bg-gray-50 flex flex-col gap-0.5 ${a.id === assetId ? "bg-teal-50" : ""}`}
+                        >
+                          <span className="font-medium text-gray-800">{a.name}</span>
+                          {a.description && <span className="text-xs text-gray-400">{a.description}</span>}
+                        </button>
+                      )) : (
+                        <div className="px-3 py-3 text-xs text-gray-400 text-center">No assets match</div>
+                      )}
+                    </div>
+                  )}
+                </div>
               </div>
               <div>
                 <Label className="text-xs font-medium text-gray-500 mb-1.5 block">Assessment Date</Label>
