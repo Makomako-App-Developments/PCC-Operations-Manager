@@ -562,7 +562,17 @@ export default function JobDetailScreen() {
     return () => { if (timerRef.current) clearInterval(timerRef.current); };
   }, [job?.status, (job as any)?.startedAt, (job as any)?.pausedElapsedSecs, asset?.serviceTimeMins]);
 
+  const isLoading = jobLoading || assetLoading;
+  const isMutating = updateJob.isPending || teamComplete.isPending || postSkipReason.isPending;
+  const status = job?.status;
+  const isPending = status === "pending";
+  const isActive = status === "in_progress";
+  const isPaused = status === "paused";
+  const isDone = status === "completed" || status === "skipped";
+  const isActionable = isPending || isActive || isPaused;
   const isMulching = (job as any)?.jobType === "mulching";
+  const mulchingCanAct = isMulching && isPending;
+
   const tasks = isMulching
     ? MULCHING_TASKS
     : (isActive || isPaused ? UNIVERSAL_CHECKLIST_TASKS : UNIVERSAL_PREVIEW_TASKS);
@@ -680,16 +690,7 @@ export default function JobDetailScreen() {
     }
   };
 
-  const isLoading = jobLoading || assetLoading;
-  const isMutating = updateJob.isPending || teamComplete.isPending || postSkipReason.isPending;
-  const status = job?.status;
-  const isPending = status === "pending";
-  const isActive = status === "in_progress";
-  const isPaused = status === "paused";
-  const isDone = status === "completed" || status === "skipped";
-  const isActionable = isPending || isActive || isPaused;
   // Mulching jobs skip start/pause — tasks are always checkable and Complete is available from pending
-  const mulchingCanAct = isMulching && isPending;
 
   const formatTimer = (secs: number) => {
     const isOver = secs < 0;
