@@ -104,15 +104,22 @@ function useJobPhotos(jobId: string) {
 function useUploadPhoto(jobId: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async ({ uri, caption }: { uri: string; caption?: string }) => {
+    mutationFn: async ({ uri, file, caption }: { uri: string; file?: File; caption?: string }) => {
       const form = new FormData();
-      const filename = uri.split("/").pop() ?? "photo.jpg";
-      const mimeType = filename.endsWith(".png") ? "image/png" : "image/jpeg";
       if (Platform.OS === "web") {
-        // On web, ImagePicker gives a blob: URL — fetch it and convert to a File
-        const blob = await fetch(uri).then(r => r.blob());
-        form.append("photo", new File([blob], filename, { type: mimeType }));
+        if (file) {
+          // Use the File object directly — most reliable on iOS Safari
+          form.append("photo", file);
+        } else {
+          // Fallback: fetch blob URL
+          const filename = uri.split("/").pop() ?? "photo.jpg";
+          const mimeType = filename.endsWith(".png") ? "image/png" : "image/jpeg";
+          const blob = await fetch(uri).then(r => r.blob());
+          form.append("photo", new File([blob], filename, { type: mimeType }));
+        }
       } else {
+        const filename = uri.split("/").pop() ?? "photo.jpg";
+        const mimeType = filename.endsWith(".png") ? "image/png" : "image/jpeg";
         form.append("photo", { uri, name: filename, type: mimeType } as any);
       }
       if (caption) form.append("caption", caption);
@@ -125,6 +132,7 @@ function useUploadPhoto(jobId: string) {
       return res.json() as Promise<JobPhoto>;
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["job-photos", jobId] }),
+    onError: () => Alert.alert("Upload failed", "Could not attach photo. Please try again."),
   });
 }
 
@@ -183,7 +191,8 @@ function PhotoSection({ jobId, readOnly }: { jobId: string; readOnly: boolean })
       allowsEditing: false,
     });
     if (!result.canceled && result.assets[0]) {
-      uploadPhoto.mutate({ uri: result.assets[0].uri });
+      const asset = result.assets[0];
+      uploadPhoto.mutate({ uri: asset.uri, file: (asset as any).file ?? undefined });
     }
   };
 

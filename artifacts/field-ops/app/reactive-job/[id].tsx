@@ -96,14 +96,20 @@ function useReactiveJobPhotos(id: string) {
 function useUploadReactivePhoto(jobId: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async ({ uri }: { uri: string }) => {
+    mutationFn: async ({ uri, file }: { uri: string; file?: File }) => {
       const form = new FormData();
-      const filename = uri.split("/").pop() ?? "photo.jpg";
-      const mimeType = filename.endsWith(".png") ? "image/png" : "image/jpeg";
       if (Platform.OS === "web") {
-        const blob = await fetch(uri).then(r => r.blob());
-        form.append("photo", new File([blob], filename, { type: mimeType }));
+        if (file) {
+          form.append("photo", file);
+        } else {
+          const filename = uri.split("/").pop() ?? "photo.jpg";
+          const mimeType = filename.endsWith(".png") ? "image/png" : "image/jpeg";
+          const blob = await fetch(uri).then(r => r.blob());
+          form.append("photo", new File([blob], filename, { type: mimeType }));
+        }
       } else {
+        const filename = uri.split("/").pop() ?? "photo.jpg";
+        const mimeType = filename.endsWith(".png") ? "image/png" : "image/jpeg";
         form.append("photo", { uri, name: filename, type: mimeType } as any);
       }
       const res = await fetch(getApiUrl(`/api/reactive-jobs/${jobId}/photos`), {
@@ -160,7 +166,8 @@ function AttachmentsSection({ jobId, isDone }: { jobId: string; isDone: boolean 
       allowsEditing: false,
     });
     if (!result.canceled && result.assets[0]) {
-      upload.mutate({ uri: result.assets[0].uri });
+      const asset = result.assets[0];
+      upload.mutate({ uri: asset.uri, file: (asset as any).file ?? undefined });
     }
   };
 
@@ -176,7 +183,8 @@ function AttachmentsSection({ jobId, isDone }: { jobId: string; isDone: boolean 
     }
     const result = await ImagePicker.launchCameraAsync({ mediaTypes: ["images"], quality: 0.7 });
     if (!result.canceled && result.assets[0]) {
-      upload.mutate({ uri: result.assets[0].uri });
+      const asset = result.assets[0];
+      upload.mutate({ uri: asset.uri, file: (asset as any).file ?? undefined });
     }
   };
 
