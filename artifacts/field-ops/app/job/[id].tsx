@@ -173,6 +173,110 @@ function useTeamComplete(jobId: string) {
   });
 }
 
+// ─── Observations Section ────────────────────────────────────────────────────
+
+function ObservationsSection({
+  jobId,
+  job,
+  readOnly,
+}: {
+  jobId: string;
+  job: any;
+  readOnly: boolean;
+}) {
+  const colors = useColors();
+  const qc = useQueryClient();
+  const updateJob = useUpdateJob();
+
+  const [pests, setPests] = useState<string>(job?.pestsAndDiseases ?? "");
+  const [plantHealth, setPlantHealth] = useState<string>(job?.plantHealthVigor ?? "");
+  const [general, setGeneral] = useState<string>(job?.generalComments ?? "");
+
+  // Keep local state in sync if job data reloads
+  useEffect(() => { setPests(job?.pestsAndDiseases ?? ""); }, [job?.pestsAndDiseases]);
+  useEffect(() => { setPlantHealth(job?.plantHealthVigor ?? ""); }, [job?.plantHealthVigor]);
+  useEffect(() => { setGeneral(job?.generalComments ?? ""); }, [job?.generalComments]);
+
+  const save = (field: string, value: string) => {
+    updateJob.mutate(
+      { id: jobId, data: { [field]: value.trim() || null } as any },
+      { onSuccess: () => qc.invalidateQueries({ queryKey: ["job-obs", jobId] }) },
+    );
+  };
+
+  return (
+    <View style={[styles.section, { backgroundColor: colors.card, borderColor: colors.border, borderRadius: colors.radius }]}>
+      <View style={styles.sectionHeader}>
+        <Feather name="clipboard" size={16} color={colors.primary} />
+        <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Observations</Text>
+      </View>
+
+      {/* Pests & Diseases */}
+      <View style={[styles.obsField, { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border }]}>
+        <Text style={[styles.obsLabel, { color: colors.mutedForeground }]}>Pests & Diseases</Text>
+        {readOnly ? (
+          <Text style={[styles.obsReadOnly, { color: pests ? colors.foreground : colors.mutedForeground }]}>
+            {pests || "None recorded"}
+          </Text>
+        ) : (
+          <TextInput
+            style={[styles.obsInput, { color: colors.foreground, borderColor: colors.border, backgroundColor: colors.background, borderRadius: colors.radius / 2 }]}
+            value={pests}
+            onChangeText={setPests}
+            onBlur={() => save("pestsAndDiseases", pests)}
+            placeholder="Any pests or diseases observed…"
+            placeholderTextColor={colors.mutedForeground}
+            multiline
+            textAlignVertical="top"
+          />
+        )}
+      </View>
+
+      {/* Plant Health & Vigor */}
+      <View style={[styles.obsField, { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border }]}>
+        <Text style={[styles.obsLabel, { color: colors.mutedForeground }]}>Plant Health & Vigor</Text>
+        {readOnly ? (
+          <Text style={[styles.obsReadOnly, { color: plantHealth ? colors.foreground : colors.mutedForeground }]}>
+            {plantHealth || "None recorded"}
+          </Text>
+        ) : (
+          <TextInput
+            style={[styles.obsInput, { color: colors.foreground, borderColor: colors.border, backgroundColor: colors.background, borderRadius: colors.radius / 2 }]}
+            value={plantHealth}
+            onChangeText={setPlantHealth}
+            onBlur={() => save("plantHealthVigor", plantHealth)}
+            placeholder="Notes on plant health and vigor…"
+            placeholderTextColor={colors.mutedForeground}
+            multiline
+            textAlignVertical="top"
+          />
+        )}
+      </View>
+
+      {/* General Comments */}
+      <View style={[styles.obsField, { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border }]}>
+        <Text style={[styles.obsLabel, { color: colors.mutedForeground }]}>General Comments & Observations</Text>
+        {readOnly ? (
+          <Text style={[styles.obsReadOnly, { color: general ? colors.foreground : colors.mutedForeground }]}>
+            {general || "None recorded"}
+          </Text>
+        ) : (
+          <TextInput
+            style={[styles.obsInput, { color: colors.foreground, borderColor: colors.border, backgroundColor: colors.background, borderRadius: colors.radius / 2 }]}
+            value={general}
+            onChangeText={setGeneral}
+            onBlur={() => save("generalComments", general)}
+            placeholder="Any other observations or comments…"
+            placeholderTextColor={colors.mutedForeground}
+            multiline
+            textAlignVertical="top"
+          />
+        )}
+      </View>
+    </View>
+  );
+}
+
 // ─── Photo Section ────────────────────────────────────────────────────────────
 
 function PhotoSection({ jobId, readOnly }: { jobId: string; readOnly: boolean }) {
@@ -1060,6 +1164,11 @@ export default function JobDetailScreen() {
           </View>
         ) : null}
 
+        {/* Observations — shown once job is active, paused, or done */}
+        {(isActive || isPaused || isDone) && id && (
+          <ObservationsSection jobId={id} job={job} readOnly={isDone} />
+        )}
+
         {/* Photo evidence — shown while actionable or done (including mulching jobs) */}
         {(isActive || isPaused || isDone || mulchingCanAct) && id && (
           <>
@@ -1422,4 +1531,12 @@ const styles = StyleSheet.create({
     alignItems: "center", justifyContent: "center",
   },
   seqBtnText: { fontFamily: "Inter_600SemiBold", fontSize: 14 },
+  // Observations section
+  obsField: { paddingHorizontal: 14, paddingVertical: 12 },
+  obsLabel: { fontFamily: "Inter_500Medium", fontSize: 12, marginBottom: 6, textTransform: "uppercase", letterSpacing: 0.4 },
+  obsInput: {
+    borderWidth: 1, paddingHorizontal: 10, paddingVertical: 8,
+    fontFamily: "Inter_400Regular", fontSize: 14, lineHeight: 20, minHeight: 72,
+  },
+  obsReadOnly: { fontFamily: "Inter_400Regular", fontSize: 14, lineHeight: 20 },
 });

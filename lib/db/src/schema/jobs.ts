@@ -29,6 +29,9 @@ export const jobsTable = pgTable("jobs", {
   notes:              text("notes"),
   skipReason:         text("skip_reason"),
   outOfSequenceReason: text("out_of_sequence_reason"),
+  pestsAndDiseases:   text("pests_and_diseases"),
+  plantHealthVigor:   text("plant_health_vigor"),
+  generalComments:    text("general_comments"),
   createdAt:          timestamp("created_at").notNull().defaultNow(),
   updatedAt:          timestamp("updated_at").notNull().defaultNow(),
 }, (t) => [

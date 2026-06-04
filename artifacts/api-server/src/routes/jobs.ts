@@ -300,7 +300,7 @@ router.patch("/jobs/:id", requireAuth, async (req, res) => {
 
   // Non-privileged users may only change operational status fields, not structural ones
   if (!isPrivilegedRole(req.auth!.role)) {
-    const allowedFields = new Set(["status", "notes", "crewStatus", "pausedElapsedSecs", "actualTimeMins", "skipReason", "outOfSequenceReason"]);
+    const allowedFields = new Set(["status", "notes", "crewStatus", "pausedElapsedSecs", "actualTimeMins", "skipReason", "outOfSequenceReason", "pestsAndDiseases", "plantHealthVigor", "generalComments"]);
     for (const key of Object.keys(patch)) {
       if (!allowedFields.has(key)) delete patch[key];
     }
