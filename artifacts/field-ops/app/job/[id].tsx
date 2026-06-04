@@ -47,82 +47,27 @@ const GARDEN_TYPE_LABEL: Record<string, string> = {
   hedge: "Hedge",
 };
 
-const TASKS_BY_GARDEN_TYPE: Record<string, string[]> = {
-  annuals: [
-    "Litter — remove all old litter",
-    "Weed control — ≤5% total cover",
-    "Dead heading — visually pleasing",
-    "Plant coverage — ≥95%",
-    "Edging — vertical, smooth & neat",
-    "Soil condition — check for compaction",
-  ],
-  roses_perennials: [
-    "Litter — remove all old litter",
-    "Weed control — ≤5% total cover",
-    "Dead heading — visually pleasing",
-    "Mulch depth — 50–125mm, clear of stems",
-    "Pruning — best practice, road clearance",
-    "Pest & disease — copper & winter oil check",
-    "Edging — vertical, smooth & neat",
-    "Plant coverage — ≥95%",
-  ],
-  ornamental: [
-    "Litter — remove all old litter",
-    "Weed control — ≤5% total cover",
-    "Pruning — shape maintenance",
-    "Mulch depth — 50–125mm",
-    "Edging — vertical, smooth & neat",
-    "Plant coverage — ≥90%",
-  ],
-  amenity: [
-    "Litter — remove all old litter",
-    "Weed control — spot spray where required",
-    "Mow to correct height",
-    "Edging along paths and driveways",
-    "Trim around obstacles",
-  ],
-  rain_garden: [
-    "Litter — remove all old litter",
-    "Weed control — ≤5% total cover",
-    "Check inlet and outlet clear",
-    "Mulch depth — 50–125mm",
-    "Plant coverage — ≥90%",
-  ],
-  reveg: [
-    "Litter — remove all old litter",
-    "Weed control — ≤5% total cover",
-    "Check planting survival",
-    "Mulch depth — 50–125mm",
-    "Replace failed plants if needed",
-  ],
-  bush: [
-    "Litter — remove all old litter",
-    "Weed control — ≤5% total cover",
-    "Check for invasive species",
-    "Prune overhanging branches",
-    "Clear paths",
-  ],
-  tree_planter_pits: [
-    "Litter — remove all old litter",
-    "Weed control — clear pits",
-    "Mulch depth — 50–125mm",
-    "Check tree ties and guards",
-    "Water if required",
-  ],
-  hedge: [
-    "Litter — remove all old litter",
-    "Trim to shape — even and flat top",
-    "Clear clippings from paths",
-    "Pest & disease — check and report",
-    "Edging at base",
-  ],
-};
-
-const DEFAULT_TASKS = [
+const UNIVERSAL_PREVIEW_TASKS = [
   "Litter — remove all old litter",
-  "Weed control — ≤5% total cover",
-  "Edging — vertical, smooth & neat",
-  "Plant coverage — ≥95%",
+  "Weed control – remove all weeds",
+  "Pest Plants – remove and note all pest plants",
+  "Ensure mulch is: Clear of trunks/stems/crowns, evenly spread, not spilling over garden edge",
+  "Pruning – maintain clearance from assets, pedestrians and carriageways. Shape is maintained and flowering is maximised (not required in bush assets)",
+  "Remove dead heads",
+  "Report any pests and diseases or plants that aren't healthy or vigorous",
+  "Ensure soft and built garden edges are functional, and too spec.",
+];
+
+const UNIVERSAL_CHECKLIST_TASKS = [
+  "I have removed all old litter",
+  "I have removed all weeds",
+  "No pest plants exist in this garden.",
+  "If present mulch is: Clear of trunks/stems/crowns, evenly spread, not spilling over garden edge",
+  "Plants have been pruned away from assets, pedestrians and carriageways. Shape has been maintained and flowering maximised as a result of my work.",
+  "All dead heads have been removed",
+  "Presence of pests and diseases or plants that aren't healthy or vigorous have been reported",
+  "Soft and built garden edges are functional, and too spec.",
+  "I haven't damaged any assets during this service.",
 ];
 
 const MULCHING_TASKS = [
@@ -551,7 +496,7 @@ export default function JobDetailScreen() {
   const isMulching = (job as any)?.jobType === "mulching";
   const tasks = isMulching
     ? MULCHING_TASKS
-    : (TASKS_BY_GARDEN_TYPE[asset?.gardenType ?? ""] ?? DEFAULT_TASKS);
+    : (isActive || isPaused ? UNIVERSAL_CHECKLIST_TASKS : UNIVERSAL_PREVIEW_TASKS);
   const checkedCount = Object.values(checkedTasks).filter(Boolean).length;
   const photoCount = photosData?.data?.length ?? 0;
 
