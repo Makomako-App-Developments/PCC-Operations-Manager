@@ -1,6 +1,6 @@
 import Expo, { ExpoPushMessage, ExpoPushTicket } from "expo-server-sdk";
 import { db, usersTable } from "@workspace/db";
-import { eq, and, isNotNull, inArray } from "drizzle-orm";
+import { eq, and, isNotNull, inArray, or } from "drizzle-orm";
 
 const expo = new Expo();
 
@@ -46,6 +46,37 @@ export async function notifyTeam(
     .select({ expoPushToken: usersTable.expoPushToken })
     .from(usersTable)
     .where(and(...conditions));
+
+  const validTokens = users
+    .map(u => u.expoPushToken!)
+    .filter(token => Expo.isExpoPushToken(token));
+
+  const messages: ExpoPushMessage[] = validTokens.map(to => ({
+    to,
+    sound: "default",
+    title: payload.title,
+    body: payload.body,
+    data: payload.data ?? {},
+  }));
+
+  await sendMessages(messages);
+}
+
+export async function notifySupervisors(payload: PushPayload): Promise<void> {
+  const users = await db
+    .select({ expoPushToken: usersTable.expoPushToken })
+    .from(usersTable)
+    .where(
+      and(
+        isNotNull(usersTable.expoPushToken),
+        eq(usersTable.isActive, true),
+        eq(usersTable.pushNotificationsEnabled, true),
+        or(
+          eq(usersTable.role, "supervisor"),
+          eq(usersTable.role, "manager"),
+        ),
+      ),
+    );
 
   const validTokens = users
     .map(u => u.expoPushToken!)
