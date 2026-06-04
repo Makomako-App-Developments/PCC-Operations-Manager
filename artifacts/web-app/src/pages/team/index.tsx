@@ -955,7 +955,7 @@ export default function TeamPage() {
   const canEdit = user?.role === "manager" || user?.role === "supervisor";
   const PEOPLE = useLivePeople();
 
-  const [activeTab, setActiveTab] = useState<"workload" | "composition" | "availability">("workload");
+  const [activeTab, setActiveTab] = useState<"workload" | "composition" | "availability">("availability");
   const [weekMon, setWeekMon]     = useState<Date>(() => getMondayOfWeek(new Date()));
   const [activeDay, setActiveDay] = useState(0);
 
@@ -1160,15 +1160,15 @@ export default function TeamPage() {
           {/* Tab toggle */}
           <div className="flex items-center bg-gray-100 rounded-lg p-1 gap-1">
             <button
-              onClick={() => setActiveTab("workload")}
+              onClick={() => setActiveTab("availability")}
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition-all ${
-                activeTab === "workload"
+                activeTab === "availability"
                   ? "bg-white shadow-sm text-gray-800"
                   : "text-gray-500 hover:text-gray-700"
               }`}
             >
-              <BarChart3 className="w-3.5 h-3.5" />
-              Workload
+              <Users className="w-3.5 h-3.5" />
+              Availability
             </button>
             <button
               onClick={() => setActiveTab("composition")}
@@ -1182,15 +1182,15 @@ export default function TeamPage() {
               Composition
             </button>
             <button
-              onClick={() => setActiveTab("availability")}
+              onClick={() => setActiveTab("workload")}
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition-all ${
-                activeTab === "availability"
+                activeTab === "workload"
                   ? "bg-white shadow-sm text-gray-800"
                   : "text-gray-500 hover:text-gray-700"
               }`}
             >
-              <Users className="w-3.5 h-3.5" />
-              Availability
+              <BarChart3 className="w-3.5 h-3.5" />
+              Workload
             </button>
           </div>
 
