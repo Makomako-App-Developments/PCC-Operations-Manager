@@ -6,6 +6,7 @@ import { requireAuth, requireRole } from "../middlewares/auth";
 import { validateBody, validateQuery } from "../middlewares/validate";
 import { auditLog } from "../lib/audit";
 import { FREQ_DAYS } from "../lib/crew-utils";
+import { notifyTeam } from "../lib/push-notifications";
 
 const router = Router();
 
@@ -217,6 +218,26 @@ router.post(
       changedById: req.auth?.userId ?? null, newData: created as Record<string, unknown>,
       ipAddress: req.ip ?? null,
     });
+
+    // Send push notification to assigned team members
+    if (created.teamId || created.isAllTeams) {
+      const [asset] = await db
+        .select({ name: assetsTable.name })
+        .from(assetsTable)
+        .where(eq(assetsTable.id, created.assetId))
+        .limit(1);
+      const assetName = asset?.name ?? "a site";
+      const dateStr = typeof created.scheduledDate === "string"
+        ? created.scheduledDate
+        : (created.scheduledDate as Date).toISOString().slice(0, 10);
+
+      notifyTeam(created.teamId, created.isAllTeams, {
+        title: "New job assigned",
+        body:  `${assetName} is scheduled for ${dateStr}.`,
+        data:  { jobId: created.id, screen: "job" },
+      }).catch(err => console.error("[push] notify error:", err));
+    }
+
     res.status(201).json(created);
   },
 );

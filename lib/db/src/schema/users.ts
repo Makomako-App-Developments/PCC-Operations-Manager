@@ -1,20 +1,22 @@
-import { pgTable, uuid, varchar, timestamp, boolean } from "drizzle-orm/pg-core";
+import { pgTable, uuid, varchar, timestamp, boolean, text } from "drizzle-orm/pg-core";
 import { createInsertSchema, createSelectSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { roleEnum } from "./enums";
 import { teamsTable } from "./teams";
 
 export const usersTable = pgTable("users", {
-  id:           uuid("id").primaryKey().defaultRandom(),
-  email:        varchar("email", { length: 255 }).notNull().unique(),
-  name:         varchar("name", { length: 200 }).notNull(),
-  initials:     varchar("initials", { length: 4 }).notNull(),
-  passwordHash: varchar("password_hash", { length: 255 }).notNull(),
-  role:         roleEnum("role").notNull(),
-  teamId:       uuid("team_id").references(() => teamsTable.id),
-  isActive:     boolean("is_active").notNull().default(true),
-  createdAt:    timestamp("created_at").notNull().defaultNow(),
-  updatedAt:    timestamp("updated_at").notNull().defaultNow(),
+  id:                      uuid("id").primaryKey().defaultRandom(),
+  email:                   varchar("email", { length: 255 }).notNull().unique(),
+  name:                    varchar("name", { length: 200 }).notNull(),
+  initials:                varchar("initials", { length: 4 }).notNull(),
+  passwordHash:            varchar("password_hash", { length: 255 }).notNull(),
+  role:                    roleEnum("role").notNull(),
+  teamId:                  uuid("team_id").references(() => teamsTable.id),
+  isActive:                boolean("is_active").notNull().default(true),
+  expoPushToken:           text("expo_push_token"),
+  pushNotificationsEnabled: boolean("push_notifications_enabled").notNull().default(true),
+  createdAt:               timestamp("created_at").notNull().defaultNow(),
+  updatedAt:               timestamp("updated_at").notNull().defaultNow(),
 });
 
 export const insertUserSchema = createInsertSchema(usersTable).omit({

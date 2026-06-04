@@ -1,12 +1,13 @@
 import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { useRouter } from "expo-router";
-import React from "react";
+import React, { useState } from "react";
 import {
   Alert,
   Platform,
   ScrollView,
   StyleSheet,
+  Switch,
   Text,
   TouchableOpacity,
   View,
@@ -27,7 +28,18 @@ export default function MeScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { user, logout } = useAuth();
+  const { user, logout, setNotificationsEnabled } = useAuth();
+
+  const [notifEnabled, setNotifEnabled] = useState(
+    user?.pushNotificationsEnabled !== false,
+  );
+  const [notifLoading, setNotifLoading] = useState(false);
+
+  // Sync toggle state whenever the user object changes (e.g. after cold-start
+  // once the persisted session loads, or after a server-side preference update)
+  React.useEffect(() => {
+    setNotifEnabled(user?.pushNotificationsEnabled !== false);
+  }, [user?.pushNotificationsEnabled]);
 
   const handleLogout = () => {
     Alert.alert("Sign Out", "Are you sure you want to sign out?", [
@@ -42,6 +54,20 @@ export default function MeScreen() {
         },
       },
     ]);
+  };
+
+  const handleNotifToggle = async (value: boolean) => {
+    setNotifEnabled(value);
+    setNotifLoading(true);
+    try {
+      await setNotificationsEnabled(value);
+      await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    } catch {
+      setNotifEnabled(!value);
+      Alert.alert("Error", "Could not update notification preference. Please try again.");
+    } finally {
+      setNotifLoading(false);
+    }
   };
 
   const topPad = insets.top;
@@ -108,6 +134,41 @@ export default function MeScreen() {
                   {ROLE_LABEL[user?.role ?? ""] ?? user?.role ?? "—"}
                 </Text>
               </View>
+            </View>
+          </View>
+
+          <View
+            style={[
+              styles.card,
+              {
+                backgroundColor: colors.card,
+                borderColor: colors.border,
+                borderRadius: colors.radius,
+              },
+            ]}
+          >
+            <Text style={[styles.cardTitle, { color: colors.mutedForeground }]}>
+              Notifications
+            </Text>
+            <View style={styles.toggleRow}>
+              <View style={styles.toggleInfo}>
+                <Feather name="bell" size={16} color={colors.primary} />
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.infoValue, { color: colors.foreground }]}>
+                    Push notifications
+                  </Text>
+                  <Text style={[styles.infoLabel, { color: colors.mutedForeground }]}>
+                    Get notified when jobs are assigned or overdue
+                  </Text>
+                </View>
+              </View>
+              <Switch
+                value={notifEnabled}
+                onValueChange={handleNotifToggle}
+                disabled={notifLoading}
+                trackColor={{ false: colors.border, true: colors.primary }}
+                thumbColor="#fff"
+              />
             </View>
           </View>
 
@@ -209,6 +270,18 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 12,
+  },
+  toggleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+  },
+  toggleInfo: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    flex: 1,
   },
   infoLabel: {
     fontFamily: "Inter_400Regular",

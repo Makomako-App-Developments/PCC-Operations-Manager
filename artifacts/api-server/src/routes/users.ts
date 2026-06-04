@@ -10,15 +10,16 @@ import { auditLog } from "../lib/audit";
 const router = Router();
 
 const SAFE_COLS = {
-  id:        usersTable.id,
-  email:     usersTable.email,
-  name:      usersTable.name,
-  initials:  usersTable.initials,
-  role:      usersTable.role,
-  teamId:    usersTable.teamId,
-  isActive:  usersTable.isActive,
-  createdAt: usersTable.createdAt,
-  updatedAt: usersTable.updatedAt,
+  id:                       usersTable.id,
+  email:                    usersTable.email,
+  name:                     usersTable.name,
+  initials:                 usersTable.initials,
+  role:                     usersTable.role,
+  teamId:                   usersTable.teamId,
+  isActive:                 usersTable.isActive,
+  pushNotificationsEnabled: usersTable.pushNotificationsEnabled,
+  createdAt:                usersTable.createdAt,
+  updatedAt:                usersTable.updatedAt,
 } as const;
 
 const createUserSchema = z.object({
@@ -133,5 +134,39 @@ router.patch(
     res.json(updated);
   },
 );
+
+// PUT /api/users/me/push-token — store or clear the caller's Expo push token
+const pushTokenSchema = z.object({
+  token: z.string().nullable(),
+});
+
+router.put("/users/me/push-token", requireAuth, validateBody(pushTokenSchema), async (req, res) => {
+  const userId = req.auth!.userId;
+  const { token } = req.body as z.infer<typeof pushTokenSchema>;
+
+  await db
+    .update(usersTable)
+    .set({ expoPushToken: token ?? null, updatedAt: new Date() })
+    .where(eq(usersTable.id, userId));
+
+  res.json({ ok: true });
+});
+
+// PUT /api/users/me/notifications — toggle push notification opt-in/out
+const notificationsSchema = z.object({
+  enabled: z.boolean(),
+});
+
+router.put("/users/me/notifications", requireAuth, validateBody(notificationsSchema), async (req, res) => {
+  const userId = req.auth!.userId;
+  const { enabled } = req.body as z.infer<typeof notificationsSchema>;
+
+  await db
+    .update(usersTable)
+    .set({ pushNotificationsEnabled: enabled, updatedAt: new Date() })
+    .where(eq(usersTable.id, userId));
+
+  res.json({ ok: true, enabled });
+});
 
 export default router;
