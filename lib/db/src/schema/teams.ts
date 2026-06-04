@@ -13,6 +13,7 @@ export const teamMembersTable = pgTable("team_members", {
   id:         uuid("id").primaryKey().defaultRandom(),
   teamId:     uuid("team_id").notNull().references(() => teamsTable.id, { onDelete: "cascade" }),
   personName: varchar("person_name", { length: 100 }).notNull(),
+  initials:   varchar("initials", { length: 4 }),
   role:       roleEnum("role").notNull().default("field_worker"),
   createdAt:  timestamp("created_at").notNull().defaultNow(),
 }, (t) => [

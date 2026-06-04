@@ -113,10 +113,14 @@ router.get("/team-members", requireAuth, requireRole("manager", "supervisor"), a
     .from(usersTable)
     .where(sql`${usersTable.teamId} is not null`);
 
-  const crewNameSet = new Set(crewRows.map(m => m.personName.toLowerCase().trim()));
+  // Team-scoped composite key: only deduplicate within the same team
+  const crewTeamNameSet = new Set(crewRows.map(m => `${m.teamId}:${m.personName.toLowerCase().trim()}`));
 
   const crewWithFlag = crewRows.map(m => {
-    const match = accountRows.find(u => u.name.toLowerCase().trim() === m.personName.toLowerCase().trim());
+    // Match account user by name AND same team (avoid cross-team name collisions)
+    const match = accountRows.find(
+      u => u.name.toLowerCase().trim() === m.personName.toLowerCase().trim() && u.teamId === m.teamId,
+    );
     return {
       id:         m.id,
       userId:     match?.id ?? null,
@@ -128,7 +132,7 @@ router.get("/team-members", requireAuth, requireRole("manager", "supervisor"), a
   });
 
   const accountOnly = accountRows
-    .filter(u => !crewNameSet.has(u.name.toLowerCase().trim()) && u.teamId)
+    .filter(u => u.teamId && !crewTeamNameSet.has(`${u.teamId}:${u.name.toLowerCase().trim()}`))
     .map(u => ({
       id:         u.id,
       userId:     u.id,
@@ -149,13 +153,18 @@ router.post(
   validateBody(z.object({
     personName: z.string().min(1).max(100),
     teamId:     z.string().uuid(),
+    initials:   z.string().max(4).optional(),
     role:       z.enum(["field_worker", "supervisor"]).optional().default("field_worker"),
   })),
   async (req, res) => {
-    const { personName, teamId, role } = req.body as { personName: string; teamId: string; role: "field_worker" | "supervisor" };
+    const { personName, teamId, role, initials: rawInitials } = req.body as { personName: string; teamId: string; role: "field_worker" | "supervisor"; initials?: string };
+    const trimmedName = personName.trim();
+    // Derive initials from name if not provided
+    const initials = rawInitials?.trim() ||
+      trimmedName.split(/\s+/).map(n => n[0]?.toUpperCase() ?? "").join("").slice(0, 4) || trimmedName[0]?.toUpperCase() || "?";
     const [created] = await db
       .insert(teamMembersTable)
-      .values({ personName: personName.trim(), teamId, role })
+      .values({ personName: trimmedName, teamId, role, initials })
       .returning();
     res.status(201).json(created);
   },

@@ -286,10 +286,11 @@ function CompositionTab() {
 
   const addCrewMember = useMutation({
     mutationFn: async ({ personName, teamId, role }: { personName: string; teamId: string; role: string }) => {
+      const initials = personName.trim().split(/\s+/).map(n => n[0]?.toUpperCase() ?? "").join("").slice(0, 4) || personName[0]?.toUpperCase() || "?";
       const res = await fetch("/api/team-members", {
         method: "POST", credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ personName, teamId, role }),
+        body: JSON.stringify({ personName, teamId, role, initials }),
       });
       if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error((e as any).error ?? "Failed to add member"); }
       return res.json();
