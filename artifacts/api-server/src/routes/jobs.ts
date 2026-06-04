@@ -589,6 +589,26 @@ router.post("/reactive-jobs", requireAuth, validateBody(insertReactiveJobSchema.
     changedById: req.auth?.userId ?? null, newData: created as Record<string, unknown>,
     ipAddress: req.ip ?? null,
   });
+
+  if (created.assignedTeamId) {
+    let assetName = "a site";
+    if (created.assetId) {
+      const [asset] = await db
+        .select({ name: assetsTable.name })
+        .from(assetsTable)
+        .where(eq(assetsTable.id, created.assetId))
+        .limit(1);
+      assetName = asset?.name ?? "a site";
+    }
+    const priority = created.priority ?? "medium";
+
+    notifyTeam(created.assignedTeamId, false, {
+      title: "Urgent job raised",
+      body: `${assetName} — priority: ${priority}.`,
+      data: { reactiveJobId: created.id, screen: "reactive-job" },
+    }).catch(err => console.error("[push] notify error:", err));
+  }
+
   res.status(201).json(created);
 });
 
