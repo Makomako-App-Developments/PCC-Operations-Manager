@@ -6,6 +6,10 @@ import { db, jobPhotosTable, jobsTable, mulchingRecordsTable, reactiveJobsTable 
 import { eq } from "drizzle-orm";
 import { requireAuth } from "../middlewares/auth";
 
+function isPrivilegedRole(role: string): boolean {
+  return ["administrator", "manager", "supervisor"].includes(role);
+}
+
 const router = Router();
 
 const UPLOADS_DIR = path.resolve(process.cwd(), "uploads");
@@ -54,6 +58,23 @@ async function resolveJobKind(id: string): Promise<"job" | "mulching" | "unknown
 router.get("/jobs/:id/photos", requireAuth, async (req, res) => {
   const id = String(req.params.id);
   const kind = await resolveJobKind(id);
+  if (kind === "unknown") { res.status(404).json({ error: "Job or mulching record not found" }); return; }
+
+  // Authorization: non-privileged users may only read photos for their own team's jobs
+  if (!isPrivilegedRole(req.auth!.role)) {
+    const callerTeamId = req.auth!.teamId;
+    if (kind === "job") {
+      const [job] = await db.select({ teamId: jobsTable.teamId, isAllTeams: jobsTable.isAllTeams }).from(jobsTable).where(eq(jobsTable.id, id)).limit(1);
+      if (job && !job.isAllTeams && job.teamId !== callerTeamId) {
+        res.status(403).json({ error: "Forbidden" }); return;
+      }
+    } else if (kind === "mulching") {
+      const [mr] = await db.select({ assignedTeamId: mulchingRecordsTable.assignedTeamId }).from(mulchingRecordsTable).where(eq(mulchingRecordsTable.id, id)).limit(1);
+      if (mr && mr.assignedTeamId !== callerTeamId) {
+        res.status(403).json({ error: "Forbidden" }); return;
+      }
+    }
+  }
 
   let photos;
   if (kind === "mulching") {
@@ -79,6 +100,22 @@ router.post(
     const kind = await resolveJobKind(id);
     if (kind === "unknown") { res.status(404).json({ error: "Job or mulching record not found" }); return; }
 
+    // Authorization: non-privileged users may only upload photos for their own team's jobs
+    if (!isPrivilegedRole(req.auth!.role)) {
+      const callerTeamId = req.auth!.teamId;
+      if (kind === "job") {
+        const [job] = await db.select({ teamId: jobsTable.teamId, isAllTeams: jobsTable.isAllTeams }).from(jobsTable).where(eq(jobsTable.id, id)).limit(1);
+        if (job && !job.isAllTeams && job.teamId !== callerTeamId) {
+          res.status(403).json({ error: "Forbidden" }); return;
+        }
+      } else if (kind === "mulching") {
+        const [mr] = await db.select({ assignedTeamId: mulchingRecordsTable.assignedTeamId }).from(mulchingRecordsTable).where(eq(mulchingRecordsTable.id, id)).limit(1);
+        if (mr && mr.assignedTeamId !== callerTeamId) {
+          res.status(403).json({ error: "Forbidden" }); return;
+        }
+      }
+    }
+
     const blobUrl = `/api/uploads/${req.file.filename}`;
     const caption = typeof req.body.caption === "string" ? req.body.caption : null;
     const values = kind === "mulching"
@@ -95,8 +132,16 @@ router.post(
 // GET /api/reactive-jobs/:id/photos
 router.get("/reactive-jobs/:id/photos", requireAuth, async (req, res) => {
   const id = String(req.params.id);
-  const [rj] = await db.select({ id: reactiveJobsTable.id }).from(reactiveJobsTable).where(eq(reactiveJobsTable.id, id)).limit(1);
+  const [rj] = await db.select({ id: reactiveJobsTable.id, assignedTeamId: reactiveJobsTable.assignedTeamId }).from(reactiveJobsTable).where(eq(reactiveJobsTable.id, id)).limit(1);
   if (!rj) { res.status(404).json({ error: "Reactive job not found" }); return; }
+
+  // Authorization: non-privileged users may only read photos for their own team's reactive jobs
+  if (!isPrivilegedRole(req.auth!.role)) {
+    const callerTeamId = req.auth!.teamId;
+    if (rj.assignedTeamId !== callerTeamId) {
+      res.status(403).json({ error: "Forbidden" }); return;
+    }
+  }
 
   const photos = await db.select().from(jobPhotosTable).where(eq(jobPhotosTable.reactiveJobId, id));
   res.json({ data: photos });
@@ -113,8 +158,16 @@ router.post(
     const userId = req.auth?.userId;
     if (!userId) { res.status(401).json({ error: "Unauthorised" }); return; }
 
-    const [rj] = await db.select({ id: reactiveJobsTable.id }).from(reactiveJobsTable).where(eq(reactiveJobsTable.id, id)).limit(1);
+    const [rj] = await db.select({ id: reactiveJobsTable.id, assignedTeamId: reactiveJobsTable.assignedTeamId }).from(reactiveJobsTable).where(eq(reactiveJobsTable.id, id)).limit(1);
     if (!rj) { res.status(404).json({ error: "Reactive job not found" }); return; }
+
+    // Authorization: non-privileged users may only upload photos for their team's reactive jobs
+    if (!isPrivilegedRole(req.auth!.role)) {
+      const callerTeamId = req.auth!.teamId;
+      if (rj.assignedTeamId !== callerTeamId) {
+        res.status(403).json({ error: "Forbidden" }); return;
+      }
+    }
 
     const blobUrl = `/api/uploads/${req.file.filename}`;
     const caption = typeof req.body.caption === "string" ? req.body.caption : null;

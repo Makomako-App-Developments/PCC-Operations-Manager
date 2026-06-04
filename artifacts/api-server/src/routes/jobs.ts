@@ -9,6 +9,10 @@ import { FREQ_DAYS } from "../lib/crew-utils";
 
 const router = Router();
 
+function isPrivilegedRole(role: string): boolean {
+  return ["administrator", "manager", "supervisor"].includes(role);
+}
+
 const jobQuerySchema = z.object({
   assetId:  z.string().uuid().optional(),
   teamId:   z.string().uuid().optional(),
@@ -29,8 +33,16 @@ function addDays(dateStr: string, days: number): string {
 
 // GET /api/jobs
 router.get("/jobs", requireAuth, validateQuery(jobQuerySchema), async (req, res) => {
-  const { assetId, teamId, status, page, limit } = res.locals.query as JobQuery;
+  const { assetId, status, page, limit } = res.locals.query as JobQuery;
+  let { teamId } = res.locals.query as JobQuery;
   const offset = (page - 1) * limit;
+
+  // Non-privileged users may only see their own team's jobs
+  if (!isPrivilegedRole(req.auth!.role)) {
+    const callerTeamId = req.auth!.teamId;
+    if (!callerTeamId) { res.json({ data: [], page, limit }); return; }
+    teamId = callerTeamId;
+  }
 
   const conditions = [];
   if (assetId) conditions.push(eq(jobsTable.assetId, assetId));
@@ -68,6 +80,13 @@ const completedWorksQuerySchema = z.object({
 
 router.get("/completed-works", requireAuth, validateQuery(completedWorksQuerySchema), async (req, res) => {
   const q = res.locals.query as z.infer<typeof completedWorksQuerySchema>;
+
+  // Non-privileged users may only see their own team's completed work
+  if (!isPrivilegedRole(req.auth!.role)) {
+    const callerTeamId = req.auth!.teamId;
+    if (!callerTeamId) { res.json({ data: [], page: q.page, limit: q.limit }); return; }
+    (q as any).teamId = callerTeamId;
+  }
 
   const conditions: ReturnType<typeof eq>[] = [eq(jobsTable.status, "completed")];
   if (q.assetId)    conditions.push(eq(jobsTable.assetId, q.assetId) as any);
@@ -120,7 +139,15 @@ router.get("/completed-works", requireAuth, validateQuery(completedWorksQuerySch
 router.get("/jobs/:id", requireAuth, async (req, res) => {
   const id = String(req.params.id);
   const [job] = await db.select().from(jobsTable).where(eq(jobsTable.id, id)).limit(1);
-  if (job) { res.json(job); return; }
+  if (job) {
+    if (!isPrivilegedRole(req.auth!.role)) {
+      const callerTeamId = req.auth!.teamId;
+      if (!job.isAllTeams && job.teamId !== callerTeamId) {
+        res.status(403).json({ error: "Forbidden" }); return;
+      }
+    }
+    res.json(job); return;
+  }
 
   // Fallback: check mulching_records
   const [mr] = await db
@@ -152,6 +179,14 @@ router.get("/jobs/:id", requireAuth, async (req, res) => {
     .limit(1);
 
   if (!mr) { res.status(404).json({ error: "Job not found" }); return; }
+
+  // Authorization: non-privileged users may only read mulching records for their team
+  if (!isPrivilegedRole(req.auth!.role)) {
+    const callerTeamId = req.auth!.teamId;
+    if (mr.teamId !== callerTeamId) {
+      res.status(403).json({ error: "Forbidden" }); return;
+    }
+  }
 
   const mulchStatusMap: Record<string, string> = { scheduled: "pending", completed: "completed" };
   res.json({
@@ -202,6 +237,14 @@ router.patch("/jobs/:id", requireAuth, async (req, res) => {
 
     if (!mr) { res.status(404).json({ error: "Job not found" }); return; }
 
+    // Authorization: non-privileged users may only update mulching records for their team
+    if (!isPrivilegedRole(req.auth!.role)) {
+      const callerTeamId = req.auth!.teamId;
+      if (mr.assignedTeamId !== callerTeamId) {
+        res.status(403).json({ error: "Forbidden" }); return;
+      }
+    }
+
     const patch = req.body as Record<string, unknown>;
     const toStatus = patch.status as string | undefined;
 
@@ -245,7 +288,23 @@ router.patch("/jobs/:id", requireAuth, async (req, res) => {
     return;
   }
 
+  // Authorization: non-privileged users may only update jobs belonging to their team
+  if (!isPrivilegedRole(req.auth!.role)) {
+    const callerTeamId = req.auth!.teamId;
+    if (!before.isAllTeams && before.teamId !== callerTeamId) {
+      res.status(403).json({ error: "Forbidden" }); return;
+    }
+  }
+
   const patch = req.body as Record<string, unknown>;
+
+  // Non-privileged users may only change operational status fields, not structural ones
+  if (!isPrivilegedRole(req.auth!.role)) {
+    const allowedFields = new Set(["status", "notes", "crewStatus", "pausedElapsedSecs", "actualTimeMins"]);
+    for (const key of Object.keys(patch)) {
+      if (!allowedFields.has(key)) delete patch[key];
+    }
+  }
 
   // Never trust client-supplied timestamps — server owns these
   delete patch.startedAt;
@@ -374,6 +433,17 @@ router.get("/jobs/:id/task-skip-reasons", requireAuth, async (req, res) => {
 // POST /api/jobs/:id/task-skip-reasons
 router.post("/jobs/:id/task-skip-reasons", requireAuth, async (req, res) => {
   const id = String(req.params.id);
+
+  // Authorization: verify the caller can act on this job
+  const [job] = await db.select({ teamId: jobsTable.teamId, isAllTeams: jobsTable.isAllTeams }).from(jobsTable).where(eq(jobsTable.id, id)).limit(1);
+  if (!job) { res.status(404).json({ error: "Job not found" }); return; }
+  if (!isPrivilegedRole(req.auth!.role)) {
+    const callerTeamId = req.auth!.teamId;
+    if (!job.isAllTeams && job.teamId !== callerTeamId) {
+      res.status(403).json({ error: "Forbidden" }); return;
+    }
+  }
+
   const { taskIndex, taskLabel, reason } = req.body as {
     taskIndex: number;
     taskLabel: string;
@@ -400,13 +470,22 @@ router.post("/jobs/:id/team-complete", requireAuth, async (req, res) => {
   if (!job)            { res.status(404).json({ error: "Job not found" }); return; }
   if (!job.isAllTeams) { res.status(400).json({ error: "Not an All Teams job" }); return; }
 
+  // Authorization: teamId is always derived from the DB — callers can only sign off their own
+  // team's participation; the caller must have a team assignment to participate.
   const [userRow] = await db
     .select({ teamId: usersTable.teamId })
     .from(usersTable)
     .where(eq(usersTable.id, userId))
     .limit(1);
-  if (!userRow?.teamId) { res.status(400).json({ error: "User has no team assigned" }); return; }
+  if (!userRow?.teamId) {
+    res.status(403).json({ error: "Forbidden: user has no team assigned" }); return;
+  }
   const teamId = userRow.teamId;
+
+  // Verify the resolved teamId matches the JWT claim (defence-in-depth, prevents token/DB skew)
+  if (!isPrivilegedRole(req.auth!.role) && req.auth!.teamId && req.auth!.teamId !== teamId) {
+    res.status(403).json({ error: "Forbidden" }); return;
+  }
 
   const [existing] = await db
     .select({ id: jobTeamCompletionsTable.id })
@@ -454,6 +533,14 @@ router.get("/reactive-jobs", requireAuth, async (req, res) => {
   const statusFilter = req.query.status as string | undefined;
   const conditions = [];
   if (assetId) conditions.push(eq(reactiveJobsTable.assetId, assetId));
+
+  // Non-privileged users may only see reactive jobs assigned to their team
+  if (!isPrivilegedRole(req.auth!.role)) {
+    const callerTeamId = req.auth!.teamId;
+    if (!callerTeamId) { res.json({ data: [] }); return; }
+    conditions.push(eq(reactiveJobsTable.assignedTeamId, callerTeamId));
+  }
+
   if (statusFilter) {
     const statuses = statusFilter.split(",").map(s => s.trim()).filter(Boolean);
     if (statuses.length === 1) {
@@ -497,9 +584,30 @@ router.patch("/reactive-jobs/:id", requireAuth, async (req, res) => {
   const id = String(req.params.id);
   const [before] = await db.select().from(reactiveJobsTable).where(eq(reactiveJobsTable.id, id)).limit(1);
   if (!before) { res.status(404).json({ error: "Reactive job not found" }); return; }
+
+  // Authorization: non-privileged users may only update reactive jobs assigned to their team
+  if (!isPrivilegedRole(req.auth!.role)) {
+    const callerTeamId = req.auth!.teamId;
+    if (before.assignedTeamId !== callerTeamId) {
+      res.status(403).json({ error: "Forbidden" }); return;
+    }
+  }
+
+  // Build an explicit patch to prevent mass-assignment of sensitive fields
+  const body = req.body as Record<string, unknown>;
+  const patch: Record<string, unknown> = {};
+  const workerFields = ["status", "notes", "actualTimeMins", "scheduledDate"];
+  const managerFields = ["assignedTeamId", "assignedUserId", "priority", "description", "raisedById"];
+  const allowedFields = isPrivilegedRole(req.auth!.role)
+    ? [...workerFields, ...managerFields]
+    : workerFields;
+  for (const key of allowedFields) {
+    if (key in body) patch[key] = body[key];
+  }
+
   const [updated] = await db
     .update(reactiveJobsTable)
-    .set({ ...req.body, updatedAt: new Date() })
+    .set({ ...patch, updatedAt: new Date() })
     .where(eq(reactiveJobsTable.id, id))
     .returning();
   await auditLog({

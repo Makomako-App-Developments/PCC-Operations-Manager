@@ -12,6 +12,10 @@ import { FREQ_DAYS, calcCrewAdjustment, loadSystemSettings, buildAbsenceDataForT
 
 const router = Router();
 
+function isPrivilegedRole(role: string): boolean {
+  return ["administrator", "manager", "supervisor"].includes(role);
+}
+
 const ABSENT_HOUR_THRESHOLD = 5;
 // A job is started today if remaining capacity >= 50% of job time (team finishes it on-site).
 // Otherwise it spills to the next working day.
@@ -505,7 +509,16 @@ router.get(
   requireAuth,
   validateQuery(weekQuerySchema),
   async (req, res) => {
-    const { week, teamId } = res.locals.query as z.infer<typeof weekQuerySchema>;
+    const { week } = res.locals.query as z.infer<typeof weekQuerySchema>;
+    let { teamId } = res.locals.query as z.infer<typeof weekQuerySchema>;
+
+    // Non-privileged users may only view their own team's schedule
+    if (!isPrivilegedRole(req.auth!.role)) {
+      const callerTeamId = req.auth!.teamId;
+      if (!callerTeamId) { res.json({ days: {} }); return; }
+      teamId = callerTeamId;
+    }
+
     const weekStart = mondayOf(week);
     const weekEnd   = addDays(weekStart, 6);
 
@@ -856,7 +869,15 @@ router.get(
   requireAuth,
   validateQuery(rangeQuerySchema),
   async (req, res) => {
-    const { from, to, teamId } = res.locals.query as z.infer<typeof rangeQuerySchema>;
+    const { from, to } = res.locals.query as z.infer<typeof rangeQuerySchema>;
+    let { teamId } = res.locals.query as z.infer<typeof rangeQuerySchema>;
+
+    // Non-privileged users may only view their own team's schedule
+    if (!isPrivilegedRole(req.auth!.role)) {
+      const callerTeamId = req.auth!.teamId;
+      if (!callerTeamId) { res.json({ assets: [] }); return; }
+      teamId = callerTeamId;
+    }
 
     const rows = await db
       .select({
@@ -1123,6 +1144,14 @@ router.get(
   validateQuery(dayCapacityQuerySchema),
   async (req, res) => {
     const { date, teamId } = res.locals.query as z.infer<typeof dayCapacityQuerySchema>;
+
+    // Non-privileged users may only view capacity for their own team
+    if (!isPrivilegedRole(req.auth!.role)) {
+      const callerTeamId = req.auth!.teamId;
+      if (teamId !== callerTeamId) {
+        res.status(403).json({ error: "Forbidden" }); return;
+      }
+    }
 
     const [settings] = await db.select().from(systemSettingsTable).limit(1);
     const productiveTimeMins = settings?.productiveTimeMins ?? 390;

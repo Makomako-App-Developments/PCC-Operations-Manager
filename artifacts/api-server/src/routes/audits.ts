@@ -6,6 +6,19 @@ import { eq, and, desc, sql } from "drizzle-orm";
 import { requireAuth, requireRole } from "../middlewares/auth";
 import { auditLog } from "../lib/audit";
 
+function isPrivilegedRole(role: string): boolean {
+  return ["administrator", "manager", "supervisor"].includes(role);
+}
+
+async function assertAuditTeamAccess(auditId: string, role: string, callerTeamId: string | null): Promise<{ audit: { id: string; teamId: string | null } } | { error: string; status: number }> {
+  const [audit] = await db.select({ id: auditsTable.id, teamId: auditsTable.teamId }).from(auditsTable).where(eq(auditsTable.id, auditId)).limit(1);
+  if (!audit) return { error: "Audit not found", status: 404 };
+  if (!isPrivilegedRole(role) && audit.teamId !== callerTeamId) {
+    return { error: "Forbidden", status: 403 };
+  }
+  return { audit };
+}
+
 const router = Router();
 
 const storage = multer.diskStorage({
@@ -78,7 +91,7 @@ function calcScore(items: { result: string }[]) {
 }
 
 // ── GET /api/audits/stats ─────────────────────────────────────────────────────
-router.get("/audits/stats", requireAuth, async (_req, res) => {
+router.get("/audits/stats", requireAuth, requireRole("manager", "supervisor", "team_leader"), async (_req, res) => {
   // Team average scores
   const teamScores = await db
     .select({
@@ -107,10 +120,20 @@ router.get("/audits/stats", requireAuth, async (_req, res) => {
 });
 
 // ── GET /api/audits ───────────────────────────────────────────────────────────
-router.get("/audits", requireAuth, async (_req, res) => {
+router.get("/audits", requireAuth, async (req, res) => {
+  const conditions = [];
+
+  // Non-privileged users may only see audits belonging to their team
+  if (!isPrivilegedRole(req.auth!.role)) {
+    const callerTeamId = req.auth!.teamId;
+    if (!callerTeamId) { res.json({ data: [] }); return; }
+    conditions.push(eq(auditsTable.teamId, callerTeamId));
+  }
+
   const rows = await db
     .select()
     .from(auditsTable)
+    .where(conditions.length > 0 ? and(...conditions) : undefined)
     .orderBy(desc(auditsTable.conductedAt))
     .limit(500);
   res.json({ data: rows });
@@ -118,7 +141,10 @@ router.get("/audits", requireAuth, async (_req, res) => {
 
 // ── GET /api/audits/:id ───────────────────────────────────────────────────────
 router.get("/audits/:id", requireAuth, async (req, res) => {
-  const detail = await buildAuditDetail(String(req.params.id));
+  const auditId = String(req.params.id);
+  const access = await assertAuditTeamAccess(auditId, req.auth!.role, req.auth!.teamId);
+  if ("error" in access) { res.status(access.status).json({ error: access.error }); return; }
+  const detail = await buildAuditDetail(auditId);
   if (!detail) { res.status(404).json({ error: "Audit not found" }); return; }
   res.json(detail);
 });
@@ -148,6 +174,11 @@ router.patch("/audits/:id", requireAuth, requireRole("manager", "supervisor", "t
   const id = String(req.params.id);
   const [before] = await db.select().from(auditsTable).where(eq(auditsTable.id, id)).limit(1);
   if (!before) { res.status(404).json({ error: "Audit not found" }); return; }
+
+  // team_leader may only edit audits belonging to their own team
+  if (!isPrivilegedRole(req.auth!.role) && before.teamId !== req.auth!.teamId) {
+    res.status(403).json({ error: "Forbidden" }); return;
+  }
   const { teamId, conductedAt, overallScore, status, notes, auditType } = req.body as Record<string, any>;
   const updateData: Record<string, unknown> = { updatedAt: new Date() };
   if (teamId !== undefined) updateData.teamId = teamId;
@@ -174,6 +205,11 @@ router.put("/audits/:id/responses", requireAuth, requireRole("manager", "supervi
   const auditId = String(req.params.id);
   const [audit] = await db.select().from(auditsTable).where(eq(auditsTable.id, auditId)).limit(1);
   if (!audit) { res.status(404).json({ error: "Audit not found" }); return; }
+
+  // team_leader may only submit responses for audits belonging to their own team
+  if (!isPrivilegedRole(req.auth!.role) && audit.teamId !== req.auth!.teamId) {
+    res.status(403).json({ error: "Forbidden" }); return;
+  }
 
   const { responses } = req.body as { responses: Array<{ criterion: string; result: string; notes?: string; failLat?: number; failLng?: number; pestPlantsPresent?: string[] }> };
   if (!Array.isArray(responses)) { res.status(400).json({ error: "responses array required" }); return; }
@@ -214,7 +250,19 @@ router.put("/audits/:id/responses", requireAuth, requireRole("manager", "supervi
 
 // ── GET /api/audits/:id/items/:itemId/photos ──────────────────────────────────
 router.get("/audits/:id/items/:itemId/photos", requireAuth, async (req, res) => {
-  const itemId = String(req.params.itemId);
+  const auditId = String(req.params.id);
+  const itemId  = String(req.params.itemId);
+
+  const access = await assertAuditTeamAccess(auditId, req.auth!.role, req.auth!.teamId);
+  if ("error" in access) { res.status(access.status).json({ error: access.error }); return; }
+
+  // Verify the item belongs to the referenced audit (prevents cross-audit ID enumeration)
+  const [item] = await db.select({ id: auditItemsTable.id })
+    .from(auditItemsTable)
+    .where(and(eq(auditItemsTable.id, itemId), eq(auditItemsTable.auditId, auditId)))
+    .limit(1);
+  if (!item) { res.status(404).json({ error: "Audit item not found" }); return; }
+
   const photos = await db.select().from(auditPhotosTable).where(eq(auditPhotosTable.auditItemId, itemId));
   res.json({ data: photos });
 });
@@ -231,7 +279,11 @@ router.post(
     const userId = req.auth?.userId;
     if (!userId) { res.status(401).json({ error: "Unauthorised" }); return; }
 
-    // Ensure the audit item exists (create if not)
+    // Authorization: verify the caller can act on this audit
+    const access = await assertAuditTeamAccess(auditId, req.auth!.role, req.auth!.teamId);
+    if ("error" in access) { res.status(access.status).json({ error: access.error }); return; }
+
+    // Ensure the audit item exists
     const existing = await db.select().from(auditItemsTable).where(and(eq(auditItemsTable.id, itemId), eq(auditItemsTable.auditId, auditId))).limit(1);
     if (!existing.length) { res.status(404).json({ error: "Audit item not found" }); return; }
 
@@ -243,14 +295,37 @@ router.post(
 
 // ── DELETE /api/audits/:id/items/:itemId/photos/:photoId ─────────────────────
 router.delete("/audits/:id/items/:itemId/photos/:photoId", requireAuth, async (req, res) => {
+  const auditId = String(req.params.id);
+  const itemId  = String(req.params.itemId);
   const photoId = String(req.params.photoId);
-  await db.delete(auditPhotosTable).where(eq(auditPhotosTable.id, photoId));
+
+  // Authorization: verify the caller can act on this audit
+  const access = await assertAuditTeamAccess(auditId, req.auth!.role, req.auth!.teamId);
+  if ("error" in access) { res.status(access.status).json({ error: access.error }); return; }
+
+  // Verify item belongs to this audit before operating on its photos
+  const [item] = await db.select({ id: auditItemsTable.id })
+    .from(auditItemsTable)
+    .where(and(eq(auditItemsTable.id, itemId), eq(auditItemsTable.auditId, auditId)))
+    .limit(1);
+  if (!item) { res.status(404).json({ error: "Audit item not found" }); return; }
+
+  // Delete only if the photo actually belongs to this item (prevents cross-hierarchy tampering)
+  await db.delete(auditPhotosTable).where(
+    and(eq(auditPhotosTable.id, photoId), eq(auditPhotosTable.auditItemId, itemId)),
+  );
   res.status(204).end();
 });
 
 // ── GET /api/audits/:id/pdf ───────────────────────────────────────────────────
 router.get("/audits/:id/pdf", requireAuth, async (req, res) => {
-  const detail = await buildAuditDetail(String(req.params.id));
+  const auditId = String(req.params.id);
+
+  // Authorization: enforce the same team-access rules as GET /api/audits/:id
+  const access = await assertAuditTeamAccess(auditId, req.auth!.role, req.auth!.teamId);
+  if ("error" in access) { res.status(access.status).json({ error: access.error }); return; }
+
+  const detail = await buildAuditDetail(auditId);
   if (!detail) { res.status(404).json({ error: "Audit not found" }); return; }
 
   // Dynamic import of PDFKit
