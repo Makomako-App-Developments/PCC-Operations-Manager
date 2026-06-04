@@ -58,6 +58,10 @@ router.post("/auth/refresh", async (req, res) => {
     res.status(401).json({ error: "Invalid or expired refresh token" });
     return;
   }
+  if (payload.tokenType !== "refresh") {
+    res.status(401).json({ error: "Invalid token type" });
+    return;
+  }
   // Check user still active
   const [user] = await db.select().from(usersTable).where(eq(usersTable.id, payload.userId)).limit(1);
   if (!user || !user.isActive) {

@@ -60,7 +60,12 @@ router.post(
   requireRole("administrator", "manager"),
   validateBody(createUserSchema),
   async (req, res) => {
+    const callerRole = req.auth!.role;
     const { password, ...rest } = req.body as z.infer<typeof createUserSchema>;
+    if (callerRole === "manager" && rest.role === "administrator") {
+      res.status(403).json({ error: "Managers cannot create administrator accounts" });
+      return;
+    }
     const passwordHash = await bcrypt.hash(password, 12);
     const [user] = await db
       .insert(usersTable)
@@ -95,7 +100,18 @@ router.patch(
       res.status(404).json({ error: "User not found" });
       return;
     }
+    const callerRole = req.auth!.role;
     const { password, ...rest } = req.body as z.infer<typeof updateUserSchema>;
+    if (callerRole === "manager") {
+      if ((before.role as string) === "administrator") {
+        res.status(403).json({ error: "Managers cannot edit administrator accounts" });
+        return;
+      }
+      if (rest.role === "administrator") {
+        res.status(403).json({ error: "Managers cannot assign the administrator role" });
+        return;
+      }
+    }
     const updates: Record<string, unknown> = { ...rest, updatedAt: new Date() };
     if (password) {
       updates.passwordHash = await bcrypt.hash(password, 12);

@@ -7,6 +7,7 @@ export interface AuthPayload {
   userId: string;
   role: string;
   teamId: string | null;
+  tokenType: "access" | "refresh";
 }
 
 declare global {
@@ -28,7 +29,12 @@ export function requireAuth(req: Request, res: Response, next: NextFunction) {
   }
 
   try {
-    req.auth = jwt.verify(token, JWT_SECRET) as AuthPayload;
+    const payload = jwt.verify(token, JWT_SECRET) as AuthPayload;
+    if (payload.tokenType !== "access") {
+      res.status(401).json({ error: "Invalid token type" });
+      return;
+    }
+    req.auth = payload;
     next();
   } catch {
     res.status(401).json({ error: "Invalid or expired token" });
@@ -46,8 +52,8 @@ export function requireRole(...roles: string[]) {
   };
 }
 
-export function signTokens(payload: AuthPayload) {
-  const accessToken = jwt.sign(payload, JWT_SECRET, { expiresIn: "15m" });
-  const refreshToken = jwt.sign(payload, JWT_SECRET, { expiresIn: "7d" });
+export function signTokens(payload: Omit<AuthPayload, "tokenType">) {
+  const accessToken = jwt.sign({ ...payload, tokenType: "access" }, JWT_SECRET, { expiresIn: "15m" });
+  const refreshToken = jwt.sign({ ...payload, tokenType: "refresh" }, JWT_SECRET, { expiresIn: "7d" });
   return { accessToken, refreshToken };
 }
