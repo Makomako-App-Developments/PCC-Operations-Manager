@@ -125,7 +125,9 @@ export function JobCard({
   return (
     <TouchableOpacity
       activeOpacity={0.75}
-      onPress={() => router.push(`/job/${id}`)}
+      onPress={() =>
+        router.push(jobType === "unscheduled" ? `/reactive-job/${id}` : `/job/${id}`)
+      }
       style={[
         styles.card,
         {
