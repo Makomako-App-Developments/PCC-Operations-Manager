@@ -141,7 +141,7 @@ function DaySection({
                   scheduledDate={job.scheduledDate}
                   isAllTeams={(job as any).isAllTeams ?? false}
                   jobType={(job as any).jobType}
-                  geoSeq={isToday ? idx + 1 : undefined}
+                  geoSeq={idx + 1}
                 />
               ))}
               {doneJobs.map((job) => (
