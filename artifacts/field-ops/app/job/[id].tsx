@@ -266,6 +266,74 @@ function PhotoSection({ jobId, readOnly }: { jobId: string; readOnly: boolean })
   );
 }
 
+// ─── Incomplete Tasks Warning Modal ──────────────────────────────────────────
+
+interface IncompleteTasksWarningModalProps {
+  tasks: { index: number; label: string }[];
+  onConfirm: () => void;
+  onCancel: () => void;
+}
+
+function IncompleteTasksWarningModal({ tasks, onConfirm, onCancel }: IncompleteTasksWarningModalProps) {
+  const colors = useColors();
+  return (
+    <Modal visible animationType="slide" presentationStyle="pageSheet" onRequestClose={onCancel}>
+      <View style={[styles.skipModalRoot, { backgroundColor: colors.background }]}>
+        <View style={[styles.skipModalHeader, { borderBottomColor: colors.border, backgroundColor: colors.card }]}>
+          <View style={{ flex: 1 }}>
+            <Text style={[styles.skipModalSub, { color: "#f59e0b" }]}>
+              {tasks.length} task{tasks.length > 1 ? "s" : ""} not completed
+            </Text>
+            <Text style={[styles.skipModalTitle, { color: colors.foreground }]}>Complete job anyway?</Text>
+          </View>
+          <TouchableOpacity onPress={onCancel} style={{ padding: 4 }}>
+            <Feather name="x" size={20} color={colors.foreground} />
+          </TouchableOpacity>
+        </View>
+
+        <View style={styles.skipModalBody}>
+          <View style={[styles.skipTaskCard, { backgroundColor: "#fffbeb", borderColor: "#fde68a", borderRadius: colors.radius, marginBottom: 12 }]}>
+            <Feather name="alert-triangle" size={16} color="#f59e0b" />
+            <Text style={[styles.skipTaskLabel, { color: "#92400e" }]}>
+              The following checklist items were not confirmed. You'll need to provide a reason for each before the job is marked complete.
+            </Text>
+          </View>
+          {tasks.map((t, i) => (
+            <View
+              key={i}
+              style={[
+                styles.incompleteTaskRow,
+                { borderColor: colors.border, borderRadius: colors.radius, backgroundColor: colors.card },
+              ]}
+            >
+              <Feather name="x-circle" size={14} color="#f59e0b" />
+              <Text style={[styles.incompleteTaskText, { color: colors.foreground }]}>{t.label}</Text>
+            </View>
+          ))}
+        </View>
+
+        <View style={[styles.skipModalFooter, { borderTopColor: colors.border, backgroundColor: colors.card }]}>
+          <TouchableOpacity
+            style={[styles.skipCancelBtn, { borderColor: colors.border, borderRadius: colors.radius }]}
+            onPress={onCancel}
+            activeOpacity={0.8}
+          >
+            <Text style={[styles.skipCancelText, { color: colors.mutedForeground }]}>Go back</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.skipNextBtn, { backgroundColor: "#f59e0b", borderRadius: colors.radius }]}
+            onPress={onConfirm}
+            activeOpacity={0.85}
+          >
+            <Text style={styles.skipNextText}>Continue</Text>
+            <Feather name="arrow-right" size={16} color="#fff" />
+          </TouchableOpacity>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
 // ─── Task Skip Reason Modal ───────────────────────────────────────────────────
 
 interface SkipReasonModalProps {
@@ -440,6 +508,7 @@ export default function JobDetailScreen() {
 
   const [checkedTasks, setCheckedTasks] = useState<Record<number, boolean>>({});
   const [pendingAction, setPendingAction] = useState<"start" | "complete" | "pause" | "resume" | "skip" | null>(null);
+  const [pendingIncomplete, setPendingIncomplete] = useState<{ index: number; label: string }[] | null>(null);
   const [skipTasks, setSkipTasks] = useState<{ index: number; label: string }[] | null>(null);
   const [showJobSkipModal, setShowJobSkipModal] = useState(false);
   const [jobSkipReason, setJobSkipReason] = useState("");
@@ -527,7 +596,7 @@ export default function JobDetailScreen() {
       .map((label, index) => ({ index, label }))
       .filter(t => !checkedTasks[t.index]);
     if (unchecked.length > 0) {
-      setSkipTasks(unchecked);
+      setPendingIncomplete(unchecked);
       return;
     }
     setPendingAction("complete");
@@ -995,6 +1064,19 @@ export default function JobDetailScreen() {
         />
       )}
 
+      {/* Incomplete tasks warning modal */}
+      {pendingIncomplete && (
+        <IncompleteTasksWarningModal
+          tasks={pendingIncomplete}
+          onConfirm={() => {
+            const tasks = pendingIncomplete;
+            setPendingIncomplete(null);
+            setSkipTasks(tasks);
+          }}
+          onCancel={() => setPendingIncomplete(null)}
+        />
+      )}
+
       {/* Task skip reason modal */}
       {skipTasks && (
         <TaskSkipReasonModal
@@ -1110,6 +1192,15 @@ const styles = StyleSheet.create({
   skipModalSub: { fontSize: 11, fontFamily: "Inter_400Regular", marginBottom: 2 },
   skipModalTitle: { fontSize: 16, fontFamily: "Inter_700Bold" },
   skipModalBody: { flex: 1, padding: 16 },
+  incompleteTaskRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 8,
+    padding: 10,
+    borderWidth: 1,
+    marginBottom: 6,
+  },
+  incompleteTaskText: { fontFamily: "Inter_400Regular", fontSize: 13, flex: 1, lineHeight: 18 },
   skipTaskCard: {
     flexDirection: "row", alignItems: "center", gap: 10,
     padding: 14, borderWidth: 1, marginBottom: 20,
