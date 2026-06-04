@@ -188,6 +188,7 @@ function ObservationsSection({
   const qc = useQueryClient();
   const updateJob = useUpdateJob();
 
+  const [expanded, setExpanded] = useState(false);
   const [pests, setPests] = useState<string>(job?.pestsAndDiseases ?? "");
   const [plantHealth, setPlantHealth] = useState<string>(job?.plantHealthVigor ?? "");
   const [general, setGeneral] = useState<string>(job?.generalComments ?? "");
@@ -206,73 +207,87 @@ function ObservationsSection({
 
   return (
     <View style={[styles.section, { backgroundColor: colors.card, borderColor: colors.border, borderRadius: colors.radius }]}>
-      <View style={styles.sectionHeader}>
+      <TouchableOpacity
+        style={styles.sectionHeader}
+        onPress={() => setExpanded(e => !e)}
+        activeOpacity={0.7}
+      >
         <Feather name="clipboard" size={16} color={colors.primary} />
         <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Observations</Text>
-      </View>
+        <Feather
+          name={expanded ? "chevron-up" : "chevron-down"}
+          size={16}
+          color={colors.mutedForeground}
+          style={{ marginLeft: "auto" }}
+        />
+      </TouchableOpacity>
 
-      {/* Pests & Diseases */}
-      <View style={[styles.obsField, { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border }]}>
-        <Text style={[styles.obsLabel, { color: colors.mutedForeground }]}>Pests & Diseases</Text>
-        {readOnly ? (
-          <Text style={[styles.obsReadOnly, { color: pests ? colors.foreground : colors.mutedForeground }]}>
-            {pests || "None recorded"}
-          </Text>
-        ) : (
-          <TextInput
-            style={[styles.obsInput, { color: colors.foreground, borderColor: colors.border, backgroundColor: colors.background, borderRadius: colors.radius / 2 }]}
-            value={pests}
-            onChangeText={setPests}
-            onBlur={() => save("pestsAndDiseases", pests)}
-            placeholder="Any pests or diseases observed…"
-            placeholderTextColor={colors.mutedForeground}
-            multiline
-            textAlignVertical="top"
-          />
-        )}
-      </View>
+      {expanded && (
+        <>
+          {/* Pests & Diseases */}
+          <View style={[styles.obsField, { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border }]}>
+            <Text style={[styles.obsLabel, { color: colors.mutedForeground }]}>Pests & Diseases</Text>
+            {readOnly ? (
+              <Text style={[styles.obsReadOnly, { color: pests ? colors.foreground : colors.mutedForeground }]}>
+                {pests || "None recorded"}
+              </Text>
+            ) : (
+              <TextInput
+                style={[styles.obsInput, { color: colors.foreground, borderColor: colors.border, backgroundColor: colors.background, borderRadius: colors.radius / 2 }]}
+                value={pests}
+                onChangeText={setPests}
+                onBlur={() => save("pestsAndDiseases", pests)}
+                placeholder="Any pests or diseases observed…"
+                placeholderTextColor={colors.mutedForeground}
+                multiline
+                textAlignVertical="top"
+              />
+            )}
+          </View>
 
-      {/* Plant Health & Vigor */}
-      <View style={[styles.obsField, { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border }]}>
-        <Text style={[styles.obsLabel, { color: colors.mutedForeground }]}>Plant Health & Vigor</Text>
-        {readOnly ? (
-          <Text style={[styles.obsReadOnly, { color: plantHealth ? colors.foreground : colors.mutedForeground }]}>
-            {plantHealth || "None recorded"}
-          </Text>
-        ) : (
-          <TextInput
-            style={[styles.obsInput, { color: colors.foreground, borderColor: colors.border, backgroundColor: colors.background, borderRadius: colors.radius / 2 }]}
-            value={plantHealth}
-            onChangeText={setPlantHealth}
-            onBlur={() => save("plantHealthVigor", plantHealth)}
-            placeholder="Notes on plant health and vigor…"
-            placeholderTextColor={colors.mutedForeground}
-            multiline
-            textAlignVertical="top"
-          />
-        )}
-      </View>
+          {/* Plant Health & Vigor */}
+          <View style={[styles.obsField, { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border }]}>
+            <Text style={[styles.obsLabel, { color: colors.mutedForeground }]}>Plant Health & Vigor</Text>
+            {readOnly ? (
+              <Text style={[styles.obsReadOnly, { color: plantHealth ? colors.foreground : colors.mutedForeground }]}>
+                {plantHealth || "None recorded"}
+              </Text>
+            ) : (
+              <TextInput
+                style={[styles.obsInput, { color: colors.foreground, borderColor: colors.border, backgroundColor: colors.background, borderRadius: colors.radius / 2 }]}
+                value={plantHealth}
+                onChangeText={setPlantHealth}
+                onBlur={() => save("plantHealthVigor", plantHealth)}
+                placeholder="Notes on plant health and vigor…"
+                placeholderTextColor={colors.mutedForeground}
+                multiline
+                textAlignVertical="top"
+              />
+            )}
+          </View>
 
-      {/* General Comments */}
-      <View style={[styles.obsField, { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border }]}>
-        <Text style={[styles.obsLabel, { color: colors.mutedForeground }]}>General Comments & Observations</Text>
-        {readOnly ? (
-          <Text style={[styles.obsReadOnly, { color: general ? colors.foreground : colors.mutedForeground }]}>
-            {general || "None recorded"}
-          </Text>
-        ) : (
-          <TextInput
-            style={[styles.obsInput, { color: colors.foreground, borderColor: colors.border, backgroundColor: colors.background, borderRadius: colors.radius / 2 }]}
-            value={general}
-            onChangeText={setGeneral}
-            onBlur={() => save("generalComments", general)}
-            placeholder="Any other observations or comments…"
-            placeholderTextColor={colors.mutedForeground}
-            multiline
-            textAlignVertical="top"
-          />
-        )}
-      </View>
+          {/* General Comments */}
+          <View style={[styles.obsField, { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border }]}>
+            <Text style={[styles.obsLabel, { color: colors.mutedForeground }]}>General Comments & Observations</Text>
+            {readOnly ? (
+              <Text style={[styles.obsReadOnly, { color: general ? colors.foreground : colors.mutedForeground }]}>
+                {general || "None recorded"}
+              </Text>
+            ) : (
+              <TextInput
+                style={[styles.obsInput, { color: colors.foreground, borderColor: colors.border, backgroundColor: colors.background, borderRadius: colors.radius / 2 }]}
+                value={general}
+                onChangeText={setGeneral}
+                onBlur={() => save("generalComments", general)}
+                placeholder="Any other observations or comments…"
+                placeholderTextColor={colors.mutedForeground}
+                multiline
+                textAlignVertical="top"
+              />
+            )}
+          </View>
+        </>
+      )}
     </View>
   );
 }
