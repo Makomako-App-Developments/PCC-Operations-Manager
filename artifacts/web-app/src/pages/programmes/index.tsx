@@ -1159,7 +1159,7 @@ function NewAssessmentDrawer({
                 <select value={assetId} onChange={e => setAssetId(e.target.value)}
                   className="w-full px-3 py-2 text-sm border border-gray-200 rounded-xl outline-none focus:border-[#00AECD] bg-white">
                   <option value="">— Select an asset —</option>
-                  {assets.map(a => <option key={a.id} value={a.id}>{a.name}{a.description ? `, ${a.description}` : ""}</option>)}
+                  {assets.slice().sort((a, b) => (a.name ?? "").localeCompare(b.name ?? "")).map(a => <option key={a.id} value={a.id}>{a.name}{a.description ? `, ${a.description}` : ""}</option>)}
                 </select>
               </div>
               <div>
