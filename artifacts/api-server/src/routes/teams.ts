@@ -17,7 +17,7 @@ router.get("/teams", requireAuth, async (_req, res) => {
 // Must be before /teams/:id to avoid wildcard conflict.
 // Returns per-team asset stats: site count, area m², annual service hours, FTE requirement.
 // Includes a synthetic "All Teams" row for null-teamId (full-team) assets.
-router.get("/teams/workload", requireAuth, async (_req, res) => {
+router.get("/teams/workload", requireAuth, requireRole("manager", "supervisor"), async (_req, res) => {
   const WORKING_DAYS_PER_YEAR = 251; // NZ standard: 52 × 5 – 11 public holidays – ~8 annual leave days
 
   // System settings for productive time
@@ -93,7 +93,7 @@ router.get("/teams/with-counts", requireAuth, async (_req, res) => {
 });
 
 // GET /api/team-members — crew roster + system account users, merged and deduplicated
-router.get("/team-members", requireAuth, async (_req, res) => {
+router.get("/team-members", requireAuth, requireRole("manager", "supervisor"), async (_req, res) => {
   // Crew-roster entries (team_members table)
   const crewRows = await db
     .select({
@@ -137,7 +137,7 @@ router.get("/team-members", requireAuth, async (_req, res) => {
 });
 
 // GET /api/teams/:id/members
-router.get("/teams/:id/members", requireAuth, async (req, res) => {
+router.get("/teams/:id/members", requireAuth, requireRole("manager", "supervisor"), async (req, res) => {
   const id = String(req.params.id);
   const members = await db
     .select({

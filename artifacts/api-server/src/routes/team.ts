@@ -38,6 +38,7 @@ async function getTeamIdForPerson(personName: string): Promise<string | null> {
 router.get(
   "/team/availability",
   requireAuth,
+  requireRole("manager", "supervisor"),
   validateQuery(weekQuerySchema),
   async (req, res) => {
     const { weekStart } = res.locals.query as { weekStart: string };
