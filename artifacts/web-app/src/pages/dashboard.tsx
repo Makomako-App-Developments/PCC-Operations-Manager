@@ -467,15 +467,17 @@ export default function Dashboard() {
                         skip
                       </span>
                       <div className="flex-1 min-w-0">
-                        <p className="text-[12px] font-semibold text-gray-800 capitalize">
-                          {j.jobType?.replace(/_/g, " ") ?? "Job"}
+                        <p className="text-[12px] font-semibold text-gray-800 truncate">
+                          {assetName.get(j.assetId) ?? "Unknown site"}
                         </p>
                         <p className="text-[10px] text-gray-400 truncate">
-                          {assetName.get(j.assetId) ?? "Unknown site"}
+                          {j.jobType?.replace(/_/g, " ") ?? "Job"}
                           {j.teamId ? ` · ${teamName.get(j.teamId) ?? ""}` : ""}
                         </p>
-                        {j.notes && (
-                          <p className="text-[10px] text-gray-500 italic mt-0.5 leading-relaxed">"{j.notes}"</p>
+                        {(j.skipReason || j.notes) && (
+                          <p className="text-[10px] text-amber-600 italic mt-0.5 leading-relaxed">
+                            "{j.skipReason || j.notes}"
+                          </p>
                         )}
                       </div>
                       <p className="text-[9px] text-gray-300 flex-shrink-0 mt-0.5">
