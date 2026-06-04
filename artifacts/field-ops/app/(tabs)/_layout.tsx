@@ -8,9 +8,12 @@ import React from "react";
 import { Platform, StyleSheet, View, useColorScheme } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { useAuth } from "@/context/auth";
 import { useColors } from "@/hooks/useColors";
 
-function NativeTabLayout() {
+const PRIVILEGED_ROLES = ["administrator", "manager", "supervisor"];
+
+function NativeTabLayout({ isPrivileged }: { isPrivileged: boolean }) {
   return (
     <NativeTabs>
       <NativeTabs.Trigger name="index">
@@ -21,6 +24,18 @@ function NativeTabLayout() {
         <Icon sf={{ default: "doc.text", selected: "doc.text.fill" }} />
         <Label>Spec</Label>
       </NativeTabs.Trigger>
+      {isPrivileged && (
+        <NativeTabs.Trigger name="audits">
+          <Icon sf={{ default: "checkmark.seal", selected: "checkmark.seal.fill" }} />
+          <Label>Audits</Label>
+        </NativeTabs.Trigger>
+      )}
+      {isPrivileged && (
+        <NativeTabs.Trigger name="programmes">
+          <Icon sf={{ default: "leaf", selected: "leaf.fill" }} />
+          <Label>Programmes</Label>
+        </NativeTabs.Trigger>
+      )}
       <NativeTabs.Trigger name="report">
         <Icon sf={{ default: "exclamationmark.circle", selected: "exclamationmark.circle.fill" }} />
         <Label>Report</Label>
@@ -33,7 +48,7 @@ function NativeTabLayout() {
   );
 }
 
-function ClassicTabLayout() {
+function ClassicTabLayout({ isPrivileged }: { isPrivileged: boolean }) {
   const colors = useColors();
   const colorScheme = useColorScheme();
   const isDark = colorScheme === "dark";
@@ -98,6 +113,30 @@ function ClassicTabLayout() {
         }}
       />
       <Tabs.Screen
+        name="audits"
+        options={isPrivileged ? {
+          title: "Audits",
+          tabBarIcon: ({ color }) =>
+            isIOS ? (
+              <SymbolView name="checkmark.seal" tintColor={color} size={24} />
+            ) : (
+              <Feather name="check-square" size={22} color={color} />
+            ),
+        } : { href: null }}
+      />
+      <Tabs.Screen
+        name="programmes"
+        options={isPrivileged ? {
+          title: "Programmes",
+          tabBarIcon: ({ color }) =>
+            isIOS ? (
+              <SymbolView name="leaf" tintColor={color} size={24} />
+            ) : (
+              <Feather name="activity" size={22} color={color} />
+            ),
+        } : { href: null }}
+      />
+      <Tabs.Screen
         name="report"
         options={{
           title: "Report",
@@ -126,8 +165,11 @@ function ClassicTabLayout() {
 }
 
 export default function TabLayout() {
+  const { user } = useAuth();
+  const isPrivileged = PRIVILEGED_ROLES.includes(user?.role ?? "");
+
   if (isLiquidGlassAvailable()) {
-    return <NativeTabLayout />;
+    return <NativeTabLayout isPrivileged={isPrivileged} />;
   }
-  return <ClassicTabLayout />;
+  return <ClassicTabLayout isPrivileged={isPrivileged} />;
 }
