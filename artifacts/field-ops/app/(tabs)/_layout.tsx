@@ -13,13 +13,15 @@ import { useColors } from "@/hooks/useColors";
 
 const PRIVILEGED_ROLES = ["administrator", "manager", "supervisor"];
 
-function NativeTabLayout({ isPrivileged }: { isPrivileged: boolean }) {
+function NativeTabLayout({ isPrivileged, isManager }: { isPrivileged: boolean; isManager: boolean }) {
   return (
     <NativeTabs>
-      <NativeTabs.Trigger name="index">
-        <Icon sf={{ default: "house", selected: "house.fill" }} />
-        <Label>Today</Label>
-      </NativeTabs.Trigger>
+      {!isManager && (
+        <NativeTabs.Trigger name="index">
+          <Icon sf={{ default: "house", selected: "house.fill" }} />
+          <Label>Today</Label>
+        </NativeTabs.Trigger>
+      )}
       <NativeTabs.Trigger name="spec">
         <Icon sf={{ default: "doc.text", selected: "doc.text.fill" }} />
         <Label>Spec</Label>
@@ -36,10 +38,12 @@ function NativeTabLayout({ isPrivileged }: { isPrivileged: boolean }) {
           <Label>Programmes</Label>
         </NativeTabs.Trigger>
       )}
-      <NativeTabs.Trigger name="report">
-        <Icon sf={{ default: "exclamationmark.circle", selected: "exclamationmark.circle.fill" }} />
-        <Label>Report</Label>
-      </NativeTabs.Trigger>
+      {!isManager && (
+        <NativeTabs.Trigger name="report">
+          <Icon sf={{ default: "exclamationmark.circle", selected: "exclamationmark.circle.fill" }} />
+          <Label>Report</Label>
+        </NativeTabs.Trigger>
+      )}
       <NativeTabs.Trigger name="me">
         <Icon sf={{ default: "person", selected: "person.fill" }} />
         <Label>Me</Label>
@@ -48,7 +52,7 @@ function NativeTabLayout({ isPrivileged }: { isPrivileged: boolean }) {
   );
 }
 
-function ClassicTabLayout({ isPrivileged }: { isPrivileged: boolean }) {
+function ClassicTabLayout({ isPrivileged, isManager }: { isPrivileged: boolean; isManager: boolean }) {
   const colors = useColors();
   const colorScheme = useColorScheme();
   const isDark = colorScheme === "dark";
@@ -86,7 +90,7 @@ function ClassicTabLayout({ isPrivileged }: { isPrivileged: boolean }) {
     >
       <Tabs.Screen
         name="index"
-        options={{
+        options={isManager ? { href: null } : {
           title: "Today",
           tabBarIcon: ({ color }) =>
             isIOS ? (
@@ -138,7 +142,7 @@ function ClassicTabLayout({ isPrivileged }: { isPrivileged: boolean }) {
       />
       <Tabs.Screen
         name="report"
-        options={{
+        options={isManager ? { href: null } : {
           title: "Report",
           tabBarIcon: ({ color }) =>
             isIOS ? (
@@ -167,9 +171,10 @@ function ClassicTabLayout({ isPrivileged }: { isPrivileged: boolean }) {
 export default function TabLayout() {
   const { user } = useAuth();
   const isPrivileged = PRIVILEGED_ROLES.includes(user?.role ?? "");
+  const isManager = user?.role === "manager";
 
   if (isLiquidGlassAvailable()) {
-    return <NativeTabLayout isPrivileged={isPrivileged} />;
+    return <NativeTabLayout isPrivileged={isPrivileged} isManager={isManager} />;
   }
-  return <ClassicTabLayout isPrivileged={isPrivileged} />;
+  return <ClassicTabLayout isPrivileged={isPrivileged} isManager={isManager} />;
 }
