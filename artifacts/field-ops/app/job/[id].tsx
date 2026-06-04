@@ -739,6 +739,7 @@ export default function JobDetailScreen() {
   const [photoError, setPhotoError] = useState(false);
   const [remainingSeconds, setRemainingSeconds] = useState<number | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const scrollRef = useRef<ScrollView>(null);
 
   const queryClient = useQueryClient();
 
@@ -867,6 +868,7 @@ export default function JobDetailScreen() {
     setPhotoError(false);
     if (photoCount === 0) {
       setPhotoError(true);
+      setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 50);
       return;
     }
     // Check tasks — collect unchecked ones
@@ -1014,6 +1016,7 @@ export default function JobDetailScreen() {
       </View>
 
       <ScrollView
+        ref={scrollRef}
         style={styles.scroll}
         contentContainerStyle={{ padding: 16, paddingBottom: bottomPad + 120 }}
         showsVerticalScrollIndicator={false}
