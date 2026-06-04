@@ -1203,13 +1203,13 @@ export default function JobDetailScreen() {
 
         {/* Observations — shown once job is active, paused, or done */}
         {(isActive || isPaused || isDone) && id && (
-          <ObservationsSection jobId={id} job={job} readOnly={isDone} />
+          <ObservationsSection jobId={id} job={job} readOnly={status === "skipped"} />
         )}
 
         {/* Photo evidence — shown while actionable or done (including mulching jobs) */}
         {(isActive || isPaused || isDone || mulchingCanAct) && id && (
           <>
-            <PhotoSection jobId={id} readOnly={isDone} />
+            <PhotoSection jobId={id} readOnly={status === "skipped"} />
             {photoError && (
               <View style={[styles.photoErrorBanner, { backgroundColor: "#fee2e2", borderColor: "#fca5a5" }]}>
                 <Feather name="alert-circle" size={14} color="#ef4444" />
