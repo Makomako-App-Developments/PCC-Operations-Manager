@@ -897,15 +897,45 @@ export default function JobDetailScreen() {
     setPendingAction("complete");
   };
 
+  const executeComplete = () => {
+    if (!id) return;
+    if (isAllTeams) {
+      teamComplete.mutate(
+        {},
+        {
+          onSuccess: () => {
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+            setPendingAction(null);
+            invalidateJob();
+            router.back();
+          },
+          onError: () => setPendingAction(null),
+        },
+      );
+    } else {
+      updateJob.mutate(
+        { id, data: { status: "completed" } as any },
+        {
+          onSuccess: () => {
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+            setPendingAction(null);
+            invalidateJob();
+            router.back();
+          },
+          onError: () => setPendingAction(null),
+        },
+      );
+    }
+  };
+
   const handleSkipReasonsConfirmed = async (
     reasons: { taskIndex: number; taskLabel: string; reason: string }[]
   ) => {
     setSkipTasks(null);
-    // Save each skip reason individually
     for (const r of reasons) {
       await postSkipReason.mutateAsync(r).catch(() => {});
     }
-    setPendingAction("complete");
+    executeComplete();
   };
 
   const execMutate = (status: string, extra?: Record<string, unknown>) => {
