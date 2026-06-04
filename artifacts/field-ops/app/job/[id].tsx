@@ -207,7 +207,7 @@ function PhotoSection({ jobId, readOnly }: { jobId: string; readOnly: boolean })
     <View style={[styles.section, { backgroundColor: colors.card, borderColor: colors.border, borderRadius: colors.radius }]}>
       <View style={styles.sectionHeader}>
         <Feather name="camera" size={16} color={colors.primary} />
-        <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Photo Evidence</Text>
+        <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Photo Record</Text>
         {photos.length > 0 && (
           <Text style={[styles.sectionCount, { color: colors.mutedForeground }]}>{photos.length}</Text>
         )}
