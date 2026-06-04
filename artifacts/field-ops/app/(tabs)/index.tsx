@@ -20,19 +20,32 @@ import { useColors } from "@/hooks/useColors";
 
 // ─── Date helpers ─────────────────────────────────────────────────────────────
 
-function shiftDate(base: string, n: number): string {
-  const d = new Date(base + "T00:00:00");
-  d.setDate(d.getDate() + n);
-  return d.toISOString().split("T")[0]!;
-}
-
-const TODAY = new Date().toISOString().split("T")[0]!;
-const DAY1  = shiftDate(TODAY, 1);
-const DAY2  = shiftDate(TODAY, 2);
-
 const DAY_NAMES   = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
 const MONTH_NAMES = ["January","February","March","April","May","June",
                      "July","August","September","October","November","December"];
+
+function localDateStr(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+function nextWorkingDay(dateStr: string): string {
+  const d = new Date(dateStr + "T00:00:00");
+  do { d.setDate(d.getDate() + 1); } while (d.getDay() === 0 || d.getDay() === 6);
+  return localDateStr(d);
+}
+
+const TODAY = localDateStr(new Date());
+const DAY1  = nextWorkingDay(TODAY);
+const DAY2  = nextWorkingDay(DAY1);
+
+const CALENDAR_TOMORROW = (() => {
+  const d = new Date(TODAY + "T00:00:00");
+  d.setDate(d.getDate() + 1);
+  return localDateStr(d);
+})();
 
 function formatDateFull(dateStr: string) {
   const d = new Date(dateStr + "T00:00:00");
@@ -41,7 +54,7 @@ function formatDateFull(dateStr: string) {
 
 function dayLabel(dateStr: string) {
   if (dateStr === TODAY) return "Today";
-  if (dateStr === DAY1)  return `Tomorrow — ${formatDateFull(DAY1)}`;
+  if (dateStr === DAY1 && dateStr === CALENDAR_TOMORROW) return `Tomorrow — ${formatDateFull(dateStr)}`;
   return formatDateFull(dateStr);
 }
 
