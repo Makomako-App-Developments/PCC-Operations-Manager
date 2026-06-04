@@ -99,6 +99,7 @@ router.get("/team-members", requireAuth, requireRole("manager", "supervisor"), a
       id:         teamMembersTable.id,
       personName: teamMembersTable.personName,
       teamId:     teamMembersTable.teamId,
+      role:       teamMembersTable.role,
     })
     .from(teamMembersTable);
 
@@ -118,10 +119,11 @@ router.get("/team-members", requireAuth, requireRole("manager", "supervisor"), a
     const match = accountRows.find(u => u.name.toLowerCase().trim() === m.personName.toLowerCase().trim());
     return {
       id:         m.id,
+      userId:     match?.id ?? null,
       personName: m.personName,
       teamId:     m.teamId,
       hasAccount: !!match,
-      role:       match?.role ?? "field_worker",
+      role:       match?.role ?? (m.role as string),
     };
   });
 
@@ -129,6 +131,7 @@ router.get("/team-members", requireAuth, requireRole("manager", "supervisor"), a
     .filter(u => !crewNameSet.has(u.name.toLowerCase().trim()) && u.teamId)
     .map(u => ({
       id:         u.id,
+      userId:     u.id,
       personName: u.name,
       teamId:     u.teamId as string,
       hasAccount: true,
@@ -143,12 +146,16 @@ router.post(
   "/team-members",
   requireAuth,
   requireRole("manager"),
-  validateBody(z.object({ personName: z.string().min(1).max(100), teamId: z.string().uuid() })),
+  validateBody(z.object({
+    personName: z.string().min(1).max(100),
+    teamId:     z.string().uuid(),
+    role:       z.enum(["field_worker", "supervisor"]).optional().default("field_worker"),
+  })),
   async (req, res) => {
-    const { personName, teamId } = req.body as { personName: string; teamId: string };
+    const { personName, teamId, role } = req.body as { personName: string; teamId: string; role: "field_worker" | "supervisor" };
     const [created] = await db
       .insert(teamMembersTable)
-      .values({ personName: personName.trim(), teamId })
+      .values({ personName: personName.trim(), teamId, role })
       .returning();
     res.status(201).json(created);
   },

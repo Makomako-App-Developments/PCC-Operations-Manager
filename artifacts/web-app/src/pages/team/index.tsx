@@ -162,6 +162,7 @@ interface TeamWithCount {
 
 interface CrewMember {
   id:         string;
+  userId:     string | null;
   personName: string;
   teamId:     string;
   hasAccount: boolean;
@@ -235,7 +236,11 @@ function CompositionTab() {
   const [addingToTeam, setAddingToTeam] = useState<string | null>(null);
   const [addMode, setAddMode]           = useState<"assign" | "new">("assign");
   const [newCrewName, setNewCrewName]   = useState("");
+  const [newCrewRole, setNewCrewRole]   = useState<"field_worker" | "supervisor">("field_worker");
   const [assignSearch, setAssignSearch] = useState("");
+
+  const autoInitials = (name: string) =>
+    name.trim().split(/\s+/).map(n => n[0]?.toUpperCase() ?? "").join("").slice(0, 2) || "?";
 
   // ── Team mutations ──────────────────────────────────────────────────────────
 
@@ -280,11 +285,11 @@ function CompositionTab() {
   // ── Member mutations ────────────────────────────────────────────────────────
 
   const addCrewMember = useMutation({
-    mutationFn: async ({ personName, teamId }: { personName: string; teamId: string }) => {
+    mutationFn: async ({ personName, teamId, role }: { personName: string; teamId: string; role: string }) => {
       const res = await fetch("/api/team-members", {
         method: "POST", credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ personName, teamId }),
+        body: JSON.stringify({ personName, teamId, role }),
       });
       if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error((e as any).error ?? "Failed to add member"); }
       return res.json();
@@ -292,7 +297,7 @@ function CompositionTab() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["crew-members"] });
       qc.invalidateQueries({ queryKey: ["teams-with-counts"] });
-      setNewCrewName(""); setAddingToTeam(null);
+      setNewCrewName(""); setNewCrewRole("field_worker"); setAddingToTeam(null);
       toast({ title: "Crew member added" });
     },
     onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
@@ -321,10 +326,22 @@ function CompositionTab() {
   const removeMember = useMutation({
     mutationFn: async (m: CrewMember) => {
       if (!m.hasAccount) {
+        // Pure crew-only: remove the team_members row
         const res = await fetch(`/api/team-members/${m.id}`, { method: "DELETE", credentials: "include" });
         if (!res.ok) throw new Error("Failed to remove");
+      } else if (m.userId && m.id !== m.userId) {
+        // Has BOTH a team_members row AND a user account (name-matched): remove both
+        await fetch(`/api/team-members/${m.id}`, { method: "DELETE", credentials: "include" });
+        const res = await fetch(`/api/users/${m.userId}`, {
+          method: "PATCH", credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ teamId: null }),
+        });
+        if (!res.ok) throw new Error("Failed to remove");
       } else {
-        const res = await fetch(`/api/users/${m.id}`, {
+        // Account-only (no team_members row): patch user teamId to null using userId
+        const uid = m.userId ?? m.id;
+        const res = await fetch(`/api/users/${uid}`, {
           method: "PATCH", credentials: "include",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ teamId: null }),
@@ -347,7 +364,7 @@ function CompositionTab() {
   const cancelEdit = () => setEditingId(null);
   const saveEdit   = () => { if (!editingId || !editName.trim()) return; rename.mutate({ id: editingId, name: editName.trim() }); };
 
-  const closeAddPanel = () => { setAddingToTeam(null); setNewCrewName(""); setAssignSearch(""); };
+  const closeAddPanel = () => { setAddingToTeam(null); setNewCrewName(""); setNewCrewRole("field_worker"); setAssignSearch(""); };
 
   const openAddPanel = (teamId: string) => {
     setAddingToTeam(teamId); setAddMode("assign"); setAssignSearch(""); setNewCrewName("");
@@ -542,25 +559,46 @@ function CompositionTab() {
                             onSubmit={e => {
                               e.preventDefault();
                               if (!newCrewName.trim()) return;
-                              addCrewMember.mutate({ personName: newCrewName.trim(), teamId: team.id });
+                              addCrewMember.mutate({ personName: newCrewName.trim(), teamId: team.id, role: newCrewRole });
                             }}
-                            className="flex gap-2"
+                            className="space-y-2"
                           >
-                            <Input
-                              autoFocus
-                              placeholder="Full name…"
-                              value={newCrewName}
-                              onChange={e => setNewCrewName(e.target.value)}
-                              className="h-8 text-xs flex-1"
-                            />
-                            <button
-                              type="submit"
-                              disabled={addCrewMember.isPending || !newCrewName.trim()}
-                              className="p-1.5 rounded-md hover:bg-emerald-50 text-emerald-600 disabled:opacity-40 transition-colors flex-shrink-0"
-                              title="Add"
-                            >
-                              {addCrewMember.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
-                            </button>
+                            {/* Name row with initials preview */}
+                            <div className="flex items-center gap-2">
+                              <div
+                                className="w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold text-white flex-shrink-0 bg-gray-300"
+                                title="Auto-generated initials"
+                              >
+                                {autoInitials(newCrewName)}
+                              </div>
+                              <Input
+                                autoFocus
+                                placeholder="Full name…"
+                                value={newCrewName}
+                                onChange={e => setNewCrewName(e.target.value)}
+                                className="h-8 text-xs flex-1"
+                              />
+                            </div>
+                            {/* Role row */}
+                            <div className="flex items-center gap-2">
+                              <div className="w-7 flex-shrink-0" />
+                              <select
+                                value={newCrewRole}
+                                onChange={e => setNewCrewRole(e.target.value as "field_worker" | "supervisor")}
+                                className="h-8 text-xs flex-1 rounded-md border border-gray-200 bg-white px-2 text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#00AECD]/30"
+                              >
+                                <option value="field_worker">Field Worker</option>
+                                <option value="supervisor">Supervisor</option>
+                              </select>
+                              <button
+                                type="submit"
+                                disabled={addCrewMember.isPending || !newCrewName.trim()}
+                                className="p-1.5 rounded-md hover:bg-emerald-50 text-emerald-600 disabled:opacity-40 transition-colors flex-shrink-0"
+                                title="Add crew member"
+                              >
+                                {addCrewMember.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+                              </button>
+                            </div>
                           </form>
                         )}
 

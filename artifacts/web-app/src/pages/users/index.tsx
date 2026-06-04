@@ -320,7 +320,10 @@ export default function UsersPage({ embedded }: { embedded?: boolean } = {}) {
                   <th className="px-5 py-3 text-left text-[10px] font-bold uppercase tracking-wider text-gray-500">Staff Member</th>
                   <th className="px-4 py-3 text-left text-[10px] font-bold uppercase tracking-wider text-gray-500">Email</th>
                   <th className="px-4 py-3 text-left text-[10px] font-bold uppercase tracking-wider text-gray-500">Role</th>
-                  <th className="px-4 py-3 text-left text-[10px] font-bold uppercase tracking-wider text-gray-500">Team</th>
+                  <th className="px-4 py-3 text-left text-[10px] font-bold uppercase tracking-wider text-gray-500">
+                    <span>Team</span>
+                    <span className="ml-1.5 text-[9px] font-normal text-gray-400 normal-case tracking-normal">(manage in Teams → Composition)</span>
+                  </th>
                   <th className="px-4 py-3 text-left text-[10px] font-bold uppercase tracking-wider text-gray-500">Since</th>
                   <th className="px-4 py-3 text-left text-[10px] font-bold uppercase tracking-wider text-gray-500">Status</th>
                   <th className="px-4 py-3" />
