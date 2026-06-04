@@ -160,12 +160,11 @@ function ScheduleModal({ visible, job, userTeamId, token, onClose, onSuccess }: 
   );
 }
 
-// ─── Depth Recording Modal ─────────────────────────────────────────────────────
+// ─── Record Depth Modal (standalone — includes asset search) ──────────────────
 
-interface DepthModalProps {
+interface RecordDepthModalProps {
   visible: boolean;
-  assetId: string;
-  assetName: string;
+  token: string | null;
   onClose: () => void;
   onSubmit: (data: {
     assetId: string;
@@ -177,15 +176,33 @@ interface DepthModalProps {
   }) => Promise<void>;
 }
 
-function DepthModal({ visible, assetId, assetName, onClose, onSubmit }: DepthModalProps) {
+function RecordDepthModal({ visible, token, onClose, onSubmit }: RecordDepthModalProps) {
   const colors = useColors();
+  const [assetQuery, setAssetQuery] = useState("");
+  const [selectedAsset, setSelectedAsset] = useState<{ id: string; name: string } | null>(null);
   const [depthStr, setDepthStr] = useState("");
   const [mulchType, setMulchType] = useState("");
   const [isFresh, setIsFresh] = useState(false);
   const [notes, setNotes] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
+  const { data: assetResults, isFetching: fetchingAssets } = useQuery({
+    queryKey: ["asset-search-depth", assetQuery],
+    queryFn: async () => {
+      const res = await fetch(getApiUrl(`/api/assets?search=${encodeURIComponent(assetQuery)}&limit=10`), {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) return { data: [] };
+      return res.json() as Promise<{ data: any[] }>;
+    },
+    enabled: !!token && assetQuery.trim().length >= 2 && !selectedAsset,
+    staleTime: 30000,
+  });
+  const assetOptions: any[] = assetResults?.data ?? [];
+
   const reset = () => {
+    setAssetQuery("");
+    setSelectedAsset(null);
     setDepthStr("");
     setMulchType("");
     setIsFresh(false);
@@ -196,6 +213,7 @@ function DepthModal({ visible, assetId, assetName, onClose, onSubmit }: DepthMod
   const handleClose = () => { reset(); onClose(); };
 
   const handleSubmit = async () => {
+    if (!selectedAsset) { Alert.alert("Site required", "Search and select a site."); return; }
     const depthMm = parseInt(depthStr, 10);
     if (!isFresh && (isNaN(depthMm) || depthMm < 0)) {
       Alert.alert("Invalid depth", "Enter a depth in millimetres.");
@@ -204,7 +222,7 @@ function DepthModal({ visible, assetId, assetName, onClose, onSubmit }: DepthMod
     setSubmitting(true);
     try {
       await onSubmit({
-        assetId,
+        assetId: selectedAsset.id,
         depthMm: isFresh ? 75 : depthMm,
         mulchType: mulchType.trim() || undefined,
         recordedAt: localDateStr(new Date()),
@@ -220,80 +238,145 @@ function DepthModal({ visible, assetId, assetName, onClose, onSubmit }: DepthMod
   };
 
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={handleClose}>
-      <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={handleClose} />
-      <View style={[styles.modalSheet, { backgroundColor: colors.card, borderColor: colors.border }]}>
-        <View style={styles.modalHeader}>
-          <Text style={[styles.modalTitle, { color: colors.foreground }]}>Record Mulch Depth</Text>
-          <TouchableOpacity onPress={handleClose} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-            <Feather name="x" size={20} color={colors.mutedForeground} />
+    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={handleClose}>
+      <KeyboardAvoidingView style={{ flex: 1, backgroundColor: colors.background }} behavior={Platform.OS === "ios" ? "padding" : "height"}>
+        <View style={[naStyles.header, { backgroundColor: colors.card, borderBottomColor: colors.border }]}>
+          <View style={{ flex: 1 }}>
+            <Text style={[naStyles.headerSub, { color: colors.mutedForeground }]}>Mulching</Text>
+            <Text style={[naStyles.headerTitle, { color: colors.foreground }]}>Record Mulch Depth</Text>
+          </View>
+          <TouchableOpacity onPress={handleClose} style={{ padding: 4 }} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+            <Feather name="x" size={22} color={colors.foreground} />
           </TouchableOpacity>
         </View>
-        <Text style={[styles.modalSite, { color: colors.mutedForeground }]}>{assetName}</Text>
 
-        <View style={[styles.freshRow, { borderColor: colors.border }]}>
-          <View style={{ flex: 1 }}>
-            <Text style={[styles.fieldLabel, { color: colors.foreground }]}>Fresh Application?</Text>
-            <Text style={[styles.fieldHint, { color: colors.mutedForeground }]}>Tick if mulch was just applied today</Text>
+        <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 18, gap: 18, paddingBottom: 40 }} keyboardShouldPersistTaps="handled">
+          {/* Site picker */}
+          <View>
+            <Text style={[naStyles.sectionLabel, { color: colors.foreground }]}>Site <Text style={{ color: "#ef4444" }}>*</Text></Text>
+            {selectedAsset ? (
+              <View style={[naStyles.selectedSite, { backgroundColor: colors.primary + "18", borderColor: colors.primary, borderRadius: colors.radius }]}>
+                <Feather name="map-pin" size={14} color={colors.primary} />
+                <Text style={[naStyles.selectedSiteName, { color: colors.primary, flex: 1 }]} numberOfLines={1}>{selectedAsset.name}</Text>
+                <TouchableOpacity onPress={() => { setSelectedAsset(null); setAssetQuery(""); }} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                  <Feather name="x-circle" size={16} color={colors.primary} />
+                </TouchableOpacity>
+              </View>
+            ) : (
+              <View>
+                <View style={[naStyles.searchRow, { borderColor: colors.border, borderRadius: colors.radius, backgroundColor: colors.card }]}>
+                  <Feather name="search" size={16} color={colors.mutedForeground} />
+                  <TextInput
+                    style={[naStyles.searchInput, { color: colors.foreground, flex: 1 }]}
+                    value={assetQuery}
+                    onChangeText={setAssetQuery}
+                    placeholder="Search site name…"
+                    placeholderTextColor={colors.mutedForeground}
+                    autoCorrect={false}
+                  />
+                  {fetchingAssets && <ActivityIndicator size="small" color={colors.primary} />}
+                </View>
+                {assetQuery.trim().length >= 2 && (
+                  <View style={[naStyles.resultsList, { borderColor: colors.border, backgroundColor: colors.card, borderRadius: colors.radius }]}>
+                    {assetOptions.length === 0 ? (
+                      <Text style={[naStyles.noResults, { color: colors.mutedForeground }]}>No sites found</Text>
+                    ) : (
+                      assetOptions.map((a: any) => (
+                        <TouchableOpacity
+                          key={a.id}
+                          style={[naStyles.resultRow, { borderBottomColor: colors.border }]}
+                          onPress={() => { setSelectedAsset({ id: a.id, name: a.name }); setAssetQuery(""); }}
+                          activeOpacity={0.7}
+                        >
+                          <Text style={[naStyles.resultName, { color: colors.foreground }]} numberOfLines={1}>{a.name}</Text>
+                          {a.suburb && <Text style={[naStyles.resultSub, { color: colors.mutedForeground }]}>{a.suburb}</Text>}
+                        </TouchableOpacity>
+                      ))
+                    )}
+                  </View>
+                )}
+              </View>
+            )}
           </View>
-          <Switch
-            value={isFresh}
-            onValueChange={setIsFresh}
-            trackColor={{ false: colors.border, true: colors.primary }}
-            thumbColor="#fff"
-          />
-        </View>
 
-        {!isFresh && (
+          {/* Fresh application toggle */}
+          <View style={[styles.freshRow, { borderColor: colors.border }]}>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.fieldLabel, { color: colors.foreground }]}>Fresh Application?</Text>
+              <Text style={[styles.fieldHint, { color: colors.mutedForeground }]}>Tick if mulch was just applied today</Text>
+            </View>
+            <Switch
+              value={isFresh}
+              onValueChange={setIsFresh}
+              trackColor={{ false: colors.border, true: colors.primary }}
+              thumbColor="#fff"
+            />
+          </View>
+
+          {!isFresh && (
+            <View style={styles.fieldGroup}>
+              <Text style={[styles.fieldLabel, { color: colors.foreground }]}>Current Depth (mm)</Text>
+              <TextInput
+                style={[styles.fieldInput, { borderColor: colors.border, color: colors.foreground, backgroundColor: colors.card, borderRadius: colors.radius / 2 }]}
+                value={depthStr}
+                onChangeText={setDepthStr}
+                keyboardType="numeric"
+                placeholder="e.g. 45"
+                placeholderTextColor={colors.mutedForeground}
+              />
+            </View>
+          )}
+
           <View style={styles.fieldGroup}>
-            <Text style={[styles.fieldLabel, { color: colors.foreground }]}>Current Depth (mm)</Text>
+            <Text style={[styles.fieldLabel, { color: colors.foreground }]}>Mulch Type <Text style={{ fontFamily: "Inter_400Regular" }}>(optional)</Text></Text>
             <TextInput
-              style={[styles.fieldInput, { borderColor: colors.border, color: colors.foreground, backgroundColor: colors.background, borderRadius: colors.radius / 2 }]}
-              value={depthStr}
-              onChangeText={setDepthStr}
-              keyboardType="numeric"
-              placeholder="e.g. 45"
+              style={[styles.fieldInput, { borderColor: colors.border, color: colors.foreground, backgroundColor: colors.card, borderRadius: colors.radius / 2 }]}
+              value={mulchType}
+              onChangeText={setMulchType}
+              placeholder="e.g. bark, wood chip"
               placeholderTextColor={colors.mutedForeground}
             />
           </View>
-        )}
 
-        <View style={styles.fieldGroup}>
-          <Text style={[styles.fieldLabel, { color: colors.foreground }]}>Mulch Type <Text style={{ fontFamily: "Inter_400Regular" }}>(optional)</Text></Text>
-          <TextInput
-            style={[styles.fieldInput, { borderColor: colors.border, color: colors.foreground, backgroundColor: colors.background, borderRadius: colors.radius / 2 }]}
-            value={mulchType}
-            onChangeText={setMulchType}
-            placeholder="e.g. bark, wood chip"
-            placeholderTextColor={colors.mutedForeground}
-          />
+          <View style={styles.fieldGroup}>
+            <Text style={[styles.fieldLabel, { color: colors.foreground }]}>Notes <Text style={{ fontFamily: "Inter_400Regular" }}>(optional)</Text></Text>
+            <TextInput
+              style={[styles.fieldInput, styles.fieldMultiline, { borderColor: colors.border, color: colors.foreground, backgroundColor: colors.card, borderRadius: colors.radius / 2 }]}
+              value={notes}
+              onChangeText={setNotes}
+              placeholder="Any observations…"
+              placeholderTextColor={colors.mutedForeground}
+              multiline
+              textAlignVertical="top"
+            />
+          </View>
+        </ScrollView>
+
+        <View style={[naStyles.footer, { borderTopColor: colors.border, backgroundColor: colors.card }]}>
+          <TouchableOpacity
+            style={[naStyles.cancelBtn, { borderColor: colors.border, borderRadius: colors.radius }]}
+            onPress={handleClose}
+            activeOpacity={0.8}
+          >
+            <Text style={[naStyles.cancelBtnText, { color: colors.mutedForeground }]}>Cancel</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[naStyles.submitBtn, { backgroundColor: submitting ? colors.primary + "80" : colors.primary, borderRadius: colors.radius, flex: 1 }]}
+            onPress={handleSubmit}
+            disabled={submitting}
+            activeOpacity={0.85}
+          >
+            {submitting ? (
+              <ActivityIndicator size="small" color="#fff" />
+            ) : (
+              <>
+                <Feather name="bar-chart-2" size={16} color="#fff" />
+                <Text style={naStyles.submitBtnText}>Save Reading</Text>
+              </>
+            )}
+          </TouchableOpacity>
         </View>
-
-        <View style={styles.fieldGroup}>
-          <Text style={[styles.fieldLabel, { color: colors.foreground }]}>Notes <Text style={{ fontFamily: "Inter_400Regular" }}>(optional)</Text></Text>
-          <TextInput
-            style={[styles.fieldInput, styles.fieldMultiline, { borderColor: colors.border, color: colors.foreground, backgroundColor: colors.background, borderRadius: colors.radius / 2 }]}
-            value={notes}
-            onChangeText={setNotes}
-            placeholder="Any observations…"
-            placeholderTextColor={colors.mutedForeground}
-            multiline
-            textAlignVertical="top"
-          />
-        </View>
-
-        <TouchableOpacity
-          style={[styles.modalSubmitBtn, { backgroundColor: submitting ? colors.muted : colors.primary }]}
-          onPress={handleSubmit}
-          disabled={submitting}
-        >
-          {submitting ? (
-            <ActivityIndicator size="small" color="#fff" />
-          ) : (
-            <Text style={styles.modalSubmitText}>Save Reading</Text>
-          )}
-        </TouchableOpacity>
-      </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }
@@ -606,7 +689,7 @@ export default function ProgrammesScreen() {
   const isPrivileged = ["administrator", "manager", "supervisor"].includes(user?.role ?? "");
 
   const [activeTab, setActiveTab] = useState<ActiveTab>("infill");
-  const [depthModal, setDepthModal] = useState<{ assetId: string; assetName: string } | null>(null);
+  const [showDepthModal, setShowDepthModal] = useState(false);
   const [scheduleModal, setScheduleModal] = useState<any | null>(null);
   const [expandedInfill, setExpandedInfill] = useState<Set<string>>(new Set());
   const [showNewAssessment, setShowNewAssessment] = useState(false);
@@ -853,6 +936,7 @@ export default function ProgrammesScreen() {
 
       {/* Mulching tab */}
       {activeTab === "mulch" && (
+        <View style={{ flex: 1 }}>
         <ScrollView
           style={styles.scroll}
           contentContainerStyle={{ padding: 16, gap: 10, paddingBottom: bottomPad }}
@@ -895,18 +979,21 @@ export default function ProgrammesScreen() {
                       </Text>
                     </View>
                   </View>
-                  <TouchableOpacity
-                    style={[styles.depthBtn, { borderColor: colors.primary + "60", backgroundColor: colors.primary + "12", borderRadius: colors.radius / 2 }]}
-                    onPress={() => setDepthModal({ assetId: record.assetId, assetName: record.assetName ?? "Site" })}
-                  >
-                    <Feather name="bar-chart-2" size={14} color={colors.primary} />
-                    <Text style={[styles.depthBtnText, { color: colors.primary }]}>Record Depth</Text>
-                  </TouchableOpacity>
                 </View>
               );
             })
           )}
         </ScrollView>
+        {isPrivileged && (
+          <TouchableOpacity
+            style={[naStyles.fab, { backgroundColor: colors.primary }]}
+            onPress={() => setShowDepthModal(true)}
+            activeOpacity={0.85}
+          >
+            <Feather name="plus" size={22} color="#fff" />
+          </TouchableOpacity>
+        )}
+      </View>
       )}
 
       {/* Schedule modal */}
@@ -922,18 +1009,15 @@ export default function ProgrammesScreen() {
         }}
       />
 
-      {/* Depth recording modal */}
-      {depthModal && (
-        <DepthModal
-          visible={!!depthModal}
-          assetId={depthModal.assetId}
-          assetName={depthModal.assetName}
-          onClose={() => setDepthModal(null)}
-          onSubmit={async (data) => {
-            await recordDepth.mutateAsync(data);
-          }}
-        />
-      )}
+      {/* Standalone depth recording modal */}
+      <RecordDepthModal
+        visible={showDepthModal}
+        token={token}
+        onClose={() => setShowDepthModal(false)}
+        onSubmit={async (data) => {
+          await recordDepth.mutateAsync(data);
+        }}
+      />
 
       {/* New assessment modal */}
       <NewAssessmentModal
