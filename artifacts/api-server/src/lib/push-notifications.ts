@@ -1,4 +1,4 @@
-import Expo, { ExpoPushMessage, ExpoPushTicket } from "expo-server-sdk";
+import { Expo, ExpoPushMessage, ExpoPushTicket } from "expo-server-sdk";
 import { db, usersTable } from "@workspace/db";
 import { eq, and, isNotNull, inArray, or } from "drizzle-orm";
 
