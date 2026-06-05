@@ -173,7 +173,7 @@ function SpecCard({ spec, colors: c }: { spec: SpecType; colors: ReturnType<type
         <View style={[styles.detail, { borderTopColor: c.border }]}>
           {[
             { icon: "trash-2",   label: "Litter",        value: spec.litter },
-            { icon: "activity",  label: "Plant Health",  value: spec.plantHealth },
+            { icon: "activity",  label: "Health & Vigour", value: spec.plantHealth },
             { icon: "layers",    label: "Mulching",      value: spec.mulching },
             { icon: "git-merge", label: spec.pruningLabel ?? "Pruning", value: spec.pruning },
           ].filter(({ value }) => !!value).map(({ icon, label, value }) => (
