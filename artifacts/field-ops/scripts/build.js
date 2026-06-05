@@ -79,6 +79,8 @@ try {
         flex: 1;
         overflow: hidden;
       }
+      /* Prevent iOS Safari from zooming on input focus (requires font-size >= 16px) */
+      input, textarea, select { font-size: 16px !important; }
     </style>`
   );
 
