@@ -26,6 +26,7 @@ interface SpecType {
   frequency: string;
   weedControl: string;
   weedCover:  Cell;
+  litter:     string;
   plantHealth: string;
   mulching:   string;
   pruning:    string;
@@ -37,63 +38,63 @@ const SPECS: SpecType[] = [
     id: "annuals", typeNum: "Type 1", label: "Annuals",
     standard: "High", frequency: "Weekly", weedControl: "No herbicides",
     weedCover: { text: "Weed free", badge: "weed-free" },
-    plantHealth: "Regular monitoring & treatment",
+    litter: "No old litter", plantHealth: "Regular monitoring & treatment",
     mulching: "As required", pruning: "As required",
   },
   {
     id: "roses", typeNum: "Type 2", label: "Roses & Perennials",
     standard: "High", frequency: "Fortnightly", weedControl: "Mechanical",
     weedCover: { text: "Weed free", badge: "weed-free" },
-    plantHealth: "Regular monitoring & treatment",
+    litter: "No old litter", plantHealth: "Regular monitoring & treatment",
     mulching: "75–100mm depth maintained", pruning: "Species-appropriate pruning",
   },
   {
     id: "ornamental", typeNum: "Type 3", label: "Ornamental",
     standard: "High", frequency: "Fortnightly", weedControl: "Mechanical",
     weedCover: "2%",
-    plantHealth: "Regular monitoring",
+    litter: "No old litter", plantHealth: "Regular monitoring",
     mulching: "75–100mm depth maintained", pruning: "Shape & form maintained",
   },
   {
     id: "amenity", typeNum: "Type 4", label: "Amenity",
     standard: "Medium", frequency: "Monthly", weedControl: "Mechanical",
     weedCover: "5%",
-    plantHealth: "Monitoring as required",
+    litter: "No old litter", plantHealth: "Monitoring as required",
     mulching: "50–75mm depth maintained", pruning: "As required to maintain form",
   },
   {
     id: "rain", typeNum: "Type 5", label: "Rain Garden",
     standard: "Medium", frequency: "Monthly", weedControl: "Mechanical",
     weedCover: "5%",
-    plantHealth: "Monitoring as required",
+    litter: "No old litter", plantHealth: "Monitoring as required",
     mulching: "50–75mm depth maintained", pruning: "As required",
   },
   {
     id: "reveg", typeNum: "Type 6", label: "Revegetation",
     standard: "Medium", frequency: "Quarterly", weedControl: "Chemical",
     weedCover: "5%",
-    plantHealth: "Monitoring as required",
+    litter: "No old litter", plantHealth: "Monitoring as required",
     mulching: "As required", pruning: "Minimal — form only",
   },
   {
     id: "bush", typeNum: "Type 7", label: "Bush",
     standard: "Low", frequency: "Bimonthly", weedControl: "Chemical",
     weedCover: "15%",
-    plantHealth: "Monitoring as required",
+    litter: "No old litter", plantHealth: "Monitoring as required",
     mulching: "Not required", pruning: "Safety & access only",
   },
   {
     id: "tree", typeNum: "Type 8", label: "Tree Planter Pits",
     standard: "Medium", frequency: "Monthly", weedControl: "Mechanical",
     weedCover: "5%",
-    plantHealth: "Regular monitoring & treatment",
+    litter: "No old litter", plantHealth: "Regular monitoring & treatment",
     mulching: "75–100mm depth maintained", pruning: "As required",
   },
   {
     id: "hedges", typeNum: "Type 9", label: "Hedges",
     standard: "Medium", frequency: "Seasonal", weedControl: "Chemical",
     weedCover: "5%",
-    plantHealth: "Monitoring as required",
+    litter: "No old litter", plantHealth: "Monitoring as required",
     mulching: "As required", pruning: "Regular trimming to maintain shape",
   },
 ];
@@ -170,6 +171,7 @@ function SpecCard({ spec, colors: c }: { spec: SpecType; colors: ReturnType<type
       {expanded && (
         <View style={[styles.detail, { borderTopColor: c.border }]}>
           {[
+            { icon: "trash-2",   label: "Litter",        value: spec.litter },
             { icon: "activity",  label: "Plant Health",  value: spec.plantHealth },
             { icon: "layers",    label: "Mulching",      value: spec.mulching },
             { icon: "git-merge", label: "Pruning",       value: spec.pruning },
