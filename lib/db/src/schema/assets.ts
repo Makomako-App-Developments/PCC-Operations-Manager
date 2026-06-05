@@ -12,7 +12,7 @@ export const assetsTable = pgTable("assets", {
   name:            varchar("name", { length: 200 }).notNull(),
   gardenType:      gardenTypeEnum("garden_type").notNull(),
   standard:        standardEnum("standard").notNull(),
-  areaM2:          integer("area_m2").notNull(),
+  areaM2:          numeric("area_m2", { precision: 10, scale: 4 }).notNull(),
   serviceTimeMins: integer("service_time_mins").notNull(),
   frequency:       frequencyEnum("frequency").notNull(),
   teamId:          uuid("team_id").references(() => teamsTable.id),

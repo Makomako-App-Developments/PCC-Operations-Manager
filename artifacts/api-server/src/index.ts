@@ -1,7 +1,9 @@
 import app from "./app";
 import { startOverdueChecker } from "./lib/overdue-checker";
+import { runStartupPatches } from "./lib/startup-patch";
 
 startOverdueChecker();
+runStartupPatches();
 
 const rawPort = process.env["PORT"];
 

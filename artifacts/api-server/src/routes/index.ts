@@ -14,6 +14,7 @@ import usersRouter       from "./users";
 import teamRouter        from "./team";
 import settingsRouter    from "./settings";
 import reportsRouter     from "./reports";
+import adminPatchesRouter from "./admin-patches";
 
 const router: IRouter = Router();
 
@@ -32,5 +33,6 @@ router.use(usersRouter);
 router.use(teamRouter);
 router.use(settingsRouter);
 router.use(reportsRouter);
+router.use("/admin", adminPatchesRouter);
 
 export default router;
