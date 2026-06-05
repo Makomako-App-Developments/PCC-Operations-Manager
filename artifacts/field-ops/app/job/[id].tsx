@@ -214,7 +214,7 @@ function ObservationsSection({
         activeOpacity={0.7}
       >
         <Feather name="clipboard" size={16} color={colors.primary} />
-        <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Observations</Text>
+        <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Observations & Notes</Text>
         <Feather
           name={expanded ? "chevron-up" : "chevron-down"}
           size={16}
