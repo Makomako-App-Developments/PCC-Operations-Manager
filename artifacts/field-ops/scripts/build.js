@@ -62,24 +62,29 @@ try {
     `<style id="expo-reset">
       html {
         height: 100%;
-        width: 100%;
-        overflow: hidden;
+        overflow-x: clip;
+        overflow-y: hidden;
+        max-width: 100vw;
       }
       body {
         height: 100%;
-        width: 100%;
-        overflow: hidden;
+        overflow-x: clip;
+        overflow-y: hidden;
+        max-width: 100vw;
         margin: 0;
         padding: 0;
+        touch-action: pan-y;
+        overscroll-behavior-x: none;
       }
       #root {
-        display: flex;
-        height: 100%;
-        width: 100%;
-        flex: 1;
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
         overflow: hidden;
+        display: flex;
       }
-      /* Prevent iOS Safari from zooming on input focus (requires font-size >= 16px) */
       input, textarea, select { font-size: 16px !important; }
     </style>`
   );

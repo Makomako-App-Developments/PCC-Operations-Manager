@@ -13,9 +13,31 @@ export default function Root({ children }: { children: React.ReactNode }) {
         <ScrollViewStyleReset />
         <style dangerouslySetInnerHTML={{
           __html: `
-            html, body, #root { height: 100%; width: 100%; overflow: hidden; margin: 0; padding: 0; }
-            #root { display: flex; flex: 1; }
-            /* Prevent iOS Safari from zooming on input focus */
+            html {
+              height: 100%;
+              overflow-x: clip;
+              overflow-y: hidden;
+              max-width: 100vw;
+            }
+            body {
+              height: 100%;
+              overflow-x: clip;
+              overflow-y: hidden;
+              max-width: 100vw;
+              margin: 0;
+              padding: 0;
+              touch-action: pan-y;
+              overscroll-behavior-x: none;
+            }
+            #root {
+              position: fixed;
+              top: 0;
+              left: 0;
+              right: 0;
+              bottom: 0;
+              overflow: hidden;
+              display: flex;
+            }
             input, textarea, select { font-size: 16px !important; }
           `
         }} />
