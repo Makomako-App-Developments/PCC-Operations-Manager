@@ -29,8 +29,9 @@ interface SpecType {
   litter:     string;
   plantHealth: string;
   mulching:   string;
-  pruning:    string;
-  note?:      string;
+  pruning:      string;
+  pruningLabel?: string;
+  note?:        string;
 }
 
 const SPECS: SpecType[] = [
@@ -39,7 +40,7 @@ const SPECS: SpecType[] = [
     standard: "High", frequency: "Weekly", weedControl: "No herbicides",
     weedCover: { text: "Weed free", badge: "weed-free" },
     litter: "No old litter", plantHealth: "Regular monitoring & treatment",
-    mulching: "", pruning: "As required",
+    mulching: "", pruning: "Only 2% dead heads allowed", pruningLabel: "Dead Heading",
   },
   {
     id: "roses", typeNum: "Type 2", label: "Roses & Perennials",
@@ -174,7 +175,7 @@ function SpecCard({ spec, colors: c }: { spec: SpecType; colors: ReturnType<type
             { icon: "trash-2",   label: "Litter",        value: spec.litter },
             { icon: "activity",  label: "Plant Health",  value: spec.plantHealth },
             { icon: "layers",    label: "Mulching",      value: spec.mulching },
-            { icon: "git-merge", label: "Pruning",       value: spec.pruning },
+            { icon: "git-merge", label: spec.pruningLabel ?? "Pruning", value: spec.pruning },
           ].filter(({ value }) => !!value).map(({ icon, label, value }) => (
             <View key={label} style={styles.detailRow}>
               <Feather name={icon as any} size={13} color={PRIMARY} style={styles.detailIcon} />
