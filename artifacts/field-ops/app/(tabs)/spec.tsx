@@ -25,8 +25,9 @@ interface SpecType {
   standard:  "High" | "Medium" | "Low";
   frequency: string;
   weedControl: string;
-  weedCover:  Cell;
-  litter:     string;
+  weedCover:    Cell;
+  weedMaxHeight: string;
+  litter:       string;
   plantHealth: string;
   mulching:   string;
   plantCoverage?: string;
@@ -43,7 +44,7 @@ const SPECS: SpecType[] = [
   {
     id: "annuals", typeNum: "Type 1", label: "Annuals",
     standard: "High", frequency: "Weekly", weedControl: "No herbicides",
-    weedCover: { text: "Weed free", badge: "weed-free" },
+    weedCover: { text: "Weed free", badge: "weed-free" }, weedMaxHeight: "None allowed",
     litter: "No old litter", plantHealth: "Regular monitoring & treatment",
     plantCoverage: "100% as appropriate to each design",
     edging: "Built edge safe, clean & functional. Soft edging (turf) sloping edge (approx 15–25° from vertical) to grassed area, consistent with boundary & shape of garden, 75–100mm deep.",
@@ -54,7 +55,7 @@ const SPECS: SpecType[] = [
   {
     id: "roses", typeNum: "Type 2", label: "Roses & Perennials",
     standard: "High", frequency: "Fortnightly", weedControl: "Mechanical",
-    weedCover: { text: "Weed free", badge: "weed-free" },
+    weedCover: { text: "Weed free", badge: "weed-free" }, weedMaxHeight: "None allowed",
     litter: "No old litter", plantHealth: "Regular monitoring & treatment",
     plantCoverage: "90%",
     edging: "Built edge safe, clean & functional. Soft edging (turf) sloping edge (approx 15–25° from vertical) to grassed area, consistent with boundary & shape of garden, 75–100mm deep.",
@@ -66,7 +67,7 @@ const SPECS: SpecType[] = [
   {
     id: "ornamental", typeNum: "Type 3", label: "Ornamental",
     standard: "High", frequency: "Fortnightly", weedControl: "Mechanical",
-    weedCover: "2%",
+    weedCover: "2%", weedMaxHeight: "Max height 100mm",
     litter: "No old litter", plantHealth: "Regular monitoring",
     plantCoverage: "90%",
     edging: "Built edge safe, clean & functional. Soft edging (turf) sloping edge (approx 15–25° from vertical) to grassed area, consistent with boundary & shape of garden, 75–100mm deep.",
@@ -78,7 +79,7 @@ const SPECS: SpecType[] = [
   {
     id: "amenity", typeNum: "Type 4", label: "Amenity",
     standard: "Medium", frequency: "Monthly", weedControl: "Mechanical",
-    weedCover: "5%",
+    weedCover: "5%", weedMaxHeight: "Max height 150mm",
     litter: "No old litter", plantHealth: "Monitoring as required",
     plantCoverage: "90%",
     edging: "Built edge safe, clean & functional. Soft edging (turf) sloping edge (approx 15–25° from vertical) to grassed area, consistent with boundary & shape of garden, 75–100mm deep.",
@@ -90,7 +91,7 @@ const SPECS: SpecType[] = [
   {
     id: "rain", typeNum: "Type 5", label: "Rain Garden",
     standard: "Medium", frequency: "Monthly", weedControl: "Mechanical",
-    weedCover: "5%",
+    weedCover: "5%", weedMaxHeight: "Max height 150mm",
     litter: "No old litter", plantHealth: "Monitoring as required",
     plantCoverage: "90%",
     edging: "Built edge safe, clean & functional. Soft edging (turf) sloping edge (approx 15–25° from vertical) to grassed area, consistent with boundary & shape of garden, 75–100mm deep.",
@@ -102,7 +103,7 @@ const SPECS: SpecType[] = [
   {
     id: "reveg", typeNum: "Type 6", label: "Revegetation",
     standard: "Medium", frequency: "Quarterly", weedControl: "Chemical",
-    weedCover: "5%",
+    weedCover: "5%", weedMaxHeight: "Max height 500mm",
     litter: "No old litter", plantHealth: "Monitoring as required",
     plantCoverage: "90%",
     edging: "Built edge safe, clean & functional. Soft edging (turf) sloping edge (approx 15–25° from vertical) to grassed area, consistent with boundary & shape of garden, 75–100mm deep.",
@@ -114,7 +115,7 @@ const SPECS: SpecType[] = [
   {
     id: "bush", typeNum: "Type 7", label: "Bush",
     standard: "Low", frequency: "Bimonthly", weedControl: "Chemical",
-    weedCover: "15%",
+    weedCover: "15%", weedMaxHeight: "Max height 150mm",
     litter: "No old litter", plantHealth: "Monitoring as required",
     plantCoverage: "90%",
     edging: "Built edge safe, clean & functional. Soft edging (turf) sloping edge (approx 15–25° from vertical) to grassed area, consistent with boundary & shape of garden, 75–100mm deep.",
@@ -125,7 +126,7 @@ const SPECS: SpecType[] = [
   {
     id: "tree", typeNum: "Type 8", label: "Tree Planter Pits",
     standard: "Medium", frequency: "Monthly", weedControl: "Mechanical",
-    weedCover: "5%",
+    weedCover: "5%", weedMaxHeight: "Max height 100mm",
     litter: "No old litter", plantHealth: "Regular monitoring & treatment",
     plantCoverage: "90%",
     edging: "Built edge safe, clean & functional. Soft edging (turf) sloping edge (approx 15–25° from vertical) to grassed area, consistent with boundary & shape of garden, 75–100mm deep.",
@@ -137,7 +138,7 @@ const SPECS: SpecType[] = [
   {
     id: "hedges", typeNum: "Type 9", label: "Hedges",
     standard: "Medium", frequency: "Seasonal", weedControl: "Chemical",
-    weedCover: "5%",
+    weedCover: "5%", weedMaxHeight: "Max height 150mm",
     litter: "No old litter", plantHealth: "Monitoring as required",
     plantCoverage: "100%",
     edging: "Built edge safe, clean & functional. Soft edging (turf) sloping edge (approx 15–25° from vertical) to grassed area, consistent with boundary & shape of garden, 75–100mm deep.",
@@ -212,7 +213,7 @@ function SpecCard({ spec, colors: c }: { spec: SpecType; colors: ReturnType<type
       {expanded && (
         <View style={[styles.detail, { borderTopColor: c.border }]}>
           {[
-            { icon: "percent",   label: "Weeds",            value: weedText ? `Max ${weedText} weed coverage` : (typeof spec.weedCover !== "string" ? spec.weedCover.text : "") },
+            { icon: "percent",   label: "Weeds",            value: (weedText ? `Max ${weedText} weed coverage` : (typeof spec.weedCover !== "string" ? spec.weedCover.text : "")) + ` — ${spec.weedMaxHeight}` },
             { icon: "trash-2",   label: "Litter",          value: spec.litter },
             { icon: "activity",  label: "Health & Vigour", value: spec.plantHealth },
             { icon: "sun",       label: "Plant Coverage",  value: spec.plantCoverage ?? "" },
