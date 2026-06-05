@@ -29,8 +29,9 @@ interface SpecType {
   litter:     string;
   plantHealth: string;
   mulching:   string;
-  pruning:      string;
-  pruningLabel?: string;
+  plantCoverage?: string;
+  pruning:        string;
+  pruningLabel?:  string;
   note?:        string;
 }
 
@@ -40,6 +41,7 @@ const SPECS: SpecType[] = [
     standard: "High", frequency: "Weekly", weedControl: "No herbicides",
     weedCover: { text: "Weed free", badge: "weed-free" },
     litter: "No old litter", plantHealth: "Regular monitoring & treatment",
+    plantCoverage: "100% as appropriate to each design",
     mulching: "", pruning: "Only 2% dead heads allowed", pruningLabel: "Dead Heading",
   },
   {
@@ -172,8 +174,9 @@ function SpecCard({ spec, colors: c }: { spec: SpecType; colors: ReturnType<type
       {expanded && (
         <View style={[styles.detail, { borderTopColor: c.border }]}>
           {[
-            { icon: "trash-2",   label: "Litter",        value: spec.litter },
+            { icon: "trash-2",   label: "Litter",          value: spec.litter },
             { icon: "activity",  label: "Health & Vigour", value: spec.plantHealth },
+            { icon: "sun",       label: "Plant Coverage",  value: spec.plantCoverage ?? "" },
             { icon: "layers",    label: "Mulching",      value: spec.mulching },
             { icon: "git-merge", label: spec.pruningLabel ?? "Pruning", value: spec.pruning },
           ].filter(({ value }) => !!value).map(({ icon, label, value }) => (
