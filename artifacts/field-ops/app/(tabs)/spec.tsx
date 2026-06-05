@@ -30,10 +30,11 @@ interface SpecType {
   plantHealth: string;
   mulching:   string;
   plantCoverage?: string;
-  edging:          string;
-  damage:          string;
-  stakesAndTies?:  string;
-  pruning:         string;
+  edging:           string;
+  damage:           string;
+  stakesAndTies?:   string;
+  pestsAndDiseases?: string;
+  pruning:          string;
   pruningLabel?:  string;
   note?:        string;
 }
@@ -47,6 +48,7 @@ const SPECS: SpecType[] = [
     plantCoverage: "100% as appropriate to each design",
     edging: "Built edge safe, clean & functional. Soft edging (turf) sloping edge (approx 15–25° from vertical) to grassed area, consistent with boundary & shape of garden, 75–100mm deep.",
     damage: "No damage to any assets including desirable plants from herbicide use. Surrounding lawns must be protected from undue compression or damage during all maintenance operations.",
+    pestsAndDiseases: "Maintained to healthy standard. Report presence at each visit.",
     mulching: "", pruning: "Only 2% dead heads allowed", pruningLabel: "Dead Heading",
   },
   {
@@ -58,6 +60,7 @@ const SPECS: SpecType[] = [
     edging: "Built edge safe, clean & functional. Soft edging (turf) sloping edge (approx 15–25° from vertical) to grassed area, consistent with boundary & shape of garden, 75–100mm deep.",
     damage: "No damage to any assets including desirable plants from herbicide use. Surrounding lawns must be protected from undue compression or damage during all maintenance operations.",
     stakesAndTies: "Stake & tie plants as necessary to ensure plants are always protected from damage, healthy development is encouraged and the required form of growth is achieved. Removed when not necessary.",
+    pestsAndDiseases: "Maintained to healthy standard. Report presence at each visit.",
     mulching: "75–100mm depth maintained", pruning: "Species-appropriate pruning",
   },
   {
@@ -69,6 +72,7 @@ const SPECS: SpecType[] = [
     edging: "Built edge safe, clean & functional. Soft edging (turf) sloping edge (approx 15–25° from vertical) to grassed area, consistent with boundary & shape of garden, 75–100mm deep.",
     damage: "No damage to any assets including desirable plants from herbicide use. Surrounding lawns must be protected from undue compression or damage during all maintenance operations.",
     stakesAndTies: "Stake & tie plants as necessary to ensure plants are always protected from damage, healthy development is encouraged and the required form of growth is achieved. Removed when not necessary.",
+    pestsAndDiseases: "Maintained to healthy standard. Report presence at each visit.",
     mulching: "75–100mm depth maintained", pruning: "Shape & form maintained",
   },
   {
@@ -80,6 +84,7 @@ const SPECS: SpecType[] = [
     edging: "Built edge safe, clean & functional. Soft edging (turf) sloping edge (approx 15–25° from vertical) to grassed area, consistent with boundary & shape of garden, 75–100mm deep.",
     damage: "No damage to any assets including desirable plants from herbicide use. Surrounding lawns must be protected from undue compression or damage during all maintenance operations.",
     stakesAndTies: "Stake & tie plants as necessary to ensure plants are always protected from damage, healthy development is encouraged and the required form of growth is achieved. Removed when not necessary.",
+    pestsAndDiseases: "Maintained to healthy standard. Report presence at each visit.",
     mulching: "50–75mm depth maintained", pruning: "As required to maintain form",
   },
   {
@@ -91,6 +96,7 @@ const SPECS: SpecType[] = [
     edging: "Built edge safe, clean & functional. Soft edging (turf) sloping edge (approx 15–25° from vertical) to grassed area, consistent with boundary & shape of garden, 75–100mm deep.",
     damage: "No damage to any assets including desirable plants from herbicide use. Surrounding lawns must be protected from undue compression or damage during all maintenance operations.",
     stakesAndTies: "Stake & tie plants as necessary to ensure plants are always protected from damage, healthy development is encouraged and the required form of growth is achieved. Removed when not necessary.",
+    pestsAndDiseases: "Maintained to healthy standard. Report presence at each visit.",
     mulching: "50–75mm depth maintained", pruning: "As required",
   },
   {
@@ -102,6 +108,7 @@ const SPECS: SpecType[] = [
     edging: "Built edge safe, clean & functional. Soft edging (turf) sloping edge (approx 15–25° from vertical) to grassed area, consistent with boundary & shape of garden, 75–100mm deep.",
     damage: "No damage to any assets including desirable plants from herbicide use. Surrounding lawns must be protected from undue compression or damage during all maintenance operations.",
     stakesAndTies: "Stake & tie plants as necessary to ensure plants are always protected from damage, healthy development is encouraged and the required form of growth is achieved. Removed when not necessary.",
+    pestsAndDiseases: "Maintained to healthy standard. Report presence at each visit.",
     mulching: "As required", pruning: "Minimal — form only",
   },
   {
@@ -124,6 +131,7 @@ const SPECS: SpecType[] = [
     edging: "Built edge safe, clean & functional. Soft edging (turf) sloping edge (approx 15–25° from vertical) to grassed area, consistent with boundary & shape of garden, 75–100mm deep.",
     damage: "No damage to any assets including desirable plants from herbicide use. Surrounding lawns must be protected from undue compression or damage during all maintenance operations.",
     stakesAndTies: "Stake & tie plants as necessary to ensure plants are always protected from damage, healthy development is encouraged and the required form of growth is achieved. Removed when not necessary.",
+    pestsAndDiseases: "Maintained to healthy standard. Report presence at each visit.",
     mulching: "75–100mm depth maintained", pruning: "As required",
   },
   {
@@ -135,6 +143,7 @@ const SPECS: SpecType[] = [
     edging: "Built edge safe, clean & functional. Soft edging (turf) sloping edge (approx 15–25° from vertical) to grassed area, consistent with boundary & shape of garden, 75–100mm deep.",
     damage: "No damage to any assets including desirable plants from herbicide use. Surrounding lawns must be protected from undue compression or damage during all maintenance operations.",
     stakesAndTies: "Stake & tie plants as necessary to ensure plants are always protected from damage, healthy development is encouraged and the required form of growth is achieved. Removed when not necessary.",
+    pestsAndDiseases: "Maintained to healthy standard. Report presence at each visit.",
     mulching: "As required", pruning: "Regular trimming to maintain shape",
   },
 ];
@@ -216,8 +225,9 @@ function SpecCard({ spec, colors: c }: { spec: SpecType; colors: ReturnType<type
             { icon: "sun",       label: "Plant Coverage",  value: spec.plantCoverage ?? "" },
             { icon: "scissors",  label: "Edging",          value: spec.edging },
             { icon: "alert-triangle", label: "Damage",        value: spec.damage },
-            { icon: "anchor",         label: "Stakes & Ties", value: spec.stakesAndTies ?? "" },
-            { icon: "layers",         label: "Mulching",      value: spec.mulching },
+            { icon: "anchor",         label: "Stakes & Ties",   value: spec.stakesAndTies ?? "" },
+            { icon: "shield",         label: "Pests & Diseases", value: spec.pestsAndDiseases ?? "" },
+            { icon: "layers",         label: "Mulching",         value: spec.mulching },
             { icon: "git-merge", label: spec.pruningLabel ?? "Pruning", value: spec.pruning },
           ].filter(({ value }) => !!value).map(({ icon, label, value }) => (
             <View key={label} style={styles.detailRow}>
