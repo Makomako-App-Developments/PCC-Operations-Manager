@@ -31,6 +31,7 @@ interface SpecType {
   mulching:   string;
   plantCoverage?: string;
   edging:         string;
+  damage:         string;
   pruning:        string;
   pruningLabel?:  string;
   note?:        string;
@@ -44,6 +45,7 @@ const SPECS: SpecType[] = [
     litter: "No old litter", plantHealth: "Regular monitoring & treatment",
     plantCoverage: "100% as appropriate to each design",
     edging: "Built edge safe, clean & functional. Soft edging (turf) sloping edge (approx 15–25° from vertical) to grassed area, consistent with boundary & shape of garden, 75–100mm deep.",
+    damage: "No damage to any assets including desirable plants from herbicide use. Surrounding lawns must be protected from undue compression or damage during all maintenance operations.",
     mulching: "", pruning: "Only 2% dead heads allowed", pruningLabel: "Dead Heading",
   },
   {
@@ -53,6 +55,7 @@ const SPECS: SpecType[] = [
     litter: "No old litter", plantHealth: "Regular monitoring & treatment",
     plantCoverage: "90%",
     edging: "Built edge safe, clean & functional. Soft edging (turf) sloping edge (approx 15–25° from vertical) to grassed area, consistent with boundary & shape of garden, 75–100mm deep.",
+    damage: "No damage to any assets including desirable plants from herbicide use. Surrounding lawns must be protected from undue compression or damage during all maintenance operations.",
     mulching: "75–100mm depth maintained", pruning: "Species-appropriate pruning",
   },
   {
@@ -62,6 +65,7 @@ const SPECS: SpecType[] = [
     litter: "No old litter", plantHealth: "Regular monitoring",
     plantCoverage: "90%",
     edging: "Built edge safe, clean & functional. Soft edging (turf) sloping edge (approx 15–25° from vertical) to grassed area, consistent with boundary & shape of garden, 75–100mm deep.",
+    damage: "No damage to any assets including desirable plants from herbicide use. Surrounding lawns must be protected from undue compression or damage during all maintenance operations.",
     mulching: "75–100mm depth maintained", pruning: "Shape & form maintained",
   },
   {
@@ -71,6 +75,7 @@ const SPECS: SpecType[] = [
     litter: "No old litter", plantHealth: "Monitoring as required",
     plantCoverage: "90%",
     edging: "Built edge safe, clean & functional. Soft edging (turf) sloping edge (approx 15–25° from vertical) to grassed area, consistent with boundary & shape of garden, 75–100mm deep.",
+    damage: "No damage to any assets including desirable plants from herbicide use. Surrounding lawns must be protected from undue compression or damage during all maintenance operations.",
     mulching: "50–75mm depth maintained", pruning: "As required to maintain form",
   },
   {
@@ -80,6 +85,7 @@ const SPECS: SpecType[] = [
     litter: "No old litter", plantHealth: "Monitoring as required",
     plantCoverage: "90%",
     edging: "Built edge safe, clean & functional. Soft edging (turf) sloping edge (approx 15–25° from vertical) to grassed area, consistent with boundary & shape of garden, 75–100mm deep.",
+    damage: "No damage to any assets including desirable plants from herbicide use. Surrounding lawns must be protected from undue compression or damage during all maintenance operations.",
     mulching: "50–75mm depth maintained", pruning: "As required",
   },
   {
@@ -89,6 +95,7 @@ const SPECS: SpecType[] = [
     litter: "No old litter", plantHealth: "Monitoring as required",
     plantCoverage: "90%",
     edging: "Built edge safe, clean & functional. Soft edging (turf) sloping edge (approx 15–25° from vertical) to grassed area, consistent with boundary & shape of garden, 75–100mm deep.",
+    damage: "No damage to any assets including desirable plants from herbicide use. Surrounding lawns must be protected from undue compression or damage during all maintenance operations.",
     mulching: "As required", pruning: "Minimal — form only",
   },
   {
@@ -98,6 +105,7 @@ const SPECS: SpecType[] = [
     litter: "No old litter", plantHealth: "Monitoring as required",
     plantCoverage: "90%",
     edging: "Built edge safe, clean & functional. Soft edging (turf) sloping edge (approx 15–25° from vertical) to grassed area, consistent with boundary & shape of garden, 75–100mm deep.",
+    damage: "No damage to any assets including desirable plants from herbicide use. Surrounding lawns must be protected from undue compression or damage during all maintenance operations.",
     mulching: "Not required", pruning: "Safety & access only",
   },
   {
@@ -107,6 +115,7 @@ const SPECS: SpecType[] = [
     litter: "No old litter", plantHealth: "Regular monitoring & treatment",
     plantCoverage: "90%",
     edging: "Built edge safe, clean & functional. Soft edging (turf) sloping edge (approx 15–25° from vertical) to grassed area, consistent with boundary & shape of garden, 75–100mm deep.",
+    damage: "No damage to any assets including desirable plants from herbicide use. Surrounding lawns must be protected from undue compression or damage during all maintenance operations.",
     mulching: "75–100mm depth maintained", pruning: "As required",
   },
   {
@@ -116,6 +125,7 @@ const SPECS: SpecType[] = [
     litter: "No old litter", plantHealth: "Monitoring as required",
     plantCoverage: "100%",
     edging: "Built edge safe, clean & functional. Soft edging (turf) sloping edge (approx 15–25° from vertical) to grassed area, consistent with boundary & shape of garden, 75–100mm deep.",
+    damage: "No damage to any assets including desirable plants from herbicide use. Surrounding lawns must be protected from undue compression or damage during all maintenance operations.",
     mulching: "As required", pruning: "Regular trimming to maintain shape",
   },
 ];
@@ -195,7 +205,8 @@ function SpecCard({ spec, colors: c }: { spec: SpecType; colors: ReturnType<type
             { icon: "trash-2",   label: "Litter",          value: spec.litter },
             { icon: "activity",  label: "Health & Vigour", value: spec.plantHealth },
             { icon: "sun",       label: "Plant Coverage",  value: spec.plantCoverage ?? "" },
-            { icon: "scissors",  label: "Edging",         value: spec.edging },
+            { icon: "scissors",  label: "Edging",          value: spec.edging },
+            { icon: "alert-triangle", label: "Damage",   value: spec.damage },
             { icon: "layers",    label: "Mulching",       value: spec.mulching },
             { icon: "git-merge", label: spec.pruningLabel ?? "Pruning", value: spec.pruning },
           ].filter(({ value }) => !!value).map(({ icon, label, value }) => (
