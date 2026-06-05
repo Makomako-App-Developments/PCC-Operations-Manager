@@ -39,7 +39,7 @@ const SPECS: SpecType[] = [
     standard: "High", frequency: "Weekly", weedControl: "No herbicides",
     weedCover: { text: "Weed free", badge: "weed-free" },
     litter: "No old litter", plantHealth: "Regular monitoring & treatment",
-    mulching: "As required", pruning: "As required",
+    mulching: "", pruning: "As required",
   },
   {
     id: "roses", typeNum: "Type 2", label: "Roses & Perennials",
@@ -175,7 +175,7 @@ function SpecCard({ spec, colors: c }: { spec: SpecType; colors: ReturnType<type
             { icon: "activity",  label: "Plant Health",  value: spec.plantHealth },
             { icon: "layers",    label: "Mulching",      value: spec.mulching },
             { icon: "git-merge", label: "Pruning",       value: spec.pruning },
-          ].map(({ icon, label, value }) => (
+          ].filter(({ value }) => !!value).map(({ icon, label, value }) => (
             <View key={label} style={styles.detailRow}>
               <Feather name={icon as any} size={13} color={PRIMARY} style={styles.detailIcon} />
               <View style={{ flex: 1 }}>
