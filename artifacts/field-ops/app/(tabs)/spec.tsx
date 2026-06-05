@@ -214,7 +214,7 @@ function SpecCard({ spec, colors: c }: { spec: SpecType; colors: ReturnType<type
           <Text style={[styles.keyText, { color: c.mutedForeground }]}>{spec.frequency}</Text>
         </View>
         <View style={styles.keyItem}>
-          <Feather name="scissors" size={11} color={c.mutedForeground} />
+          <Feather name="droplet" size={11} color={c.mutedForeground} />
           <Text style={[styles.keyText, { color: c.mutedForeground }]}>{spec.weedControl}</Text>
         </View>
       </View>
