@@ -49,6 +49,7 @@ const SPECS: SpecType[] = [
     standard: "High", frequency: "Fortnightly", weedControl: "Mechanical",
     weedCover: { text: "Weed free", badge: "weed-free" },
     litter: "No old litter", plantHealth: "Regular monitoring & treatment",
+    plantCoverage: "90%",
     mulching: "75–100mm depth maintained", pruning: "Species-appropriate pruning",
   },
   {
@@ -56,6 +57,7 @@ const SPECS: SpecType[] = [
     standard: "High", frequency: "Fortnightly", weedControl: "Mechanical",
     weedCover: "2%",
     litter: "No old litter", plantHealth: "Regular monitoring",
+    plantCoverage: "90%",
     mulching: "75–100mm depth maintained", pruning: "Shape & form maintained",
   },
   {
@@ -63,6 +65,7 @@ const SPECS: SpecType[] = [
     standard: "Medium", frequency: "Monthly", weedControl: "Mechanical",
     weedCover: "5%",
     litter: "No old litter", plantHealth: "Monitoring as required",
+    plantCoverage: "90%",
     mulching: "50–75mm depth maintained", pruning: "As required to maintain form",
   },
   {
@@ -70,6 +73,7 @@ const SPECS: SpecType[] = [
     standard: "Medium", frequency: "Monthly", weedControl: "Mechanical",
     weedCover: "5%",
     litter: "No old litter", plantHealth: "Monitoring as required",
+    plantCoverage: "90%",
     mulching: "50–75mm depth maintained", pruning: "As required",
   },
   {
@@ -77,6 +81,7 @@ const SPECS: SpecType[] = [
     standard: "Medium", frequency: "Quarterly", weedControl: "Chemical",
     weedCover: "5%",
     litter: "No old litter", plantHealth: "Monitoring as required",
+    plantCoverage: "90%",
     mulching: "As required", pruning: "Minimal — form only",
   },
   {
@@ -84,6 +89,7 @@ const SPECS: SpecType[] = [
     standard: "Low", frequency: "Bimonthly", weedControl: "Chemical",
     weedCover: "15%",
     litter: "No old litter", plantHealth: "Monitoring as required",
+    plantCoverage: "90%",
     mulching: "Not required", pruning: "Safety & access only",
   },
   {
@@ -91,6 +97,7 @@ const SPECS: SpecType[] = [
     standard: "Medium", frequency: "Monthly", weedControl: "Mechanical",
     weedCover: "5%",
     litter: "No old litter", plantHealth: "Regular monitoring & treatment",
+    plantCoverage: "90%",
     mulching: "75–100mm depth maintained", pruning: "As required",
   },
   {
@@ -98,6 +105,7 @@ const SPECS: SpecType[] = [
     standard: "Medium", frequency: "Seasonal", weedControl: "Chemical",
     weedCover: "5%",
     litter: "No old litter", plantHealth: "Monitoring as required",
+    plantCoverage: "100%",
     mulching: "As required", pruning: "Regular trimming to maintain shape",
   },
 ];
