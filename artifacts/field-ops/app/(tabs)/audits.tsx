@@ -444,9 +444,9 @@ export default function AuditsScreen() {
               >
                 <View style={{ flex: 1 }}>
                   <Text style={[styles.assetRowName, { color: colors.foreground }]}>{asset.name}</Text>
-                  {(asset.suburb || asset.streetAddress) && (
-                    <Text style={[styles.assetRowSub, { color: colors.mutedForeground }]}>
-                      {[asset.streetAddress, asset.suburb].filter(Boolean).join(", ")}
+                  {((asset as any).description || asset.suburb) && (
+                    <Text style={[styles.assetRowSub, { color: colors.mutedForeground }]} numberOfLines={1}>
+                      {(asset as any).description || asset.suburb}
                     </Text>
                   )}
                 </View>

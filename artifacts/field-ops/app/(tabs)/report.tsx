@@ -491,7 +491,7 @@ export default function ReportScreen() {
               >
                 <View style={{ flex: 1 }}>
                   <Text style={[styles.modalItemText, { color: colors.foreground }]}>{a.name}</Text>
-                  <Text style={[styles.modalItemSub, { color: colors.mutedForeground }]}>{a.suburb ?? ""}</Text>
+                  <Text style={[styles.modalItemSub, { color: colors.mutedForeground }]} numberOfLines={1}>{(a as any).description || a.suburb || ""}</Text>
                 </View>
                 {selectedAssetId === a.id && <Feather name="check" size={18} color={colors.primary} />}
               </TouchableOpacity>

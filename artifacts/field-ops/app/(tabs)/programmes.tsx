@@ -289,7 +289,7 @@ function RecordDepthModal({ visible, token, onClose, onSubmit }: RecordDepthModa
                           activeOpacity={0.7}
                         >
                           <Text style={[naStyles.resultName, { color: colors.foreground }]} numberOfLines={1}>{a.name}</Text>
-                          {a.suburb && <Text style={[naStyles.resultSub, { color: colors.mutedForeground }]}>{a.suburb}</Text>}
+                          {(a.description || a.suburb) && <Text style={[naStyles.resultSub, { color: colors.mutedForeground }]} numberOfLines={1}>{a.description || a.suburb}</Text>}
                         </TouchableOpacity>
                       ))
                     )}
@@ -525,7 +525,7 @@ function NewAssessmentModal({ visible, token, onClose, onSuccess }: NewAssessmen
                           activeOpacity={0.7}
                         >
                           <Text style={[naStyles.resultName, { color: colors.foreground }]} numberOfLines={1}>{a.name}</Text>
-                          {a.suburb && <Text style={[naStyles.resultSub, { color: colors.mutedForeground }]}>{a.suburb}</Text>}
+                          {(a.description || a.suburb) && <Text style={[naStyles.resultSub, { color: colors.mutedForeground }]} numberOfLines={1}>{a.description || a.suburb}</Text>}
                         </TouchableOpacity>
                       ))
                     )}
