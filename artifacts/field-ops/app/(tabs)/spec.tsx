@@ -200,7 +200,7 @@ function SpecCard({ spec, colors: c }: { spec: SpecType; colors: ReturnType<type
         <View style={styles.keyItem}>
           <Feather name="percent" size={11} color={c.mutedForeground} />
           {weedText ? (
-            <Text style={[styles.keyText, { color: c.mutedForeground }]}>Max {weedText} weeds</Text>
+            <Text style={[styles.keyText, { color: c.mutedForeground }]}>Max {weedText} weed coverage</Text>
           ) : (
             <WeedBadge value={spec.weedCover} />
           )}
