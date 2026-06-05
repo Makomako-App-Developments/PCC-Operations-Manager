@@ -65,7 +65,7 @@ const SPECS: SpecType[] = [
     damage: "No damage to any assets including desirable plants from herbicide use. Surrounding lawns must be protected from undue compression or damage during all maintenance operations.",
     stakesAndTies: "Stake & tie plants as necessary to ensure plants are always protected from damage, healthy development is encouraged and the required form of growth is achieved. Removed when not necessary.",
     pestsAndDiseases: "Maintained to healthy standard. Report presence at each visit.",
-    mulching: "75–100mm depth maintained", pruning: "Species-appropriate pruning",
+    mulching: "75–100mm depth maintained", pruning: "Build strong framework, maintain shape, maximise flowering, clearance from assets, pedestrians & carriageway. Maintain 2.5m vertical clearance.",
   },
   {
     id: "ornamental", typeNum: "Type 3", label: "Ornamental",
@@ -78,7 +78,7 @@ const SPECS: SpecType[] = [
     damage: "No damage to any assets including desirable plants from herbicide use. Surrounding lawns must be protected from undue compression or damage during all maintenance operations.",
     stakesAndTies: "Stake & tie plants as necessary to ensure plants are always protected from damage, healthy development is encouraged and the required form of growth is achieved. Removed when not necessary.",
     pestsAndDiseases: "Maintained to healthy standard. Report presence at each visit.",
-    mulching: "75–100mm depth maintained", pruning: "Shape & form maintained",
+    mulching: "75–100mm depth maintained", pruning: "Build strong framework, maintain shape, maximise flowering, clearance from assets, pedestrians & carriageway. Maintain 2.5m vertical clearance.",
   },
   {
     id: "amenity", typeNum: "Type 4", label: "Amenity",
@@ -91,7 +91,7 @@ const SPECS: SpecType[] = [
     damage: "No damage to any assets including desirable plants from herbicide use. Surrounding lawns must be protected from undue compression or damage during all maintenance operations.",
     stakesAndTies: "Stake & tie plants as necessary to ensure plants are always protected from damage, healthy development is encouraged and the required form of growth is achieved. Removed when not necessary.",
     pestsAndDiseases: "Maintained to healthy standard. Report presence at each visit.",
-    mulching: "50–75mm depth maintained", pruning: "As required to maintain form",
+    mulching: "50–75mm depth maintained", pruning: "Build strong framework, maintain shape, maximise flowering, clearance from assets, pedestrians & carriageway. Maintain 2.5m vertical clearance.",
   },
   {
     id: "rain", typeNum: "Type 5", label: "Rain Garden",
@@ -104,7 +104,7 @@ const SPECS: SpecType[] = [
     damage: "No damage to any assets including desirable plants from herbicide use. Surrounding lawns must be protected from undue compression or damage during all maintenance operations.",
     stakesAndTies: "Stake & tie plants as necessary to ensure plants are always protected from damage, healthy development is encouraged and the required form of growth is achieved. Removed when not necessary.",
     pestsAndDiseases: "Maintained to healthy standard. Report presence at each visit.",
-    mulching: "50–75mm depth maintained", pruning: "As required",
+    mulching: "50–75mm depth maintained", pruning: "Build strong framework, maintain shape, maximise flowering, clearance from assets, pedestrians & carriageway. Maintain 2.5m vertical clearance.",
   },
   {
     id: "reveg", typeNum: "Type 6", label: "Revegetation",
@@ -117,7 +117,7 @@ const SPECS: SpecType[] = [
     damage: "No damage to any assets including desirable plants from herbicide use. Surrounding lawns must be protected from undue compression or damage during all maintenance operations.",
     stakesAndTies: "Stake & tie plants as necessary to ensure plants are always protected from damage, healthy development is encouraged and the required form of growth is achieved. Removed when not necessary.",
     pestsAndDiseases: "Maintained to healthy standard. Report presence at each visit.",
-    mulching: "As required", pruning: "Minimal — form only",
+    mulching: "As required", pruning: "Build strong framework, maintain shape, maximise flowering, clearance from assets, pedestrians & carriageway. Maintain 2.5m vertical clearance.",
   },
   {
     id: "bush", typeNum: "Type 7", label: "Bush",
@@ -129,7 +129,7 @@ const SPECS: SpecType[] = [
     edging: "Built edge safe, clean & functional. Soft edging (turf) sloping edge (approx 15–25° from vertical) to grassed area, consistent with boundary & shape of garden, 75–100mm deep.",
     damage: "No damage to any assets including desirable plants from herbicide use. Surrounding lawns must be protected from undue compression or damage during all maintenance operations.",
     stakesAndTies: "Stake & tie plants as necessary to ensure plants are always protected from damage, healthy development is encouraged and the required form of growth is achieved. Removed when not necessary.",
-    mulching: "Not required", pruning: "Safety & access only",
+    mulching: "Not required", pruning: "",
   },
   {
     id: "tree", typeNum: "Type 8", label: "Tree Planter Pits",
@@ -142,7 +142,7 @@ const SPECS: SpecType[] = [
     damage: "No damage to any assets including desirable plants from herbicide use. Surrounding lawns must be protected from undue compression or damage during all maintenance operations.",
     stakesAndTies: "Stake & tie plants as necessary to ensure plants are always protected from damage, healthy development is encouraged and the required form of growth is achieved. Removed when not necessary.",
     pestsAndDiseases: "Maintained to healthy standard. Report presence at each visit.",
-    mulching: "75–100mm depth maintained", pruning: "As required",
+    mulching: "75–100mm depth maintained", pruning: "Build strong framework, maintain shape, maximise flowering, clearance from assets, pedestrians & carriageway. Maintain 2.5m vertical clearance.",
   },
   {
     id: "hedges", typeNum: "Type 9", label: "Hedges",
@@ -155,7 +155,7 @@ const SPECS: SpecType[] = [
     damage: "No damage to any assets including desirable plants from herbicide use. Surrounding lawns must be protected from undue compression or damage during all maintenance operations.",
     stakesAndTies: "Stake & tie plants as necessary to ensure plants are always protected from damage, healthy development is encouraged and the required form of growth is achieved. Removed when not necessary.",
     pestsAndDiseases: "Maintained to healthy standard. Report presence at each visit.",
-    mulching: "As required", pruning: "Regular trimming to maintain shape",
+    mulching: "As required", pruning: "Build strong framework, maintain shape, maximise flowering, clearance from assets, pedestrians & carriageway. Maintain 2.5m vertical clearance.",
   },
 ];
 
