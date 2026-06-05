@@ -206,20 +206,13 @@ function SpecCard({ spec, colors: c }: { spec: SpecType; colors: ReturnType<type
           <Feather name="scissors" size={11} color={c.mutedForeground} />
           <Text style={[styles.keyText, { color: c.mutedForeground }]}>{spec.weedControl}</Text>
         </View>
-        <View style={styles.keyItem}>
-          <Feather name="percent" size={11} color={c.mutedForeground} />
-          {weedText ? (
-            <Text style={[styles.keyText, { color: c.mutedForeground }]}>Max {weedText} weed coverage</Text>
-          ) : (
-            <WeedBadge value={spec.weedCover} />
-          )}
-        </View>
       </View>
 
       {/* Expanded detail */}
       {expanded && (
         <View style={[styles.detail, { borderTopColor: c.border }]}>
           {[
+            { icon: "percent",   label: "Weeds",            value: weedText ? `Max ${weedText} weed coverage` : (typeof spec.weedCover !== "string" ? spec.weedCover.text : "") },
             { icon: "trash-2",   label: "Litter",          value: spec.litter },
             { icon: "activity",  label: "Health & Vigour", value: spec.plantHealth },
             { icon: "sun",       label: "Plant Coverage",  value: spec.plantCoverage ?? "" },
