@@ -30,6 +30,7 @@ interface SpecType {
   plantHealth: string;
   mulching:   string;
   plantCoverage?: string;
+  edging:         string;
   pruning:        string;
   pruningLabel?:  string;
   note?:        string;
@@ -42,6 +43,7 @@ const SPECS: SpecType[] = [
     weedCover: { text: "Weed free", badge: "weed-free" },
     litter: "No old litter", plantHealth: "Regular monitoring & treatment",
     plantCoverage: "100% as appropriate to each design",
+    edging: "Built edge safe, clean & functional. Soft edging (turf) sloping edge (approx 15–25° from vertical) to grassed area, consistent with boundary & shape of garden, 75–100mm deep.",
     mulching: "", pruning: "Only 2% dead heads allowed", pruningLabel: "Dead Heading",
   },
   {
@@ -50,6 +52,7 @@ const SPECS: SpecType[] = [
     weedCover: { text: "Weed free", badge: "weed-free" },
     litter: "No old litter", plantHealth: "Regular monitoring & treatment",
     plantCoverage: "90%",
+    edging: "Built edge safe, clean & functional. Soft edging (turf) sloping edge (approx 15–25° from vertical) to grassed area, consistent with boundary & shape of garden, 75–100mm deep.",
     mulching: "75–100mm depth maintained", pruning: "Species-appropriate pruning",
   },
   {
@@ -58,6 +61,7 @@ const SPECS: SpecType[] = [
     weedCover: "2%",
     litter: "No old litter", plantHealth: "Regular monitoring",
     plantCoverage: "90%",
+    edging: "Built edge safe, clean & functional. Soft edging (turf) sloping edge (approx 15–25° from vertical) to grassed area, consistent with boundary & shape of garden, 75–100mm deep.",
     mulching: "75–100mm depth maintained", pruning: "Shape & form maintained",
   },
   {
@@ -66,6 +70,7 @@ const SPECS: SpecType[] = [
     weedCover: "5%",
     litter: "No old litter", plantHealth: "Monitoring as required",
     plantCoverage: "90%",
+    edging: "Built edge safe, clean & functional. Soft edging (turf) sloping edge (approx 15–25° from vertical) to grassed area, consistent with boundary & shape of garden, 75–100mm deep.",
     mulching: "50–75mm depth maintained", pruning: "As required to maintain form",
   },
   {
@@ -74,6 +79,7 @@ const SPECS: SpecType[] = [
     weedCover: "5%",
     litter: "No old litter", plantHealth: "Monitoring as required",
     plantCoverage: "90%",
+    edging: "Built edge safe, clean & functional. Soft edging (turf) sloping edge (approx 15–25° from vertical) to grassed area, consistent with boundary & shape of garden, 75–100mm deep.",
     mulching: "50–75mm depth maintained", pruning: "As required",
   },
   {
@@ -82,6 +88,7 @@ const SPECS: SpecType[] = [
     weedCover: "5%",
     litter: "No old litter", plantHealth: "Monitoring as required",
     plantCoverage: "90%",
+    edging: "Built edge safe, clean & functional. Soft edging (turf) sloping edge (approx 15–25° from vertical) to grassed area, consistent with boundary & shape of garden, 75–100mm deep.",
     mulching: "As required", pruning: "Minimal — form only",
   },
   {
@@ -90,6 +97,7 @@ const SPECS: SpecType[] = [
     weedCover: "15%",
     litter: "No old litter", plantHealth: "Monitoring as required",
     plantCoverage: "90%",
+    edging: "Built edge safe, clean & functional. Soft edging (turf) sloping edge (approx 15–25° from vertical) to grassed area, consistent with boundary & shape of garden, 75–100mm deep.",
     mulching: "Not required", pruning: "Safety & access only",
   },
   {
@@ -98,6 +106,7 @@ const SPECS: SpecType[] = [
     weedCover: "5%",
     litter: "No old litter", plantHealth: "Regular monitoring & treatment",
     plantCoverage: "90%",
+    edging: "Built edge safe, clean & functional. Soft edging (turf) sloping edge (approx 15–25° from vertical) to grassed area, consistent with boundary & shape of garden, 75–100mm deep.",
     mulching: "75–100mm depth maintained", pruning: "As required",
   },
   {
@@ -106,6 +115,7 @@ const SPECS: SpecType[] = [
     weedCover: "5%",
     litter: "No old litter", plantHealth: "Monitoring as required",
     plantCoverage: "100%",
+    edging: "Built edge safe, clean & functional. Soft edging (turf) sloping edge (approx 15–25° from vertical) to grassed area, consistent with boundary & shape of garden, 75–100mm deep.",
     mulching: "As required", pruning: "Regular trimming to maintain shape",
   },
 ];
@@ -185,7 +195,8 @@ function SpecCard({ spec, colors: c }: { spec: SpecType; colors: ReturnType<type
             { icon: "trash-2",   label: "Litter",          value: spec.litter },
             { icon: "activity",  label: "Health & Vigour", value: spec.plantHealth },
             { icon: "sun",       label: "Plant Coverage",  value: spec.plantCoverage ?? "" },
-            { icon: "layers",    label: "Mulching",      value: spec.mulching },
+            { icon: "scissors",  label: "Edging",         value: spec.edging },
+            { icon: "layers",    label: "Mulching",       value: spec.mulching },
             { icon: "git-merge", label: spec.pruningLabel ?? "Pruning", value: spec.pruning },
           ].filter(({ value }) => !!value).map(({ icon, label, value }) => (
             <View key={label} style={styles.detailRow}>
