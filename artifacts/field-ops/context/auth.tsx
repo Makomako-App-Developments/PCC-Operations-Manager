@@ -95,6 +95,31 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     async function init() {
       try {
+        // On web: check if the web app passed a token via URL params (single sign-on)
+        if (Platform.OS === "web" && typeof window !== "undefined") {
+          const params = new URLSearchParams(window.location.search);
+          const urlToken = params.get("token");
+          const urlUser = params.get("user");
+          if (urlToken && urlUser) {
+            try {
+              const parsedUser = JSON.parse(decodeURIComponent(urlUser)) as AuthUser;
+              _currentToken = urlToken;
+              setToken(urlToken);
+              setUser(parsedUser);
+              await Promise.all([
+                SecureStore.setItemAsync(TOKEN_KEY, urlToken),
+                SecureStore.setItemAsync(USER_KEY, JSON.stringify(parsedUser)),
+              ]);
+              // Remove the token from the URL so it isn't exposed in history
+              window.history.replaceState({}, "", window.location.pathname);
+              registerPushToken(urlToken).catch(() => {});
+              return;
+            } catch {
+              // fall through to stored token
+            }
+          }
+        }
+
         const [storedToken, storedUser] = await Promise.all([
           SecureStore.getItemAsync(TOKEN_KEY),
           SecureStore.getItemAsync(USER_KEY),

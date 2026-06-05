@@ -26,7 +26,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
         const role = data?.user?.role ?? "";
         if (role === "field_worker") {
-          window.location.href = "/field-ops/";
+          const token = data?.accessToken ?? "";
+          const user = encodeURIComponent(JSON.stringify(data?.user ?? {}));
+          window.location.href = `/field-ops/?token=${token}&user=${user}`;
         } else {
           setLocation("/dashboard");
         }
