@@ -206,7 +206,20 @@ export default function TodayScreen() {
     return map;
   }, [thisWeek, nextWeek]);
 
-  const todayJobs = dayMap.get(TODAY) ?? [];
+  // Carry forward any pending/in-progress jobs from past dates into today
+  const overdueJobs = useMemo(() => {
+    const result: Job[] = [];
+    for (const [date, jobs] of dayMap.entries()) {
+      if (date < TODAY) {
+        result.push(...jobs.filter(
+          (j) => j.status === "pending" || j.status === "in_progress",
+        ));
+      }
+    }
+    return result;
+  }, [dayMap]);
+
+  const todayJobs = [...overdueJobs, ...(dayMap.get(TODAY) ?? [])];
   const day1Jobs  = dayMap.get(DAY1)  ?? [];
   const day2Jobs  = dayMap.get(DAY2)  ?? [];
 
