@@ -353,6 +353,21 @@ ${userMarker}
       return;
     }
 
+    const kpiLabelMap: Record<string, string> = {};
+    KPI_SECTIONS.forEach((s) => s.items.forEach((i) => { kpiLabelMap[i.id] = i.label; }));
+
+    const failsWithoutPhoto = Object.entries(responses)
+      .filter(([criterion, r]) => r.result === "fail" && !photos[criterion])
+      .map(([criterion]) => kpiLabelMap[criterion] ?? criterion);
+
+    if (failsWithoutPhoto.length > 0) {
+      Alert.alert(
+        "Photos required",
+        `Please add a photo for each failed item:\n\n• ${failsWithoutPhoto.join("\n• ")}`,
+      );
+      return;
+    }
+
     setSubmitting(true);
     try {
       const responsePayload = Object.entries(responses)
