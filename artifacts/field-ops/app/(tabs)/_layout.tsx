@@ -1,6 +1,3 @@
-import { BlurView } from "expo-blur";
-import { Tabs } from "expo-router";
-import { SymbolView } from "expo-symbols";
 import { Feather } from "@expo/vector-icons";
 import React from "react";
 import { Platform, StyleSheet, View, useColorScheme } from "react-native";
@@ -58,6 +55,10 @@ function NativeTabLayout({ isPrivileged, isManager }: { isPrivileged: boolean; i
 }
 
 function ClassicTabLayout({ isPrivileged, isManager }: { isPrivileged: boolean; isManager: boolean }) {
+  const { Tabs } = require("expo-router") as typeof import("expo-router");
+  const { BlurView } = require("expo-blur") as typeof import("expo-blur");
+  const { SymbolView } = require("expo-symbols") as typeof import("expo-symbols");
+
   const colors = useColors();
   const colorScheme = useColorScheme();
   const isDark = colorScheme === "dark";
