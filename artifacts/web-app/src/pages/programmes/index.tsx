@@ -375,10 +375,11 @@ function RecordDepthDrawer({
 type ConflictAction = "none" | "push" | "defer" | "delete" | "reassign";
 
 function MulchingReviewDrawer({
-  record, teams, onClose, onPublished,
+  record, teams, assetTeamId, onClose, onPublished,
 }: {
   record: any;
   teams: { id: string; name: string }[];
+  assetTeamId?: string | null;
   onClose: () => void;
   onPublished: () => void;
 }) {
@@ -386,8 +387,8 @@ function MulchingReviewDrawer({
   const qc = useQueryClient();
   const updateJob = useUpdateJob();
 
-  // Step 1 fields
-  const [teamId, setTeamId] = useState(record.assignedTeamId ?? (teams[0]?.id ?? ""));
+  // Step 1 fields — default to the asset's own team, then first team as last resort
+  const [teamId, setTeamId] = useState(record.assignedTeamId ?? assetTeamId ?? teams[0]?.id ?? "");
   const [scheduledDate, setScheduledDate] = useState(record.scheduledDate ?? "");
   const [estMins, setEstMins] = useState(record.estimatedMins ? String(record.estimatedMins) : "120");
 
@@ -1608,7 +1609,7 @@ function JobDetailPanel({
 function MulchingTab({
   assets, teams, initialReviewId,
 }: {
-  assets: { id: string; name: string; description?: string | null }[];
+  assets: { id: string; name: string; description?: string | null; teamId?: string | null }[];
   teams: { id: string; name: string }[];
   initialReviewId?: string;
 }) {
@@ -1815,6 +1816,7 @@ function MulchingTab({
         <MulchingReviewDrawer
           record={reviewTarget}
           teams={teams}
+          assetTeamId={assets.find(a => a.id === reviewTarget.assetId)?.teamId ?? null}
           onClose={() => setReviewTarget(null)}
           onPublished={handleRefresh}
         />
