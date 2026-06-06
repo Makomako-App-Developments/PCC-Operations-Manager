@@ -49,11 +49,15 @@ export default function LoginScreen() {
         method: "POST",
         body: JSON.stringify({ email: email.trim(), password }),
       });
-      await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      // Call login() BEFORE haptics — haptics is non-critical and can no-op/throw
+      // on web without affecting whether the session is established.
       await login(result.accessToken, result.user);
-    } catch {
-      await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-      setError("Invalid email or password. Please try again.");
+      try { await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success); } catch {}
+    } catch (err) {
+      try { await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error); } catch {}
+      // Show the actual error so we can diagnose remote failures.
+      const detail = err instanceof Error ? err.message : String(err);
+      setError(`Sign in failed: ${detail}`);
     } finally {
       setLoading(false);
     }

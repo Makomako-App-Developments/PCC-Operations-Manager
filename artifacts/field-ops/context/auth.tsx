@@ -141,13 +141,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const login = async (newToken: string, newUser: AuthUser) => {
+    // Set in-memory state immediately — this is what drives the UI.
     _currentToken = newToken;
     setToken(newToken);
     setUser(newUser);
-    await Promise.all([
-      SecureStore.setItemAsync(TOKEN_KEY, newToken),
-      SecureStore.setItemAsync(USER_KEY, JSON.stringify(newUser)),
-    ]);
+    // Persist to storage in the background. Safari private mode / strict ITP
+    // can throw from localStorage, so we never let storage failures propagate
+    // back to the caller (which would incorrectly show "Invalid password").
+    SecureStore.setItemAsync(TOKEN_KEY, newToken).catch(() => {});
+    SecureStore.setItemAsync(USER_KEY, JSON.stringify(newUser)).catch(() => {});
     registerPushToken(newToken).catch(() => {});
   };
 
