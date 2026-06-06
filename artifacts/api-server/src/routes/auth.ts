@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db, usersTable } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { z } from "zod";
 import { verifyPassword, hashPassword } from "../lib/password";
 import { signTokens, requireAuth } from "../middlewares/auth";
@@ -16,7 +16,7 @@ const loginSchema = z.object({
 // POST /api/auth/login
 router.post("/auth/login", validateBody(loginSchema), async (req, res) => {
   const { email, password } = req.body;
-  const [user] = await db.select().from(usersTable).where(eq(usersTable.email, email)).limit(1);
+  const [user] = await db.select().from(usersTable).where(sql`lower(${usersTable.email}) = lower(${email})`).limit(1);
 
   if (!user || !(await verifyPassword(password, user.passwordHash))) {
     res.status(401).json({ error: "Invalid email or password" });
