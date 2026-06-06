@@ -417,6 +417,7 @@ export function ReactiveJobWizard({ teamsData, assetsData, onClose, onPublished 
       await Promise.all([
         qc.invalidateQueries({ queryKey: getListReactiveJobsQueryKey() }),
         qc.invalidateQueries({ queryKey: ["/api/schedule/week"] }),
+        qc.invalidateQueries({ queryKey: ["/api/schedule/range"] }),
         qc.invalidateQueries({ queryKey: ["/api/dashboard/summary"] }),
       ]);
 
