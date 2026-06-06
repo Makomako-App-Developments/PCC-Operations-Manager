@@ -247,13 +247,9 @@ export default function AuditsScreen() {
       ? [userLocation.lat, userLocation.lng]
       : [-41.1342, 174.8492]; // Porirua fallback
 
-    const assetMarkers = ((assetsData as any)?.data ?? [])
+    const mapAssets = ((assetsData as any)?.data ?? [])
       .filter((a: any) => a.lat && a.lng)
-      .map((a: any) =>
-        `L.circleMarker([${a.lat}, ${a.lng}], {radius:6,color:"#00AECD",fillColor:"#00AECD",fillOpacity:0.85,weight:1.5})
-          .bindPopup(${JSON.stringify(a.name ?? "")}).addTo(map);`
-      )
-      .join("\n");
+      .map((a: any) => ({ id: a.id, name: a.name ?? "", lat: a.lat, lng: a.lng }));
 
     const userMarker = userLocation
       ? `L.circleMarker([${userLocation.lat},${userLocation.lng}],{radius:8,color:"#fff",fillColor:"#0f2a36",fillOpacity:1,weight:2}).addTo(map);`
@@ -263,11 +259,27 @@ export default function AuditsScreen() {
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<style>html,body,#map{margin:0;padding:0;height:100%;width:100%;}</style>
+<style>
+html,body,#map{margin:0;padding:0;height:100%;width:100%;}
+.select-btn{margin-top:8px;padding:7px 16px;background:#00AECD;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;width:100%;}
+.select-btn:active{background:#0095b3;}
+.popup-name{font-weight:600;font-size:14px;font-family:sans-serif;display:block;margin-bottom:2px;}
+</style>
 </head><body><div id="map"></div><script>
+var _assets=${JSON.stringify(mapAssets)};
+function _selectAsset(idx){
+  var a=_assets[idx];
+  var msg=JSON.stringify({type:'selectAsset',id:a.id,name:a.name});
+  try{window.ReactNativeWebView.postMessage(msg);}
+  catch(e){window.parent.postMessage({type:'selectAsset',id:a.id,name:a.name},'*');}
+}
 var map=L.map('map',{zoomControl:false,attributionControl:false}).setView([${center[0]},${center[1]}],14);
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
-${assetMarkers}
+_assets.forEach(function(a,i){
+  var popup='<span class="popup-name">'+a.name+'</span><button class="select-btn" onclick="_selectAsset('+i+')">Select this site</button>';
+  L.circleMarker([a.lat,a.lng],{radius:6,color:"#00AECD",fillColor:"#00AECD",fillOpacity:0.85,weight:1.5})
+    .bindPopup(popup,{maxWidth:200}).addTo(map);
+});
 ${userMarker}
 </script></body></html>`;
   }, [userLocation, assetsData]);
@@ -465,7 +477,7 @@ ${userMarker}
           <Text style={[styles.headerTitle, { flex: 1, marginLeft: 12 }]}>Select Site</Text>
         </View>
 
-        <AuditMap html={mapHtml} />
+        <AuditMap html={mapHtml} onAssetSelect={handlePickAsset} />
 
         <View style={[styles.searchBar, { backgroundColor: colors.card, borderColor: colors.border }]}>
           <Feather name="search" size={16} color={colors.mutedForeground} />
