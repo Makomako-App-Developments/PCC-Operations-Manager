@@ -1,21 +1,15 @@
 ---
 name: React Compiler TDZ bug
-description: babel-plugin-react-compiler auto-discovered by babel-preset-expo reorders hooks in minified builds, causing TDZ crashes only in production.
+description: audits.tsx used assetsData in a useMemo BEFORE declaring it; React Compiler masked this, disabling it exposed the underlying source-code TDZ.
 ---
 
 ## The rule
-Never leave `babel-plugin-react-compiler` in devDependencies without explicitly disabling it in babel.config.js.
+Always declare hook results before any useMemo/useCallback that references them.
 
-**Why:** `babel-preset-expo` (Expo SDK 54+) auto-discovers `babel-plugin-react-compiler` if installed, even without it being listed in `babel.config.js`. The compiler reorders hook calls (e.g. puts `useMemo([Q,re])` BEFORE `const {data:re}=useQuery(...)`) and Terser's minifier then surfaces the temporal dead zone as "Cannot access 're' before initialization" — only in production bundles, not dev.
+**Why:** `audits.tsx` had `const mapHtml = useMemo(..., [userLocation, assetsData])` at line ~221, but `const { data: assetsData } = useListAssets(...)` wasn't declared until line ~270. `const` is subject to TDZ. The React Compiler was accidentally masking this by reordering the compiled output. Disabling the React Compiler surfaced the underlying TDZ as "Cannot access 're' before initialization" (Terser minified `assetsData` to `re`).
 
-**How to apply:** In `artifacts/field-ops/babel.config.js`, the option is:
-```js
-presets: [["babel-preset-expo", {
-  unstable_transformImportMeta: true,
-  'react-compiler': false,   // ← exact key name, hyphen not camelCase
-}]]
-```
+**Fix applied:** Moved the `useListAssets` call to BEFORE the `mapHtml` useMemo in `audits.tsx`. Also kept `'react-compiler': false` in `babel.config.js` so future regressions aren't masked.
 
-The env variable `api.caller(getReactCompiler)` returns `caller?.supportsReactCompiler`. Even when the package is removed from package.json, it may still be in the pnpm store. Clearing `/tmp/metro-cache` forces a full rebuild to confirm the fix took effect (new bundle hash = new content).
+**How to apply:** When you see a TDZ crash in field-ops production build (`Cannot access 'X' before initialization`), check `audits.tsx` and other tab screens for const hook results used in useMemo deps before they are declared. The fix is reordering — move the hook call earlier in the component body.
 
-**Confirmed via stack trace:** crash at `entry-6ec022136adcf79afe9f8935954dd4fe.js:1007:7510` in function `v`, inside the audits.tsx component; the memoized HTML map template had `re` as a dependency list item but `re` was bound by a later `useQuery` call.
+**Cache note:** Changing `babel.config.js` alone does NOT bust Metro's module transform cache at `/tmp/metro-cache`. Always `rm -rf /tmp/metro-cache` before rebuilding to confirm config changes took effect (new bundle hash = content changed).

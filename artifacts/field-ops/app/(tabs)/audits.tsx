@@ -217,6 +217,30 @@ export default function AuditsScreen() {
     })();
   }, [view]);
 
+  // ── Assets for picker (must be declared before mapHtml useMemo that depends on it) ──
+  const { data: assetsData } = useListAssets(
+    { limit: 500 },
+    { query: { enabled: view === "pick" } as any },
+  );
+
+  // ── Audits list ──
+  const {
+    data: auditsList,
+    isLoading: loadingAudits,
+    refetch,
+    isRefetching,
+  } = useQuery({
+    queryKey: ["audits"],
+    queryFn: async () => {
+      const res = await fetch(getApiUrl("/api/audits"), {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) throw new Error("Failed to fetch audits");
+      return res.json() as Promise<{ data: any[] }>;
+    },
+    enabled: !!token && view === "list",
+  });
+
   // ── Leaflet map HTML ──
   const mapHtml = useMemo(() => {
     const center = userLocation
@@ -247,30 +271,6 @@ ${assetMarkers}
 ${userMarker}
 </script></body></html>`;
   }, [userLocation, assetsData]);
-
-  // ── Audits list ──
-  const {
-    data: auditsList,
-    isLoading: loadingAudits,
-    refetch,
-    isRefetching,
-  } = useQuery({
-    queryKey: ["audits"],
-    queryFn: async () => {
-      const res = await fetch(getApiUrl("/api/audits"), {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (!res.ok) throw new Error("Failed to fetch audits");
-      return res.json() as Promise<{ data: any[] }>;
-    },
-    enabled: !!token && view === "list",
-  });
-
-  // ── Assets for picker ──
-  const { data: assetsData } = useListAssets(
-    { limit: 500 },
-    { query: { enabled: view === "pick" } as any },
-  );
 
   const filteredAssets = useMemo(() => {
     const all = (assetsData as any)?.data ?? [];
