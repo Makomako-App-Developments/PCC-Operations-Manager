@@ -87,6 +87,7 @@ const patchInfillJobSchema = z.object({
   plannedDate:     z.string().nullable().optional(),
   estimatedMins:   z.number().int().nonnegative().nullable().optional(),
   assessmentNotes: z.string().nullable().optional(),
+  assessmentDate:  z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
   status: z.enum(["draft", "scheduled", "in_progress", "completed", "cancelled"]).optional(),
 });
 

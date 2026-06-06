@@ -1394,12 +1394,39 @@ function JobDetailPanel({
   onStatusChange: (jobId: string, status: JobStatus) => void;
 }) {
   const [, navigate] = useLocation();
+  const qcPanel = useQueryClient();
+  const { toast: toastPanel } = useToast();
   const defaultTeam = job.assignedTeamId ?? assetTeamId ?? "";
   const [teamId, setTeamId] = useState(defaultTeam);
   const autoAssigned = !job.assignedTeamId && !!assetTeamId && teamId === assetTeamId;
   const [plannedDate, setPlannedDate] = useState(job.plannedDate ?? "");
   const [estMins, setEstMins] = useState(String(job.estimatedMins ?? ""));
   const totalPlants = job.species.reduce((s, sp) => s + sp.quantity, 0);
+
+  // Assessment edit state
+  const [editAssessment, setEditAssessment] = useState(false);
+  const [draftNotes, setDraftNotes] = useState(job.assessmentNotes ?? "");
+  const [draftDate, setDraftDate] = useState(job.assessmentDate);
+  const [assessSaving, setAssessSaving] = useState(false);
+
+  const handleSaveAssessment = async () => {
+    setAssessSaving(true);
+    try {
+      await fetch(`/api/infill-jobs/${job.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ assessmentNotes: draftNotes || null, assessmentDate: draftDate }),
+      });
+      await qcPanel.invalidateQueries({ queryKey: ["/api/infill-jobs"] });
+      setEditAssessment(false);
+      toastPanel({ title: "Assessment updated" });
+    } catch {
+      toastPanel({ title: "Failed to save", variant: "destructive" });
+    } finally {
+      setAssessSaving(false);
+    }
+  };
 
   const weekStr = plannedDate ? mondayOf(plannedDate) : "";
   const selectedTeam = teams.find(t => t.id === teamId);
@@ -1460,16 +1487,57 @@ function JobDetailPanel({
         </div>
 
         <div className="flex-1 p-6 space-y-6">
-          {/* Assessment notes */}
-          {job.assessmentNotes && (
-            <div className="p-3 rounded-xl bg-amber-50 border border-amber-200">
-              <div className="flex items-center gap-1.5 mb-1">
+          {/* Assessment notes + date — editable */}
+          <div className="p-3 rounded-xl bg-amber-50 border border-amber-200">
+            <div className="flex items-center justify-between mb-1">
+              <div className="flex items-center gap-1.5">
                 <FileText className="w-3.5 h-3.5 text-amber-600" />
-                <span className="text-[11px] font-semibold text-amber-700">Assessment Notes</span>
+                <span className="text-[11px] font-semibold text-amber-700">Assessment</span>
               </div>
-              <p className="text-xs text-amber-700">{job.assessmentNotes}</p>
+              {!editAssessment && (
+                <button
+                  onClick={() => setEditAssessment(true)}
+                  className="text-[10px] font-semibold px-2 py-0.5 rounded-lg border transition-colors"
+                  style={{ borderColor: "#d97706", color: "#d97706", background: "white" }}>
+                  Edit
+                </button>
+              )}
             </div>
-          )}
+            {editAssessment ? (
+              <div className="space-y-2">
+                <div>
+                  <label className="text-[10px] text-amber-600 font-semibold block mb-0.5">Date</label>
+                  <input type="date" value={draftDate}
+                    onChange={e => setDraftDate(e.target.value)}
+                    className="w-full px-2 py-1.5 text-xs border border-amber-300 rounded-lg bg-white outline-none focus:border-amber-500" />
+                </div>
+                <div>
+                  <label className="text-[10px] text-amber-600 font-semibold block mb-0.5">Notes</label>
+                  <textarea value={draftNotes} onChange={e => setDraftNotes(e.target.value)}
+                    className="w-full px-2 py-1.5 text-xs border border-amber-300 rounded-lg bg-white outline-none focus:border-amber-500 resize-none"
+                    rows={3} placeholder="Assessment notes…" />
+                </div>
+                <div className="flex gap-2 pt-1">
+                  <button onClick={() => setEditAssessment(false)}
+                    className="flex-1 py-1.5 text-xs font-semibold rounded-lg border border-amber-300 text-amber-700 bg-white">
+                    Cancel
+                  </button>
+                  <button onClick={handleSaveAssessment} disabled={assessSaving}
+                    className="flex-1 py-1.5 text-xs font-bold rounded-lg text-white disabled:opacity-40"
+                    style={{ background: "#d97706" }}>
+                    {assessSaving ? "Saving…" : "Save"}
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <>
+                <p className="text-[10px] text-amber-600 mb-0.5">Assessed {job.assessmentDate}</p>
+                {job.assessmentNotes
+                  ? <p className="text-xs text-amber-700">{job.assessmentNotes}</p>
+                  : <p className="text-xs text-amber-500 italic">No notes recorded.</p>}
+              </>
+            )}
+          </div>
 
           {/* Species lines */}
           <div>
@@ -1651,6 +1719,27 @@ function MulchingTab({
   const [reviewTarget, setReviewTarget] = useState<any | null>(null);
   // Detail panel
   const [selectedMulch, setSelectedMulch] = useState<any | null>(null);
+  // Edit mode for detail dialog
+  const [mulchEditMode, setMulchEditMode] = useState(false);
+  const [mulchEditFields, setMulchEditFields] = useState<any>({});
+  const [mulchEditSaving, setMulchEditSaving] = useState(false);
+
+  // Reset edit fields whenever a different record is opened
+  useEffect(() => {
+    if (selectedMulch) {
+      setMulchEditMode(false);
+      setMulchEditFields({
+        scheduledDate:  selectedMulch.scheduledDate ?? "",
+        assignedTeamId: selectedMulch.assignedTeamId ?? "",
+        estimatedMins:  selectedMulch.estimatedMins != null ? String(selectedMulch.estimatedMins) : "",
+        mulchType:      selectedMulch.mulchType ?? "",
+        volumeM3:       selectedMulch.volumeM3 != null ? String(selectedMulch.volumeM3) : "",
+        contractor:     selectedMulch.contractor ?? "",
+        costNzd:        selectedMulch.costNzd != null ? String(selectedMulch.costNzd) : "",
+        notes:          selectedMulch.notes ?? "",
+      });
+    }
+  }, [selectedMulch?.id]);
 
   // Auto-open review drawer when arriving via ?review=<id> deep-link
   useEffect(() => {
@@ -1664,6 +1753,33 @@ function MulchingTab({
 
   const handleRefresh = () => {
     qc.invalidateQueries({ queryKey: getListMulchingRecordsQueryKey() });
+  };
+
+  const handleMulchEditSave = async () => {
+    if (!selectedMulch) return;
+    setMulchEditSaving(true);
+    try {
+      const f = mulchEditFields;
+      const patch: any = {
+        scheduledDate:  f.scheduledDate || null,
+        assignedTeamId: f.assignedTeamId || null,
+        estimatedMins:  f.estimatedMins ? parseInt(f.estimatedMins) : null,
+        mulchType:      f.mulchType || null,
+        volumeM3:       f.volumeM3 ? parseFloat(f.volumeM3) : null,
+        contractor:     f.contractor || null,
+        costNzd:        f.costNzd ? parseFloat(f.costNzd) : null,
+        notes:          f.notes || null,
+      };
+      await (updateMulch.mutateAsync as any)({ id: selectedMulch.id, data: patch });
+      handleRefresh();
+      setSelectedMulch((prev: any) => prev ? { ...prev, ...patch } : null);
+      setMulchEditMode(false);
+      toast({ title: "Changes saved" });
+    } catch {
+      toast({ title: "Failed to save", variant: "destructive" });
+    } finally {
+      setMulchEditSaving(false);
+    }
   };
 
   const draftCount      = mulchRecords.filter(r => r.status === "draft").length;
@@ -1946,129 +2062,219 @@ function MulchingTab({
         const isDraft = r.status === "draft";
         const assetObj = assets.find(a => a.id === r.assetId);
         const team = teams.find(t => t.id === r.assignedTeamId);
+        const canEdit = r.status !== "completed";
         return (
-          <Dialog open onOpenChange={open => { if (!open) setSelectedMulch(null); }}>
+          <Dialog open onOpenChange={open => { if (!open) { setSelectedMulch(null); setMulchEditMode(false); } }}>
             <DialogContent className="max-w-lg rounded-2xl">
               <DialogHeader>
                 <DialogTitle className="flex items-center justify-between gap-3 pr-6">
                   <span className="truncate">{r.assetName ?? "Mulching Job"}</span>
-                  <span className="text-[11px] font-bold px-2 py-0.5 rounded-full shrink-0"
-                    style={{ color: st.color, background: st.bg }}>{st.label}</span>
+                  <div className="flex items-center gap-2 flex-shrink-0">
+                    <span className="text-[11px] font-bold px-2 py-0.5 rounded-full"
+                      style={{ color: st.color, background: st.bg }}>{st.label}</span>
+                    {canEdit && (
+                      <button
+                        onClick={() => setMulchEditMode(v => !v)}
+                        className="text-xs font-semibold px-2.5 py-1 rounded-lg border transition-colors"
+                        style={mulchEditMode
+                          ? { borderColor: "#dc2626", color: "#dc2626", background: "#fef2f2" }
+                          : { borderColor: "#e5e7eb", color: "#6b7280", background: "white" }}>
+                        {mulchEditMode ? "Cancel" : "Edit"}
+                      </button>
+                    )}
+                  </div>
                 </DialogTitle>
               </DialogHeader>
 
-              <div className="space-y-4 text-sm">
-                {/* Key fields */}
-                <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
-                  <div>
-                    <p className="text-xs text-gray-400 mb-0.5">Scheduled Date</p>
-                    <p className="font-medium text-gray-800">{r.scheduledDate ? fmt(r.scheduledDate) : "—"}</p>
-                    {r.alignedJobDate && (
-                      <p className="text-[10px] font-semibold mt-0.5" style={{ color: BRAND }}>
-                        📅 Aligned to maintenance visit
-                      </p>
+              <div className="space-y-4 text-sm max-h-[60vh] overflow-y-auto pr-1">
+                {mulchEditMode ? (
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <Label className="text-xs text-gray-500 mb-1 block">Scheduled Date</Label>
+                      <Input type="date" value={mulchEditFields.scheduledDate}
+                        onChange={e => setMulchEditFields((p: any) => ({ ...p, scheduledDate: e.target.value }))}
+                        className="rounded-xl text-sm" />
+                    </div>
+                    <div>
+                      <Label className="text-xs text-gray-500 mb-1 block">Team</Label>
+                      <select value={mulchEditFields.assignedTeamId}
+                        onChange={e => setMulchEditFields((p: any) => ({ ...p, assignedTeamId: e.target.value }))}
+                        className="w-full px-3 py-2 text-sm border border-gray-200 rounded-xl outline-none focus:border-[#00AECD] bg-white">
+                        <option value="">— Unassigned —</option>
+                        {teams.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <Label className="text-xs text-gray-500 mb-1 block">Mulch Type</Label>
+                      <select value={mulchEditFields.mulchType}
+                        onChange={e => setMulchEditFields((p: any) => ({ ...p, mulchType: e.target.value }))}
+                        className="w-full px-3 py-2 text-sm border border-gray-200 rounded-xl outline-none focus:border-[#00AECD] bg-white">
+                        <option value="">— Select —</option>
+                        {MULCH_TYPES.map(t => <option key={t}>{t}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <Label className="text-xs text-gray-500 mb-1 block">Est. Time (mins)</Label>
+                      <Input type="number" value={mulchEditFields.estimatedMins}
+                        onChange={e => setMulchEditFields((p: any) => ({ ...p, estimatedMins: e.target.value }))}
+                        min="0" className="rounded-xl text-sm" />
+                    </div>
+                    <div>
+                      <Label className="text-xs text-gray-500 mb-1 block">Volume (m³)</Label>
+                      <Input type="number" step="0.1" value={mulchEditFields.volumeM3}
+                        onChange={e => setMulchEditFields((p: any) => ({ ...p, volumeM3: e.target.value }))}
+                        min="0" className="rounded-xl text-sm" />
+                    </div>
+                    <div>
+                      <Label className="text-xs text-gray-500 mb-1 block">Contractor</Label>
+                      <Input value={mulchEditFields.contractor}
+                        onChange={e => setMulchEditFields((p: any) => ({ ...p, contractor: e.target.value }))}
+                        className="rounded-xl text-sm" />
+                    </div>
+                    <div>
+                      <Label className="text-xs text-gray-500 mb-1 block">Cost (NZD)</Label>
+                      <Input type="number" step="0.01" value={mulchEditFields.costNzd}
+                        onChange={e => setMulchEditFields((p: any) => ({ ...p, costNzd: e.target.value }))}
+                        min="0" className="rounded-xl text-sm" />
+                    </div>
+                    <div className="col-span-2">
+                      <Label className="text-xs text-gray-500 mb-1 block">Notes</Label>
+                      <textarea value={mulchEditFields.notes}
+                        onChange={e => setMulchEditFields((p: any) => ({ ...p, notes: e.target.value }))}
+                        className="w-full px-3 py-2 text-sm border border-gray-200 rounded-xl outline-none focus:border-[#00AECD] resize-none"
+                        rows={3} />
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
+                      <div>
+                        <p className="text-xs text-gray-400 mb-0.5">Scheduled Date</p>
+                        <p className="font-medium text-gray-800">{r.scheduledDate ? fmt(r.scheduledDate) : "—"}</p>
+                        {r.alignedJobDate && (
+                          <p className="text-[10px] font-semibold mt-0.5" style={{ color: BRAND }}>
+                            📅 Aligned to maintenance visit
+                          </p>
+                        )}
+                      </div>
+                      {r.completedDate && (
+                        <div>
+                          <p className="text-xs text-gray-400 mb-0.5">Completed</p>
+                          <p className="font-medium text-gray-800">{fmt(r.completedDate)}</p>
+                        </div>
+                      )}
+                      <div>
+                        <p className="text-xs text-gray-400 mb-0.5">Mulch Type</p>
+                        <p className="font-medium text-gray-800">{r.mulchType ?? "—"}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-gray-400 mb-0.5">Volume</p>
+                        <p className="font-medium text-gray-800">{r.volumeM3 ? `${r.volumeM3} m³` : "—"}</p>
+                      </div>
+                      {team && (
+                        <div>
+                          <p className="text-xs text-gray-400 mb-0.5">Team</p>
+                          <p className="font-medium text-gray-800">{team.name}</p>
+                        </div>
+                      )}
+                      {r.estimatedMins && (
+                        <div>
+                          <p className="text-xs text-gray-400 mb-0.5">Est. Time</p>
+                          <p className="font-medium text-gray-800">{fmtMins(r.estimatedMins)}</p>
+                        </div>
+                      )}
+                      {r.contractor && (
+                        <div>
+                          <p className="text-xs text-gray-400 mb-0.5">Contractor</p>
+                          <p className="font-medium text-gray-800">{r.contractor}</p>
+                        </div>
+                      )}
+                      {r.costNzd && (
+                        <div>
+                          <p className="text-xs text-gray-400 mb-0.5">Cost</p>
+                          <p className="font-medium text-gray-800">${r.costNzd} NZD</p>
+                        </div>
+                      )}
+                    </div>
+
+                    {isDraft && r.projectedDepthAtDue != null && (
+                      <div className="rounded-lg px-3 py-2 text-xs" style={{ background: "#f5f3ff", color: "#7c3aed" }}>
+                        <span className="font-semibold">Projected depth at job date:</span> ~{r.projectedDepthAtDue}mm (action threshold {ACTION_THRESHOLD_MM}mm)
+                      </div>
                     )}
-                  </div>
-                  {r.completedDate && (
-                    <div>
-                      <p className="text-xs text-gray-400 mb-0.5">Completed</p>
-                      <p className="font-medium text-gray-800">{fmt(r.completedDate)}</p>
-                    </div>
-                  )}
-                  <div>
-                    <p className="text-xs text-gray-400 mb-0.5">Mulch Type</p>
-                    <p className="font-medium text-gray-800">{r.mulchType ?? "—"}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-gray-400 mb-0.5">Volume</p>
-                    <p className="font-medium text-gray-800">{r.volumeM3 ? `${r.volumeM3} m³` : "—"}</p>
-                  </div>
-                  {team && (
-                    <div>
-                      <p className="text-xs text-gray-400 mb-0.5">Team</p>
-                      <p className="font-medium text-gray-800">{team.name}</p>
-                    </div>
-                  )}
-                  {r.estimatedMins && (
-                    <div>
-                      <p className="text-xs text-gray-400 mb-0.5">Est. Time</p>
-                      <p className="font-medium text-gray-800">{fmtMins(r.estimatedMins)}</p>
-                    </div>
-                  )}
-                  {r.contractor && (
-                    <div>
-                      <p className="text-xs text-gray-400 mb-0.5">Contractor</p>
-                      <p className="font-medium text-gray-800">{r.contractor}</p>
-                    </div>
-                  )}
-                  {r.costNzd && (
-                    <div>
-                      <p className="text-xs text-gray-400 mb-0.5">Cost</p>
-                      <p className="font-medium text-gray-800">${r.costNzd} NZD</p>
-                    </div>
-                  )}
-                </div>
 
-                {/* Projected depth — drafts only */}
-                {isDraft && r.projectedDepthAtDue != null && (
-                  <div className="rounded-lg px-3 py-2 text-xs" style={{ background: "#f5f3ff", color: "#7c3aed" }}>
-                    <span className="font-semibold">Projected depth at job date:</span> ~{r.projectedDepthAtDue}mm (action threshold {ACTION_THRESHOLD_MM}mm)
-                  </div>
+                    {r.notes && (
+                      <div>
+                        <p className="text-xs text-gray-400 mb-1">Notes</p>
+                        <p className="text-gray-700 leading-relaxed">{r.notes}</p>
+                      </div>
+                    )}
+
+                    <div>
+                      <p className="text-xs font-semibold text-gray-500 mb-2 flex items-center gap-1.5">
+                        <History className="w-3.5 h-3.5" /> Depth Reading History
+                      </p>
+                      <ReadingHistoryPanel assetId={r.assetId} />
+                    </div>
+                  </>
                 )}
-
-                {/* Notes */}
-                {r.notes && (
-                  <div>
-                    <p className="text-xs text-gray-400 mb-1">Notes</p>
-                    <p className="text-gray-700 leading-relaxed">{r.notes}</p>
-                  </div>
-                )}
-
-                {/* Reading history */}
-                <div>
-                  <p className="text-xs font-semibold text-gray-500 mb-2 flex items-center gap-1.5">
-                    <History className="w-3.5 h-3.5" /> Depth Reading History
-                  </p>
-                  <ReadingHistoryPanel assetId={r.assetId} />
-                </div>
               </div>
 
               <DialogFooter className="flex gap-2 pt-2">
-                {r.status !== "completed" && !isDraft && assetObj && (
-                  <button
-                    onClick={() => { setDepthTarget({ id: r.assetId, name: r.assetName ?? assetObj.name }); setSelectedMulch(null); }}
-                    className="flex items-center gap-1.5 text-sm font-semibold px-3 py-2 rounded-lg border transition-colors"
-                    style={{ borderColor: BRAND, color: BRAND }}
-                  >
-                    <Ruler className="w-4 h-4" /> Record Depth
-                  </button>
+                {mulchEditMode ? (
+                  <>
+                    <button
+                      onClick={() => setMulchEditMode(false)}
+                      className="px-4 py-2 rounded-xl text-sm font-semibold border border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors">
+                      Cancel
+                    </button>
+                    <button
+                      onClick={handleMulchEditSave}
+                      disabled={mulchEditSaving}
+                      className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-bold text-white disabled:opacity-40"
+                      style={{ background: BRAND }}>
+                      {mulchEditSaving ? "Saving…" : "Save changes"}
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    {r.status !== "completed" && !isDraft && assetObj && (
+                      <button
+                        onClick={() => { setDepthTarget({ id: r.assetId, name: r.assetName ?? assetObj.name }); setSelectedMulch(null); }}
+                        className="flex items-center gap-1.5 text-sm font-semibold px-3 py-2 rounded-lg border transition-colors"
+                        style={{ borderColor: BRAND, color: BRAND }}
+                      >
+                        <Ruler className="w-4 h-4" /> Record Depth
+                      </button>
+                    )}
+                    {isDraft && (
+                      <button
+                        onClick={() => { setReviewTarget(r); setSelectedMulch(null); }}
+                        className="flex items-center gap-1.5 text-sm font-bold px-3 py-2 rounded-lg transition-colors"
+                        style={{ background: "#7c3aed", color: "white" }}
+                      >
+                        <Zap className="w-4 h-4" /> Review &amp; Schedule
+                      </button>
+                    )}
+                    {r.status !== "completed" && !isDraft && (
+                      <button
+                        onClick={() => {
+                          (updateMulch.mutateAsync as any)({ id: r.id, data: { status: "completed", completedDate: new Date().toISOString().slice(0, 10) } })
+                            .then(() => { handleRefresh(); setSelectedMulch(null); });
+                        }}
+                        className="flex items-center gap-1.5 text-sm font-semibold px-3 py-2 rounded-lg bg-green-50 text-green-700 hover:bg-green-100 transition-colors"
+                      >
+                        <CheckCircle2 className="w-4 h-4" /> Mark Done
+                      </button>
+                    )}
+                    <button
+                      onClick={() => setSelectedMulch(null)}
+                      className="ml-auto text-sm text-gray-500 hover:text-gray-700 px-3 py-2 rounded-lg hover:bg-gray-50 transition-colors"
+                    >
+                      Close
+                    </button>
+                  </>
                 )}
-                {isDraft && (
-                  <button
-                    onClick={() => { setReviewTarget(r); setSelectedMulch(null); }}
-                    className="flex items-center gap-1.5 text-sm font-bold px-3 py-2 rounded-lg transition-colors"
-                    style={{ background: "#7c3aed", color: "white" }}
-                  >
-                    <Zap className="w-4 h-4" /> Review &amp; Schedule
-                  </button>
-                )}
-                {r.status !== "completed" && !isDraft && (
-                  <button
-                    onClick={() => {
-                      (updateMulch.mutateAsync as any)({ id: r.id, data: { status: "completed", completedDate: new Date().toISOString().slice(0, 10) } })
-                        .then(() => { handleRefresh(); setSelectedMulch(null); });
-                    }}
-                    className="flex items-center gap-1.5 text-sm font-semibold px-3 py-2 rounded-lg bg-green-50 text-green-700 hover:bg-green-100 transition-colors"
-                  >
-                    <CheckCircle2 className="w-4 h-4" /> Mark Done
-                  </button>
-                )}
-                <button
-                  onClick={() => setSelectedMulch(null)}
-                  className="ml-auto text-sm text-gray-500 hover:text-gray-700 px-3 py-2 rounded-lg hover:bg-gray-50 transition-colors"
-                >
-                  Close
-                </button>
               </DialogFooter>
             </DialogContent>
           </Dialog>
