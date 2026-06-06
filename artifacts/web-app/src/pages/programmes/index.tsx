@@ -711,19 +711,37 @@ function MulchingReviewDrawer({
           )}
         </div>
 
-        <div className="px-6 py-4 border-t flex items-center gap-3">
-          <button onClick={onClose} className="flex-1 py-2 rounded-xl text-sm font-semibold border border-gray-200 text-gray-600 hover:bg-gray-50">
-            Cancel
-          </button>
-          <button
-            onClick={handlePublish}
-            disabled={saving || !canPublish}
-            className="flex-1 py-2 rounded-xl text-sm font-semibold text-white disabled:opacity-40 flex items-center justify-center gap-2"
-            style={{ background: BRAND }}
-          >
-            <Zap className="w-4 h-4" />
-            {saving ? "Scheduling…" : "Publish to Schedule"}
-          </button>
+        <div className="border-t">
+          {/* Overtime acceptance — always visible in footer when over capacity */}
+          {isOverCapacity && (
+            <div className="px-6 pt-4">
+              <button
+                type="button"
+                onClick={() => setOvertimeAccepted(v => !v)}
+                className="w-full py-2.5 rounded-xl border-2 font-bold text-sm flex items-center justify-center gap-2 transition-all"
+                style={overtimeAccepted
+                  ? { borderColor: "#dc2626", background: "#fef2f2", color: "#dc2626" }
+                  : { borderColor: "#fca5a5", background: "white", color: "#ef4444" }}>
+                {overtimeAccepted
+                  ? <><CheckCircle2 className="w-4 h-4" /> Overtime authorised — publish unlocked</>
+                  : <><AlertTriangle className="w-4 h-4" /> Accept overtime to unlock publish</>}
+              </button>
+            </div>
+          )}
+          <div className="px-6 py-4 flex items-center gap-3">
+            <button onClick={onClose} className="flex-1 py-2 rounded-xl text-sm font-semibold border border-gray-200 text-gray-600 hover:bg-gray-50">
+              Cancel
+            </button>
+            <button
+              onClick={handlePublish}
+              disabled={saving || !canPublish}
+              className="flex-1 py-2 rounded-xl text-sm font-semibold text-white disabled:opacity-40 flex items-center justify-center gap-2"
+              style={{ background: BRAND }}
+            >
+              <Zap className="w-4 h-4" />
+              {saving ? "Scheduling…" : "Publish to Schedule"}
+            </button>
+          </div>
         </div>
       </div>
     </div>
