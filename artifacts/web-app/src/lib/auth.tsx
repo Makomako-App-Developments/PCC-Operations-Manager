@@ -6,8 +6,12 @@ import { useQueryClient } from "@tanstack/react-query";
 
 const FIELD_OPS_ROLES = ["field_worker", "manager", "supervisor", "administrator"];
 
-function isMobile() {
-  return typeof window !== "undefined" && window.innerWidth < 768;
+function isMobileDevice() {
+  if (typeof navigator === "undefined") return false;
+  if (/Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent)) return true;
+  // iPad in "Request Desktop Site" mode reports as MacIntel but has touch
+  if (navigator.maxTouchPoints > 1 && /Mac/i.test(navigator.userAgent)) return true;
+  return false;
 }
 
 function redirectToFieldOps(token: string, user: object) {
@@ -39,7 +43,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
         const role = data?.user?.role ?? "";
         const token = data?.accessToken ?? "";
-        if (role === "field_worker" || (FIELD_OPS_ROLES.includes(role) && isMobile())) {
+        if (role === "field_worker" || (FIELD_OPS_ROLES.includes(role) && isMobileDevice())) {
           redirectingRef.current = true;
           redirectToFieldOps(token, data?.user ?? {});
         } else {
@@ -65,7 +69,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } else if (user && !redirectingRef.current) {
       // Already-authenticated session restore: send mobile privileged users to field-ops
       const role = (user as any).role ?? "";
-      if (role === "field_worker" || (FIELD_OPS_ROLES.includes(role) && isMobile())) {
+      if (role === "field_worker" || (FIELD_OPS_ROLES.includes(role) && isMobileDevice())) {
         window.location.href = "/field-ops/";
       }
     }
