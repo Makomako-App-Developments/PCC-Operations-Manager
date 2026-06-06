@@ -10,6 +10,7 @@ import { setBaseUrl } from "@workspace/api-client-react";
 import { useRouter, useSegments, Stack } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import React, { useEffect } from "react";
+import { Platform } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 import { SafeAreaProvider } from "react-native-safe-area-context";
@@ -17,7 +18,14 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { AuthProvider, useAuth } from "@/context/auth";
 
-setBaseUrl(`https://${process.env.EXPO_PUBLIC_DOMAIN ?? ""}`);
+// On native: use the absolute API base URL baked in at build time.
+// On web: leave baseUrl empty so all fetches use relative paths (/api/...)
+// which the Replit proxy routes correctly in both dev and production.
+// (Baking an absolute URL at dev-build time breaks production — the bundled
+// URL is the dev tunnel, not manager.replit.app.)
+if (Platform.OS !== "web") {
+  setBaseUrl(`https://${process.env.EXPO_PUBLIC_DOMAIN ?? ""}`);
+}
 
 SplashScreen.preventAutoHideAsync();
 
