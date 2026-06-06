@@ -183,7 +183,7 @@ export default function TodayScreen() {
   }
 
   const teamParam = user?.teamId ? { teamId: user.teamId } : {};
-  const queryOpts = { query: { enabled: !!user } as any };
+  const queryOpts = { query: { enabled: !!user, refetchInterval: 60_000, staleTime: 30_000 } as any };
 
   const { data: thisWeek, isLoading: loadingThis, refetch: refetchThis, isRefetching: refetchingThis } =
     useGetScheduleWeek({ week: TODAY, ...teamParam }, queryOpts);
