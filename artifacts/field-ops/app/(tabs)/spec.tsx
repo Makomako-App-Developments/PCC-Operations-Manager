@@ -1,4 +1,4 @@
-import { Feather } from "@expo/vector-icons";
+import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
 import React, { useState } from "react";
 import {
   Platform,
@@ -227,16 +227,19 @@ function SpecCard({ spec, colors: c }: { spec: SpecType; colors: ReturnType<type
             { icon: "x-circle",  label: "Pest Plants",     value: spec.pestPlants },
             { icon: "trash-2",   label: "Litter",          value: spec.litter },
             { icon: "activity",  label: "Health & Vigour", value: spec.plantHealth },
-            { icon: "sun",       label: "Plant Coverage",  value: spec.plantCoverage ?? "" },
-            { icon: "scissors",  label: "Edging",          value: spec.edging },
+            { icon: "sprout",    family: "mci" as const, label: "Plant Coverage",  value: spec.plantCoverage ?? "" },
+            { icon: "fence",     family: "mci" as const, label: "Edging",          value: spec.edging },
             { icon: "alert-triangle", label: "Damage",        value: spec.damage },
             { icon: "anchor",         label: "Stakes & Ties",   value: spec.stakesAndTies ?? "" },
             { icon: "shield",         label: "Pests & Diseases", value: spec.pestsAndDiseases ?? "" },
             { icon: "layers",         label: "Mulching",         value: spec.mulching },
-            { icon: "git-merge", label: spec.pruningLabel ?? "Pruning", value: spec.pruning },
-          ].filter(({ value }) => !!value).map(({ icon, label, value }) => (
+            { icon: "scissors", label: spec.pruningLabel ?? "Pruning", value: spec.pruning },
+          ].filter(({ value }) => !!value).map(({ icon, label, value, family }) => (
             <View key={label} style={styles.detailRow}>
-              <Feather name={icon as any} size={13} color={PRIMARY} style={styles.detailIcon} />
+              {family === "mci"
+                ? <MaterialCommunityIcons name={icon as any} size={14} color={PRIMARY} style={styles.detailIcon} />
+                : <Feather name={icon as any} size={13} color={PRIMARY} style={styles.detailIcon} />
+              }
               <View style={{ flex: 1 }}>
                 <Text style={[styles.detailLabel, { color: c.mutedForeground }]}>{label}</Text>
                 <Text style={[styles.detailValue, { color: c.foreground }]}>{value}</Text>
