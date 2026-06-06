@@ -41,7 +41,7 @@ export default function AssetsScreen() {
   const [search, setSearch] = useState("");
 
   const { data, isLoading, refetch, isRefetching } = useListAssets({
-    limit: 100,
+    limit: 2000,
     isActive: true,
   });
 
