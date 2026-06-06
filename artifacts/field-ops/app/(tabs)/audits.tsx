@@ -516,10 +516,19 @@ ${userMarker}
     return (
       <View style={[styles.root, { backgroundColor: colors.background }]}>
         <View style={[styles.header, { backgroundColor: colors.navy, paddingTop: insets.top + 16 }]}>
-          <TouchableOpacity onPress={() => Alert.alert("Cancel audit?", "Progress will be lost.", [
-            { text: "Keep going" },
-            { text: "Cancel audit", style: "destructive", onPress: resetToList },
-          ])} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+          <TouchableOpacity
+            onPress={() => {
+              if (Platform.OS === "web") {
+                if (window.confirm("Cancel audit? Progress will be lost.")) resetToList();
+              } else {
+                Alert.alert("Cancel audit?", "Progress will be lost.", [
+                  { text: "Keep going" },
+                  { text: "Cancel audit", style: "destructive", onPress: resetToList },
+                ]);
+              }
+            }}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
             <Feather name="x" size={20} color="#fff" />
           </TouchableOpacity>
           <View style={{ flex: 1, marginLeft: 12 }}>
@@ -557,7 +566,7 @@ ${userMarker}
           ))}
         </ScrollView>
 
-        <View style={[styles.actionBar, { backgroundColor: colors.card, borderTopColor: colors.border, paddingBottom: insets.bottom + 16 }]}>
+        <View style={[styles.actionBar, { backgroundColor: colors.card, borderTopColor: colors.border, paddingBottom: insets.bottom + (Platform.OS === "web" ? 72 : 16) }]}>
           <TouchableOpacity
             style={[styles.submitBtn, { backgroundColor: submitting ? colors.muted : colors.primary }]}
             onPress={handleSubmit}
