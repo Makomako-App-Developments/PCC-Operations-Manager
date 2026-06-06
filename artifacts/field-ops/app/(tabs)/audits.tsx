@@ -3,7 +3,6 @@ import { useListAssets } from "@workspace/api-client-react";
 import * as ImagePicker from "expo-image-picker";
 import * as Location from "expo-location";
 import React, { useState, useMemo, useEffect } from "react";
-import { WebView } from "react-native-webview";
 import {
   ActivityIndicator,
   Alert,
@@ -465,12 +464,21 @@ ${userMarker}
           <Text style={[styles.headerTitle, { flex: 1, marginLeft: 12 }]}>Select Site</Text>
         </View>
 
-        <WebView
-          source={{ html: mapHtml }}
-          style={styles.map}
-          scrollEnabled={false}
-          originWhitelist={["*"]}
-        />
+        {Platform.OS === "web" ? (
+          <iframe
+            srcDoc={mapHtml}
+            style={{ height: 190, width: "100%", border: "none" } as any}
+            sandbox="allow-scripts allow-same-origin"
+          />
+        ) : (
+          // eslint-disable-next-line @typescript-eslint/no-var-requires
+          React.createElement(require("react-native-webview").WebView, {
+            source: { html: mapHtml },
+            style: styles.map,
+            scrollEnabled: false,
+            originWhitelist: ["*"],
+          })
+        )}
 
         <View style={[styles.searchBar, { backgroundColor: colors.card, borderColor: colors.border }]}>
           <Feather name="search" size={16} color={colors.mutedForeground} />
