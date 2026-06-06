@@ -4,6 +4,17 @@ import { useGetMe, useLogin, useLogout, LoginRequest, User } from "@workspace/ap
 import { useLocation } from "wouter";
 import { useQueryClient } from "@tanstack/react-query";
 
+const FIELD_OPS_ROLES = ["field_worker", "manager", "supervisor", "administrator"];
+
+function isMobile() {
+  return typeof window !== "undefined" && window.innerWidth < 768;
+}
+
+function redirectToFieldOps(token: string, user: object) {
+  const u = encodeURIComponent(JSON.stringify(user));
+  window.location.href = `/field-ops/?token=${token}&user=${u}`;
+}
+
 interface AuthContextType {
   user: User | null;
   isLoading: boolean;
@@ -18,17 +29,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const queryClient = useQueryClient();
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data: user, isLoading, error } = useGetMe({ query: { retry: false, staleTime: Infinity } as any });
+  const { data: user, isLoading } = useGetMe({ query: { retry: false, staleTime: Infinity } as any });
 
   const loginMutation = useLogin({
     mutation: {
       onSuccess: (data: any) => {
         queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
         const role = data?.user?.role ?? "";
-        if (role === "field_worker") {
-          const token = data?.accessToken ?? "";
-          const user = encodeURIComponent(JSON.stringify(data?.user ?? {}));
-          window.location.href = `/field-ops/?token=${token}&user=${user}`;
+        const token = data?.accessToken ?? "";
+        if (FIELD_OPS_ROLES.includes(role) && isMobile()) {
+          redirectToFieldOps(token, data?.user ?? {});
+        } else if (role === "field_worker") {
+          redirectToFieldOps(token, data?.user ?? {});
         } else {
           setLocation("/dashboard");
         }
@@ -49,8 +61,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (isLoading) return;
     if (!user && location !== "/login") {
       setLocation("/login");
-    } else if (user && (user as any).role === "field_worker") {
-      window.location.href = "/field-ops/";
+    } else if (user) {
+      const role = (user as any).role ?? "";
+      if (role === "field_worker" || (FIELD_OPS_ROLES.includes(role) && isMobile())) {
+        window.location.href = "/field-ops/";
+      }
     }
   }, [isLoading, user, location, setLocation]);
 
