@@ -198,6 +198,7 @@ export default function AuditsScreen() {
   const [photos, setPhotos] = useState<Record<string, LocalPhoto>>({});
   const [submitting, setSubmitting] = useState(false);
   const [doneScore, setDoneScore] = useState<number | null>(null);
+  const [openingAuditId, setOpeningAuditId] = useState<string | null>(null);
 
   const bottomPad = insets.bottom + (Platform.OS === "web" ? 84 : 100);
 
@@ -413,6 +414,34 @@ ${userMarker}
     setAssetSearch("");
   };
 
+  const openAudit = async (audit: any) => {
+    if (openingAuditId) return;
+    setOpeningAuditId(audit.id);
+    try {
+      const res = await fetch(getApiUrl(`/api/audits/${audit.id}`), {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) throw new Error("Failed to load audit");
+      const detail = await res.json();
+      const init: Record<string, KpiResponse> = {};
+      ALL_KPI_IDS.forEach((id) => { init[id] = { result: "", notes: "" }; });
+      (detail.items ?? []).forEach((item: any) => {
+        if (init[item.criterion] !== undefined) {
+          init[item.criterion] = { result: item.result ?? "", notes: item.notes ?? "" };
+        }
+      });
+      setAuditId(audit.id);
+      setSelectedAsset({ id: audit.assetId, name: audit.assetName ?? "Unknown site" });
+      setResponses(init);
+      setPhotos({});
+      setView("conduct");
+    } catch {
+      Alert.alert("Error", "Could not load audit. Please try again.");
+    } finally {
+      setOpeningAuditId(null);
+    }
+  };
+
   // ─── Render: List ─────────────────────────────────────────────────────────
 
   if (view === "list") {
@@ -445,7 +474,12 @@ ${userMarker}
             </View>
           ) : (
             auditsList.data.map((audit: any) => (
-              <View key={audit.id} style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border, borderRadius: colors.radius }]}>
+              <TouchableOpacity
+                key={audit.id}
+                activeOpacity={0.75}
+                onPress={() => openAudit(audit)}
+                style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border, borderRadius: colors.radius }]}
+              >
                 <View style={styles.cardHeader}>
                   <View style={{ flex: 1 }}>
                     <Text style={[styles.cardTitle, { color: colors.foreground }]} numberOfLines={1}>
@@ -455,9 +489,15 @@ ${userMarker}
                       {new Date(audit.conductedAt).toLocaleDateString("en-NZ", { day: "numeric", month: "short", year: "numeric" })}
                     </Text>
                   </View>
-                  <AuditStatusBadge status={audit.status} score={audit.overallScore} />
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                    <AuditStatusBadge status={audit.status} score={audit.overallScore} />
+                    {openingAuditId === audit.id
+                      ? <ActivityIndicator size="small" color={colors.primary} />
+                      : <Feather name="chevron-right" size={16} color={colors.mutedForeground} />
+                    }
+                  </View>
                 </View>
-              </View>
+              </TouchableOpacity>
             ))
           )}
         </ScrollView>
