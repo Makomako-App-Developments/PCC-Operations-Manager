@@ -1,7 +1,9 @@
 import { Feather } from "@expo/vector-icons";
 import { useListAssets } from "@workspace/api-client-react";
 import * as ImagePicker from "expo-image-picker";
-import React, { useState, useMemo } from "react";
+import * as Location from "expo-location";
+import React, { useState, useMemo, useEffect } from "react";
+import { WebView } from "react-native-webview";
 import {
   ActivityIndicator,
   Alert,
@@ -198,6 +200,53 @@ export default function AuditsScreen() {
   const [doneScore, setDoneScore] = useState<number | null>(null);
 
   const bottomPad = insets.bottom + (Platform.OS === "web" ? 84 : 100);
+
+  // ── Location for map ──
+  const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
+
+  useEffect(() => {
+    if (view !== "pick") return;
+    (async () => {
+      try {
+        const { status } = await Location.requestForegroundPermissionsAsync();
+        if (status === "granted") {
+          const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+          setUserLocation({ lat: loc.coords.latitude, lng: loc.coords.longitude });
+        }
+      } catch {}
+    })();
+  }, [view]);
+
+  // ── Leaflet map HTML ──
+  const mapHtml = useMemo(() => {
+    const center = userLocation
+      ? [userLocation.lat, userLocation.lng]
+      : [-41.1342, 174.8492]; // Porirua fallback
+
+    const assetMarkers = ((assetsData as any)?.data ?? [])
+      .filter((a: any) => a.lat && a.lng)
+      .map((a: any) =>
+        `L.circleMarker([${a.lat}, ${a.lng}], {radius:6,color:"#00AECD",fillColor:"#00AECD",fillOpacity:0.85,weight:1.5})
+          .bindPopup(${JSON.stringify(a.name ?? "")}).addTo(map);`
+      )
+      .join("\n");
+
+    const userMarker = userLocation
+      ? `L.circleMarker([${userLocation.lat},${userLocation.lng}],{radius:8,color:"#fff",fillColor:"#0f2a36",fillOpacity:1,weight:2}).addTo(map);`
+      : "";
+
+    return `<!DOCTYPE html><html><head>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>html,body,#map{margin:0;padding:0;height:100%;width:100%;}</style>
+</head><body><div id="map"></div><script>
+var map=L.map('map',{zoomControl:false,attributionControl:false}).setView([${center[0]},${center[1]}],14);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+${assetMarkers}
+${userMarker}
+</script></body></html>`;
+  }, [userLocation, assetsData]);
 
   // ── Audits list ──
   const {
@@ -416,6 +465,13 @@ export default function AuditsScreen() {
           <Text style={[styles.headerTitle, { flex: 1, marginLeft: 12 }]}>Select Site</Text>
         </View>
 
+        <WebView
+          source={{ html: mapHtml }}
+          style={styles.map}
+          scrollEnabled={false}
+          originWhitelist={["*"]}
+        />
+
         <View style={[styles.searchBar, { backgroundColor: colors.card, borderColor: colors.border }]}>
           <Feather name="search" size={16} color={colors.mutedForeground} />
           <TextInput
@@ -582,6 +638,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: "#fff",
   },
+  map: { height: 190, width: "100%" },
   scroll: { flex: 1 },
   empty: { alignItems: "center", marginTop: 80, gap: 12 },
   emptyTitle: { fontFamily: "Inter_600SemiBold", fontSize: 16 },
