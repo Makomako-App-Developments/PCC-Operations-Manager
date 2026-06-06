@@ -1,7 +1,5 @@
 import { BlurView } from "expo-blur";
-import { isLiquidGlassAvailable } from "expo-glass-effect";
 import { Tabs } from "expo-router";
-import { Icon, Label, NativeTabs } from "expo-router/unstable-native-tabs";
 import { SymbolView } from "expo-symbols";
 import { Feather } from "@expo/vector-icons";
 import React from "react";
@@ -14,6 +12,7 @@ import { useColors } from "@/hooks/useColors";
 const PRIVILEGED_ROLES = ["administrator", "manager", "supervisor"];
 
 function NativeTabLayout({ isPrivileged, isManager }: { isPrivileged: boolean; isManager: boolean }) {
+  const { Icon, Label, NativeTabs } = require("expo-router/unstable-native-tabs") as typeof import("expo-router/unstable-native-tabs");
   return (
     <NativeTabs>
       {!isManager && (
@@ -187,8 +186,11 @@ export default function TabLayout() {
   const isPrivileged = PRIVILEGED_ROLES.includes(user?.role ?? "");
   const isManager = user?.role === "manager";
 
-  if (Platform.OS !== "web" && isLiquidGlassAvailable()) {
-    return <NativeTabLayout isPrivileged={isPrivileged} isManager={isManager} />;
+  if (Platform.OS !== "web") {
+    const { isLiquidGlassAvailable } = require("expo-glass-effect") as typeof import("expo-glass-effect");
+    if (isLiquidGlassAvailable()) {
+      return <NativeTabLayout isPrivileged={isPrivileged} isManager={isManager} />;
+    }
   }
   return <ClassicTabLayout isPrivileged={isPrivileged} isManager={isManager} />;
 }
