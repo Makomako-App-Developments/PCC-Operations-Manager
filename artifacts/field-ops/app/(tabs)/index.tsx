@@ -1,5 +1,6 @@
 import { Feather } from "@expo/vector-icons";
 import { useGetScheduleWeek } from "@workspace/api-client-react";
+import { Redirect } from "expo-router";
 import React, { useMemo, useState } from "react";
 import {
   ActivityIndicator,
@@ -176,6 +177,10 @@ export default function TodayScreen() {
   const colors  = useColors();
   const insets  = useSafeAreaInsets();
   const { user } = useAuth();
+
+  if (user?.role === "manager") {
+    return <Redirect href="/(tabs)/audits" />;
+  }
 
   const teamParam = user?.teamId ? { teamId: user.teamId } : {};
   const queryOpts = { query: { enabled: !!user } as any };

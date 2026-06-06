@@ -42,10 +42,11 @@ function AuthGuard() {
     const onLoginScreen = seg === "login";
     const inAuthenticatedArea = seg === "(tabs)" || seg === "job" || seg === "reactive-job";
 
+    const isManager = user?.role === "manager";
     if (!user && !onLoginScreen) {
       router.replace("/login");
     } else if (user && !inAuthenticatedArea) {
-      router.replace("/(tabs)");
+      router.replace(isManager ? "/(tabs)/audits" : "/(tabs)");
     }
   }, [user, isLoading, segments]);
 
