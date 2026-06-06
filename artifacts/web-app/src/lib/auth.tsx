@@ -1,5 +1,5 @@
 /* @refresh reset */
-import React, { createContext, useContext, ReactNode, useEffect } from "react";
+import React, { createContext, useContext, ReactNode, useEffect, useRef } from "react";
 import { useGetMe, useLogin, useLogout, LoginRequest, User } from "@workspace/api-client-react";
 import { useLocation } from "wouter";
 import { useQueryClient } from "@tanstack/react-query";
@@ -27,6 +27,8 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [location, setLocation] = useLocation();
   const queryClient = useQueryClient();
+  // Prevent useEffect from overwriting a redirect already triggered by onSuccess
+  const redirectingRef = useRef(false);
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { data: user, isLoading } = useGetMe({ query: { retry: false, staleTime: Infinity } as any });
@@ -37,9 +39,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
         const role = data?.user?.role ?? "";
         const token = data?.accessToken ?? "";
-        if (FIELD_OPS_ROLES.includes(role) && isMobile()) {
-          redirectToFieldOps(token, data?.user ?? {});
-        } else if (role === "field_worker") {
+        if (role === "field_worker" || (FIELD_OPS_ROLES.includes(role) && isMobile())) {
+          redirectingRef.current = true;
           redirectToFieldOps(token, data?.user ?? {});
         } else {
           setLocation("/dashboard");
@@ -61,7 +62,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (isLoading) return;
     if (!user && location !== "/login") {
       setLocation("/login");
-    } else if (user) {
+    } else if (user && !redirectingRef.current) {
+      // Already-authenticated session restore: send mobile privileged users to field-ops
       const role = (user as any).role ?? "";
       if (role === "field_worker" || (FIELD_OPS_ROLES.includes(role) && isMobile())) {
         window.location.href = "/field-ops/";
