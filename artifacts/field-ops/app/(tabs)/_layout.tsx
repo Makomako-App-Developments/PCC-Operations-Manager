@@ -38,6 +38,12 @@ function NativeTabLayout({ isPrivileged, isManager }: { isPrivileged: boolean; i
           <Label>Programmes</Label>
         </NativeTabs.Trigger>
       )}
+      {isPrivileged && (
+        <NativeTabs.Trigger name="assets">
+          <Icon sf={{ default: "map", selected: "map.fill" }} />
+          <Label>Assets</Label>
+        </NativeTabs.Trigger>
+      )}
       {!isManager && (
         <NativeTabs.Trigger name="report">
           <Icon sf={{ default: "exclamationmark.circle", selected: "exclamationmark.circle.fill" }} />
@@ -102,7 +108,15 @@ function ClassicTabLayout({ isPrivileged, isManager }: { isPrivileged: boolean; 
       />
       <Tabs.Screen
         name="assets"
-        options={{ href: null }}
+        options={isPrivileged ? {
+          title: "Assets",
+          tabBarIcon: ({ color }) =>
+            isIOS ? (
+              <SymbolView name="map" tintColor={color} size={24} />
+            ) : (
+              <Feather name="map" size={22} color={color} />
+            ),
+        } : { href: null }}
       />
       <Tabs.Screen
         name="spec"
