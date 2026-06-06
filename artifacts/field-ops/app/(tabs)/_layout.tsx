@@ -187,7 +187,7 @@ export default function TabLayout() {
   const isPrivileged = PRIVILEGED_ROLES.includes(user?.role ?? "");
   const isManager = user?.role === "manager";
 
-  if (isLiquidGlassAvailable()) {
+  if (Platform.OS !== "web" && isLiquidGlassAvailable()) {
     return <NativeTabLayout isPrivileged={isPrivileged} isManager={isManager} />;
   }
   return <ClassicTabLayout isPrivileged={isPrivileged} isManager={isManager} />;
