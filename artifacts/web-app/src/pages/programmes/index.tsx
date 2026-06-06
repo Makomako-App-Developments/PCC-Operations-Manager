@@ -21,6 +21,10 @@ import {
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from "@/components/ui/dialog";
+import {
+  Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList,
+} from "@/components/ui/command";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { format, parseISO } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
@@ -28,7 +32,7 @@ import {
   Sprout, Plus, Layers, X, Search, ChevronRight,
   Calendar, Users, Leaf, FileText, AlertTriangle, CheckCircle2,
   Download, ChevronDown, ChevronUp, Package, List, Map as MapIcon, ExternalLink,
-  Ruler, History, ClipboardList, Zap, SkipForward, Trash2, Clock,
+  Ruler, History, ClipboardList, Zap, SkipForward, Trash2, Clock, Check, ChevronsUpDown,
 } from "lucide-react";
 import { useLocation, useSearch } from "wouter";
 import {
@@ -1623,6 +1627,7 @@ function MulchingTab({
   // Standalone "Record Depth" asset picker
   const [depthPickerOpen, setDepthPickerOpen] = useState(false);
   const [depthPickerAssetId, setDepthPickerAssetId] = useState("");
+  const [depthPickerComboOpen, setDepthPickerComboOpen] = useState(false);
   // Review & Schedule drawer state
   const [reviewTarget, setReviewTarget] = useState<any | null>(null);
   // Detail panel
@@ -1742,16 +1747,40 @@ function MulchingTab({
             <p className="text-xs text-gray-400 mb-4">Select any garden to record a depth reading for it.</p>
             <div>
               <label className="text-xs font-medium text-gray-500 block mb-1.5">Garden</label>
-              <select
-                value={depthPickerAssetId}
-                onChange={e => setDepthPickerAssetId(e.target.value)}
-                className="w-full px-3 py-2 text-sm border border-gray-200 rounded-xl outline-none focus:border-[#00AECD] bg-white"
-              >
-                <option value="">— Select a garden —</option>
-                {assets.slice().sort((a, b) => (a.name ?? "").localeCompare(b.name ?? "")).map((a: any) => (
-                  <option key={a.id} value={a.id}>{a.name}{a.description ? ` — ${a.description}` : ""}</option>
-                ))}
-              </select>
+              <Popover open={depthPickerComboOpen} onOpenChange={setDepthPickerComboOpen}>
+                <PopoverTrigger asChild>
+                  <button
+                    className="w-full flex items-center justify-between px-3 py-2 text-sm border border-gray-200 rounded-xl bg-white hover:border-[#00AECD] transition-colors"
+                  >
+                    <span className={depthPickerAssetId ? "text-gray-800" : "text-gray-400"}>
+                      {depthPickerAssetId
+                        ? (() => { const a = assets.find((x: any) => x.id === depthPickerAssetId); return a ? (a.name + (a.description ? ` — ${a.description}` : "")) : "— Select a garden —"; })()
+                        : "— Search gardens —"}
+                    </span>
+                    <ChevronsUpDown className="w-4 h-4 text-gray-400 shrink-0 ml-2" />
+                  </button>
+                </PopoverTrigger>
+                <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0" align="start">
+                  <Command>
+                    <CommandInput placeholder="Type to search..." className="h-9" />
+                    <CommandList className="max-h-56">
+                      <CommandEmpty>No garden found.</CommandEmpty>
+                      <CommandGroup>
+                        {assets.slice().sort((a: any, b: any) => (a.name ?? "").localeCompare(b.name ?? "")).map((a: any) => (
+                          <CommandItem
+                            key={a.id}
+                            value={`${a.name ?? ""}${a.description ? ` ${a.description}` : ""}`}
+                            onSelect={() => { setDepthPickerAssetId(a.id); setDepthPickerComboOpen(false); }}
+                          >
+                            <Check className={`mr-2 h-4 w-4 shrink-0 ${depthPickerAssetId === a.id ? "opacity-100" : "opacity-0"}`} />
+                            <span>{a.name}{a.description ? <span className="text-gray-400 ml-1">— {a.description}</span> : null}</span>
+                          </CommandItem>
+                        ))}
+                      </CommandGroup>
+                    </CommandList>
+                  </Command>
+                </PopoverContent>
+              </Popover>
             </div>
             <div className="flex gap-3 mt-5">
               <button onClick={() => setDepthPickerOpen(false)} className="flex-1 py-2 rounded-xl text-sm font-semibold border border-gray-200 text-gray-600 hover:bg-gray-50">
