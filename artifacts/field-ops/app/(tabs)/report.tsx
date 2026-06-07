@@ -1,10 +1,13 @@
 import { Feather } from "@expo/vector-icons";
 import { useCreateReactiveJob } from "@workspace/api-client-react";
 import * as Haptics from "expo-haptics";
+import * as ImagePicker from "expo-image-picker";
 import * as Location from "expo-location";
 import React, { useState, useMemo, useEffect, useRef } from "react";
 import {
   ActivityIndicator,
+  Alert,
+  Image,
   Modal,
   Platform,
   ScrollView,
@@ -543,8 +546,77 @@ export default function ReportScreen() {
   const [showAssetModal, setShowAssetModal] = useState(false);
   const [showPestModal, setShowPestModal] = useState(false);
   const [success, setSuccess] = useState(false);
+  const [selectedPhotos, setSelectedPhotos] = useState<Array<{ uri: string; file?: File }>>([]);
+  const [uploadingPhotos, setUploadingPhotos] = useState(false);
 
   const mutation = useCreateReactiveJob();
+
+  const uploadPhotos = async (jobId: string) => {
+    for (const photo of selectedPhotos) {
+      try {
+        const form = new FormData();
+        if (Platform.OS === "web") {
+          if (photo.file) {
+            form.append("photo", photo.file);
+          } else {
+            const filename = photo.uri.split("/").pop() ?? "photo.jpg";
+            const mimeType = filename.endsWith(".png") ? "image/png" : "image/jpeg";
+            const blob = await fetch(photo.uri).then(r => r.blob());
+            form.append("photo", new File([blob], filename, { type: mimeType }));
+          }
+        } else {
+          const filename = photo.uri.split("/").pop() ?? "photo.jpg";
+          const mimeType = filename.endsWith(".png") ? "image/png" : "image/jpeg";
+          form.append("photo", { uri: photo.uri, name: filename, type: mimeType } as any);
+        }
+        await fetch(getApiUrl(`/api/reactive-jobs/${jobId}/photos`), {
+          method: "POST",
+          headers: { Authorization: `Bearer ${token}` },
+          body: form,
+        });
+      } catch { /* best effort — don't block success */ }
+    }
+  };
+
+  const pickFromLibrary = async () => {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== "granted") {
+      Alert.alert("Permission needed", "Please allow photo library access in Settings.");
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ["images"],
+      quality: 0.8,
+      allowsMultipleSelection: true,
+      selectionLimit: 5,
+    });
+    if (!result.canceled) {
+      setSelectedPhotos(prev => [
+        ...prev,
+        ...result.assets.map(a => ({ uri: a.uri, file: (a as any).file ?? undefined })),
+      ]);
+    }
+  };
+
+  const takePhoto = async () => {
+    if (Platform.OS === "web") {
+      Alert.alert("Not available", "Camera capture is not supported on web. Use the library picker instead.");
+      return;
+    }
+    const { status } = await ImagePicker.requestCameraPermissionsAsync();
+    if (status !== "granted") {
+      Alert.alert("Permission needed", "Please allow camera access in Settings.");
+      return;
+    }
+    const result = await ImagePicker.launchCameraAsync({ mediaTypes: ["images"], quality: 0.8 });
+    if (!result.canceled && result.assets[0]) {
+      const a = result.assets[0];
+      setSelectedPhotos(prev => [...prev, { uri: a.uri, file: (a as any).file ?? undefined }]);
+    }
+  };
+
+  const removePhoto = (idx: number) =>
+    setSelectedPhotos(prev => prev.filter((_, i) => i !== idx));
 
   const isPestSighting = issueType === "pest_plant_sighting";
 
@@ -570,8 +642,13 @@ export default function ReportScreen() {
         } as any,
       },
       {
-        onSuccess: async () => {
+        onSuccess: async (newJob: any) => {
           await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+          if (selectedPhotos.length > 0 && newJob?.id) {
+            setUploadingPhotos(true);
+            await uploadPhotos(newJob.id);
+            setUploadingPhotos(false);
+          }
           setSuccess(true);
           setIssueType("");
           setPriority("medium");
@@ -579,6 +656,7 @@ export default function ReportScreen() {
           setSelectedAssetId("");
           setSelectedAssetName("");
           setPestPlantsSelected([]);
+          setSelectedPhotos([]);
           setTimeout(() => setSuccess(false), 4000);
         },
         onError: () => {
@@ -744,6 +822,54 @@ export default function ReportScreen() {
               textAlignVertical="top"
             />
           </View>
+
+          {/* Photos */}
+          <View style={[styles.field, { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border, paddingTop: 14 }]}>
+            <Text style={[styles.label, { color: colors.mutedForeground }]}>Photos (optional)</Text>
+
+            {/* Thumbnail strip */}
+            {selectedPhotos.length > 0 && (
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                style={styles.photoStrip}
+                contentContainerStyle={{ gap: 8, paddingRight: 4 }}
+              >
+                {selectedPhotos.map((p, idx) => (
+                  <View key={idx} style={styles.thumbWrap}>
+                    <Image source={{ uri: p.uri }} style={styles.thumb} />
+                    <TouchableOpacity
+                      style={[styles.thumbRemove, { backgroundColor: colors.destructive }]}
+                      onPress={() => removePhoto(idx)}
+                      activeOpacity={0.8}
+                    >
+                      <Feather name="x" size={10} color="#fff" />
+                    </TouchableOpacity>
+                  </View>
+                ))}
+              </ScrollView>
+            )}
+
+            {/* Add buttons */}
+            <View style={styles.photoActions}>
+              <TouchableOpacity
+                style={[styles.photoBtn, { borderColor: colors.border, borderRadius: colors.radius, backgroundColor: colors.background }]}
+                onPress={takePhoto}
+                activeOpacity={0.8}
+              >
+                <Feather name="camera" size={16} color={colors.primary} />
+                <Text style={[styles.photoBtnText, { color: colors.foreground }]}>Camera</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.photoBtn, { borderColor: colors.border, borderRadius: colors.radius, backgroundColor: colors.background }]}
+                onPress={pickFromLibrary}
+                activeOpacity={0.8}
+              >
+                <Feather name="image" size={16} color={colors.primary} />
+                <Text style={[styles.photoBtnText, { color: colors.foreground }]}>Library</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
         </View>
 
         <TouchableOpacity
@@ -755,12 +881,20 @@ export default function ReportScreen() {
           disabled={!isValid || mutation.isPending}
           activeOpacity={0.8}
         >
-          {mutation.isPending ? (
-            <ActivityIndicator color="#fff" />
+          {mutation.isPending || uploadingPhotos ? (
+            <>
+              <ActivityIndicator color="#fff" />
+              {uploadingPhotos && (
+                <Text style={styles.submitText}>Uploading photos…</Text>
+              )}
+            </>
           ) : (
             <>
               <Feather name={isPestSighting ? "alert-triangle" : "alert-circle"} size={18} color="#fff" />
-              <Text style={styles.submitText}>{isPestSighting ? "Record Sighting" : "Raise Issue"}</Text>
+              <Text style={styles.submitText}>
+                {isPestSighting ? "Record Sighting" : "Raise Issue"}
+                {selectedPhotos.length > 0 ? ` + ${selectedPhotos.length} photo${selectedPhotos.length > 1 ? "s" : ""}` : ""}
+              </Text>
             </>
           )}
         </TouchableOpacity>
@@ -925,6 +1059,46 @@ const styles = StyleSheet.create({
     fontFamily: "Inter_700Bold",
     fontSize: 16,
     color: "#fff",
+  },
+  photoStrip: {
+    marginBottom: 10,
+  },
+  thumbWrap: {
+    position: "relative",
+    width: 76,
+    height: 76,
+  },
+  thumb: {
+    width: 76,
+    height: 76,
+    borderRadius: 8,
+  },
+  thumbRemove: {
+    position: "absolute",
+    top: 3,
+    right: 3,
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  photoActions: {
+    flexDirection: "row",
+    gap: 10,
+  },
+  photoBtn: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 7,
+    paddingVertical: 11,
+    borderWidth: 1,
+  },
+  photoBtnText: {
+    fontFamily: "Inter_500Medium",
+    fontSize: 14,
   },
   modalBackdrop: {
     flex: 1,
