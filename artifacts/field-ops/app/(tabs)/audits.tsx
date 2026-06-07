@@ -199,6 +199,7 @@ export default function AuditsScreen() {
   const [submitting, setSubmitting] = useState(false);
   const [doneScore, setDoneScore] = useState<number | null>(null);
   const [openingAuditId, setOpeningAuditId] = useState<string | null>(null);
+  const [selectedAssetDetail, setSelectedAssetDetail] = useState<any>(null);
 
   const bottomPad = insets.bottom + (Platform.OS === "web" ? 84 : 100);
 
@@ -321,6 +322,8 @@ ${userMarker}
 
   const handlePickAsset = (asset: { id: string; name: string }) => {
     setSelectedAsset(asset);
+    const full = ((assetsData as any)?.data ?? []).find((a: any) => a.id === asset.id) ?? null;
+    setSelectedAssetDetail(full);
     createAudit.mutate(asset.id);
   };
 
@@ -422,6 +425,7 @@ ${userMarker}
   const resetToList = () => {
     setView("list");
     setSelectedAsset(null);
+    setSelectedAssetDetail(null);
     setAuditId(null);
     setResponses({});
     setPhotos({});
@@ -433,11 +437,12 @@ ${userMarker}
     if (openingAuditId) return;
     setOpeningAuditId(audit.id);
     try {
-      const res = await fetch(getApiUrl(`/api/audits/${audit.id}`), {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (!res.ok) throw new Error("Failed to load audit");
-      const detail = await res.json();
+      const [auditRes, assetRes] = await Promise.all([
+        fetch(getApiUrl(`/api/audits/${audit.id}`), { headers: { Authorization: `Bearer ${token}` } }),
+        fetch(getApiUrl(`/api/assets/${audit.assetId}`), { headers: { Authorization: `Bearer ${token}` } }),
+      ]);
+      if (!auditRes.ok) throw new Error("Failed to load audit");
+      const [detail, assetDetail] = await Promise.all([auditRes.json(), assetRes.ok ? assetRes.json() : null]);
       const init: Record<string, KpiResponse> = {};
       ALL_KPI_IDS.forEach((id) => { init[id] = { result: "", notes: "" }; });
       (detail.items ?? []).forEach((item: any) => {
@@ -447,6 +452,7 @@ ${userMarker}
       });
       setAuditId(audit.id);
       setSelectedAsset({ id: audit.assetId, name: audit.assetName ?? "Unknown site" });
+      setSelectedAssetDetail(assetDetail);
       setResponses(init);
       setPhotos({});
       setView("conduct");
@@ -608,6 +614,32 @@ ${userMarker}
           contentContainerStyle={{ paddingBottom: bottomPad + 80 }}
           showsVerticalScrollIndicator={false}
         >
+          {selectedAssetDetail && (() => {
+            const d = selectedAssetDetail;
+            const GARDEN_LABELS: Record<string, string> = {
+              annuals: "Annuals", roses_perennials: "Roses & Perennials",
+              ornamental: "Ornamental", amenity: "Amenity", rain_garden: "Rain Garden",
+              reveg: "Revegetation", bush: "Bush", tree_planter_pits: "Tree Planter Pits", hedge: "Hedge",
+            };
+            const rows = [
+              d.description && { label: "Description", value: d.description },
+              d.standard    && { label: "Specification", value: d.standard.charAt(0).toUpperCase() + d.standard.slice(1) },
+              d.gardenType  && { label: "Garden Type", value: GARDEN_LABELS[d.gardenType] ?? d.gardenType },
+              d.suburb      && { label: "Suburb", value: d.suburb },
+              d.serviceTimeMins != null && { label: "Service Time", value: `${d.serviceTimeMins} min` },
+            ].filter(Boolean) as { label: string; value: string }[];
+            return (
+              <View style={[styles.siteInfoCard, { backgroundColor: colors.primary + "12", borderColor: colors.primary + "33", borderRadius: colors.radius }]}>
+                <Text style={[styles.siteInfoName, { color: colors.primary }]}>{selectedAsset?.name}</Text>
+                {rows.map((row) => (
+                  <View key={row.label} style={styles.siteInfoRow}>
+                    <Text style={[styles.siteInfoLabel, { color: colors.mutedForeground }]}>{row.label}</Text>
+                    <Text style={[styles.siteInfoValue, { color: colors.foreground }]}>{row.value}</Text>
+                  </View>
+                ))}
+              </View>
+            );
+          })()}
           {KPI_SECTIONS.map((section) => (
             <View key={section.section} style={{ marginBottom: 4 }}>
               <Text style={[styles.sectionHeader, { color: colors.primary, backgroundColor: colors.muted }]}>
@@ -760,6 +792,35 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 8,
   },
+  siteInfoCard: {
+    margin: 16,
+    marginBottom: 8,
+    padding: 14,
+    borderWidth: 1,
+  },
+  siteInfoName: {
+    fontFamily: "Inter_700Bold",
+    fontSize: 15,
+    marginBottom: 10,
+  },
+  siteInfoRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    paddingVertical: 4,
+    gap: 12,
+  },
+  siteInfoLabel: {
+    fontFamily: "Inter_400Regular",
+    fontSize: 13,
+    flexShrink: 0,
+  },
+  siteInfoValue: {
+    fontFamily: "Inter_500Medium",
+    fontSize: 13,
+    textAlign: "right",
+    flex: 1,
+  },
+
   sectionCard: {
     borderWidth: StyleSheet.hairlineWidth,
     marginHorizontal: 16,
