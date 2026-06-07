@@ -1,7 +1,8 @@
 import { Feather } from "@expo/vector-icons";
-import { useCreateReactiveJob, useListAssets } from "@workspace/api-client-react";
+import { useCreateReactiveJob } from "@workspace/api-client-react";
 import * as Haptics from "expo-haptics";
-import React, { useState, useMemo } from "react";
+import * as Location from "expo-location";
+import React, { useState, useMemo, useEffect, useRef } from "react";
 import {
   ActivityIndicator,
   Modal,
@@ -15,7 +16,9 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { useAuth } from "@/context/auth";
 import { useColors } from "@/hooks/useColors";
+import { getApiUrl } from "@/lib/api";
 
 // ─── Pest Plants ─────────────────────────────────────────────────────────────
 
@@ -202,11 +205,333 @@ const pestStyles = StyleSheet.create({
   empty: { fontFamily: "Inter_400Regular", fontSize: 14, textAlign: "center", marginTop: 32 },
 });
 
+// ─── Asset Picker Modal ───────────────────────────────────────────────────────
+
+function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number) {
+  const R = 6371;
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLng = ((lng2 - lng1) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos((lat1 * Math.PI) / 180) *
+      Math.cos((lat2 * Math.PI) / 180) *
+      Math.sin(dLng / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+interface AssetPickerModalProps {
+  visible: boolean;
+  token: string | null;
+  selectedId: string;
+  onSelect: (id: string, name: string) => void;
+  onClose: () => void;
+}
+
+function AssetPickerModal({ visible, token, selectedId, onSelect, onClose }: AssetPickerModalProps) {
+  const colors = useColors();
+  const insets = useSafeAreaInsets();
+  const [query, setQuery] = useState("");
+  const [mode, setMode] = useState<"idle" | "search" | "nearby">("idle");
+  const [results, setResults] = useState<any[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [locError, setLocError] = useState<string | null>(null);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    if (visible) {
+      setQuery("");
+      setMode("idle");
+      setResults([]);
+      setLocError(null);
+    }
+  }, [visible]);
+
+  useEffect(() => {
+    if (mode !== "search") return;
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    if (!query.trim()) { setResults([]); return; }
+    debounceRef.current = setTimeout(async () => {
+      setLoading(true);
+      try {
+        const res = await fetch(
+          getApiUrl(`/api/assets?search=${encodeURIComponent(query.trim())}&limit=20&isActive=true`),
+          { headers: { Authorization: `Bearer ${token}` } },
+        );
+        const json = await res.json();
+        setResults(json.data ?? []);
+      } catch { setResults([]); }
+      setLoading(false);
+    }, 400);
+    return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
+  }, [query, mode, token]);
+
+  const handleNearMe = async () => {
+    setLocError(null);
+    setMode("nearby");
+    setQuery("");
+    setLoading(true);
+    try {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== "granted") {
+        setLocError("Location permission denied. Please enable it in Settings.");
+        setLoading(false);
+        return;
+      }
+      const pos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+      const { latitude, longitude } = pos.coords;
+      const res = await fetch(
+        getApiUrl(`/api/assets?limit=500&isActive=true`),
+        { headers: { Authorization: `Bearer ${token}` } },
+      );
+      const json = await res.json();
+      const all: any[] = json.data ?? [];
+      const sorted = all
+        .filter(a => a.lat != null && a.lng != null)
+        .map(a => ({ ...a, distKm: haversineKm(latitude, longitude, Number(a.lat), Number(a.lng)) }))
+        .sort((a, b) => a.distKm - b.distKm)
+        .slice(0, 25);
+      setResults(sorted);
+    } catch {
+      setLocError("Could not get your location. Please try again.");
+    }
+    setLoading(false);
+  };
+
+  const formatDist = (km: number) =>
+    km < 1 ? `${Math.round(km * 1000)}m` : `${km.toFixed(1)}km`;
+
+  return (
+    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
+      <View style={[apStyles.root, { backgroundColor: colors.background, paddingTop: insets.top + 12 }]}>
+        {/* Header */}
+        <View style={[apStyles.header, { backgroundColor: colors.card, borderBottomColor: colors.border }]}>
+          <Text style={[apStyles.title, { color: colors.foreground }]}>Select Asset</Text>
+          <TouchableOpacity
+            onPress={onClose}
+            style={[apStyles.cancelBtn, { borderColor: colors.border, borderRadius: colors.radius }]}
+            activeOpacity={0.8}
+          >
+            <Text style={[apStyles.cancelBtnTxt, { color: colors.foreground }]}>Cancel</Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* Search + Near Me row */}
+        <View style={[apStyles.searchRow, { backgroundColor: colors.card, borderBottomColor: colors.border }]}>
+          <View style={[apStyles.searchBox, { backgroundColor: colors.background, borderColor: colors.border, borderRadius: colors.radius }]}>
+            <Feather name="search" size={16} color={colors.mutedForeground} />
+            <TextInput
+              style={[apStyles.searchInput, { color: colors.foreground }]}
+              value={query}
+              onChangeText={(t) => { setMode("search"); setQuery(t); }}
+              placeholder="Search by name…"
+              placeholderTextColor={colors.mutedForeground}
+              clearButtonMode="while-editing"
+              autoCorrect={false}
+            />
+            {query.length > 0 && Platform.OS !== "ios" && (
+              <TouchableOpacity onPress={() => { setQuery(""); setResults([]); setMode("idle"); }}>
+                <Feather name="x" size={15} color={colors.mutedForeground} />
+              </TouchableOpacity>
+            )}
+          </View>
+          <TouchableOpacity
+            style={[
+              apStyles.nearBtn,
+              {
+                backgroundColor: mode === "nearby" ? colors.primary : colors.background,
+                borderColor: mode === "nearby" ? colors.primary : colors.border,
+                borderRadius: colors.radius,
+              },
+            ]}
+            onPress={handleNearMe}
+            activeOpacity={0.8}
+          >
+            <Feather name="navigation" size={15} color={mode === "nearby" ? "#fff" : colors.primary} />
+            <Text style={[apStyles.nearBtnTxt, { color: mode === "nearby" ? "#fff" : colors.primary }]}>
+              Near Me
+            </Text>
+          </TouchableOpacity>
+        </View>
+
+        {locError && (
+          <View style={[apStyles.errorBanner, { backgroundColor: "#fee2e2" }]}>
+            <Feather name="alert-circle" size={14} color="#ef4444" />
+            <Text style={apStyles.errorTxt}>{locError}</Text>
+          </View>
+        )}
+
+        <ScrollView
+          style={{ flex: 1 }}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+        >
+          {loading ? (
+            <ActivityIndicator style={{ marginTop: 48 }} color={colors.primary} size="large" />
+          ) : results.length === 0 && (mode === "nearby" || (mode === "search" && query.trim())) ? (
+            <View style={apStyles.emptyState}>
+              <Feather name={mode === "nearby" ? "map-pin" : "search"} size={38} color={colors.border} />
+              <Text style={[apStyles.emptyTxt, { color: colors.mutedForeground }]}>
+                {mode === "nearby" ? "No assets found nearby" : `No assets match "${query}"`}
+              </Text>
+            </View>
+          ) : results.length === 0 ? (
+            <View style={apStyles.emptyState}>
+              <Feather name="map" size={38} color={colors.border} />
+              <Text style={[apStyles.emptyTxt, { color: colors.mutedForeground }]}>
+                Type a name to search, or tap{" "}
+                <Text style={{ fontFamily: "Inter_600SemiBold" }}>Near Me</Text>
+                {" "}to find assets close to your location
+              </Text>
+            </View>
+          ) : (
+            <>
+              {mode === "nearby" && (
+                <Text style={[apStyles.sectionHint, { color: colors.mutedForeground }]}>
+                  Nearest {results.length} assets to your location
+                </Text>
+              )}
+              {results.map((a) => (
+                <TouchableOpacity
+                  key={a.id}
+                  style={[
+                    apStyles.item,
+                    { borderBottomColor: colors.border },
+                    selectedId === a.id && { backgroundColor: colors.secondary },
+                  ]}
+                  onPress={() => { onSelect(a.id, a.name); onClose(); }}
+                  activeOpacity={0.75}
+                >
+                  <View style={{ flex: 1 }}>
+                    <Text style={[apStyles.itemName, { color: colors.foreground }]}>{a.name}</Text>
+                    {(a.description || a.suburb) ? (
+                      <Text style={[apStyles.itemSub, { color: colors.mutedForeground }]} numberOfLines={1}>
+                        {a.description || a.suburb}
+                      </Text>
+                    ) : null}
+                  </View>
+                  <View style={{ alignItems: "flex-end", gap: 4 }}>
+                    {a.distKm != null && (
+                      <View style={[apStyles.distPill, { backgroundColor: colors.primary + "18" }]}>
+                        <Feather name="navigation" size={10} color={colors.primary} />
+                        <Text style={[apStyles.distTxt, { color: colors.primary }]}>{formatDist(a.distKm)}</Text>
+                      </View>
+                    )}
+                    {selectedId === a.id && <Feather name="check" size={18} color={colors.primary} />}
+                  </View>
+                </TouchableOpacity>
+              ))}
+            </>
+          )}
+          <View style={{ height: insets.bottom + 24 }} />
+        </ScrollView>
+      </View>
+    </Modal>
+  );
+}
+
+const apStyles = StyleSheet.create({
+  root: { flex: 1 },
+  header: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 16,
+    paddingBottom: 14,
+    borderBottomWidth: 1,
+  },
+  title: { fontFamily: "Inter_700Bold", fontSize: 20 },
+  cancelBtn: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderWidth: 1,
+  },
+  cancelBtnTxt: { fontFamily: "Inter_600SemiBold", fontSize: 14 },
+  searchRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    gap: 10,
+    borderBottomWidth: 1,
+  },
+  searchBox: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    gap: 8,
+    borderWidth: 1,
+  },
+  searchInput: {
+    flex: 1,
+    fontFamily: "Inter_400Regular",
+    fontSize: 15,
+    paddingVertical: 2,
+  },
+  nearBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderWidth: 1.5,
+  },
+  nearBtnTxt: { fontFamily: "Inter_600SemiBold", fontSize: 13 },
+  errorBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+  },
+  errorTxt: { fontFamily: "Inter_400Regular", fontSize: 13, color: "#ef4444", flex: 1 },
+  emptyState: {
+    alignItems: "center",
+    paddingTop: 60,
+    paddingHorizontal: 32,
+    gap: 12,
+  },
+  emptyTxt: {
+    fontFamily: "Inter_400Regular",
+    fontSize: 14,
+    textAlign: "center",
+    lineHeight: 21,
+  },
+  sectionHint: {
+    fontFamily: "Inter_400Regular",
+    fontSize: 12,
+    paddingHorizontal: 16,
+    paddingTop: 10,
+    paddingBottom: 4,
+  },
+  item: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 13,
+    paddingHorizontal: 16,
+    gap: 12,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  itemName: { fontFamily: "Inter_600SemiBold", fontSize: 15 },
+  itemSub: { fontFamily: "Inter_400Regular", fontSize: 12, marginTop: 2 },
+  distPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 3,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 8,
+  },
+  distTxt: { fontFamily: "Inter_600SemiBold", fontSize: 11 },
+});
+
 // ─── Main Screen ──────────────────────────────────────────────────────────────
 
 export default function ReportScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
+  const { token } = useAuth();
 
   const [issueType, setIssueType] = useState<string>("");
   const [priority, setPriority] = useState<string>("medium");
@@ -218,9 +543,6 @@ export default function ReportScreen() {
   const [showAssetModal, setShowAssetModal] = useState(false);
   const [showPestModal, setShowPestModal] = useState(false);
   const [success, setSuccess] = useState(false);
-
-  const { data: assetsData } = useListAssets({ limit: 100, isActive: true });
-  const assets = assetsData?.data ?? [];
 
   const mutation = useCreateReactiveJob();
 
@@ -471,34 +793,14 @@ export default function ReportScreen() {
         </View>
       </Modal>
 
-      {/* Asset Modal */}
-      <Modal visible={showAssetModal} transparent animationType="slide">
-        <TouchableOpacity style={styles.modalBackdrop} onPress={() => setShowAssetModal(false)} activeOpacity={1} />
-        <View style={[styles.modalSheet, styles.modalSheetTall, { backgroundColor: colors.card, borderTopLeftRadius: colors.radius * 3, borderTopRightRadius: colors.radius * 3, paddingBottom: insets.bottom + 16 }]}>
-          <View style={[styles.modalHandle, { backgroundColor: colors.border }]} />
-          <Text style={[styles.modalTitle, { color: colors.foreground }]}>Select Asset</Text>
-          <ScrollView showsVerticalScrollIndicator={false}>
-            {assets.map((a) => (
-              <TouchableOpacity
-                key={a.id}
-                style={[styles.modalItem, { borderBottomColor: colors.border }, selectedAssetId === a.id && { backgroundColor: colors.secondary }]}
-                onPress={() => {
-                  setSelectedAssetId(a.id);
-                  setSelectedAssetName(a.name);
-                  setShowAssetModal(false);
-                }}
-                activeOpacity={0.75}
-              >
-                <View style={{ flex: 1 }}>
-                  <Text style={[styles.modalItemText, { color: colors.foreground }]}>{a.name}</Text>
-                  <Text style={[styles.modalItemSub, { color: colors.mutedForeground }]} numberOfLines={1}>{(a as any).description || a.suburb || ""}</Text>
-                </View>
-                {selectedAssetId === a.id && <Feather name="check" size={18} color={colors.primary} />}
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
-        </View>
-      </Modal>
+      {/* Asset Picker Modal */}
+      <AssetPickerModal
+        visible={showAssetModal}
+        token={token}
+        selectedId={selectedAssetId}
+        onSelect={(id, name) => { setSelectedAssetId(id); setSelectedAssetName(name); }}
+        onClose={() => setShowAssetModal(false)}
+      />
 
       {/* Pest Plants Full-Screen Modal */}
       <PestPlantsModal
