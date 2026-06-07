@@ -1,5 +1,6 @@
 import { Feather } from "@expo/vector-icons";
 import { useListAssets } from "@workspace/api-client-react";
+import { useRouter } from "expo-router";
 import React, { useMemo, useState } from "react";
 import {
   ActivityIndicator,
@@ -38,6 +39,7 @@ const STANDARD_COLOR: Record<string, string> = {
 export default function AssetsScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
+  const router = useRouter();
   const [search, setSearch] = useState("");
 
   const { data, isLoading, refetch, isRefetching } = useListAssets({
@@ -125,6 +127,7 @@ export default function AssetsScreen() {
               <TouchableOpacity
                 key={asset.id}
                 activeOpacity={0.75}
+                onPress={() => router.push(`/asset/${asset.id}` as any)}
                 style={[
                   styles.card,
                   {
