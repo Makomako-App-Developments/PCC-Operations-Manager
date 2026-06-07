@@ -1,7 +1,8 @@
 import { Feather } from "@expo/vector-icons";
 import { useListAssets } from "@workspace/api-client-react";
-import { useRouter } from "expo-router";
-import React, { useMemo, useState } from "react";
+import { useFocusEffect, useRouter } from "expo-router";
+import React, { useCallback, useRef, useMemo, useState } from "react";
+import { getLastAssetId } from "@/lib/lastAsset";
 import {
   ActivityIndicator,
   Platform,
@@ -41,6 +42,20 @@ export default function AssetsScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const [search, setSearch] = useState("");
+  const isMounted = useRef(false);
+
+  useFocusEffect(
+    useCallback(() => {
+      if (!isMounted.current) {
+        isMounted.current = true;
+        return;
+      }
+      const id = getLastAssetId();
+      if (id) {
+        router.push(`/asset/${id}` as any);
+      }
+    }, [router]),
+  );
 
   const { data, isLoading, refetch, isRefetching } = useListAssets({
     limit: 2000,

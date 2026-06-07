@@ -1,7 +1,8 @@
 import { Feather } from "@expo/vector-icons";
 import { useGetAsset } from "@workspace/api-client-react";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import React from "react";
+import React, { useEffect } from "react";
+import { setLastAssetId } from "@/lib/lastAsset";
 import {
   ActivityIndicator,
   Platform,
@@ -47,6 +48,10 @@ export default function AssetDetailScreen() {
   const { user } = useAuth();
   const canAudit = PRIVILEGED_ROLES.includes(user?.role ?? "");
 
+  useEffect(() => {
+    if (id) setLastAssetId(id);
+  }, [id]);
+
   const { data: asset, isLoading } = useGetAsset(id ?? "", {
     query: { enabled: !!id } as any,
   });
@@ -80,7 +85,7 @@ export default function AssetDetailScreen() {
             styles.backBtn,
             { backgroundColor: colors.background, borderRadius: colors.radius },
           ]}
-          onPress={() => router.back()}
+          onPress={() => { setLastAssetId(null); router.back(); }}
           activeOpacity={0.75}
         >
           <Feather name="arrow-left" size={20} color={colors.foreground} />
