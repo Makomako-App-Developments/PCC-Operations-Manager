@@ -1,10 +1,12 @@
 import { Router } from "express";
 import multer from "multer";
 import path from "path";
+import { randomUUID } from "crypto";
 import { db, auditsTable, auditItemsTable, auditPhotosTable, teamsTable, assetsTable } from "@workspace/db";
 import { eq, and, desc, sql } from "drizzle-orm";
 import { requireAuth, requireRole } from "../middlewares/auth";
 import { auditLog } from "../lib/audit";
+import { objectStorageClient } from "../lib/objectStorage";
 
 function isPrivilegedRole(role: string): boolean {
   return ["administrator", "manager", "supervisor"].includes(role);
@@ -21,21 +23,25 @@ async function assertAuditTeamAccess(auditId: string, role: string, callerTeamId
 
 const router = Router();
 
-const storage = multer.diskStorage({
-  destination: path.resolve(process.cwd(), "uploads"),
-  filename: (_req, file, cb) => {
-    const ext = path.extname(file.originalname);
-    cb(null, `audit-${Date.now()}-${Math.random().toString(36).slice(2)}${ext}`);
-  },
-});
 const upload = multer({
-  storage,
+  storage: multer.memoryStorage(),
   limits: { fileSize: 15 * 1024 * 1024 },
   fileFilter: (_req, file, cb) => {
     if (file.mimetype.startsWith("image/")) cb(null, true);
     else cb(new Error("Only image files are allowed"));
   },
 });
+
+async function uploadPhotoToGCS(buffer: Buffer, mimetype: string, originalname: string): Promise<string> {
+  const bucketId = process.env["DEFAULT_OBJECT_STORAGE_BUCKET_ID"];
+  if (!bucketId) throw new Error("Object storage not configured");
+  const ext = path.extname(originalname) || ".jpg";
+  const objectName = `uploads/${randomUUID()}${ext}`;
+  const bucket = objectStorageClient.bucket(bucketId);
+  const file = bucket.file(objectName);
+  await file.save(buffer, { contentType: mimetype, resumable: false });
+  return `/api/uploads/${objectName}`;
+}
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
@@ -300,7 +306,7 @@ router.post(
     const existing = await db.select().from(auditItemsTable).where(and(eq(auditItemsTable.id, itemId), eq(auditItemsTable.auditId, auditId))).limit(1);
     if (!existing.length) { res.status(404).json({ error: "Audit item not found" }); return; }
 
-    const blobUrl = `/api/uploads/${req.file.filename}`;
+    const blobUrl = await uploadPhotoToGCS(req.file.buffer, req.file.mimetype, req.file.originalname);
     const [photo] = await db.insert(auditPhotosTable).values({ auditItemId: itemId, uploadedBy: userId, blobUrl }).returning();
     res.status(201).json(photo);
   },

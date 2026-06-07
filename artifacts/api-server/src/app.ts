@@ -4,6 +4,7 @@ import cookieParser from "cookie-parser";
 import helmet from "helmet";
 import rateLimit from "express-rate-limit";
 import path from "path";
+import fs from "fs";
 import { Readable } from "stream";
 import router from "./routes";
 import { initSentry, Sentry } from "./lib/sentry";
@@ -72,7 +73,17 @@ app.get("/api/uploads/*splat", async (req: Request, res: Response) => {
     const bucket = objectStorageClient.bucket(bucketId);
     const file   = bucket.file(objectName);
     const [exists] = await file.exists();
-    if (!exists) { res.status(404).json({ error: "Photo not found" }); return; }
+    if (!exists) {
+      // Fallback: serve from local disk for photos uploaded before GCS migration
+      const filename = splat.replace(/^uploads\//, "");
+      const localPath = path.resolve(process.cwd(), "uploads", filename);
+      if (fs.existsSync(localPath)) {
+        res.setHeader("Cache-Control", "private, max-age=86400");
+        fs.createReadStream(localPath).pipe(res);
+        return;
+      }
+      res.status(404).json({ error: "Photo not found" }); return;
+    }
 
     const [metadata] = await file.getMetadata();
     const contentType = (metadata.contentType as string) || "application/octet-stream";
