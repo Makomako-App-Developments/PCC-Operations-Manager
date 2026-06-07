@@ -1,8 +1,13 @@
 uploads = []
-outputs = []
 
 [[generated]]
 id = "ItSqlseYAACTM3FGoL8Vc"
 uri = "file://artifacts/field-ops/assets/images/icon.png"
 type = "image"
 title = "garden ops field app icon"
+
+[[outputs]]
+id = "Tjho8sp4GC2Ud03BPM6Q-"
+uri = "file://PCC_Gardens_Implementation_Plan.docx"
+type = "word_document"
+title = "PCC Gardens Manager — Implementation Plan"
