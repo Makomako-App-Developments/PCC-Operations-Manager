@@ -783,9 +783,6 @@ export default function ReportScreen() {
               }}
               activeOpacity={0.75}
             >
-              {t.value === "pest_plant_sighting" && (
-                <Feather name="alert-triangle" size={16} color="#f59e0b" style={{ marginRight: 8 }} />
-              )}
               <Text style={[styles.modalItemText, { color: colors.foreground }]}>{t.label}</Text>
               {issueType === t.value && <Feather name="check" size={18} color={colors.primary} />}
             </TouchableOpacity>
