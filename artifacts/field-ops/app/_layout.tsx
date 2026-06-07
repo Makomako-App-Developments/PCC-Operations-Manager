@@ -48,7 +48,7 @@ function AuthGuard() {
 
     const seg = segments[0];
     const onLoginScreen = seg === "login";
-    const inAuthenticatedArea = seg === "(tabs)" || seg === "job" || seg === "reactive-job";
+    const inAuthenticatedArea = seg === "(tabs)" || seg === "job" || seg === "reactive-job" || seg === "asset";
 
     const isManager = user?.role === "manager";
     if (!user && !onLoginScreen) {
@@ -73,6 +73,10 @@ function RootLayoutNav() {
       />
       <Stack.Screen
         name="reactive-job/[id]"
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="asset/[id]"
         options={{ headerShown: false }}
       />
     </Stack>
