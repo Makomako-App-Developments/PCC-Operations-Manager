@@ -15,6 +15,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { BoundaryMap } from "@/components/BoundaryMap";
+import { useAuth } from "@/context/auth";
 import { useColors } from "@/hooks/useColors";
 
 const GARDEN_TYPE_LABEL: Record<string, string> = {
@@ -35,12 +36,16 @@ const STANDARD_COLOR: Record<string, string> = {
   low: "#94a3b8",
 };
 
+const PRIVILEGED_ROLES = ["administrator", "manager", "supervisor"];
+
 export default function AssetDetailScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
   const { height: windowHeight } = useWindowDimensions();
+  const { user } = useAuth();
+  const canAudit = PRIVILEGED_ROLES.includes(user?.role ?? "");
 
   const { data: asset, isLoading } = useGetAsset(id ?? "", {
     query: { enabled: !!id } as any,
@@ -129,9 +134,10 @@ export default function AssetDetailScreen() {
           </Text>
         </View>
       ) : (
+        <>
         <ScrollView
           style={styles.scroll}
-          contentContainerStyle={{ padding: 16, paddingBottom: bottomPad + 32 }}
+          contentContainerStyle={{ padding: 16, paddingBottom: canAudit ? bottomPad + 96 : bottomPad + 32 }}
           showsVerticalScrollIndicator={false}
         >
           {/* Info grid */}
@@ -324,6 +330,36 @@ export default function AssetDetailScreen() {
             </View>
           )}
         </ScrollView>
+
+        {canAudit && (
+          <View
+            style={[
+              styles.auditFooter,
+              {
+                backgroundColor: colors.card,
+                borderTopColor: colors.border,
+                paddingBottom: insets.bottom + (Platform.OS === "web" ? 16 : 8),
+              },
+            ]}
+          >
+            <TouchableOpacity
+              style={[
+                styles.auditBtn,
+                { backgroundColor: colors.primary, borderRadius: colors.radius },
+              ]}
+              activeOpacity={0.8}
+              onPress={() =>
+                router.push(
+                  `/(tabs)/audits?startAssetId=${encodeURIComponent(id ?? "")}&startAssetName=${encodeURIComponent((asset as any)?.name ?? "")}` as any,
+                )
+              }
+            >
+              <Feather name="check-square" size={18} color="#fff" />
+              <Text style={styles.auditBtnText}>Start Audit</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+        </>
       )}
     </View>
   );
@@ -429,5 +465,22 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontFamily: "Inter_600SemiBold",
     fontSize: 14,
+  },
+  auditFooter: {
+    padding: 16,
+    paddingTop: 12,
+    borderTopWidth: 1,
+  },
+  auditBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    paddingVertical: 14,
+  },
+  auditBtnText: {
+    fontFamily: "Inter_700Bold",
+    fontSize: 16,
+    color: "#fff",
   },
 });

@@ -2,7 +2,8 @@ import { Feather } from "@expo/vector-icons";
 import { useListAssets } from "@workspace/api-client-react";
 import * as ImagePicker from "expo-image-picker";
 import * as Location from "expo-location";
-import React, { useState, useMemo, useEffect } from "react";
+import { useLocalSearchParams } from "expo-router";
+import React, { useState, useMemo, useEffect, useRef } from "react";
 import { AuditMap } from "@/components/AuditMap";
 import {
   ActivityIndicator,
@@ -201,6 +202,9 @@ export default function AuditsScreen() {
   const [openingAuditId, setOpeningAuditId] = useState<string | null>(null);
   const [selectedAssetDetail, setSelectedAssetDetail] = useState<any>(null);
 
+  const { startAssetId, startAssetName } = useLocalSearchParams<{ startAssetId?: string; startAssetName?: string }>();
+  const autoStartHandled = useRef(false);
+
   const bottomPad = insets.bottom + (Platform.OS === "web" ? 84 : 100);
 
   // ── Location for map ──
@@ -326,6 +330,18 @@ ${userMarker}
     setSelectedAssetDetail(full);
     createAudit.mutate(asset.id);
   };
+
+  // ── Auto-start audit when navigated from asset detail screen ──
+  useEffect(() => {
+    if (!startAssetId || !startAssetName || !token || autoStartHandled.current) return;
+    autoStartHandled.current = true;
+    setSelectedAsset({ id: startAssetId, name: startAssetName });
+    fetch(getApiUrl(`/api/assets/${startAssetId}`), { headers: { Authorization: `Bearer ${token}` } })
+      .then((r) => r.ok ? r.json() : null)
+      .then((detail) => setSelectedAssetDetail(detail))
+      .catch(() => {});
+    createAudit.mutate(startAssetId);
+  }, [startAssetId, startAssetName, token]);
 
   const handlePhotoAdd = async (criterion: string) => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
