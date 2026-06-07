@@ -1,5 +1,5 @@
 import { Feather } from "@expo/vector-icons";
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect, useRef, useCallback } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -17,6 +17,8 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+
+import { useFocusEffect, useLocalSearchParams } from "expo-router";
 
 import { useAuth } from "@/context/auth";
 import { useColors } from "@/hooks/useColors";
@@ -194,6 +196,7 @@ interface RecordDepthModalProps {
   visible: boolean;
   token: string | null;
   onClose: () => void;
+  initialAsset?: { id: string; name: string } | null;
   onSubmit: (data: {
     assetId: string;
     depthMm: number;
@@ -204,10 +207,19 @@ interface RecordDepthModalProps {
   }) => Promise<void>;
 }
 
-function RecordDepthModal({ visible, token, onClose, onSubmit }: RecordDepthModalProps) {
+function RecordDepthModal({ visible, token, onClose, onSubmit, initialAsset }: RecordDepthModalProps) {
   const colors = useColors();
   const [assetQuery, setAssetQuery] = useState("");
   const [selectedAsset, setSelectedAsset] = useState<{ id: string; name: string } | null>(null);
+  const hasSetInitialDepth = useRef(false);
+  useEffect(() => {
+    if (visible && initialAsset && !hasSetInitialDepth.current) {
+      hasSetInitialDepth.current = true;
+      setSelectedAsset(initialAsset);
+      setAssetQuery(initialAsset.name);
+    }
+    if (!visible) hasSetInitialDepth.current = false;
+  }, [visible, initialAsset]);
   const [depthStr, setDepthStr] = useState("");
   const [mulchType, setMulchType] = useState("");
   const [isFresh, setIsFresh] = useState(false);
@@ -420,12 +432,22 @@ interface NewAssessmentModalProps {
   token: string | null;
   onClose: () => void;
   onSuccess: () => void;
+  initialAsset?: { id: string; name: string } | null;
 }
 
-function NewAssessmentModal({ visible, token, onClose, onSuccess }: NewAssessmentModalProps) {
+function NewAssessmentModal({ visible, token, onClose, onSuccess, initialAsset }: NewAssessmentModalProps) {
   const colors = useColors();
   const [assetQuery, setAssetQuery] = useState("");
   const [selectedAsset, setSelectedAsset] = useState<{ id: string; name: string } | null>(null);
+  const hasSetInitialAssessment = useRef(false);
+  useEffect(() => {
+    if (visible && initialAsset && !hasSetInitialAssessment.current) {
+      hasSetInitialAssessment.current = true;
+      setSelectedAsset(initialAsset);
+      setAssetQuery(initialAsset.name);
+    }
+    if (!visible) hasSetInitialAssessment.current = false;
+  }, [visible, initialAsset]);
   const [assessmentDate, setAssessmentDate] = useState(() => localDateStr(new Date()));
   const [notes, setNotes] = useState("");
   const [species, setSpecies] = useState<SpeciesRow[]>([{ speciesName: "", speciesCategory: "", quantity: "" }]);
@@ -721,6 +743,24 @@ export default function ProgrammesScreen() {
   const [scheduleModal, setScheduleModal] = useState<any | null>(null);
   const [expandedInfill, setExpandedInfill] = useState<Set<string>>(new Set());
   const [showNewAssessment, setShowNewAssessment] = useState(false);
+  const [preFillAsset, setPreFillAsset] = useState<{ id: string; name: string } | null>(null);
+
+  // ── Deep-link params from asset detail ──
+  const { openTab, openModal, preAssetId, preAssetName, ts } = useLocalSearchParams<{
+    openTab?: string; openModal?: string; preAssetId?: string; preAssetName?: string; ts?: string;
+  }>();
+  const lastHandledTs = useRef<string | null>(null);
+  useFocusEffect(useCallback(() => {
+    if (!openTab || !openModal) return;
+    const key = ts ?? `${openTab}|${openModal}|${preAssetId}`;
+    if (key === lastHandledTs.current) return;
+    lastHandledTs.current = key;
+    const asset = preAssetId && preAssetName ? { id: preAssetId, name: preAssetName } : null;
+    setActiveTab(openTab as ActiveTab);
+    setPreFillAsset(asset);
+    if (openModal === "depth") setShowDepthModal(true);
+    else if (openModal === "assessment") setShowNewAssessment(true);
+  }, [openTab, openModal, preAssetId, preAssetName, ts]));
 
   // ── Schedule tab state ──
   const [scheduleDate, setScheduleDate] = useState(() => new Date());
@@ -1345,7 +1385,8 @@ export default function ProgrammesScreen() {
       <RecordDepthModal
         visible={showDepthModal}
         token={token}
-        onClose={() => setShowDepthModal(false)}
+        initialAsset={preFillAsset}
+        onClose={() => { setShowDepthModal(false); setPreFillAsset(null); }}
         onSubmit={async (data) => {
           await recordDepth.mutateAsync(data);
         }}
@@ -1355,9 +1396,11 @@ export default function ProgrammesScreen() {
       <NewAssessmentModal
         visible={showNewAssessment}
         token={token}
-        onClose={() => setShowNewAssessment(false)}
+        initialAsset={preFillAsset}
+        onClose={() => { setShowNewAssessment(false); setPreFillAsset(null); }}
         onSuccess={() => {
           setShowNewAssessment(false);
+          setPreFillAsset(null);
           qc.invalidateQueries({ queryKey: ["infill-jobs-all-mobile"] });
         }}
       />

@@ -142,7 +142,7 @@ export default function AssetDetailScreen() {
         <>
         <ScrollView
           style={styles.scroll}
-          contentContainerStyle={{ padding: 16, paddingBottom: canAudit ? bottomPad + 96 : bottomPad + 32 }}
+          contentContainerStyle={{ padding: 16, paddingBottom: canAudit ? bottomPad + 160 : bottomPad + 32 }}
           showsVerticalScrollIndicator={false}
         >
           {/* Info grid */}
@@ -362,6 +362,38 @@ export default function AssetDetailScreen() {
               <Feather name="check-square" size={18} color="#fff" />
               <Text style={styles.auditBtnText}>Start Audit</Text>
             </TouchableOpacity>
+            <View style={styles.actionRow}>
+              <TouchableOpacity
+                style={[
+                  styles.actionSecondaryBtn,
+                  { borderColor: colors.primary, borderRadius: colors.radius },
+                ]}
+                activeOpacity={0.8}
+                onPress={() =>
+                  router.push(
+                    `/(tabs)/programmes?openTab=mulch&openModal=depth&preAssetId=${encodeURIComponent(id ?? "")}&preAssetName=${encodeURIComponent((asset as any)?.name ?? "")}&ts=${Date.now()}` as any,
+                  )
+                }
+              >
+                <Feather name="layers" size={16} color={colors.primary} />
+                <Text style={[styles.actionSecondaryText, { color: colors.primary }]}>Mulch Depth</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  styles.actionSecondaryBtn,
+                  { borderColor: colors.primary, borderRadius: colors.radius },
+                ]}
+                activeOpacity={0.8}
+                onPress={() =>
+                  router.push(
+                    `/(tabs)/programmes?openTab=infill&openModal=assessment&preAssetId=${encodeURIComponent(id ?? "")}&preAssetName=${encodeURIComponent((asset as any)?.name ?? "")}&ts=${Date.now()}` as any,
+                  )
+                }
+              >
+                <Feather name="activity" size={16} color={colors.primary} />
+                <Text style={[styles.actionSecondaryText, { color: colors.primary }]}>Infill Assessment</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         )}
         </>
@@ -475,6 +507,7 @@ const styles = StyleSheet.create({
     padding: 16,
     paddingTop: 12,
     borderTopWidth: 1,
+    gap: 10,
   },
   auditBtn: {
     flexDirection: "row",
@@ -487,5 +520,22 @@ const styles = StyleSheet.create({
     fontFamily: "Inter_700Bold",
     fontSize: 16,
     color: "#fff",
+  },
+  actionRow: {
+    flexDirection: "row",
+    gap: 10,
+  },
+  actionSecondaryBtn: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    paddingVertical: 12,
+    borderWidth: 1.5,
+  },
+  actionSecondaryText: {
+    fontFamily: "Inter_600SemiBold",
+    fontSize: 13,
   },
 });
