@@ -795,14 +795,14 @@ export default function ProgrammesScreen() {
       const res = await fetch(getApiUrl("/api/teams"), {
         headers: { Authorization: `Bearer ${token}` },
       });
-      if (!res.ok) return { data: [] };
-      return res.json() as Promise<{ data: any[] }>;
+      if (!res.ok) return [];
+      return res.json() as Promise<any[]>;
     },
     enabled: !!token,
     staleTime: 5 * 60_000,
   });
 
-  const teamsArr: any[] = teamsResp?.data ?? [];
+  const teamsArr: any[] = teamsResp ?? [];
   const teamColorMap = useMemo(() => {
     const sorted = [...teamsArr].sort((a, b) => a.name.localeCompare(b.name));
     const m = new Map<string, string>();
