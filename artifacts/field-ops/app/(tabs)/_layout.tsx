@@ -30,8 +30,8 @@ function NativeTabLayout({ isPrivileged, isManager }: { isPrivileged: boolean; i
       )}
       {isPrivileged && (
         <NativeTabs.Trigger name="programmes">
-          <Icon sf={{ default: "leaf", selected: "leaf.fill" }} />
-          <Label>Programmes</Label>
+          <Icon sf={{ default: "calendar", selected: "calendar.fill" }} />
+          <Label>Schedule</Label>
         </NativeTabs.Trigger>
       )}
       {isPrivileged && (
@@ -145,12 +145,12 @@ function ClassicTabLayout({ isPrivileged, isManager }: { isPrivileged: boolean; 
       <Tabs.Screen
         name="programmes"
         options={isPrivileged ? {
-          title: "Programmes",
+          title: "Schedule",
           tabBarIcon: ({ color }) =>
             isIOS ? (
-              <SymbolView name="leaf" tintColor={color} size={24} />
+              <SymbolView name="calendar" tintColor={color} size={24} />
             ) : (
-              <Feather name="activity" size={22} color={color} />
+              <Feather name="calendar" size={22} color={color} />
             ),
         } : { href: null }}
       />

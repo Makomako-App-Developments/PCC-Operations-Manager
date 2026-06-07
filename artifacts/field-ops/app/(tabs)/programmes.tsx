@@ -1,5 +1,5 @@
 import { Feather } from "@expo/vector-icons";
-import React, { useState } from "react";
+import React, { useState, useMemo } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -27,6 +27,34 @@ import { getApiUrl } from "@/lib/api";
 function localDateStr(d: Date) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
+
+function localMondayOf(d: Date): string {
+  const day = d.getDay();
+  const diff = day === 0 ? -6 : 1 - day;
+  const mon = new Date(d);
+  mon.setDate(d.getDate() + diff);
+  return localDateStr(mon);
+}
+
+function formatDayLabel(d: Date): string {
+  const todayStr = localDateStr(new Date());
+  const ds = localDateStr(d);
+  const tmrw = new Date(); tmrw.setDate(tmrw.getDate() + 1);
+  const yest = new Date(); yest.setDate(yest.getDate() - 1);
+  if (ds === todayStr) return "Today";
+  if (ds === localDateStr(tmrw)) return "Tomorrow";
+  if (ds === localDateStr(yest)) return "Yesterday";
+  return d.toLocaleDateString("en-NZ", { weekday: "long" });
+}
+
+function formatDateFull(d: Date): string {
+  return d.toLocaleDateString("en-NZ", { day: "numeric", month: "long", year: "numeric" });
+}
+
+const TEAM_PALETTE = [
+  "#00AECD", "#f97316", "#10b981", "#f59e0b",
+  "#ec4899", "#06b6d4", "#8b5cf6", "#84cc16",
+];
 
 const STATUS_LABEL: Record<string, string> = {
   draft:       "Draft",
@@ -678,7 +706,7 @@ function NewAssessmentModal({ visible, token, onClose, onSuccess }: NewAssessmen
 
 // ─── Main Screen ──────────────────────────────────────────────────────────────
 
-type ActiveTab = "infill" | "mulch";
+type ActiveTab = "schedule" | "infill" | "mulch";
 
 export default function ProgrammesScreen() {
   const colors = useColors();
@@ -688,13 +716,91 @@ export default function ProgrammesScreen() {
 
   const isPrivileged = ["administrator", "manager", "supervisor"].includes(user?.role ?? "");
 
-  const [activeTab, setActiveTab] = useState<ActiveTab>("infill");
+  const [activeTab, setActiveTab] = useState<ActiveTab>("schedule");
   const [showDepthModal, setShowDepthModal] = useState(false);
   const [scheduleModal, setScheduleModal] = useState<any | null>(null);
   const [expandedInfill, setExpandedInfill] = useState<Set<string>>(new Set());
   const [showNewAssessment, setShowNewAssessment] = useState(false);
 
+  // ── Schedule tab state ──
+  const [scheduleDate, setScheduleDate] = useState(() => new Date());
+  const [collapsedTeams, setCollapsedTeams] = useState<Set<string>>(new Set());
+
   const bottomPad = insets.bottom + (Platform.OS === "web" ? 84 : 100);
+
+  // ── Schedule tab data ──
+  const scheduleDateStr = localDateStr(scheduleDate);
+  const weekStr = localMondayOf(scheduleDate);
+
+  const {
+    data: schedWeekData,
+    isLoading: loadingSchedule,
+    refetch: refetchSchedule,
+    isRefetching: refetchingSchedule,
+  } = useQuery({
+    queryKey: ["schedule-week-mobile", weekStr],
+    queryFn: async () => {
+      const res = await fetch(getApiUrl(`/api/schedule/week?week=${weekStr}`), {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) throw new Error("Failed to fetch schedule");
+      return res.json() as Promise<{ days: { date: string; jobs: any[] }[] }>;
+    },
+    enabled: !!token && activeTab === "schedule",
+  });
+
+  const { data: teamsResp } = useQuery({
+    queryKey: ["teams-mobile"],
+    queryFn: async () => {
+      const res = await fetch(getApiUrl("/api/teams"), {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) return { data: [] };
+      return res.json() as Promise<{ data: any[] }>;
+    },
+    enabled: !!token,
+    staleTime: 5 * 60_000,
+  });
+
+  const teamsArr: any[] = teamsResp?.data ?? [];
+  const teamColorMap = useMemo(() => {
+    const sorted = [...teamsArr].sort((a, b) => a.name.localeCompare(b.name));
+    const m = new Map<string, string>();
+    sorted.forEach((t, i) => m.set(t.id, TEAM_PALETTE[i % TEAM_PALETTE.length]));
+    return m;
+  }, [teamsArr]);
+
+  const getTeamColor = (id?: string | null) => teamColorMap.get(id ?? "") ?? "#94a3b8";
+  const getTeamName = (id?: string | null) => teamsArr.find(t => t.id === id)?.name ?? "Unknown Team";
+
+  const todayJobs: any[] = useMemo(() => {
+    const dayObj = schedWeekData?.days?.find((d: any) => d.date === scheduleDateStr);
+    return dayObj?.jobs ?? [];
+  }, [schedWeekData, scheduleDateStr]);
+
+  const sortedTeamGroups: [string, any[]][] = useMemo(() => {
+    const groups = new Map<string, any[]>();
+    for (const job of todayJobs) {
+      if (job.isAllTeams) {
+        for (const t of teamsArr) {
+          if (!groups.has(t.id)) groups.set(t.id, []);
+          groups.get(t.id)!.push(job);
+        }
+      } else if (job.teamId) {
+        if (!groups.has(job.teamId)) groups.set(job.teamId, []);
+        groups.get(job.teamId)!.push(job);
+      }
+    }
+    return [...groups.entries()]
+      .filter(([, jobs]) => jobs.length > 0)
+      .sort(([aId], [bId]) => getTeamName(aId).localeCompare(getTeamName(bId)));
+  }, [todayJobs, teamsArr]);
+
+  const prevDay = () => setScheduleDate(d => { const n = new Date(d); n.setDate(n.getDate() - 1); return n; });
+  const nextDay = () => setScheduleDate(d => { const n = new Date(d); n.setDate(n.getDate() + 1); return n; });
+  const goToToday = () => setScheduleDate(new Date());
+  const toggleTeamCollapse = (id: string) =>
+    setCollapsedTeams(prev => { const s = new Set(prev); s.has(id) ? s.delete(id) : s.add(id); return s; });
 
   // ── Infill Jobs ──
   const {
@@ -807,23 +913,249 @@ export default function ProgrammesScreen() {
     <View style={[styles.root, { backgroundColor: colors.background }]}>
       {/* Header */}
       <View style={[styles.header, { backgroundColor: colors.navy, paddingTop: insets.top + 16 }]}>
-        <Text style={styles.headerTitle}>Programmes</Text>
+        <Text style={styles.headerTitle}>Schedule</Text>
       </View>
 
       {/* Tabs */}
       <View style={[styles.tabRow, { backgroundColor: colors.card, borderBottomColor: colors.border }]}>
-        {(["infill", "mulch"] as ActiveTab[]).map((t) => (
+        {(["schedule", "infill", "mulch"] as ActiveTab[]).map((t) => (
           <TouchableOpacity
             key={t}
             style={[styles.tabBtn, activeTab === t && { borderBottomColor: colors.primary, borderBottomWidth: 2 }]}
             onPress={() => setActiveTab(t)}
           >
             <Text style={[styles.tabBtnText, { color: activeTab === t ? colors.primary : colors.mutedForeground }]}>
-              {t === "infill" ? "Infill Planting" : "Mulching"}
+              {t === "schedule" ? "Schedule" : t === "infill" ? "Infill" : "Mulching"}
             </Text>
           </TouchableOpacity>
         ))}
       </View>
+
+      {/* ── Schedule tab ───────────────────────────────────────────────── */}
+      {activeTab === "schedule" && (
+        <View style={{ flex: 1 }}>
+          {/* Date navigation bar */}
+          <View style={[sStyles.dateBar, { backgroundColor: colors.card, borderBottomColor: colors.border }]}>
+            <TouchableOpacity onPress={prevDay} style={sStyles.arrowBtn} activeOpacity={0.7}>
+              <Feather name="chevron-left" size={22} color={colors.foreground} />
+            </TouchableOpacity>
+            <TouchableOpacity style={sStyles.dateCenter} onPress={goToToday} activeOpacity={0.7}>
+              <Text style={[sStyles.dayLabel, { color: colors.foreground }]}>
+                {formatDayLabel(scheduleDate)}
+              </Text>
+              <Text style={[sStyles.dateLabel, { color: colors.mutedForeground }]}>
+                {formatDateFull(scheduleDate)}
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={nextDay} style={sStyles.arrowBtn} activeOpacity={0.7}>
+              <Feather name="chevron-right" size={22} color={colors.foreground} />
+            </TouchableOpacity>
+          </View>
+
+          <ScrollView
+            style={styles.scroll}
+            contentContainerStyle={{ padding: 14, gap: 10, paddingBottom: bottomPad }}
+            refreshControl={
+              <RefreshControl
+                refreshing={refetchingSchedule}
+                onRefresh={refetchSchedule}
+                tintColor={colors.primary}
+              />
+            }
+            showsVerticalScrollIndicator={false}
+          >
+            {loadingSchedule ? (
+              <ActivityIndicator style={{ marginTop: 48 }} color={colors.primary} size="large" />
+            ) : todayJobs.length === 0 ? (
+              <View style={styles.empty}>
+                <Feather name="calendar" size={40} color={colors.border} />
+                <Text style={[styles.emptyTitle, { color: colors.foreground }]}>No jobs scheduled</Text>
+                <Text style={[styles.emptySubtitle, { color: colors.mutedForeground }]}>
+                  No jobs are scheduled for this day.{"\n"}Tap the date to jump back to today.
+                </Text>
+              </View>
+            ) : (
+              <>
+                {/* Summary */}
+                <Text style={[sStyles.summary, { color: colors.mutedForeground }]}>
+                  {todayJobs.length} job{todayJobs.length !== 1 ? "s" : ""} across{" "}
+                  {sortedTeamGroups.length} team{sortedTeamGroups.length !== 1 ? "s" : ""}
+                </Text>
+
+                {sortedTeamGroups.map(([teamId, teamJobs]) => {
+                  const teamColor = getTeamColor(teamId);
+                  const teamName = getTeamName(teamId);
+                  const isCollapsed = collapsedTeams.has(teamId);
+                  const totalMins = teamJobs.reduce(
+                    (s: number, j: any) => s + (j.estimatedTimeMins ?? j.serviceTimeMins ?? 0), 0,
+                  );
+                  const doneCount = teamJobs.filter((j: any) => j.status === "completed").length;
+                  const inProgCount = teamJobs.filter((j: any) => j.status === "in_progress").length;
+                  const doneMins = teamJobs
+                    .filter((j: any) => j.status === "completed")
+                    .reduce((s: number, j: any) => s + (j.estimatedTimeMins ?? j.serviceTimeMins ?? 0), 0);
+                  const progress = totalMins > 0 ? Math.round((doneMins / totalMins) * 100) : 0;
+                  const donePct = teamJobs.length > 0 ? (doneCount / teamJobs.length) * 100 : 0;
+                  const inProgPct = teamJobs.length > 0 ? (inProgCount / teamJobs.length) * 100 : 0;
+
+                  return (
+                    <View
+                      key={teamId}
+                      style={[
+                        sStyles.teamCard,
+                        {
+                          backgroundColor: colors.card,
+                          borderColor: colors.border,
+                          borderRadius: colors.radius,
+                        },
+                      ]}
+                    >
+                      {/* Team header — tappable to collapse */}
+                      <TouchableOpacity
+                        style={sStyles.teamHeader}
+                        onPress={() => toggleTeamCollapse(teamId)}
+                        activeOpacity={0.75}
+                      >
+                        <View style={[sStyles.teamStripe, { backgroundColor: teamColor }]} />
+                        <View style={{ flex: 1, gap: 5 }}>
+                          <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                            <Text style={[sStyles.teamName, { color: colors.foreground }]}>{teamName}</Text>
+                            {inProgCount > 0 && (
+                              <View style={[sStyles.inProgBadge, { backgroundColor: teamColor + "22" }]}>
+                                <Text style={[sStyles.inProgBadgeText, { color: teamColor }]}>In Progress</Text>
+                              </View>
+                            )}
+                          </View>
+                          {/* Segmented progress bar */}
+                          <View style={sStyles.progressRow}>
+                            <View style={[sStyles.progressTrack, { backgroundColor: colors.border }]}>
+                              {donePct > 0 && (
+                                <View style={[sStyles.progressSeg, { width: `${donePct}%` as any, backgroundColor: "#10b981" }]} />
+                              )}
+                              {inProgPct > 0 && (
+                                <View style={[sStyles.progressSeg, { width: `${inProgPct}%` as any, backgroundColor: teamColor }]} />
+                              )}
+                            </View>
+                            <Text style={[sStyles.progressHint, { color: colors.mutedForeground }]}>
+                              {doneCount}/{teamJobs.length} · {totalMins}m
+                            </Text>
+                          </View>
+                        </View>
+                        <View style={sStyles.progressPctWrap}>
+                          <Text style={[sStyles.progressPct, { color: progress === 100 ? "#10b981" : teamColor }]}>
+                            {progress}%
+                          </Text>
+                          <Text style={[sStyles.progressPctSub, { color: colors.mutedForeground }]}>done</Text>
+                        </View>
+                        <Feather
+                          name={isCollapsed ? "chevron-right" : "chevron-down"}
+                          size={16}
+                          color={colors.mutedForeground}
+                        />
+                      </TouchableOpacity>
+
+                      {/* Job list */}
+                      {!isCollapsed && (
+                        <View style={[sStyles.jobList, { borderTopColor: colors.border }]}>
+                          {/* Vertical guide line */}
+                          <View style={[sStyles.guideLine, { backgroundColor: colors.border }]} />
+                          {teamJobs.map((job: any, idx: number) => {
+                            const done = job.status === "completed";
+                            const overdue = job.status === "overdue";
+                            const inProg = job.status === "in_progress";
+                            const dotBg = done
+                              ? "#d1fae5"
+                              : inProg
+                              ? teamColor + "22"
+                              : overdue
+                              ? "#fee2e2"
+                              : colors.background;
+                            const dotBorder = done
+                              ? "#6ee7b7"
+                              : inProg
+                              ? teamColor
+                              : overdue
+                              ? "#fca5a5"
+                              : colors.border;
+                            const dotTxt = done
+                              ? "#059669"
+                              : inProg
+                              ? teamColor
+                              : overdue
+                              ? "#ef4444"
+                              : colors.mutedForeground;
+                            const displayTime = job.estimatedTimeMins ?? job.serviceTimeMins;
+                            return (
+                              <View
+                                key={job.id}
+                                style={[
+                                  sStyles.jobRow,
+                                  { borderBottomColor: colors.border, opacity: done ? 0.55 : 1 },
+                                ]}
+                              >
+                                <View
+                                  style={[
+                                    sStyles.stopDot,
+                                    { backgroundColor: dotBg, borderColor: dotBorder },
+                                  ]}
+                                >
+                                  {done ? (
+                                    <Feather name="check" size={11} color={dotTxt} />
+                                  ) : (
+                                    <Text style={[sStyles.stopNum, { color: dotTxt }]}>{idx + 1}</Text>
+                                  )}
+                                </View>
+                                <View style={{ flex: 1 }}>
+                                  <Text
+                                    style={[
+                                      sStyles.jobName,
+                                      {
+                                        color: done
+                                          ? colors.mutedForeground
+                                          : overdue
+                                          ? "#ef4444"
+                                          : colors.foreground,
+                                        textDecorationLine: done ? "line-through" : "none",
+                                      },
+                                    ]}
+                                    numberOfLines={1}
+                                  >
+                                    {job.assetName}
+                                  </Text>
+                                  {job.assetDesc ? (
+                                    <Text style={[sStyles.jobDesc, { color: colors.mutedForeground }]} numberOfLines={1}>
+                                      {job.assetDesc}
+                                    </Text>
+                                  ) : null}
+                                </View>
+                                <View style={sStyles.jobMeta}>
+                                  {overdue && (
+                                    <View style={sStyles.overduePill}>
+                                      <Text style={sStyles.overduePillTxt}>Overdue</Text>
+                                    </View>
+                                  )}
+                                  {inProg && (
+                                    <View style={[sStyles.inProgPill, { backgroundColor: teamColor + "22" }]}>
+                                      <Text style={[sStyles.inProgPillTxt, { color: teamColor }]}>In Progress</Text>
+                                    </View>
+                                  )}
+                                  <Text style={[sStyles.jobTime, { color: colors.mutedForeground }]}>
+                                    {displayTime}m
+                                  </Text>
+                                </View>
+                              </View>
+                            );
+                          })}
+                        </View>
+                      )}
+                    </View>
+                  );
+                })}
+              </>
+            )}
+          </ScrollView>
+        </View>
+      )}
 
       {/* Infill tab */}
       {activeTab === "infill" && (
@@ -1133,6 +1465,176 @@ const styles = StyleSheet.create({
 
   modalSubmitBtn: { marginTop: 8, paddingVertical: 14, borderRadius: 10, alignItems: "center" },
   modalSubmitText: { fontFamily: "Inter_700Bold", fontSize: 15, color: "#fff" },
+});
+
+// ─── Schedule Tab Styles ──────────────────────────────────────────────────────
+
+const sStyles = StyleSheet.create({
+  dateBar: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 10,
+    paddingHorizontal: 4,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  arrowBtn: {
+    width: 44,
+    height: 44,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  dateCenter: {
+    flex: 1,
+    alignItems: "center",
+    gap: 1,
+  },
+  dayLabel: {
+    fontFamily: "Inter_700Bold",
+    fontSize: 16,
+  },
+  dateLabel: {
+    fontFamily: "Inter_400Regular",
+    fontSize: 12,
+  },
+  summary: {
+    fontFamily: "Inter_400Regular",
+    fontSize: 13,
+    paddingHorizontal: 2,
+  },
+  teamCard: {
+    borderWidth: 1,
+    overflow: "hidden",
+  },
+  teamHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 12,
+    paddingRight: 14,
+    gap: 10,
+  },
+  teamStripe: {
+    width: 4,
+    alignSelf: "stretch",
+    borderRadius: 2,
+    marginLeft: 4,
+  },
+  teamName: {
+    fontFamily: "Inter_700Bold",
+    fontSize: 14,
+  },
+  inProgBadge: {
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: 10,
+  },
+  inProgBadgeText: {
+    fontFamily: "Inter_600SemiBold",
+    fontSize: 10,
+  },
+  progressRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  progressTrack: {
+    height: 5,
+    width: 100,
+    borderRadius: 3,
+    flexDirection: "row",
+    overflow: "hidden",
+  },
+  progressSeg: {
+    height: "100%" as any,
+  },
+  progressHint: {
+    fontFamily: "Inter_400Regular",
+    fontSize: 11,
+  },
+  progressPctWrap: {
+    alignItems: "flex-end",
+    marginRight: 6,
+  },
+  progressPct: {
+    fontFamily: "Inter_700Bold",
+    fontSize: 14,
+  },
+  progressPctSub: {
+    fontFamily: "Inter_400Regular",
+    fontSize: 10,
+  },
+  jobList: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    paddingLeft: 18,
+    paddingRight: 14,
+    paddingVertical: 6,
+    position: "relative",
+  },
+  guideLine: {
+    position: "absolute",
+    left: 29,
+    top: 20,
+    bottom: 20,
+    width: 1,
+  },
+  jobRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    paddingVertical: 9,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  stopDot: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    borderWidth: 2,
+    alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0,
+    zIndex: 1,
+  },
+  stopNum: {
+    fontFamily: "Inter_700Bold",
+    fontSize: 11,
+  },
+  jobName: {
+    fontFamily: "Inter_600SemiBold",
+    fontSize: 13,
+  },
+  jobDesc: {
+    fontFamily: "Inter_400Regular",
+    fontSize: 11,
+    marginTop: 1,
+  },
+  jobMeta: {
+    alignItems: "flex-end",
+    gap: 3,
+    flexShrink: 0,
+  },
+  overduePill: {
+    backgroundColor: "#fee2e2",
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 8,
+  },
+  overduePillTxt: {
+    fontFamily: "Inter_600SemiBold",
+    fontSize: 10,
+    color: "#ef4444",
+  },
+  inProgPill: {
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 8,
+  },
+  inProgPillTxt: {
+    fontFamily: "Inter_600SemiBold",
+    fontSize: 10,
+  },
+  jobTime: {
+    fontFamily: "Inter_400Regular",
+    fontSize: 11,
+  },
 });
 
 // ─── New Assessment Styles ────────────────────────────────────────────────────
