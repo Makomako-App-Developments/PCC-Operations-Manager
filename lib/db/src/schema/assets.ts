@@ -25,6 +25,7 @@ export const assetsTable = pgTable("assets", {
   routeOrder:      integer("route_order"),          // geosequence position within team
   description:     text("description"),
   notes:           text("notes"),
+  knownHazards:    text("known_hazards"),
   boundary:        jsonb("boundary"),
   isActive:        boolean("is_active").notNull().default(true),
   createdAt:       timestamp("created_at").notNull().defaultNow(),

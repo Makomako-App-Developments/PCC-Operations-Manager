@@ -1079,6 +1079,17 @@ export default function JobDetailScreen() {
         contentContainerStyle={{ padding: 16, paddingBottom: bottomPad + 120 }}
         showsVerticalScrollIndicator={false}
       >
+        {/* Known Hazards — always first, prominent warning */}
+        {(asset as any).knownHazards ? (
+          <View style={[styles.hazardBanner, { backgroundColor: "#fef3c7", borderColor: "#fbbf24" }]}>
+            <Feather name="alert-triangle" size={16} color="#b45309" />
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.hazardTitle, { color: "#92400e" }]}>Known Hazards</Text>
+              <Text style={[styles.hazardText, { color: "#92400e" }]}>{(asset as any).knownHazards}</Text>
+            </View>
+          </View>
+        ) : null}
+
         {/* Info tiles */}
         <View style={styles.infoGrid}>
           {/* Description — full width, first */}
@@ -1446,6 +1457,12 @@ const styles = StyleSheet.create({
   infoTileHeader: { flexDirection: "row", alignItems: "center", gap: 4, marginBottom: 6 },
   infoTileLabel: { fontFamily: "Inter_500Medium", fontSize: 10, textTransform: "uppercase", letterSpacing: 0.4, flex: 1 },
   infoTileValue: { fontFamily: "Inter_600SemiBold", fontSize: 14 },
+  hazardBanner: {
+    flexDirection: "row", alignItems: "flex-start", gap: 10,
+    borderWidth: 1.5, borderRadius: 12, padding: 12, marginBottom: 12,
+  },
+  hazardTitle: { fontFamily: "Inter_700Bold", fontSize: 13, marginBottom: 3 },
+  hazardText: { fontFamily: "Inter_400Regular", fontSize: 13, lineHeight: 19 },
   allTeamsBanner: {
     flexDirection: "row", alignItems: "flex-start", gap: 10,
     borderWidth: 1, borderRadius: 12, padding: 12, marginBottom: 12,

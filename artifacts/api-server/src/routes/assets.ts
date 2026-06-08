@@ -20,6 +20,7 @@ const ASSET_FIELD_LABELS: Record<string, string> = {
   streetAddress:   "Street Address",
   description:     "Description",
   notes:           "Notes",
+  knownHazards:    "Known Hazards",
   isActive:        "Active",
 };
 

@@ -693,7 +693,7 @@ function InfillPlantingTab({ assetId, onJobClick, onNewAssessment }: { assetId: 
 type EditForm = {
   name: string; description: string; gardenType: string; standard: string; areaM2: string;
   serviceTimeMins: string; frequency: string; siteType: string; ward: string;
-  teamId: string; suburb: string; streetAddress: string; notes: string;
+  teamId: string; suburb: string; streetAddress: string; notes: string; knownHazards: string;
 };
 
 function EditPanel({
@@ -721,6 +721,7 @@ function EditPanel({
     suburb:          asset.suburb || "",
     streetAddress:   asset.streetAddress || "",
     notes:           asset.notes || "",
+    knownHazards:    (asset as any).knownHazards || "",
   });
 
   const f = (key: keyof EditForm, val: string) => setForm(prev => ({ ...prev, [key]: val }));
@@ -739,6 +740,7 @@ function EditPanel({
         suburb:          form.suburb        || null,
         streetAddress:   form.streetAddress || null,
         notes:           form.notes         || null,
+        knownHazards:    form.knownHazards   || null,
       };
       const r = await fetch(`/api/assets/${asset.id}`, {
         method: "PATCH", credentials: "include",
@@ -852,6 +854,9 @@ function EditPanel({
         </FormField>
         <FormField label="Notes">
           <Textarea value={form.notes} onChange={e => f("notes", e.target.value)} className="text-sm" rows={3} />
+        </FormField>
+        <FormField label="Known Hazards">
+          <Textarea value={form.knownHazards} onChange={e => f("knownHazards", e.target.value)} className="text-sm border-amber-300 focus-visible:ring-amber-400" rows={3} placeholder="e.g. Low overhead power lines, uneven ground, aggressive dog on site…" />
         </FormField>
       </div>
       <div className="px-5 py-4 border-t bg-gray-50 flex items-center justify-end gap-2 flex-shrink-0">
@@ -1378,6 +1383,18 @@ export default function AssetDetail() {
                   )}
                 </div>
               </div>
+
+              {/* Known Hazards */}
+              {(asset as any).knownHazards && (
+                <div className="px-5 py-4 border-b">
+                  <p className="text-[9px] font-bold text-amber-600 uppercase tracking-widest mb-2 flex items-center gap-1">
+                    <AlertTriangle className="w-3 h-3" /> Known Hazards
+                  </p>
+                  <div className="bg-amber-50 rounded-lg p-3 text-[11px] text-amber-900 border border-amber-200 whitespace-pre-wrap leading-relaxed">
+                    {(asset as any).knownHazards}
+                  </div>
+                </div>
+              )}
 
               {/* Notes */}
               {asset.notes && (

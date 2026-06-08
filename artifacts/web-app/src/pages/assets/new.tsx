@@ -29,6 +29,7 @@ const assetSchema = z.object({
   lat: z.coerce.number().optional(),
   lng: z.coerce.number().optional(),
   notes: z.string().optional(),
+  knownHazards: z.string().optional(),
 });
 
 export default function NewAsset() {
@@ -272,6 +273,14 @@ export default function NewAsset() {
                   <FormItem>
                     <FormLabel className="text-xs text-gray-500 uppercase tracking-wide">Internal Notes</FormLabel>
                     <FormControl><Textarea placeholder="Access instructions, special requirements..." {...field} className="resize-none h-24" /></FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )} />
+
+                <FormField control={form.control} name="knownHazards" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="text-xs text-amber-600 uppercase tracking-wide font-semibold">Known Hazards</FormLabel>
+                    <FormControl><Textarea placeholder="e.g. Low overhead power lines, uneven ground, aggressive dog on site…" {...field} className="resize-none h-24 border-amber-300 focus-visible:ring-amber-400" /></FormControl>
                     <FormMessage />
                   </FormItem>
                 )} />
