@@ -432,6 +432,13 @@ router.post(
       const monthsToTarget = (finalDate.getTime() - readingDate.getTime()) / (1000 * 60 * 60 * 24 * 30.44);
       const projectedDepthAtDue = Math.max(0, Math.round(effectiveDepth - rate * monthsToTarget));
 
+      // Volume to apply = (target depth − projected depth at due date) × area ÷ 1000
+      // Target depth = STANDARD_DEPTH_MM (100 mm per KPI specification)
+      const [asset] = await tx.select({ areaM2: assetsTable.areaM2 }).from(assetsTable).where(eq(assetsTable.id, body.assetId)).limit(1);
+      const areaM2 = asset ? parseFloat(asset.areaM2 ?? "0") : 0;
+      const depthToApplyMm = Math.max(0, STANDARD_DEPTH_MM - projectedDepthAtDue);
+      const volumeM3 = areaM2 > 0 ? Math.round(depthToApplyMm / 1000 * areaM2 * 100) / 100 : null;
+
       // Check for an existing draft mulching record for this asset
       const [existingDraft] = await tx
         .select()
@@ -444,7 +451,7 @@ router.post(
 
       let draft;
       if (existingDraft) {
-        // Update the existing draft's projected date and source reading
+        // Update the existing draft's projected date, source reading, and volume
         const [updated] = await tx
           .update(mulchingRecordsTable)
           .set({
@@ -452,6 +459,7 @@ router.post(
             mulchType:           body.mulchType ?? existingDraft.mulchType,
             sourceReadingId:     reading.id,
             projectedDepthAtDue,
+            volumeM3:            volumeM3 !== null ? String(volumeM3) : existingDraft.volumeM3,
             alignedJobId,
             alignedJobDate,
             updatedAt:           new Date(),
@@ -460,7 +468,7 @@ router.post(
           .returning();
         draft = updated;
       } else {
-        // Create a new draft mulching record
+        // Create a new draft mulching record with calculated volume
         const [created] = await tx
           .insert(mulchingRecordsTable)
           .values({
@@ -470,6 +478,7 @@ router.post(
             mulchType:           body.mulchType ?? null,
             sourceReadingId:     reading.id,
             projectedDepthAtDue,
+            volumeM3:            volumeM3 !== null ? String(volumeM3) : null,
             alignedJobId,
             alignedJobDate,
           })
