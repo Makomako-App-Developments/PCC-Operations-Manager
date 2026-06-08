@@ -842,7 +842,20 @@ router.get(
     }
     // ─────────────────────────────────────────────────────────────────────────
 
-    const days = Array.from(dayMap.entries()).map(([date, jobs]) => ({ date, jobs }));
+    // Re-sort each day's combined job list by routeOrder so mulching / infill /
+    // unscheduled jobs appear at the same position as their asset's regular job,
+    // not appended at the end after all maintenance jobs.
+    const days = Array.from(dayMap.entries()).map(([date, jobs]) => ({
+      date,
+      jobs: [...jobs].sort((a, b) => {
+        const ao = (a as any).routeOrder as number | null ?? null;
+        const bo = (b as any).routeOrder as number | null ?? null;
+        if (ao === null && bo === null) return 0;
+        if (ao === null) return 1;
+        if (bo === null) return -1;
+        return ao - bo;
+      }),
+    }));
 
     res.json({
       weekStart,

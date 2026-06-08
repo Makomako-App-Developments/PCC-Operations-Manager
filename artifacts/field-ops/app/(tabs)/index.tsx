@@ -126,25 +126,38 @@ function DaySection({
             </Text>
           ) : (
             <>
-              {pendingJobs.map((job, idx) => (
-                <JobCard
-                  key={job.id}
-                  id={job.id}
-                  assetName={job.assetName}
-                  assetDesc={(job as any).assetDesc}
-                  gardenType={job.gardenType}
-                  suburb={(job as any).suburb}
-                  streetAddress={(job as any).streetAddress}
-                  lat={(job as any).lat}
-                  lng={(job as any).lng}
-                  serviceTimeMins={job.serviceTimeMins}
-                  status={job.status}
-                  scheduledDate={job.scheduledDate}
-                  isAllTeams={(job as any).isAllTeams ?? false}
-                  jobType={(job as any).jobType}
-                  geoSeq={idx + 1}
-                />
-              ))}
+              {(() => {
+                // Assign geoSeq positions: jobs sharing the same non-null routeOrder
+                // (i.e. mulching/infill for the same asset as a regular job) get the
+                // same position number. Null-routeOrder jobs each get their own number.
+                let pos = 0;
+                let lastOrder: number | null = undefined as any;
+                const geoSeqFor = pendingJobs.map((job) => {
+                  const order = (job as any).routeOrder as number | null ?? null;
+                  const sameAsLast = order !== null && order === lastOrder;
+                  if (!sameAsLast) { pos++; lastOrder = order; }
+                  return pos;
+                });
+                return pendingJobs.map((job, idx) => (
+                  <JobCard
+                    key={job.id}
+                    id={job.id}
+                    assetName={job.assetName}
+                    assetDesc={(job as any).assetDesc}
+                    gardenType={job.gardenType}
+                    suburb={(job as any).suburb}
+                    streetAddress={(job as any).streetAddress}
+                    lat={(job as any).lat}
+                    lng={(job as any).lng}
+                    serviceTimeMins={job.serviceTimeMins}
+                    status={job.status}
+                    scheduledDate={job.scheduledDate}
+                    isAllTeams={(job as any).isAllTeams ?? false}
+                    jobType={(job as any).jobType}
+                    geoSeq={geoSeqFor[idx]}
+                  />
+                ));
+              })()}
               {doneJobs.map((job) => (
                 <JobCard
                   key={job.id}
