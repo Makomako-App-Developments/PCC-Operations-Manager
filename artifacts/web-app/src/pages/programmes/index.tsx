@@ -1753,6 +1753,7 @@ function MulchingTab({
 
   const handleRefresh = () => {
     qc.invalidateQueries({ queryKey: getListMulchingRecordsQueryKey() });
+    qc.invalidateQueries({ queryKey: ["/api/schedule/week"] });
   };
 
   const handleMulchEditSave = async () => {
@@ -1781,6 +1782,27 @@ function MulchingTab({
       setMulchEditSaving(false);
     }
   };
+
+  // Schedule capacity data for the selected mulch's day/team (used in detail dialog)
+  const mulchDetailWeekStr = selectedMulch?.scheduledDate ? mondayOf(selectedMulch.scheduledDate) : "";
+  const mulchDetailTeamId  = selectedMulch?.assignedTeamId ?? "";
+  const { data: mulchDetailWeekData } = useGetScheduleWeek(
+    { week: mulchDetailWeekStr, teamId: mulchDetailTeamId || undefined },
+    {
+      query: {
+        queryKey: getGetScheduleWeekQueryKey({ week: mulchDetailWeekStr, teamId: mulchDetailTeamId || undefined }),
+        enabled: !!mulchDetailWeekStr && !!mulchDetailTeamId,
+      },
+    },
+  );
+  const mulchDetailDayJobs: any[] = useMemo(
+    () => (mulchDetailWeekData as any)?.days?.find((d: any) => d.date === selectedMulch?.scheduledDate)?.jobs ?? [],
+    [mulchDetailWeekData, selectedMulch?.scheduledDate],
+  );
+  const mulchDetailDayTotal = useMemo(
+    () => mulchDetailDayJobs.reduce((s: number, j: any) => s + (j.serviceTimeMins ?? 0), 0),
+    [mulchDetailDayJobs],
+  );
 
   const draftCount      = mulchRecords.filter(r => r.status === "draft").length;
   const scheduledCount  = mulchRecords.filter(r => r.status === "scheduled").length;
@@ -2200,6 +2222,24 @@ function MulchingTab({
                     {isDraft && r.projectedDepthAtDue != null && (
                       <div className="rounded-lg px-3 py-2 text-xs" style={{ background: "#f5f3ff", color: "#7c3aed" }}>
                         <span className="font-semibold">Projected depth at job date:</span> ~{r.projectedDepthAtDue}mm (action threshold {ACTION_THRESHOLD_MM}mm)
+                      </div>
+                    )}
+
+                    {/* Schedule capacity impact — only when team + date are set */}
+                    {r.assignedTeamId && r.scheduledDate && mulchDetailDayTotal > 0 && !mulchEditMode && (
+                      <div className="rounded-xl border border-gray-100 p-3">
+                        <p className="text-[11px] font-semibold text-gray-500 mb-2 flex items-center gap-1.5">
+                          <Calendar className="w-3.5 h-3.5" /> Schedule impact — {format(new Date(r.scheduledDate + "T00:00:00"), "EEE d MMM")}
+                        </p>
+                        <CapBar
+                          total={mulchDetailDayTotal}
+                          reactive={0}
+                          teamName={teams.find(t => t.id === r.assignedTeamId)?.name ?? "Team"}
+                          dateLabel={format(new Date(r.scheduledDate + "T00:00:00"), "EEE d MMM")}
+                        />
+                        <p className="text-[10px] text-gray-400 mt-1.5">
+                          Includes this mulching job ({fmtMins(r.estimatedMins ?? 0)}) plus all other scheduled work on that day.
+                        </p>
                       </div>
                     )}
 
