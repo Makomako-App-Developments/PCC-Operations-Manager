@@ -311,8 +311,11 @@ export function ReactiveJobWizard({ teamsData, assetsData, onClose, onPublished 
   const canCombine =
     assetDayJobWorkingDays !== null && assetDayJobWorkingDays <= COMBINE_THRESHOLD;
   const assetServiceMins = assetDayJob?.serviceTimeMins ?? selectedAsset?.serviceTimeMins ?? 0;
-  const combinedMins = combineScheduled && canCombine ? assetServiceMins : 0;
-  const serviceMin = reactiveMin + combinedMins;
+  // combinedMins is only used for the informational label on the combine button.
+  // It is NOT added to serviceMin — the scheduled job's time is already counted
+  // in totalScheduled, so the capacity impact is just the reactive work itself.
+  const combinedVisitMins = combineScheduled && canCombine ? reactiveMin + assetServiceMins : 0;
+  const serviceMin = reactiveMin;
 
   const location =
     locationType === "asset" && selectedAsset ? selectedAsset.name : freeTextLocation;
@@ -1013,7 +1016,7 @@ export function ReactiveJobWizard({ teamsData, assetsData, onClose, onPublished 
                                   </button>
                                   {combineScheduled && (
                                     <span className="text-[11px] text-green-700 font-semibold">
-                                      +{fmtMins(assetServiceMins)} → {fmtMins(serviceMin)} total
+                                      {fmtMins(combinedVisitMins)} combined visit
                                     </span>
                                   )}
                                 </div>
