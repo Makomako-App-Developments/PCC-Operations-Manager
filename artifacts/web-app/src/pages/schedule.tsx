@@ -1692,7 +1692,7 @@ export default function Schedule() {
             <div className="flex-1 overflow-y-auto py-5 space-y-5">
               <div className="rounded-lg px-4 py-3 border flex items-center gap-2 text-sm font-medium" style={{ background: "#fef3c7", borderColor: "#fde68a", color: "#92400e" }}>
                 <span className="text-base">🌱</span>
-                Mulching job — managed via the field app
+                Mulching job
               </div>
               <dl className="space-y-3 text-sm">
                 <div className="flex justify-between">
@@ -1712,6 +1712,12 @@ export default function Schedule() {
                     {selectedJob.estimatedTimeMins ?? selectedJob.serviceTimeMins ?? "—"}m
                   </dd>
                 </div>
+                {(selectedJob as any).volumeM3 != null && (
+                  <div className="flex justify-between">
+                    <dt className="text-gray-500 font-medium">Volume</dt>
+                    <dd className="text-gray-900 font-semibold">{Number((selectedJob as any).volumeM3).toFixed(2)} m³</dd>
+                  </div>
+                )}
                 <div className="flex justify-between">
                   <dt className="text-gray-500 font-medium">Status</dt>
                   <dd className="font-semibold capitalize" style={{ color: selectedJob.status === "completed" ? "#10b981" : "#92400e" }}>

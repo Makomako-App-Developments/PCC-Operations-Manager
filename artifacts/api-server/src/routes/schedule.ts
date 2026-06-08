@@ -698,6 +698,7 @@ router.get(
         estimatedMins:  mulchingRecordsTable.estimatedMins,
         notes:          mulchingRecordsTable.notes,
         mulchType:      mulchingRecordsTable.mulchType,
+        volumeM3:       mulchingRecordsTable.volumeM3,
         createdAt:      mulchingRecordsTable.createdAt,
         updatedAt:      mulchingRecordsTable.updatedAt,
         assetName:      assetsTable.name,
@@ -741,6 +742,8 @@ router.get(
         estimatedTimeMins: mr.estimatedMins,
         crewStatus:        null,
         notes:             mr.notes,
+        mulchType:         mr.mulchType,
+        volumeM3:          mr.volumeM3,
         createdAt:         mr.createdAt,
         updatedAt:         mr.updatedAt,
         assetName:         mr.assetName,
@@ -953,6 +956,7 @@ router.get(
         estimatedMins:   mulchingRecordsTable.estimatedMins,
         notes:           mulchingRecordsTable.notes,
         mulchType:       mulchingRecordsTable.mulchType,
+        volumeM3:        mulchingRecordsTable.volumeM3,
         assetName:       assetsTable.name,
         assetDesc:       assetsTable.description,
         gardenType:      assetsTable.gardenType,
@@ -1001,6 +1005,7 @@ router.get(
         teamId:            mr.assignedTeamId,
         notes:             mr.notes,
         mulchType:         mr.mulchType,
+        volumeM3:          mr.volumeM3,
       });
     }
     // ── Merge infill planting jobs into the Gantt range ──────────────────────
