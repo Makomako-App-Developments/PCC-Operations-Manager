@@ -122,17 +122,21 @@ export function JobCard({
     openMaps(lat, lng, [assetName, suburb].filter(Boolean).join(", "));
   };
 
+  const isUnscheduled = jobType === "unscheduled";
+
   return (
     <TouchableOpacity
       activeOpacity={0.75}
       onPress={() =>
-        router.push(jobType === "unscheduled" ? `/reactive-job/${id}` : `/job/${id}`)
+        router.push(isUnscheduled ? `/reactive-job/${id}` : `/job/${id}`)
       }
       style={[
         styles.card,
         {
-          backgroundColor: colors.card,
-          borderColor: colors.border,
+          backgroundColor: isUnscheduled ? "#fff7ed" : colors.card,
+          borderColor: isUnscheduled ? "#f9731640" : colors.border,
+          borderLeftColor: isUnscheduled ? "#f97316" : colors.border,
+          borderLeftWidth: isUnscheduled ? 4 : 1,
           borderRadius: colors.radius,
         },
       ]}
@@ -169,6 +173,12 @@ export function JobCard({
         <View style={[styles.allTeamsBadge, { backgroundColor: "#78350f18", borderColor: "#92400e40" }]}>
           <Feather name="layers" size={10} color="#92400e" />
           <Text style={[styles.allTeamsText, { color: "#92400e" }]}>Mulching</Text>
+        </View>
+      )}
+      {isUnscheduled && (
+        <View style={[styles.allTeamsBadge, { backgroundColor: "#fff0e0", borderColor: "#f9731660" }]}>
+          <Feather name="zap" size={10} color="#f97316" />
+          <Text style={[styles.allTeamsText, { color: "#f97316" }]}>Unscheduled</Text>
         </View>
       )}
 
