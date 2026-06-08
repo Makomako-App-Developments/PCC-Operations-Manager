@@ -861,8 +861,9 @@ router.get(
       weekStart,
       weekEnd,
       days,
-      totalJobs:     rows.length + infillRows.length + mulchRows.length + reactiveWeekRows.length,
-      completedJobs: rows.filter(r => r.status === "completed").length + infillRows.filter(r => r.status === "completed").length + mulchRows.filter(r => r.status === "completed").length + reactiveWeekRows.filter(r => r.status === "completed").length,
+      totalJobs:      rows.length + infillRows.length + mulchRows.length + reactiveWeekRows.length,
+      completedJobs:  rows.filter(r => r.status === "completed").length + infillRows.filter(r => r.status === "completed").length + mulchRows.filter(r => r.status === "completed").length + reactiveWeekRows.filter(r => r.status === "completed").length,
+      inProgressJobs: rows.filter(r => r.status === "in_progress").length + infillRows.filter(r => r.status === "in_progress").length + mulchRows.filter((r: any) => r.status === "in_progress").length + reactiveWeekRows.filter((r: any) => r.status === "in_progress").length,
       settings: {
         productiveTimeMins: settings?.productiveTimeMins ?? 390,
         standardCrewSize:   settings?.standardCrewSize   ?? 2,

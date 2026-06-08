@@ -1560,6 +1560,16 @@ export default function Schedule() {
               <CheckCircle2 className="w-3.5 h-3.5 text-green-500" />
               <span className="font-semibold text-gray-700">{weekData.completedJobs}</span> completed
             </span>
+            {(weekData as any).inProgressJobs > 0 && (
+              <span className="flex items-center gap-1">
+                <span className="relative flex h-2 w-2">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full opacity-75" style={{ backgroundColor: "#00AECD" }} />
+                  <span className="relative inline-flex rounded-full h-2 w-2" style={{ backgroundColor: "#00AECD" }} />
+                </span>
+                <span className="font-semibold" style={{ color: "#00AECD" }}>{(weekData as any).inProgressJobs}</span>
+                <span>in progress</span>
+              </span>
+            )}
           </div>
         )}
 
