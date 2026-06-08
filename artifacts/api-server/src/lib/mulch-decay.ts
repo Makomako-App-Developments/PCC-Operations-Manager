@@ -28,9 +28,9 @@ export const MULCH_DECAY_RATE_MM_PER_MONTH: Record<string, number> = {
   "Pea Gravel": 0.5,
 };
 
-export function decayRateForType(mulchType: string | null | undefined): number {
-  if (!mulchType) return 5;
-  return MULCH_DECAY_RATE_MM_PER_MONTH[mulchType] ?? 5;
+export function decayRateForType(mulchType: string | null | undefined, defaultRate = 5): number {
+  if (!mulchType) return defaultRate;
+  return MULCH_DECAY_RATE_MM_PER_MONTH[mulchType] ?? defaultRate;
 }
 
 function isWeekend(dateStr: string): boolean {

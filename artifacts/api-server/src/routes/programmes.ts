@@ -1,7 +1,7 @@
 import { Router } from "express";
 import {
   db, infillJobsTable, infillOrdersTable, mulchingRecordsTable, mulchDepthReadingsTable,
-  assetsTable, teamsTable, usersTable, jobsTable,
+  assetsTable, teamsTable, usersTable, jobsTable, systemSettingsTable,
   insertInfillJobSchema, insertInfillOrderSchema, insertMulchingRecordSchema,
 } from "@workspace/db";
 import { eq, and, inArray, desc, gte, lte } from "drizzle-orm";
@@ -379,6 +379,10 @@ router.post(
   async (req, res) => {
     const body = (res.locals.body ?? req.body) as z.infer<typeof createDepthReadingSchema>;
 
+    const [sysSettings] = await db.select().from(systemSettingsTable).limit(1);
+    const configDecayRate    = sysSettings?.mulchDecayRateMmPerMonth   ?? 5;
+    const configSpreadingRate = sysSettings?.mulchSpreadingRateM3PerHour ?? 2;
+
     const effectiveDepth = body.isFreshApplication ? STANDARD_DEPTH_MM : body.depthMm;
     const projectedJobDate = projectNextJobDate(effectiveDepth, body.mulchType, body.recordedAt);
 
@@ -426,7 +430,7 @@ router.post(
         .returning();
 
       // Projected remaining depth at the final (possibly aligned) due date
-      const rate = decayRateForType(body.mulchType);
+      const rate = decayRateForType(body.mulchType, configDecayRate);
       const readingDate    = new Date(body.recordedAt + "T00:00:00Z");
       const finalDate      = new Date(finalJobDate + "T00:00:00Z");
       const monthsToTarget = (finalDate.getTime() - readingDate.getTime()) / (1000 * 60 * 60 * 24 * 30.44);
@@ -438,6 +442,11 @@ router.post(
       const areaM2 = asset ? parseFloat(asset.areaM2 ?? "0") : 0;
       const depthToApplyMm = Math.max(0, STANDARD_DEPTH_MM - projectedDepthAtDue);
       const volumeM3 = areaM2 > 0 ? Math.round(depthToApplyMm / 1000 * areaM2 * 100) / 100 : null;
+
+      // Auto-estimate job duration from volume ÷ spreading rate (rounded to nearest 5 min)
+      const estimatedMins = volumeM3 != null && configSpreadingRate > 0
+        ? Math.max(5, Math.round((volumeM3 / configSpreadingRate) * 60 / 5) * 5)
+        : null;
 
       // Check for an existing draft mulching record for this asset
       const [existingDraft] = await tx
@@ -451,7 +460,7 @@ router.post(
 
       let draft;
       if (existingDraft) {
-        // Update the existing draft's projected date, source reading, and volume
+        // Update the existing draft's projected date, source reading, volume and estimated time
         const [updated] = await tx
           .update(mulchingRecordsTable)
           .set({
@@ -460,6 +469,7 @@ router.post(
             sourceReadingId:     reading.id,
             projectedDepthAtDue,
             volumeM3:            volumeM3 !== null ? String(volumeM3) : existingDraft.volumeM3,
+            estimatedMins:       estimatedMins ?? existingDraft.estimatedMins,
             alignedJobId,
             alignedJobDate,
             updatedAt:           new Date(),
@@ -468,7 +478,7 @@ router.post(
           .returning();
         draft = updated;
       } else {
-        // Create a new draft mulching record with calculated volume
+        // Create a new draft mulching record with calculated volume and estimated time
         const [created] = await tx
           .insert(mulchingRecordsTable)
           .values({
@@ -479,6 +489,7 @@ router.post(
             sourceReadingId:     reading.id,
             projectedDepthAtDue,
             volumeM3:            volumeM3 !== null ? String(volumeM3) : null,
+            estimatedMins:       estimatedMins ?? null,
             alignedJobId,
             alignedJobDate,
           })

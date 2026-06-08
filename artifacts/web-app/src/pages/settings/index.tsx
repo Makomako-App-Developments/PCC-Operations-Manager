@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Shield, Users, Clock, Route, Sunrise, Zap, Lock } from "lucide-react";
+import { Shield, Users, Clock, Route, Sunrise, Zap, Lock, Layers } from "lucide-react";
 import UsersPage from "@/pages/users/index";
 import AuditLogPage from "@/pages/audit-log/index";
 import ProductiveTimePage from "./ProductiveTimePage";
@@ -7,6 +7,7 @@ import RouteOptimisationPage from "./RouteOptimisationPage";
 import WorkHoursPage from "./WorkHoursPage";
 import ReactivePrioritiesPage from "./ReactivePrioritiesPage";
 import RolesPermissionsPage from "./RolesPermissionsPage";
+import MulchingSettingsPage from "./MulchingSettingsPage";
 
 const TABS = [
   { id: "users",                label: "Users",                icon: Users       },
@@ -16,6 +17,7 @@ const TABS = [
   { id: "reactive-priorities",  label: "Reactive Priorities",  icon: Zap         },
   { id: "productive-time",      label: "Productive Time",      icon: Clock       },
   { id: "route-optimisation",   label: "Route Optimisation",   icon: Route       },
+  { id: "mulching",             label: "Mulching",             icon: Layers      },
 ];
 
 export default function SettingsPage() {
@@ -55,6 +57,7 @@ export default function SettingsPage() {
         {tab === "reactive-priorities" && <ReactivePrioritiesPage />}
         {tab === "productive-time"    && <ProductiveTimePage />}
         {tab === "route-optimisation" && <RouteOptimisationPage />}
+        {tab === "mulching"           && <MulchingSettingsPage />}
       </div>
     </div>
   );

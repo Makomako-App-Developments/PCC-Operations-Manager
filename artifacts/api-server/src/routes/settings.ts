@@ -13,8 +13,7 @@ const router = Router();
 router.get("/settings", requireAuth, async (_req, res) => {
   const [row] = await db.select().from(systemSettingsTable).limit(1);
   if (!row) {
-    // Return defaults if not yet seeded
-    res.json({ id: 1, productiveTimeMins: 390, standardCrewSize: 2, workStartHour: 8, workEndHour: 16, reactivePriorities: null, routesLastOptimised: null });
+    res.json({ id: 1, productiveTimeMins: 390, standardCrewSize: 2, workStartHour: 8, workEndHour: 16, mulchDecayRateMmPerMonth: 5, mulchSpreadingRateM3PerHour: 2, reactivePriorities: null, routesLastOptimised: null });
     return;
   }
   res.json(row);
@@ -31,11 +30,13 @@ const reactivePrioritySchema = z.object({
 });
 
 const patchSettingsSchema = z.object({
-  productiveTimeMins:  z.number().int().min(60).max(600).optional(),
-  standardCrewSize:    z.number().int().min(1).max(10).optional(),
-  workStartHour:       z.number().min(5).max(12).optional(),
-  workEndHour:         z.number().min(12).max(22).optional(),
-  reactivePriorities:  z.array(reactivePrioritySchema).optional(),
+  productiveTimeMins:         z.number().int().min(60).max(600).optional(),
+  standardCrewSize:           z.number().int().min(1).max(10).optional(),
+  workStartHour:              z.number().min(5).max(12).optional(),
+  workEndHour:                z.number().min(12).max(22).optional(),
+  reactivePriorities:         z.array(reactivePrioritySchema).optional(),
+  mulchDecayRateMmPerMonth:   z.number().min(0.1).max(50).optional(),
+  mulchSpreadingRateM3PerHour: z.number().min(0.1).max(20).optional(),
 });
 
 // PATCH /api/settings
