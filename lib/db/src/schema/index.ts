@@ -8,3 +8,4 @@ export * from "./programmes";
 export * from "./audit-log";
 export * from "./team-availability";
 export * from "./system-settings";
+export * from "./plant-palette";

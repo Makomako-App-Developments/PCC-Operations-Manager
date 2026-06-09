@@ -15,6 +15,7 @@ import teamRouter        from "./team";
 import settingsRouter    from "./settings";
 import reportsRouter     from "./reports";
 import adminPatchesRouter from "./admin-patches";
+import plantPaletteRouter from "./plant-palette";
 
 const router: IRouter = Router();
 
@@ -34,5 +35,6 @@ router.use(teamRouter);
 router.use(settingsRouter);
 router.use(reportsRouter);
 router.use("/admin", adminPatchesRouter);
+router.use(plantPaletteRouter);
 
 export default router;

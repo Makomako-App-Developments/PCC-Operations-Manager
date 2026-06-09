@@ -1,5 +1,6 @@
-import { db } from "@workspace/db";
+import { db, plantPaletteTable } from "@workspace/db";
 import { sql } from "drizzle-orm";
+import { count } from "drizzle-orm";
 
 /**
  * One-time idempotent data patch: sets correct decimal area_m2 for 66 assets
@@ -20,8 +21,7 @@ export async function runStartupPatches() {
     const row = check.rows?.[0];
     if (!row || Number(row.area_m2) < 1) {
       console.log("[startup-patch] Area patch already applied — skipping.");
-      return;
-    }
+    } else {
 
     console.log("[startup-patch] Applying area_m2 patch for 66 assets…");
 
@@ -132,8 +132,68 @@ export async function runStartupPatches() {
       )
     `);
 
-    console.log("[startup-patch] Area patch applied successfully.");
+      console.log("[startup-patch] Area patch applied successfully.");
+    }
   } catch (err) {
     console.error("[startup-patch] Area patch failed (non-fatal):", err);
+  }
+
+  await seedPlantPalette();
+}
+
+const PLANT_PALETTE = [
+  { botanicalName: "Coprosma kirkii",             plantType: "Ground cover" },
+  { botanicalName: "Coprosma acerosa",            plantType: "Ground cover" },
+  { botanicalName: "Lobelia angulata",            plantType: "Ground cover" },
+  { botanicalName: "Pimelea prostrata",           plantType: "Ground cover" },
+  { botanicalName: "Fushia procumbens",           plantType: "Ground cover" },
+  { botanicalName: "Acaena inermis purpurea",     plantType: "Ground cover" },
+  { botanicalName: "Leptospermum sp.",            plantType: "Ground cover" },
+  { botanicalName: "Poa cita",                    plantType: "Grass" },
+  { botanicalName: "Chionochloa flavicans",       plantType: "Grass" },
+  { botanicalName: "Carex testacea",              plantType: "Grass" },
+  { botanicalName: "Carex buchananii",            plantType: "Grass" },
+  { botanicalName: "Carex flagellifera",          plantType: "Grass" },
+  { botanicalName: "Anemanthele lessoniana",      plantType: "Grass" },
+  { botanicalName: "Dianella niger",              plantType: "Grass" },
+  { botanicalName: "Carpodetus serrata",          plantType: "Shrub" },
+  { botanicalName: "Veronica diosmifolia",        plantType: "Shrub" },
+  { botanicalName: "Veronica wiri mist",          plantType: "Shrub" },
+  { botanicalName: "Myrsine aquilona",            plantType: "Shrub" },
+  { botanicalName: "Muehlenbeckia astonii",       plantType: "Shrub" },
+  { botanicalName: "Corokia cotoneaster",         plantType: "Shrub" },
+  { botanicalName: "Corokia geentys green",       plantType: "Shrub" },
+  { botanicalName: "Corokia red wonder",          plantType: "Shrub" },
+  { botanicalName: "Pseudopanax lessonii",        plantType: "Tree" },
+  { botanicalName: "Pseudopanax laetus",          plantType: "Tree" },
+  { botanicalName: "Pseudopanax crassifolius",    plantType: "Tree" },
+  { botanicalName: "Pseudopanax ferox",           plantType: "Tree" },
+  { botanicalName: "Pittosporum tenuifolium",     plantType: "Tree" },
+  { botanicalName: "Leptospermum scoparium",      plantType: "Tree" },
+  { botanicalName: "Plagianthus regius",          plantType: "Tree" },
+  { botanicalName: "Aristotelia serrata",         plantType: "Tree" },
+  { botanicalName: "Griselinia lucida",           plantType: "Tree" },
+  { botanicalName: "Griselinia littoralis",       plantType: "Tree" },
+  { botanicalName: "Asplenium bulbiferum",        plantType: "Fern" },
+  { botanicalName: "Blechnum discolour",          plantType: "Fern" },
+  { botanicalName: "Austroblechnum penna-marina", plantType: "Fern" },
+  { botanicalName: "Parablechnum novae-zelandiae",plantType: "Fern" },
+  { botanicalName: "Polystichum rigens",          plantType: "Fern" },
+  { botanicalName: "Doodia australis",            plantType: "Fern" },
+  { botanicalName: "Arthropodium serrata",        plantType: "Herbaceous perennial" },
+];
+
+async function seedPlantPalette() {
+  try {
+    const [{ value }] = await db.select({ value: count() }).from(plantPaletteTable);
+    if (value >= PLANT_PALETTE.length) {
+      console.log("[startup-patch] Plant palette already seeded — skipping.");
+      return;
+    }
+    console.log("[startup-patch] Seeding plant palette…");
+    await db.insert(plantPaletteTable).values(PLANT_PALETTE).onConflictDoNothing();
+    console.log(`[startup-patch] Plant palette seeded (${PLANT_PALETTE.length} plants).`);
+  } catch (err) {
+    console.error("[startup-patch] Plant palette seed failed (non-fatal):", err);
   }
 }
