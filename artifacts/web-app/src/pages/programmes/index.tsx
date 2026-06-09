@@ -67,6 +67,23 @@ const GRADE_COLORS: Record<PlantGrade, string> = {
   "PB95":            "bg-rose-100 text-rose-700",
 };
 
+// Minutes per plant by container grade (planting + backfill + water-in)
+const MINS_PER_PLANT: Record<PlantGrade, number> = {
+  "Root Trainer":    3,
+  "1 litre":         5,
+  "1.5 litre/PB2":   6,
+  "2 litre/PB3":     8,
+  "5 litre/PB 6.5": 12,
+  "PB 8":           15,
+  "PB12":           20,
+  "PB40":           30,
+  "PB95":           45,
+};
+
+function estimateInfillMins(species: { speciesCategory: string; quantity: number }[]): number {
+  return species.reduce((s, sp) => s + sp.quantity * (MINS_PER_PLANT[sp.speciesCategory as PlantGrade] ?? 5), 0);
+}
+
 // ─── Species catalogue ────────────────────────────────────────────────────────
 
 type SpeciesCategory = "Tree" | "Shrub" | "Ground cover" | "Fern" | "Grass" | "Herbaceous perennial";
@@ -1382,7 +1399,9 @@ function JobDetailPanel({
   const [teamId, setTeamId] = useState(defaultTeam);
   const autoAssigned = !job.assignedTeamId && !!assetTeamId && teamId === assetTeamId;
   const [plannedDate, setPlannedDate] = useState(job.plannedDate ?? "");
-  const [estMins, setEstMins] = useState(String(job.estimatedMins ?? ""));
+  const autoMins = estimateInfillMins(job.species);
+  const [estMins, setEstMins] = useState(String(job.estimatedMins ?? (autoMins > 0 ? autoMins : "")));
+  const isAutoEstimate = !job.estimatedMins && autoMins > 0;
   const totalPlants = job.species.reduce((s, sp) => s + sp.quantity, 0);
 
   // Assessment edit state
@@ -1572,7 +1591,12 @@ function JobDetailPanel({
                   <Input type="date" value={plannedDate} onChange={e => setPlannedDate(e.target.value)} className="rounded-xl text-sm" />
                 </div>
                 <div>
-                  <Label className="text-[11px] text-gray-500 mb-1 block">Est. time (mins)</Label>
+                  <div className="flex items-center justify-between mb-1">
+                    <Label className="text-[11px] text-gray-500">Est. time (mins)</Label>
+                    {isAutoEstimate && (
+                      <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full bg-teal-50 text-teal-600">auto</span>
+                    )}
+                  </div>
                   <Input type="number" value={estMins} onChange={e => setEstMins(e.target.value)}
                     placeholder="e.g. 120" className="rounded-xl text-sm" />
                 </div>
