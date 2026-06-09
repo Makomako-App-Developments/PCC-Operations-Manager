@@ -359,7 +359,7 @@ export default function CompletedWorks() {
       totalActualMins += r.actualTimeMins ?? 0;
       totalScheduledMins += r.estimatedTimeMins ?? 0;
     }
-    const totalAreaM2 = [...uniqueAssets.values()].reduce((s, a) => s + (a ?? 0), 0);
+    const totalAreaM2 = [...uniqueAssets.values()].reduce((s, a) => s + Number(a ?? 0), 0);
     return {
       gardens: uniqueAssets.size,
       hours: totalActualMins / 60,
