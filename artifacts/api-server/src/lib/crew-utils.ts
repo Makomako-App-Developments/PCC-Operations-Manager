@@ -193,3 +193,80 @@ export async function refreshCrewStatusForTeamDate(
 
   return jobs.length;
 }
+
+// ─── Spill helpers ────────────────────────────────────────────────────────────
+
+/** Next non-weekend working day after dateStr (YYYY-MM-DD). */
+export function nextWorkingDay(dateStr: string): string {
+  const d = new Date(dateStr + "T12:00:00Z");
+  do { d.setUTCDate(d.getUTCDate() + 1); } while (d.getUTCDay() === 0 || d.getUTCDay() === 6);
+  return d.toISOString().slice(0, 10);
+}
+
+/**
+ * Auto-spill excess pending scheduled jobs off an over-capacity day.
+ *
+ * Jobs are prioritised for removal by lowest visit frequency (quarterly
+ * before monthly before weekly) then latest route position (last in
+ * geosequence moves first), keeping the front of the route intact.
+ * Only touches pending scheduled jobs — never moves in_progress/completed
+ * or reactive jobs.
+ *
+ * Returns the count of jobs moved and the target date they were sent to.
+ * Returns { spilledCount: 0, targetDate: "" } when no spill was needed.
+ */
+export async function spillExcessJobs(
+  teamId: string,
+  date: string,
+): Promise<{ spilledCount: number; targetDate: string }> {
+  const { productiveTimeMins } = await loadSystemSettings();
+
+  const jobs = await db
+    .select({
+      id:                jobsTable.id,
+      estimatedTimeMins: jobsTable.estimatedTimeMins,
+      serviceTimeMins:   assetsTable.serviceTimeMins,
+      frequency:         assetsTable.frequency,
+      routeOrder:        assetsTable.routeOrder,
+    })
+    .from(jobsTable)
+    .innerJoin(assetsTable, eq(jobsTable.assetId, assetsTable.id))
+    .where(
+      and(
+        eq(jobsTable.teamId, teamId),
+        eq(jobsTable.scheduledDate, date),
+        eq(jobsTable.status, "pending"),
+        eq(jobsTable.jobType, "scheduled"),
+      ),
+    );
+
+  const totalMins = jobs.reduce((s, j) => s + (j.estimatedTimeMins ?? j.serviceTimeMins), 0);
+  if (totalMins <= productiveTimeMins) return { spilledCount: 0, targetDate: "" };
+
+  // Lowest-priority first: rarest visits (high FREQ_DAYS) then latest route position
+  const sorted = [...jobs].sort((a, b) => {
+    const fa = FREQ_DAYS[a.frequency] ?? 28;
+    const fb = FREQ_DAYS[b.frequency] ?? 28;
+    if (fb !== fa) return fb - fa;
+    return (b.routeOrder ?? 9999) - (a.routeOrder ?? 9999);
+  });
+
+  const target = nextWorkingDay(date);
+  let remaining = totalMins;
+  const toMove: string[] = [];
+
+  for (const job of sorted) {
+    if (remaining <= productiveTimeMins) break;
+    toMove.push(job.id);
+    remaining -= (job.estimatedTimeMins ?? job.serviceTimeMins);
+  }
+
+  if (toMove.length > 0) {
+    await db
+      .update(jobsTable)
+      .set({ scheduledDate: target, updatedAt: new Date() })
+      .where(inArray(jobsTable.id, toMove));
+  }
+
+  return { spilledCount: toMove.length, targetDate: target };
+}

@@ -4,7 +4,7 @@ import { and, eq, gte, lte } from "drizzle-orm";
 import { z } from "zod";
 import { requireAuth, requireRole } from "../middlewares/auth";
 import { validateBody, validateQuery } from "../middlewares/validate";
-import { refreshCrewStatusForTeamDate, computeDayCapacity } from "../lib/crew-utils";
+import { refreshCrewStatusForTeamDate, computeDayCapacity, spillExcessJobs } from "../lib/crew-utils";
 
 const router = Router();
 
@@ -17,6 +17,7 @@ const upsertSchema = z.object({
   date:       z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   hour:       z.number().int().min(8).max(16),
   status:     z.enum(["available", "annual_leave", "sick", "statutory_holiday", "unpaid_leave"]),
+  skipSpill:  z.boolean().optional().default(false),
 });
 
 const deleteSchema = z.object({
@@ -67,7 +68,7 @@ router.put(
   requireRole("manager", "supervisor"),
   validateBody(upsertSchema),
   async (req, res) => {
-    const { personName, date, hour, status } = res.locals.body as z.infer<typeof upsertSchema>;
+    const { personName, date, hour, status, skipSpill } = res.locals.body as z.infer<typeof upsertSchema>;
 
     if (status === "available") {
       await db
@@ -101,15 +102,28 @@ router.put(
       productiveTimeMins: number;
       utilizationPct: number;
     } | null = null;
+    let spilledCount = 0;
+    let targetDate   = "";
 
     if (teamId) {
       jobsRefreshed = await refreshCrewStatusForTeamDate(teamId, date);
-
-      // Calculate day capacity after the refresh so the client can warn if over-capacity
       capacityAfter = await computeDayCapacity(teamId, date);
+
+      // Auto-spill excess jobs to the next working day unless the caller
+      // is batching multiple saves (skipSpill=true) and will trigger one
+      // explicit replan after all saves complete.
+      if (!skipSpill && capacityAfter.utilizationPct > 100) {
+        const spill = await spillExcessJobs(teamId, date);
+        spilledCount = spill.spilledCount;
+        targetDate   = spill.targetDate;
+        // Re-compute capacity so the response reflects the post-spill state
+        if (spilledCount > 0) {
+          capacityAfter = await computeDayCapacity(teamId, date);
+        }
+      }
     }
 
-    res.json({ ok: true, jobsRefreshed, capacityAfter });
+    res.json({ ok: true, jobsRefreshed, capacityAfter, spilledCount, targetDate });
   },
 );
 

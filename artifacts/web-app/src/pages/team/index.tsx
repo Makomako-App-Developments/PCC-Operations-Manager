@@ -993,7 +993,7 @@ export default function TeamPage() {
     enabled: activeTab === "availability",
   });
 
-  const saveAvailability = async (body: { personName: string; date: string; hour: number; status: Status }) => {
+  const saveAvailability = async (body: { personName: string; date: string; hour: number; status: Status; skipSpill?: boolean }) => {
     const res = await fetch(`/api/team/availability`, {
       method: "PUT",
       credentials: "include",
@@ -1005,6 +1005,8 @@ export default function TeamPage() {
       ok: boolean;
       jobsRefreshed: number;
       capacityAfter: { totalScheduledMins: number; productiveTimeMins: number; utilizationPct: number } | null;
+      spilledCount: number;
+      targetDate: string;
     }>;
   };
 
@@ -1034,7 +1036,20 @@ export default function TeamPage() {
     mutationFn: saveAvailability,
     onSuccess: (data, variables) => {
       qc.invalidateQueries({ queryKey: ["team-avail", weekStart] });
-      applyCapacityWarning(data, variables.personName, variables.date);
+      if (data.spilledCount > 0) {
+        // Jobs were automatically moved — clear any warning and show a toast
+        setCapacityWarning(null);
+        const dayName = new Date(data.targetDate + "T12:00:00Z")
+          .toLocaleDateString("en-NZ", { weekday: "long" });
+        toast({
+          title: "Schedule adjusted automatically",
+          description: `${data.spilledCount} job${data.spilledCount !== 1 ? "s" : ""} moved to ${dayName} to fit reduced capacity.`,
+        });
+        qc.invalidateQueries({ queryKey: ["/api/schedule/week"] });
+        qc.invalidateQueries({ queryKey: ["/api/schedule/range"] });
+      } else {
+        applyCapacityWarning(data, variables.personName, variables.date);
+      }
     },
   });
 
@@ -1054,10 +1069,11 @@ export default function TeamPage() {
   };
 
   const handleSetWholeDay = async (personName: string, status: Status) => {
-    await Promise.all(HOURS.map(h => saveAvailability({ personName, date: dayDate, hour: h, status })));
+    // skipSpill=true on each parallel save to avoid race conditions — one
+    // clean spill is triggered below after all saves have committed.
+    await Promise.all(HOURS.map(h => saveAvailability({ personName, date: dayDate, hour: h, status, skipSpill: true })));
     qc.invalidateQueries({ queryKey: ["team-avail", weekStart] });
-    // After all parallel saves complete, do one authoritative capacity check for
-    // the final DB state (individual parallel responses may be from intermediate states).
+
     const person = PEOPLE.find(p => p.name === personName);
     if (person?.teamId) {
       try {
@@ -1065,15 +1081,30 @@ export default function TeamPage() {
           `/api/schedule/day-capacity?teamId=${person.teamId}&date=${dayDate}`,
           { credentials: "include" },
         ).then(r => r.ok ? r.json() : null) as { utilizationPct: number } | null;
+
         if (cap && cap.utilizationPct > 100) {
-          setCapacityWarning({
-            teamId:         person.teamId,
-            teamName:       person.team,
-            date:           dayDate,
-            utilizationPct: cap.utilizationPct,
+          // Auto-spill: call replan-day which handles geosequence + multi-day overflow
+          const spillRes = await fetch("/api/schedule/replan-day", {
+            method: "POST",
+            credentials: "include",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ teamId: person.teamId, date: dayDate }),
           });
-          setReplanSuccess(false);
-          setReplanError(null);
+          if (spillRes.ok) {
+            const result = await spillRes.json() as { jobsOnDate: number; jobsSpilled: number };
+            if (result.jobsSpilled > 0) {
+              const dayName = new Date(dayDate + "T12:00:00Z")
+                .toLocaleDateString("en-NZ", { weekday: "long" });
+              toast({
+                title: "Schedule adjusted automatically",
+                description: `${result.jobsSpilled} job${result.jobsSpilled !== 1 ? "s" : ""} moved to next working day to fit reduced capacity on ${dayName}.`,
+              });
+              qc.invalidateQueries({ queryKey: ["/api/schedule/week"] });
+              qc.invalidateQueries({ queryKey: ["/api/schedule/range"] });
+            }
+            setCapacityWarning(null);
+            setReplanSuccess(false);
+          }
         } else if (capacityWarning?.date === dayDate && capacityWarning?.teamId === person.teamId) {
           setCapacityWarning(null);
         }
