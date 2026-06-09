@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useSearch } from "wouter";
-import { Search, X, Clock, Camera, FileText, ChevronRight, CheckCircle2, ArrowUpRight, ArrowDownRight, Minus, ChevronsUpDown, ChevronUp, ChevronDown, MapPin, Maximize2 } from "lucide-react";
+import { Search, X, Clock, Camera, FileText, ChevronRight, CheckCircle2, ArrowUpRight, ArrowDownRight, Minus, ChevronsUpDown, ChevronUp, ChevronDown, MapPin, Maximize2, Download } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -379,6 +379,36 @@ export default function CompletedWorks() {
 
   const hasFilters = search || teamId !== "all" || ward !== "all" || gardenType !== "all" || from || to;
 
+  function handleExportCSV() {
+    const headers = ["Date", "Site", "Description", "Specification", "Ward", "Suburb", "Team", "Estimated (min)", "Actual (min)", "Variance (min)", "Status", "Notes"];
+    const csvRows = rows.map(r => {
+      const est = r.estimatedTimeMins ?? 0;
+      const act = r.actualTimeMins ?? est;
+      return [
+        r.scheduledDate ?? "",
+        r.assetName ?? "",
+        r.assetDescription ?? "",
+        GARDEN_TYPE_LABELS[r.gardenType ?? ""] ?? r.gardenType ?? "",
+        r.ward ?? "",
+        r.suburb ?? "",
+        r.teamName ?? "",
+        est,
+        act,
+        act - est,
+        r.crewStatus,
+        (r.notes ?? "").replace(/"/g, '""'),
+      ];
+    });
+    const csv = [headers, ...csvRows].map(row => row.map(v => `"${v}"`).join(",")).join("\n");
+    const blob = new Blob([csv], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `completed-works-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
   return (
     <div className="flex h-[calc(100vh-0px)] overflow-hidden">
       {/* Main content */}
@@ -390,11 +420,16 @@ export default function CompletedWorks() {
               <h1 className="text-xl font-bold text-gray-900">Completed Works</h1>
               <p className="text-sm text-gray-500 mt-0.5">History of all finished jobs with times, notes and photos</p>
             </div>
-            {hasFilters && (
-              <Button variant="ghost" size="sm" onClick={clearFilters} className="text-gray-500 gap-1.5">
-                <X className="w-3.5 h-3.5" /> Clear filters
+            <div className="flex items-center gap-2">
+              {hasFilters && (
+                <Button variant="ghost" size="sm" onClick={clearFilters} className="text-gray-500 gap-1.5">
+                  <X className="w-3.5 h-3.5" /> Clear filters
+                </Button>
+              )}
+              <Button variant="outline" size="sm" onClick={handleExportCSV} className="gap-1.5 h-9">
+                <Download className="w-3.5 h-3.5" /> Export CSV
               </Button>
-            )}
+            </div>
           </div>
 
           {/* Filter bar */}

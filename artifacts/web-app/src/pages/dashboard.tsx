@@ -9,7 +9,7 @@ import {
 } from "@workspace/api-client-react";
 import {
   AlertTriangle, CheckCircle2, Clock, SkipForward, Target, DollarSign,
-  TrendingUp, TrendingDown, Minus, Leaf, Download, Users, TriangleAlert, HardHat,
+  TrendingUp, TrendingDown, Minus, Leaf, Users, TriangleAlert, HardHat,
 } from "lucide-react";
 import {
   format, startOfWeek, endOfWeek, startOfMonth, endOfMonth,
@@ -500,9 +500,6 @@ export default function Dashboard() {
                 {completedJobs.length} jobs signed off · actual vs estimated · this {periodLabel}
               </p>
             </div>
-            <button className="flex items-center gap-2 border border-gray-200 rounded-xl px-3 py-1.5 text-[11px] text-gray-500 font-medium hover:bg-gray-50">
-              <Download className="w-3 h-3" />Export
-            </button>
           </div>
           {completedJobs.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-14 text-gray-400">
