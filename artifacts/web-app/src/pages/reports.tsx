@@ -22,7 +22,7 @@ const TYPE_COLORS: Record<string, string> = {
   reveg:            "#84cc16",
   bush:             "#16a34a",
   tree_planter_pits:"#78716c",
-  hedge:            "#6b7280",
+  hedge:            "#92400e",
 };
 
 const JOB_STATUS_COLORS: Record<string, string> = {

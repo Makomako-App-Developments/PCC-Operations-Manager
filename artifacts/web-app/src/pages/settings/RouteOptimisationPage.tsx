@@ -46,7 +46,7 @@ const TYPE_COLORS: Record<string, string> = {
   amenity:           "#0ea5e9",
   bush:              "#22c55e",
   tree_planter_pits: "#78716c",
-  hedge:             "#10b981",
+  hedge:             "#92400e",
 };
 const TYPE_LABELS: Record<string, string> = {
   annuals:           "Annuals",
