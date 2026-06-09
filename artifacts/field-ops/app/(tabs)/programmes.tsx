@@ -467,6 +467,24 @@ function NewAssessmentModal({ visible, token, onClose, onSuccess, initialAsset }
   });
   const assetOptions: any[] = assetResults?.data ?? [];
 
+  // Plant palette for species autocomplete
+  const { data: paletteData } = useQuery({
+    queryKey: ["plant-palette"],
+    queryFn: async () => {
+      const res = await fetch(getApiUrl("/api/plant-palette"), {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) return [];
+      return res.json() as Promise<{ id: string; botanicalName: string; plantType: string }[]>;
+    },
+    enabled: !!token,
+    staleTime: 5 * 60 * 1000,
+  });
+  const palette = paletteData ?? [];
+
+  const [focusedSpeciesIdx, setFocusedSpeciesIdx] = useState<number | null>(null);
+  const blurTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   const reset = () => {
     setAssetQuery("");
     setSelectedAsset(null);
@@ -636,12 +654,48 @@ function NewAssessmentModal({ visible, token, onClose, onSuccess, initialAsset }
 
                 <Text style={[naStyles.rowLabel, { color: colors.mutedForeground }]}>Species Name</Text>
                 <TextInput
-                  style={[naStyles.rowInput, { borderColor: colors.border, color: colors.foreground, backgroundColor: colors.background, borderRadius: colors.radius / 2 }]}
+                  style={[naStyles.rowInput, { borderColor: colors.border, color: colors.foreground, backgroundColor: colors.background, borderRadius: colors.radius / 2, marginBottom: 0 }]}
                   value={row.speciesName}
                   onChangeText={v => updateRow(idx, "speciesName", v)}
-                  placeholder="e.g. Coprosma robusta"
+                  onFocus={() => {
+                    if (blurTimer.current) clearTimeout(blurTimer.current);
+                    setFocusedSpeciesIdx(idx);
+                  }}
+                  onBlur={() => {
+                    blurTimer.current = setTimeout(() => setFocusedSpeciesIdx(null), 180);
+                  }}
+                  placeholder="Search palette or type name…"
                   placeholderTextColor={colors.mutedForeground}
+                  autoCorrect={false}
                 />
+                {focusedSpeciesIdx === idx && row.speciesName.trim().length >= 1 && (() => {
+                  const q = row.speciesName.toLowerCase();
+                  const matches = palette.filter(p => p.botanicalName.toLowerCase().includes(q)).slice(0, 6);
+                  if (matches.length === 0) return null;
+                  return (
+                    <View style={[naStyles.suggestions, { backgroundColor: colors.card, borderColor: colors.border, borderRadius: colors.radius / 2 }]}>
+                      {matches.map(p => (
+                        <TouchableOpacity
+                          key={p.id}
+                          style={[naStyles.suggestionItem, { borderBottomColor: colors.border }]}
+                          onPress={() => {
+                            if (blurTimer.current) clearTimeout(blurTimer.current);
+                            setSpecies(prev => prev.map((r, i) => i === idx ? {
+                              ...r,
+                              speciesName: p.botanicalName,
+                              speciesCategory: SPECIES_CATEGORIES.includes(p.plantType) ? p.plantType : r.speciesCategory,
+                            } : r));
+                            setFocusedSpeciesIdx(null);
+                          }}
+                        >
+                          <Text style={[naStyles.suggestionName, { color: colors.foreground }]}>{p.botanicalName}</Text>
+                          <Text style={[naStyles.suggestionType, { color: colors.mutedForeground }]}>{p.plantType}</Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  );
+                })()}
+                <View style={{ height: 10 }} />
 
                 <Text style={[naStyles.rowLabel, { color: colors.mutedForeground }]}>Category</Text>
                 <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 8 }}>
@@ -1791,6 +1845,20 @@ const naStyles = StyleSheet.create({
   },
   catChipText: { fontFamily: "Inter_500Medium", fontSize: 12 },
   catCustom: { fontFamily: "Inter_400Regular", fontSize: 11, marginBottom: 4 },
+
+  // Species autocomplete suggestions
+  suggestions: {
+    borderWidth: 1,
+    marginTop: 2,
+    overflow: "hidden",
+  },
+  suggestionItem: {
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  suggestionName: { fontFamily: "Inter_500Medium", fontSize: 13 },
+  suggestionType: { fontFamily: "Inter_400Regular", fontSize: 11, marginTop: 1 },
   addRowBtn: {
     flexDirection: "row",
     alignItems: "center",
