@@ -1385,16 +1385,18 @@ export default function AssetDetail() {
               </div>
 
               {/* Known Hazards */}
-              {(asset as any).knownHazards && (
-                <div className="px-5 py-4 border-b">
-                  <p className="text-[9px] font-bold text-amber-600 uppercase tracking-widest mb-2 flex items-center gap-1">
-                    <AlertTriangle className="w-3 h-3" /> Known Hazards
-                  </p>
+              <div className="px-5 py-4 border-b">
+                <p className="text-[9px] font-bold text-amber-600 uppercase tracking-widest mb-2 flex items-center gap-1">
+                  <AlertTriangle className="w-3 h-3" /> Known Hazards
+                </p>
+                {(asset as any).knownHazards ? (
                   <div className="bg-amber-50 rounded-lg p-3 text-[11px] text-amber-900 border border-amber-200 whitespace-pre-wrap leading-relaxed">
                     {(asset as any).knownHazards}
                   </div>
-                </div>
-              )}
+                ) : (
+                  <p className="text-[11px] text-amber-400 italic">No hazards recorded — edit asset to add.</p>
+                )}
+              </div>
 
               {/* Notes */}
               {asset.notes && (
