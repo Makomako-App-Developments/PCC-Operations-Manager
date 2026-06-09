@@ -307,8 +307,8 @@ export default function Assets() {
                       <span className="line-clamp-2" title={asset.description ?? undefined}>{asset.description || <span className="text-gray-300">—</span>}</span>
                     </td>
                     <td className="px-4 py-3">
-                      <Badge variant="secondary" className={`text-[10px] uppercase font-bold tracking-wider rounded border-0 ${TYPE_COLORS[asset.gardenType] || "bg-gray-100 text-gray-700"}`}>
-                        {asset.gardenType.replace("_", " ")}
+                      <Badge className={`text-[10px] border-0 capitalize ${TYPE_COLORS[asset.gardenType] || "bg-gray-100 text-gray-700"}`}>
+                        {asset.gardenType.replace(/_/g, " ")}
                       </Badge>
                     </td>
                     <td className="px-4 py-3 text-sm text-gray-700">{asset.serviceTimeMins} min</td>

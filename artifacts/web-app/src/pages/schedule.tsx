@@ -45,19 +45,19 @@ const TEAM_COLORS = [
 const TYPE_BADGES: Record<string, string> = {
   roses_perennials:  "bg-pink-100 text-pink-700",
   annuals:           "bg-yellow-100 text-yellow-700",
-  ornamental:        "bg-orange-100 text-orange-700",
-  amenity:           "bg-cyan-100 text-cyan-700",
-  rain_garden:       "bg-sky-100 text-sky-700",
+  ornamental:        "bg-purple-100 text-purple-700",
+  amenity:           "bg-sky-100 text-sky-700",
+  rain_garden:       "bg-cyan-100 text-cyan-700",
   reveg:             "bg-lime-100 text-lime-700",
   bush:              "bg-green-100 text-green-700",
-  tree_planter_pits: "bg-stone-100 text-stone-600",
+  tree_planter_pits: "bg-stone-100 text-stone-700",
   hedge:             "bg-emerald-100 text-emerald-700",
 };
 
 const STANDARD_BADGES: Record<string, string> = {
   high:   "bg-green-100 text-green-700",
-  medium: "bg-yellow-100 text-yellow-700",
-  low:    "bg-slate-100 text-slate-600",
+  medium: "bg-amber-100 text-amber-700",
+  low:    "bg-gray-100 text-gray-600",
 };
 
 type ViewType = "day" | "week" | "gantt" | "gantt-day";
@@ -270,7 +270,7 @@ function DailyGanttView({
                       <p className="text-gray-400 text-[10px] truncate max-w-[185px]">{row.assetDesc}</p>
                     </td>
                     <td className="py-1.5 px-3 sticky z-10" style={{ left: 230, background: rowBg, width: 80 }}>
-                      <span className={`px-1.5 py-0.5 rounded text-[9px] font-semibold capitalize ${TYPE_BADGES[row.gardenType] ?? "bg-gray-100 text-gray-600"}`}>
+                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold capitalize ${TYPE_BADGES[row.gardenType] ?? "bg-gray-100 text-gray-600"}`}>
                         {row.gardenType.replace(/_/g, " ")}
                       </span>
                     </td>
@@ -502,7 +502,7 @@ function GanttView({
                       <p className="text-gray-400 text-[10px] truncate max-w-[185px]">{row.assetDesc || row.assetRef}</p>
                     </td>
                     <td className="py-2 px-3 sticky z-10" style={{ left: 230, background: rowBg, width: 80 }}>
-                      <span className={`px-1.5 py-0.5 rounded text-[9px] font-semibold capitalize ${TYPE_BADGES[row.gardenType] ?? "bg-gray-100 text-gray-600"}`}>
+                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold capitalize ${TYPE_BADGES[row.gardenType] ?? "bg-gray-100 text-gray-600"}`}>
                         {row.gardenType.replace(/_/g, " ")}
                       </span>
                     </td>

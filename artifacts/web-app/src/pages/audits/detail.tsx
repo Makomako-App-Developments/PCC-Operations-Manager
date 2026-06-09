@@ -9,6 +9,18 @@ import { ArrowLeft, Download, Edit, Trash2, CheckCircle2, XCircle, MinusCircle, 
 import { format } from "date-fns";
 import { KPI_SECTIONS, ALL_KPIS } from "./kpi-config";
 
+const TYPE_COLORS: Record<string, string> = {
+  roses_perennials:  "bg-pink-100 text-pink-700",
+  annuals:           "bg-yellow-100 text-yellow-700",
+  ornamental:        "bg-purple-100 text-purple-700",
+  amenity:           "bg-sky-100 text-sky-700",
+  rain_garden:       "bg-cyan-100 text-cyan-700",
+  reveg:             "bg-lime-100 text-lime-700",
+  bush:              "bg-green-100 text-green-700",
+  tree_planter_pits: "bg-stone-100 text-stone-700",
+  hedge:             "bg-emerald-100 text-emerald-700",
+};
+
 function ScoreBadge({ score }: { score: number | null | undefined }) {
   if (score == null) return <span className="text-4xl font-bold text-gray-300">—</span>;
   const n = Number(score);
@@ -149,9 +161,9 @@ export default function AuditDetail() {
                 {asset?.description && (
                   <p className="text-xs text-gray-500 mt-0.5">{asset.description}</p>
                 )}
-                {asset?.standard && (
-                  <span className="inline-block mt-1 text-[10px] font-semibold px-1.5 py-0.5 rounded bg-[#e0f7fb] text-[#00739c] capitalize">
-                    {asset.standard.replace(/_/g, " ")}
+                {asset?.gardenType && (
+                  <span className={`inline-block mt-1 text-[10px] font-semibold px-2 py-0.5 rounded-full capitalize ${TYPE_COLORS[asset.gardenType] ?? "bg-gray-100 text-gray-600"}`}>
+                    {asset.gardenType.replace(/_/g, " ")}
                   </span>
                 )}
               </div>
