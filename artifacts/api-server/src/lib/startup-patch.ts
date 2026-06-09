@@ -185,13 +185,20 @@ const PLANT_PALETTE = [
 
 async function seedPlantPalette() {
   try {
-    const [{ value }] = await db.select({ value: count() }).from(plantPaletteTable);
-    if (value >= PLANT_PALETTE.length) {
+    // Detect stale data by checking for a plant unique to the current palette.
+    // Old production data had different species (e.g. Cordyline australis) —
+    // if "Coprosma kirkii" is missing we know the wrong set is loaded.
+    const check = await db.execute<{ cnt: string }>(sql`
+      SELECT COUNT(*) AS cnt FROM plant_palette WHERE botanical_name = 'Coprosma kirkii'
+    `);
+    const alreadyFresh = Number(check.rows?.[0]?.cnt ?? 0) > 0;
+    if (alreadyFresh) {
       console.log("[startup-patch] Plant palette already seeded — skipping.");
       return;
     }
-    console.log("[startup-patch] Seeding plant palette…");
-    await db.insert(plantPaletteTable).values(PLANT_PALETTE).onConflictDoNothing();
+    console.log("[startup-patch] Clearing stale plant palette and re-seeding…");
+    await db.execute(sql`DELETE FROM plant_palette`);
+    await db.insert(plantPaletteTable).values(PLANT_PALETTE);
     console.log(`[startup-patch] Plant palette seeded (${PLANT_PALETTE.length} plants).`);
   } catch (err) {
     console.error("[startup-patch] Plant palette seed failed (non-fatal):", err);
