@@ -314,7 +314,7 @@ export default function Assets() {
                     <td className="px-4 py-3 text-sm text-gray-700">{asset.serviceTimeMins} min</td>
                     <td className="px-4 py-3">
                       {asset.siteType ? (
-                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase ${asset.siteType === "park" ? "bg-green-100 text-green-700" : "bg-blue-100 text-blue-700"}`}>
+                        <span className={`text-xs font-semibold capitalize ${asset.siteType === "park" ? "text-green-800" : "text-gray-900"}`}>
                           {asset.siteType}
                         </span>
                       ) : <span className="text-gray-300 text-xs">—</span>}
