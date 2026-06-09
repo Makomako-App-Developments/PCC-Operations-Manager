@@ -512,8 +512,9 @@ router.get(
     const { week } = res.locals.query as z.infer<typeof weekQuerySchema>;
     let { teamId } = res.locals.query as z.infer<typeof weekQuerySchema>;
 
-    // Non-privileged users may only view their own team's schedule
-    if (!isPrivilegedRole(req.auth!.role)) {
+    // Only administrators and managers may view all teams' schedules;
+    // supervisors and field workers are restricted to their own team.
+    if (!["administrator", "manager"].includes(req.auth!.role)) {
       const callerTeamId = req.auth!.teamId;
       if (!callerTeamId) { res.json({ days: {} }); return; }
       teamId = callerTeamId;

@@ -38,8 +38,9 @@ router.get("/jobs", requireAuth, validateQuery(jobQuerySchema), async (req, res)
   let { teamId } = res.locals.query as JobQuery;
   const offset = (page - 1) * limit;
 
-  // Non-privileged users may only see their own team's jobs
-  if (!isPrivilegedRole(req.auth!.role)) {
+  // Only administrators and managers may list jobs across all teams;
+  // supervisors and field workers are restricted to their own team.
+  if (!["administrator", "manager"].includes(req.auth!.role)) {
     const callerTeamId = req.auth!.teamId;
     if (!callerTeamId) { res.json({ data: [], page, limit }); return; }
     teamId = callerTeamId;
