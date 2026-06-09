@@ -418,10 +418,15 @@ export default function ReactiveJobs() {
 
               {/* Modal header */}
               <div className="px-6 py-4 border-b flex items-center justify-between flex-shrink-0">
-                <h2 className="font-bold text-gray-900 flex items-center gap-2 min-w-0 truncate">
-                  <Zap className="w-4 h-4 text-amber-500 flex-shrink-0" />
-                  <span className="truncate">{selectedJob.issueType as string}</span>
-                </h2>
+                <div className="flex items-start gap-2 min-w-0">
+                  <Zap className="w-4 h-4 text-amber-500 flex-shrink-0 mt-0.5" />
+                  <div className="min-w-0">
+                    <h2 className="font-bold text-gray-900 truncate leading-tight">{site || "Unknown site"}</h2>
+                    {(selectedJob.description as string) && (
+                      <p className="text-xs text-gray-500 truncate mt-0.5">{selectedJob.description as string}</p>
+                    )}
+                  </div>
+                </div>
                 <div className="flex items-center gap-2 flex-shrink-0 ml-2">
                   {(selectedJob.status as string) !== "completed" && (selectedJob.status as string) !== "cancelled" && (
                     <button
