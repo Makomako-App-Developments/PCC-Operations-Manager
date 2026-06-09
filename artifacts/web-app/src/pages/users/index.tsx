@@ -347,10 +347,7 @@ export default function UsersPage({ embedded }: { embedded?: boolean } = {}) {
                       </td>
                       <td className="px-4 py-3.5 text-gray-500 text-xs">{user.email}</td>
                       <td className="px-4 py-3.5">
-                        <span
-                          className="text-[11px] font-semibold px-2.5 py-1 rounded-full"
-                          style={{ background: roleConf.bg, color: roleConf.text }}
-                        >
+                        <span className="text-xs text-gray-600">
                           {ROLE_LABELS[user.role] ?? user.role}
                         </span>
                       </td>
