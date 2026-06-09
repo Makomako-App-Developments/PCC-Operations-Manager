@@ -632,16 +632,20 @@ export default function ReactiveJobs() {
                       const conf = STATUS_CONFIG[s];
                       const SIcon = conf.icon;
                       const isActive = selectedJob.status === s;
+                      const canAssign = !!(selectedJob.assignedTeamId) && !!(selectedJob.scheduledDate);
+                      const isBlocked = s === "assigned" && !canAssign;
                       return (
                         <button
                           key={s}
-                          className={`flex items-center gap-2 px-3 py-2.5 rounded-xl text-sm font-semibold border-2 transition-all ${isActive ? "text-white border-transparent" : "border-gray-200 text-gray-600 hover:border-gray-300"}`}
+                          title={isBlocked ? "Assign a team and scheduled date before marking as Assigned" : undefined}
+                          className={`flex items-center gap-2 px-3 py-2.5 rounded-xl text-sm font-semibold border-2 transition-all ${isActive ? "text-white border-transparent" : isBlocked ? "border-gray-100 text-gray-300 cursor-not-allowed" : "border-gray-200 text-gray-600 hover:border-gray-300"}`}
                           style={isActive ? { background: BRAND } : {}}
                           onClick={() => {
+                            if (isBlocked) return;
                             updateMutation.mutate({ id: selectedJob.id as string, data: { status: s } });
                             setSelectedJob(prev => prev ? { ...prev, status: s } : null);
                           }}
-                          disabled={updateMutation.isPending || isActive}
+                          disabled={updateMutation.isPending || isActive || isBlocked}
                         >
                           <SIcon className="w-4 h-4" />
                           {conf.label}
@@ -649,6 +653,11 @@ export default function ReactiveJobs() {
                       );
                     })}
                   </div>
+                  {!(selectedJob.assignedTeamId) || !(selectedJob.scheduledDate) ? (
+                    <p className="text-[10px] text-amber-500 mt-2 flex items-center gap-1">
+                      <span>⚠</span> Set a team and scheduled date to enable "Assigned"
+                    </p>
+                  ) : null}
                 </div>
               </div>
 
