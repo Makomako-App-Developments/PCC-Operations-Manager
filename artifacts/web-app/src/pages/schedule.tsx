@@ -30,6 +30,7 @@ import {
   ChevronLeft, ChevronRight, ChevronDown, Route, CheckCircle2, Clock,
   CalendarRange, CalendarDays, Calendar, LayoutGrid, CheckCircle, AlertTriangle, XCircle,
   Zap, RotateCcw, PlayCircle, Search, X, Users, MapPin, FileText, Paperclip,
+  Layers, Sprout,
 } from "lucide-react";
 import { ReactiveJobWizard } from "@/components/reactive-job-wizard";
 import type { AssetStub, TeamStub } from "@/components/reactive-job-wizard";
@@ -335,9 +336,9 @@ function DailyGanttView({
                                     {done
                                       ? <CheckCircle className="w-3.5 h-3.5" style={{ color: (isMulching || isInfill || isUnscheduled) ? (isMulching ? MULCH_COLOR : isInfill ? INFILL_COLOR : UNSCHED_COLOR) : "white" }} />
                                       : isMulching
-                                      ? <span className="text-[8px] font-bold leading-none">🌱</span>
+                                      ? <Layers className="w-3 h-3" />
                                       : isInfill
-                                      ? <span className="text-[8px] font-bold leading-none">🌿</span>
+                                      ? <Sprout className="w-3 h-3" />
                                       : isUnscheduled
                                       ? <span className="text-[8px] font-bold leading-none">⚡</span>
                                       : <span className="text-[9px] font-bold text-white">{job.estimatedTimeMins ?? row.serviceTimeMins}m</span>
