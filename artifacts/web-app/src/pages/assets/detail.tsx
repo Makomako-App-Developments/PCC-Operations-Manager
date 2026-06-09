@@ -1321,7 +1321,7 @@ export default function AssetDetail() {
                   <Badge className={`text-[10px] border-0 capitalize ${TYPE_COLORS[asset.gardenType] ?? "bg-gray-100 text-gray-700"}`}>
                     {asset.gardenType.replace(/_/g, " ")}
                   </Badge>
-                  <Badge className={`text-[10px] border-0 capitalize ${STANDARD_COLORS[asset.standard]}`}>
+                  <Badge variant="outline" className="text-[10px] text-white/70 border-white/20 bg-white/5 capitalize">
                     {asset.standard} Standard
                   </Badge>
                   <Badge variant="outline" className="text-[10px] text-white/70 border-white/20 bg-white/5">
