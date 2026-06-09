@@ -146,6 +146,14 @@ export default function AuditDetail() {
               <div>
                 <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wide flex items-center gap-1 mb-1"><span>📍</span> SITE</p>
                 <p className="text-sm font-semibold text-gray-900">{asset?.name ?? "—"}</p>
+                {asset?.description && (
+                  <p className="text-xs text-gray-500 mt-0.5">{asset.description}</p>
+                )}
+                {asset?.standard && (
+                  <span className="inline-block mt-1 text-[10px] font-semibold px-1.5 py-0.5 rounded bg-[#e0f7fb] text-[#00739c] capitalize">
+                    {asset.standard.replace(/_/g, " ")}
+                  </span>
+                )}
               </div>
               <div>
                 <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wide flex items-center gap-1 mb-1"><span>👥</span> TEAM</p>
