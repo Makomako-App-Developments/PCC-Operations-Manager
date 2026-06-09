@@ -80,8 +80,12 @@ const MINS_PER_PLANT: Record<PlantGrade, number> = {
   "PB95":           45,
 };
 
-function estimateInfillMins(species: { speciesCategory: string; quantity: number }[]): number {
-  return species.reduce((s, sp) => s + sp.quantity * (MINS_PER_PLANT[sp.speciesCategory as PlantGrade] ?? 5), 0);
+function estimateInfillMins(
+  species: { speciesCategory: string; quantity: number }[],
+  rates?: Record<string, number>,
+): number {
+  const r = rates ?? MINS_PER_PLANT;
+  return species.reduce((s, sp) => s + sp.quantity * (r[sp.speciesCategory] ?? MINS_PER_PLANT[sp.speciesCategory as PlantGrade] ?? 5), 0);
 }
 
 // ─── Species catalogue ────────────────────────────────────────────────────────
@@ -1399,9 +1403,26 @@ function JobDetailPanel({
   const [teamId, setTeamId] = useState(defaultTeam);
   const autoAssigned = !job.assignedTeamId && !!assetTeamId && teamId === assetTeamId;
   const [plannedDate, setPlannedDate] = useState(job.plannedDate ?? "");
-  const autoMins = estimateInfillMins(job.species);
-  const [estMins, setEstMins] = useState(String(job.estimatedMins ?? (autoMins > 0 ? autoMins : "")));
-  const isAutoEstimate = !job.estimatedMins && autoMins > 0;
+
+  // Fetch saved planting rates from settings (falls back to hardcoded defaults)
+  const { data: appSettings } = useQuery<{ infillPlantingRates?: Record<string, number> | null }>({
+    queryKey: ["/api/settings"],
+    queryFn: () => fetch("/api/settings", { credentials: "include" }).then(r => r.json()),
+    staleTime: 60_000,
+  });
+  const effectiveRates: Record<string, number> = {
+    ...MINS_PER_PLANT,
+    ...(appSettings?.infillPlantingRates ?? {}),
+  };
+  const autoMins = estimateInfillMins(job.species, effectiveRates);
+  const [estMins, setEstMins] = useState(String(job.estimatedMins ?? ""));
+  // Once rates load, fill the field if it's still blank (no saved estimatedMins)
+  useEffect(() => {
+    if (!job.estimatedMins && estMins === "" && autoMins > 0) {
+      setEstMins(String(autoMins));
+    }
+  }, [autoMins]);
+  const isAutoEstimate = !job.estimatedMins && estMins === String(autoMins) && autoMins > 0;
   const totalPlants = job.species.reduce((s, sp) => s + sp.quantity, 0);
 
   // Assessment edit state

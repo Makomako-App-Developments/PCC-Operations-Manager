@@ -37,6 +37,7 @@ const patchSettingsSchema = z.object({
   reactivePriorities:         z.array(reactivePrioritySchema).optional(),
   mulchDecayRateMmPerMonth:   z.number().min(0.1).max(50).optional(),
   mulchSpreadingRateM3PerHour: z.number().min(0.1).max(20).optional(),
+  infillPlantingRates:        z.record(z.string(), z.number().min(0).max(999)).optional(),
 });
 
 // PATCH /api/settings

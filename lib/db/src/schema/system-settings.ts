@@ -15,6 +15,7 @@ export const systemSettingsTable = pgTable("system_settings", {
   mulchDecayRateMmPerMonth:   real("mulch_decay_rate_mm_per_month").notNull().default(5),    // default decay rate for unspecified mulch types
   mulchSpreadingRateM3PerHour: real("mulch_spreading_rate_m3_per_hour").notNull().default(2), // m³/hr for a standard crew of 2
   reactivePriorities:  jsonb("reactive_priorities"),                       // ReactivePriority[]
+  infillPlantingRates: jsonb("infill_planting_rates"),                     // Record<PlantGrade, number> mins per plant
   routesLastOptimised: timestamp("routes_last_optimised"),
   updatedAt:           timestamp("updated_at").notNull().defaultNow(),
 });
