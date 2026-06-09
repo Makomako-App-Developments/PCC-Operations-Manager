@@ -69,54 +69,22 @@ const GRADE_COLORS: Record<PlantGrade, string> = {
 
 // ─── Species catalogue ────────────────────────────────────────────────────────
 
-type SpeciesCategory = "Native Trees" | "Native Shrubs" | "Groundcovers" | "Annual Bedding" | "Roses";
+type SpeciesCategory = "Tree" | "Shrub" | "Ground cover" | "Fern" | "Grass" | "Herbaceous perennial";
 
 interface Species {
-  name: string; maori?: string; category: SpeciesCategory;
-  size: "Small" | "Medium" | "Large"; note: string;
+  name: string;
+  category: SpeciesCategory;
 }
 
-const SPECIES_LIST: Species[] = [
-  { name: "Cordyline australis",    maori: "Tī kōuka",   category: "Native Trees",   size: "Large",  note: "Cabbage tree — excellent focal point" },
-  { name: "Sophora microphylla",    maori: "Kōwhai",     category: "Native Trees",   size: "Medium", note: "Seasonal yellow flowers, bird-attracting" },
-  { name: "Metrosideros excelsa",   maori: "Pōhutukawa", category: "Native Trees",   size: "Large",  note: "Coastal, summer red flowers" },
-  { name: "Kunzea ericoides",       maori: "Kānuka",     category: "Native Trees",   size: "Medium", note: "Fast growing, good nurse tree" },
-  { name: "Pittosporum tenuifolium",maori: "Kōhūhū",     category: "Native Trees",   size: "Medium", note: "Shade tolerant, fragrant flowers" },
-  { name: "Phormium tenax",         maori: "Harakeke",   category: "Native Shrubs",  size: "Large",  note: "NZ flax — bold structural plant" },
-  { name: "Hebe stricta",           maori: "Koromiko",   category: "Native Shrubs",  size: "Small",  note: "White flowers, good filler" },
-  { name: "Hebe topiaria",                               category: "Native Shrubs",  size: "Small",  note: "Dense grey-green dome form" },
-  { name: "Coprosma robusta",       maori: "Karamu",     category: "Native Shrubs",  size: "Medium", note: "Glossy leaves, orange berries" },
-  { name: "Coprosma propinqua",                          category: "Native Shrubs",  size: "Small",  note: "Divaricating, suits revegetation" },
-  { name: "Corokia cotoneaster",                         category: "Native Shrubs",  size: "Small",  note: "Wire-netting bush, hardy" },
-  { name: "Leptospermum scoparium", maori: "Mānuka",     category: "Native Shrubs",  size: "Medium", note: "Pioneer shrub, fast growing" },
-  { name: "Carex secta",            maori: "Purei",      category: "Groundcovers",   size: "Medium", note: "Wetland sedge, good under canopy" },
-  { name: "Carex testacea",                              category: "Groundcovers",   size: "Small",  note: "Orange sedge, ornamental" },
-  { name: "Libertia grandiflora",   maori: "Mikoikoi",   category: "Groundcovers",   size: "Small",  note: "White flowers, sun/partial shade" },
-  { name: "Pratia angulata",                             category: "Groundcovers",   size: "Small",  note: "Creeping groundcover, white flowers" },
-  { name: "Festuca glauca",                              category: "Groundcovers",   size: "Small",  note: "Blue fescue, ornamental grass" },
-  { name: "Alyssum",                                     category: "Annual Bedding", size: "Small",  note: "White/purple, fragrant edging" },
-  { name: "Begonia",                                     category: "Annual Bedding", size: "Small",  note: "Shade tolerant, long flowering" },
-  { name: "Impatiens",                                   category: "Annual Bedding", size: "Small",  note: "Busy Lizzie — shade beds" },
-  { name: "Lobelia",                                     category: "Annual Bedding", size: "Small",  note: "Blue/white edging, cascading" },
-  { name: "Marigold (Tagetes)",                          category: "Annual Bedding", size: "Small",  note: "Bright, long season, pest deterrent" },
-  { name: "Pansy (Viola)",                               category: "Annual Bedding", size: "Small",  note: "Cool season colour" },
-  { name: "Petunia",                                     category: "Annual Bedding", size: "Small",  note: "Summer to autumn, trailing" },
-  { name: "Salvia",                                      category: "Annual Bedding", size: "Small",  note: "Long-flowering, heat tolerant" },
-  { name: "'Iceberg'",                                   category: "Roses",          size: "Medium", note: "Floribunda, white, repeat flowering" },
-  { name: "'Queen Elizabeth'",                           category: "Roses",          size: "Large",  note: "Floribunda, pink, vigorous" },
-  { name: "'Mr Lincoln'",                                category: "Roses",          size: "Medium", note: "Hybrid Tea, deep red, fragrant" },
-  { name: "'Just Joey'",                                 category: "Roses",          size: "Medium", note: "Hybrid Tea, apricot, fragrant" },
-  { name: "'Double Delight'",                            category: "Roses",          size: "Medium", note: "Hybrid Tea, red/cream, highly fragrant" },
-];
+const CATEGORIES: SpeciesCategory[] = ["Tree", "Shrub", "Ground cover", "Fern", "Grass", "Herbaceous perennial"];
 
-const CATEGORIES: SpeciesCategory[] = ["Native Trees", "Native Shrubs", "Groundcovers", "Annual Bedding", "Roses"];
-
-const CAT_COLORS: Record<SpeciesCategory, string> = {
-  "Native Trees":   "bg-emerald-100 text-emerald-800",
-  "Native Shrubs":  "bg-green-100 text-green-700",
-  "Groundcovers":   "bg-lime-100 text-lime-700",
-  "Annual Bedding": "bg-yellow-100 text-yellow-700",
-  "Roses":          "bg-pink-100 text-pink-700",
+const CAT_COLORS: Record<string, string> = {
+  "Tree":                 "bg-emerald-100 text-emerald-800",
+  "Shrub":                "bg-green-100 text-green-700",
+  "Ground cover":         "bg-lime-100 text-lime-700",
+  "Fern":                 "bg-teal-100 text-teal-700",
+  "Grass":                "bg-yellow-100 text-yellow-700",
+  "Herbaceous perennial": "bg-purple-100 text-purple-700",
 };
 
 // ─── Status configs ───────────────────────────────────────────────────────────
@@ -1011,10 +979,25 @@ function SpeciesPicker({
   const [search, setSearch] = useState("");
   const [activeTab, setActiveTab] = useState<SpeciesCategory | "All">("All");
 
-  const filtered = SPECIES_LIST.filter(sp => {
+  const { data: palette = [] } = useQuery<{ botanicalName: string; plantType: string }[]>({
+    queryKey: ["plant-palette"],
+    queryFn: async () => {
+      const res = await fetch("/api/plant-palette", { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to fetch plant palette");
+      return res.json();
+    },
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const speciesList: Species[] = palette.map(p => ({
+    name: p.botanicalName,
+    category: p.plantType as SpeciesCategory,
+  }));
+
+  const filtered = speciesList.filter(sp => {
     const matchCat = activeTab === "All" || sp.category === activeTab;
     const q = search.toLowerCase();
-    return matchCat && (!q || sp.name.toLowerCase().includes(q) || (sp.maori?.toLowerCase().includes(q)));
+    return matchCat && (!q || sp.name.toLowerCase().includes(q));
   });
   const isSelected = (name: string) => selected.some(s => s.name === name);
   const totalPlants = selected.reduce((s, sp) => s + sp.qty, 0);
@@ -1033,7 +1016,7 @@ function SpeciesPicker({
           <div className="relative">
             <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
             <input value={search} onChange={e => setSearch(e.target.value)}
-              placeholder="Search species or Māori name…"
+              placeholder="Search species…"
               className="w-full pl-9 pr-3 py-2 text-sm border border-gray-200 rounded-xl outline-none focus:border-[#00AECD]" />
           </div>
           <div className="flex gap-1.5 flex-wrap">
@@ -1061,8 +1044,7 @@ function SpeciesPicker({
                   <div className="flex items-start justify-between gap-2">
                     <div className="flex-1 min-w-0">
                       <SciName name={sp.name} className="text-xs font-semibold text-gray-900 leading-tight" />
-                      {sp.maori && <p className="text-[10px] text-gray-400 mt-0.5 italic">{sp.maori}</p>}
-                      <p className="text-[10px] text-gray-500 mt-0.5">{sp.note}</p>
+                      <span className={`text-[9px] font-semibold px-1.5 py-0.5 rounded-full mt-1 inline-block ${CAT_COLORS[sp.category] ?? "bg-gray-100 text-gray-600"}`}>{sp.category}</span>
                     </div>
                   </div>
                   {sel && (
