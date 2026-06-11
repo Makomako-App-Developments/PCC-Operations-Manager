@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from "react";
-import { ChevronDown, ChevronUp, X, Filter, Tag, ArrowLeft } from "lucide-react";
+import { ChevronDown, ChevronUp, X, Filter, Tag, ArrowLeft, Search } from "lucide-react";
 import { MapContainer, TileLayer, Polygon, CircleMarker, Tooltip, Popup, ZoomControl, useMap } from "react-leaflet";
 import { useSearch, useLocation } from "wouter";
 import "leaflet/dist/leaflet.css";
@@ -250,6 +250,10 @@ export default function MapPage() {
   const [colorMode,      setColorMode]      = useState<ColorMode>("schedule");
   const [showLabels,     setShowLabels]     = useState(false);
   const [layerMode,      setLayerMode]      = useState<LayerMode>("street");
+  const [searchQuery,    setSearchQuery]    = useState("");
+  const [searchOpen,     setSearchOpen]     = useState(false);
+  const [searchTarget,   setSearchTarget]   = useState<Asset | null>(null);
+  const [flyKey,         setFlyKey]         = useState(0);
   const [openSections,   setOpenSections]   = useState<Record<string, boolean>>({
     schedule: true, type: true, jobs: true, freq: false, team: false,
   });
@@ -290,6 +294,30 @@ export default function MapPage() {
     () => linkedAssetId ? mappableAssets.find(a => a.id === linkedAssetId) ?? null : null,
     [linkedAssetId, mappableAssets],
   );
+
+  const searchResults = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (q.length < 2) return [];
+    return mappableAssets
+      .filter(a =>
+        a.name.toLowerCase().includes(q) ||
+        (a.description ?? "").toLowerCase().includes(q),
+      )
+      .slice(0, 8);
+  }, [searchQuery, mappableAssets]);
+
+  function handleSelectSearchResult(asset: Asset) {
+    setSearchTarget(asset);
+    setFlyKey(k => k + 1);
+    setSearchQuery(asset.name);
+    setSearchOpen(false);
+  }
+
+  function clearSearch() {
+    setSearchQuery("");
+    setSearchTarget(null);
+    setSearchOpen(false);
+  }
 
   function toggle<T>(set: Set<T>, val: T): Set<T> {
     const next = new Set(set);
@@ -380,6 +408,51 @@ export default function MapPage() {
               </button>
             )}
           </div>
+        </div>
+
+        {/* Search bar */}
+        <div className="px-3 py-2.5 border-b flex-shrink-0 relative">
+          <div className="relative">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 pointer-events-none" />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={e => { setSearchQuery(e.target.value); setSearchOpen(true); }}
+              onFocus={() => setSearchOpen(true)}
+              onBlur={() => setTimeout(() => setSearchOpen(false), 160)}
+              placeholder="Search gardens…"
+              className="w-full pl-8 pr-6 py-1.5 text-xs border border-gray-200 rounded-lg bg-gray-50 focus:outline-none focus:ring-1 focus:ring-[#00AECD] focus:border-[#00AECD] transition-colors"
+            />
+            {searchQuery && (
+              <button
+                onMouseDown={clearSearch}
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+              >
+                <X className="w-3 h-3" />
+              </button>
+            )}
+          </div>
+
+          {/* Dropdown results */}
+          {searchOpen && searchResults.length > 0 && (
+            <div className="absolute left-3 right-3 top-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-[600] overflow-hidden">
+              {searchResults.map(asset => (
+                <button
+                  key={asset.id}
+                  onMouseDown={() => handleSelectSearchResult(asset)}
+                  className="w-full flex flex-col items-start px-3 py-2 hover:bg-gray-50 border-b border-gray-100 last:border-0 transition-colors"
+                >
+                  <span className="text-xs font-semibold text-gray-800 truncate w-full text-left">{asset.name}</span>
+                  <span className="text-[10px] text-gray-400 mt-0.5">{TYPE_LABELS[asset.gardenType] ?? asset.gardenType}</span>
+                </button>
+              ))}
+            </div>
+          )}
+          {searchOpen && searchQuery.trim().length >= 2 && searchResults.length === 0 && (
+            <div className="absolute left-3 right-3 top-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-[600] px-3 py-2.5">
+              <span className="text-xs text-gray-400">No mapped assets found</span>
+            </div>
+          )}
         </div>
 
         {/* Colour mode toggle */}
@@ -587,6 +660,24 @@ export default function MapPage() {
           {/* Fly to linked asset when arriving from Programmes */}
           {linkedAsset && (
             <FlyToAsset lat={linkedAsset.lat as number} lng={linkedAsset.lng as number} />
+          )}
+
+          {/* Fly to + highlight ring for search result */}
+          {searchTarget && searchTarget.lat != null && searchTarget.lng != null && (
+            <>
+              <FlyToAsset key={`search-fly-${flyKey}`} lat={searchTarget.lat as number} lng={searchTarget.lng as number} />
+              <CircleMarker
+                center={[searchTarget.lat as number, searchTarget.lng as number]}
+                radius={24}
+                pathOptions={{
+                  color: BRAND,
+                  weight: 3,
+                  fillColor: BRAND,
+                  fillOpacity: 0.18,
+                  dashArray: "6 4",
+                }}
+              />
+            </>
           )}
 
           {/* Highlight ring for linked asset */}
