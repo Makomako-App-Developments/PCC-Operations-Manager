@@ -604,12 +604,19 @@ export default function MapPage() {
             />
           )}
 
-          {/* Garden boundary outlines */}
-          {visible.map(({ asset, scheduleState }) => {
+          {/* Garden boundary outlines — clicking anywhere inside opens the same popup as the pin */}
+          {visible.map(({ asset, scheduleState, jobTypes, teamName }) => {
             const boundary = (asset as any).boundary;
             const rings = boundaryToPolygons(boundary);
             if (rings.length === 0) return null;
             const color = pinColor(asset, scheduleState, colorMode);
+            const schedCfg = SCHEDULE_CONFIG[scheduleState];
+            const lastVisitJob = jobs
+              .filter(j => j.assetId === asset.id && j.status === "completed" && j.scheduledDate)
+              .sort((a, b) => new Date(b.scheduledDate!).getTime() - new Date(a.scheduledDate!).getTime())[0];
+            const nextDueJob = jobs
+              .filter(j => j.assetId === asset.id && (j.status === "pending" || j.status === "overdue") && j.scheduledDate)
+              .sort((a, b) => new Date(a.scheduledDate!).getTime() - new Date(b.scheduledDate!).getTime())[0];
             return rings.map((positions, i) => (
               <Polygon
                 key={`${asset.id}-outline-${i}`}
@@ -621,7 +628,59 @@ export default function MapPage() {
                   fillOpacity: 0.15,
                   opacity: 0.8,
                 }}
-              />
+              >
+                <Popup closeButton={false} className="garden-popup">
+                  <div style={{ fontFamily: "system-ui, sans-serif", width: 220, padding: "4px 2px" }}>
+                    <div style={{ marginBottom: 8 }}>
+                      <p style={{ fontWeight: 700, fontSize: 13, color: "#0f2a36", margin: 0 }}>{asset.name}</p>
+                      {asset.description && <p style={{ fontSize: 10, color: "#9ca3af", margin: "2px 0 0" }}>{asset.description}</p>}
+                    </div>
+
+                    <div style={{
+                      display: "inline-flex", alignItems: "center", gap: 5,
+                      background: schedCfg.bg, color: schedCfg.color,
+                      borderRadius: 20, padding: "2px 8px", fontSize: 10, fontWeight: 700,
+                      marginBottom: 10,
+                    }}>
+                      <span style={{ width: 6, height: 6, borderRadius: "50%", background: schedCfg.color, flexShrink: 0 }} />
+                      {schedCfg.label}
+                    </div>
+
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "6px 12px", marginBottom: 10 }}>
+                      {[
+                        { l: "Type",      v: TYPE_LABELS[asset.gardenType] ?? asset.gardenType },
+                        { l: "Standard",  v: asset.standard.charAt(0).toUpperCase() + asset.standard.slice(1) },
+                        { l: "Area",      v: `${asset.areaM2} m²` },
+                        { l: "Service",   v: `${asset.serviceTimeMins} min` },
+                        { l: "Frequency", v: FREQ_LABELS[asset.frequency] ?? asset.frequency },
+                        { l: "Team",      v: teamName },
+                        { l: "Next Due",  v: nextDueJob?.scheduledDate ? new Date(nextDueJob.scheduledDate).toLocaleDateString("en-NZ", { day: "numeric", month: "short", year: "numeric" }) : "—" },
+                        { l: "Last Visit",v: lastVisitJob?.scheduledDate ? new Date(lastVisitJob.scheduledDate).toLocaleDateString("en-NZ", { day: "numeric", month: "short", year: "numeric" }) : "—" },
+                      ].map(({ l, v }) => (
+                        <div key={l}>
+                          <p style={{ fontSize: 9, color: "#9ca3af", textTransform: "uppercase", letterSpacing: "0.06em", margin: 0 }}>{l}</p>
+                          <p style={{ fontSize: 11, fontWeight: 600, color: "#1f2937", margin: "1px 0 0" }}>{v}</p>
+                        </div>
+                      ))}
+                    </div>
+
+                    {jobTypes.length > 0 && (
+                      <div>
+                        <p style={{ fontSize: 9, color: "#9ca3af", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 4 }}>Active Jobs</p>
+                        <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+                          {jobTypes.map(j => (
+                            <span key={j} style={{
+                              fontSize: 10, fontWeight: 600,
+                              background: JOB_TYPE_BG[j], color: JOB_TYPE_COLORS[j],
+                              borderRadius: 12, padding: "2px 8px",
+                            }}>{j}</span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </Popup>
+              </Polygon>
             ));
           })}
 
