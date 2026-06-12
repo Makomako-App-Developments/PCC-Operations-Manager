@@ -449,6 +449,7 @@ export default function NewAudit() {
       await Promise.all(uploadPromises);
 
       await qc.invalidateQueries({ queryKey: ["/api/audits"] });
+      qc.invalidateQueries({ queryKey: ["audit-quota-badge"] });
       toast({ title: "Audit submitted successfully" });
       navigate(`/audits/${auditId}`);
     } catch (e: any) {
