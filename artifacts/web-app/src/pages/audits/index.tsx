@@ -562,7 +562,12 @@ export default function Audits() {
                           {format(new Date(audit.conductedAt ?? audit.createdAt), "d MMM yyyy")}
                         </td>
                         <td className="px-5 py-3.5 text-gray-600">{audit.auditorName ?? "—"}</td>
-                        <td className="px-5 py-3.5 font-medium text-gray-900">{getAssetName(audit.assetId)}</td>
+                        <td className="px-5 py-3.5">
+                          <p className="font-medium text-gray-900">{getAssetName(audit.assetId)}</p>
+                          {audit.assetDescription && (
+                            <p className="text-xs text-gray-400 mt-0.5 truncate max-w-xs">{audit.assetDescription}</p>
+                          )}
+                        </td>
                         <td className="px-5 py-3.5 text-gray-600">{getTeamName(audit.teamId)}</td>
                         <td className="px-5 py-3.5">
                           <ScoreBadge score={audit.overallScore} />

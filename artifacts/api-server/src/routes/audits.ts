@@ -159,9 +159,10 @@ router.get("/audits", requireAuth, async (req, res) => {
   const rows = await db
     .select({
       id:           auditsTable.id,
-      assetId:      auditsTable.assetId,
-      assetName:    assetsTable.name,
-      teamId:       auditsTable.teamId,
+      assetId:          auditsTable.assetId,
+      assetName:        assetsTable.name,
+      assetDescription: assetsTable.description,
+      teamId:           auditsTable.teamId,
       auditorId:    auditsTable.auditorId,
       auditorName:  usersTable.name,
       conductedAt:  auditsTable.conductedAt,
