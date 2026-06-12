@@ -361,9 +361,10 @@ export default function Audits() {
 
   const handleExportCsv = () => {
     const rows = [
-      ["Date", "Site", "Team", "Score", "Status"],
+      ["Date", "Auditor", "Site", "Team", "Score", "Status"],
       ...filtered.map((a) => [
         format(new Date(a.conductedAt ?? a.createdAt), "d MMM yyyy"),
+        a.auditorName ?? "",
         getAssetName(a.assetId),
         getTeamName(a.teamId),
         a.overallScore != null ? `${Number(a.overallScore).toFixed(0)}%` : "",
@@ -527,6 +528,7 @@ export default function Audits() {
                   <thead className="bg-gray-50 border-b border-gray-200">
                     <tr className="text-xs font-bold text-gray-500 uppercase tracking-wide">
                       <th className="text-left px-5 py-3">Date</th>
+                      <th className="text-left px-5 py-3">Auditor</th>
                       <th className="text-left px-5 py-3">Site</th>
                       <th className="text-left px-5 py-3">Team</th>
                       <th className="text-left px-5 py-3">Score</th>
@@ -539,6 +541,7 @@ export default function Audits() {
                         <td className="px-5 py-3.5 text-gray-600 text-sm">
                           {format(new Date(audit.conductedAt ?? audit.createdAt), "d MMM yyyy")}
                         </td>
+                        <td className="px-5 py-3.5 text-gray-600">{audit.auditorName ?? "—"}</td>
                         <td className="px-5 py-3.5 font-medium text-gray-900">{getAssetName(audit.assetId)}</td>
                         <td className="px-5 py-3.5 text-gray-600">{getTeamName(audit.teamId)}</td>
                         <td className="px-5 py-3.5">

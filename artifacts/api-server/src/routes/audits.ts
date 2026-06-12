@@ -2,7 +2,7 @@ import { Router } from "express";
 import multer from "multer";
 import path from "path";
 import { randomUUID } from "crypto";
-import { db, auditsTable, auditItemsTable, auditPhotosTable, teamsTable, assetsTable } from "@workspace/db";
+import { db, auditsTable, auditItemsTable, auditPhotosTable, teamsTable, assetsTable, usersTable } from "@workspace/db";
 import { eq, and, desc, sql } from "drizzle-orm";
 import { requireAuth, requireRole } from "../middlewares/auth";
 import { auditLog } from "../lib/audit";
@@ -149,6 +149,8 @@ router.get("/audits", requireAuth, async (req, res) => {
       assetId:      auditsTable.assetId,
       assetName:    assetsTable.name,
       teamId:       auditsTable.teamId,
+      auditorId:    auditsTable.auditorId,
+      auditorName:  usersTable.name,
       conductedAt:  auditsTable.conductedAt,
       overallScore: auditsTable.overallScore,
       status:       auditsTable.status,
@@ -159,6 +161,7 @@ router.get("/audits", requireAuth, async (req, res) => {
     })
     .from(auditsTable)
     .leftJoin(assetsTable, eq(auditsTable.assetId, assetsTable.id))
+    .leftJoin(usersTable, eq(auditsTable.auditorId, usersTable.id))
     .where(conditions.length > 0 ? and(...conditions) : undefined)
     .orderBy(desc(auditsTable.conductedAt))
     .limit(500);
