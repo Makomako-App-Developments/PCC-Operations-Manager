@@ -475,6 +475,23 @@ export default function AuditsScreen() {
     enabled: !!token && view === "list",
   });
 
+  // ── Single-asset map for conduct view ──
+  const conductMapHtml = useMemo(() => {
+    const lat = selectedAssetDetail?.lat;
+    const lng = selectedAssetDetail?.lng;
+    if (!lat || !lng) return "";
+    return `<!DOCTYPE html><html><head>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>html,body,#map{margin:0;padding:0;height:100%;width:100%;}</style>
+</head><body><div id="map"></div><script>
+var map=L.map('map',{zoomControl:false,attributionControl:false,dragging:false,scrollWheelZoom:false,doubleClickZoom:false,touchZoom:false,boxZoom:false,keyboard:false}).setView([${lat},${lng}],18);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+L.circleMarker([${lat},${lng}],{radius:10,color:"#fff",fillColor:"#00AECD",fillOpacity:1,weight:2.5}).addTo(map);
+</script></body></html>`;
+  }, [selectedAssetDetail?.lat, selectedAssetDetail?.lng]);
+
   // ── Leaflet map HTML ──
   const mapHtml = useMemo(() => {
     const center = userLocation
@@ -879,6 +896,9 @@ ${userMarker}
           contentContainerStyle={{ paddingBottom: bottomPad + 80 }}
           showsVerticalScrollIndicator={false}
         >
+          {conductMapHtml ? (
+            <AuditMap html={conductMapHtml} height={200} />
+          ) : null}
           {selectedAssetDetail && (() => {
             const d = selectedAssetDetail;
             const GARDEN_LABELS: Record<string, string> = {
