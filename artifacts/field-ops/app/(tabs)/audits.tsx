@@ -517,17 +517,26 @@ export default function AuditsScreen() {
     const lat = selectedAssetDetail?.lat;
     const lng = selectedAssetDetail?.lng;
     if (!lat || !lng) return "";
+    const boundary = selectedAssetDetail?.boundary ?? null;
+    const boundaryJson = boundary ? JSON.stringify(boundary) : "null";
     return `<!DOCTYPE html><html><head>
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <style>html,body,#map{margin:0;padding:0;height:100%;width:100%;}</style>
 </head><body><div id="map"></div><script>
-var map=L.map('map',{zoomControl:false,attributionControl:false,dragging:false,scrollWheelZoom:false,doubleClickZoom:false,touchZoom:false,boxZoom:false,keyboard:false}).setView([${lat},${lng}],18);
-L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
-L.circleMarker([${lat},${lng}],{radius:10,color:"#fff",fillColor:"#00AECD",fillOpacity:1,weight:2.5}).addTo(map);
+var map=L.map('map',{zoomControl:false,attributionControl:false,dragging:false,scrollWheelZoom:false,doubleClickZoom:false,touchZoom:false,boxZoom:false,keyboard:false});
+L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',{maxZoom:20}).addTo(map);
+var boundary=${boundaryJson};
+if(boundary){
+  var poly=L.geoJSON(boundary,{style:{color:"#00AECD",weight:2.5,opacity:1,fillColor:"#00AECD",fillOpacity:0.18}}).addTo(map);
+  map.fitBounds(poly.getBounds(),{padding:[10,10],maxZoom:19});
+}else{
+  map.setView([${lat},${lng}],18);
+  L.circleMarker([${lat},${lng}],{radius:10,color:"#fff",fillColor:"#00AECD",fillOpacity:1,weight:2.5}).addTo(map);
+}
 </script></body></html>`;
-  }, [selectedAssetDetail?.lat, selectedAssetDetail?.lng]);
+  }, [selectedAssetDetail?.lat, selectedAssetDetail?.lng, selectedAssetDetail?.boundary]);
 
   // ── Leaflet map HTML ──
   const mapHtml = useMemo(() => {
