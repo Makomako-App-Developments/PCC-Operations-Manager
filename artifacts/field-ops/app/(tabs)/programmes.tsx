@@ -3,6 +3,7 @@ import React, { useState, useMemo, useEffect, useRef, useCallback } from "react"
 import {
   ActivityIndicator,
   Alert,
+  FlatList,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -482,8 +483,8 @@ function NewAssessmentModal({ visible, token, onClose, onSuccess, initialAsset }
   });
   const palette = paletteData ?? [];
 
-  const [focusedSpeciesIdx, setFocusedSpeciesIdx] = useState<number | null>(null);
-  const blurTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [palettePickerIdx, setPalettePickerIdx] = useState<number | null>(null);
+  const [paletteSearch, setPaletteSearch] = useState("");
 
   const reset = () => {
     setAssetQuery("");
@@ -492,6 +493,8 @@ function NewAssessmentModal({ visible, token, onClose, onSuccess, initialAsset }
     setNotes("");
     setSpecies([{ speciesName: "", speciesCategory: "", quantity: "" }]);
     setSubmitting(false);
+    setPalettePickerIdx(null);
+    setPaletteSearch("");
   };
 
   const handleClose = () => { reset(); onClose(); };
@@ -653,48 +656,16 @@ function NewAssessmentModal({ visible, token, onClose, onSuccess, initialAsset }
                 </View>
 
                 <Text style={[naStyles.rowLabel, { color: colors.mutedForeground }]}>Species Name</Text>
-                <TextInput
-                  style={[naStyles.rowInput, { borderColor: colors.border, color: colors.foreground, backgroundColor: colors.background, borderRadius: colors.radius / 2, marginBottom: 0 }]}
-                  value={row.speciesName}
-                  onChangeText={v => updateRow(idx, "speciesName", v)}
-                  onFocus={() => {
-                    if (blurTimer.current) clearTimeout(blurTimer.current);
-                    setFocusedSpeciesIdx(idx);
-                  }}
-                  onBlur={() => {
-                    blurTimer.current = setTimeout(() => setFocusedSpeciesIdx(null), 180);
-                  }}
-                  placeholder="Search palette or type name…"
-                  placeholderTextColor={colors.mutedForeground}
-                  autoCorrect={false}
-                />
-                {focusedSpeciesIdx === idx && row.speciesName.trim().length >= 1 && (() => {
-                  const q = row.speciesName.toLowerCase();
-                  const matches = palette.filter(p => p.botanicalName.toLowerCase().includes(q)).slice(0, 6);
-                  if (matches.length === 0) return null;
-                  return (
-                    <View style={[naStyles.suggestions, { backgroundColor: colors.card, borderColor: colors.border, borderRadius: colors.radius / 2 }]}>
-                      {matches.map(p => (
-                        <TouchableOpacity
-                          key={p.id}
-                          style={[naStyles.suggestionItem, { borderBottomColor: colors.border }]}
-                          onPress={() => {
-                            if (blurTimer.current) clearTimeout(blurTimer.current);
-                            setSpecies(prev => prev.map((r, i) => i === idx ? {
-                              ...r,
-                              speciesName: p.botanicalName,
-                              speciesCategory: SPECIES_CATEGORIES.includes(p.plantType) ? p.plantType : r.speciesCategory,
-                            } : r));
-                            setFocusedSpeciesIdx(null);
-                          }}
-                        >
-                          <Text style={[naStyles.suggestionName, { color: colors.foreground }]}>{p.botanicalName}</Text>
-                          <Text style={[naStyles.suggestionType, { color: colors.mutedForeground }]}>{p.plantType}</Text>
-                        </TouchableOpacity>
-                      ))}
-                    </View>
-                  );
-                })()}
+                <TouchableOpacity
+                  style={[naStyles.rowInput, { borderColor: colors.border, backgroundColor: colors.background, borderRadius: colors.radius / 2, marginBottom: 0, flexDirection: "row", alignItems: "center", justifyContent: "space-between" }]}
+                  onPress={() => { setPaletteSearch(""); setPalettePickerIdx(idx); }}
+                  activeOpacity={0.7}
+                >
+                  <Text style={{ color: row.speciesName ? colors.foreground : colors.mutedForeground, fontSize: 15, flex: 1 }} numberOfLines={1}>
+                    {row.speciesName || "Select from palette…"}
+                  </Text>
+                  <Feather name="chevron-down" size={16} color={colors.mutedForeground} />
+                </TouchableOpacity>
                 <View style={{ height: 10 }} />
 
                 <Text style={[naStyles.rowLabel, { color: colors.mutedForeground }]}>Category</Text>
@@ -749,6 +720,85 @@ function NewAssessmentModal({ visible, token, onClose, onSuccess, initialAsset }
             </TouchableOpacity>
           </View>
         </ScrollView>
+
+        {/* Palette picker modal */}
+        <Modal
+          visible={palettePickerIdx !== null}
+          animationType="slide"
+          transparent
+          onRequestClose={() => setPalettePickerIdx(null)}
+        >
+          <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.45)", justifyContent: "flex-end" }}>
+            <View style={{ backgroundColor: colors.card, borderTopLeftRadius: 18, borderTopRightRadius: 18, maxHeight: "82%", paddingBottom: 24 }}>
+              {/* Handle + header */}
+              <View style={{ alignItems: "center", paddingTop: 10, paddingBottom: 6 }}>
+                <View style={{ width: 36, height: 4, borderRadius: 2, backgroundColor: colors.border }} />
+              </View>
+              <View style={{ flexDirection: "row", alignItems: "center", paddingHorizontal: 16, paddingBottom: 10, borderBottomWidth: 1, borderBottomColor: colors.border }}>
+                <Text style={{ fontSize: 16, fontWeight: "700", color: colors.foreground, flex: 1 }}>Select Species</Text>
+                <TouchableOpacity onPress={() => setPalettePickerIdx(null)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                  <Feather name="x" size={20} color={colors.mutedForeground} />
+                </TouchableOpacity>
+              </View>
+
+              {/* Search bar */}
+              <View style={{ flexDirection: "row", alignItems: "center", margin: 12, borderWidth: 1, borderColor: colors.border, borderRadius: 10, backgroundColor: colors.background, paddingHorizontal: 10, gap: 8 }}>
+                <Feather name="search" size={15} color={colors.mutedForeground} />
+                <TextInput
+                  style={{ flex: 1, fontSize: 14, color: colors.foreground, paddingVertical: 9 }}
+                  placeholder="Search species…"
+                  placeholderTextColor={colors.mutedForeground}
+                  value={paletteSearch}
+                  onChangeText={setPaletteSearch}
+                  autoFocus
+                  autoCorrect={false}
+                />
+                {paletteSearch.length > 0 && (
+                  <TouchableOpacity onPress={() => setPaletteSearch("")} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
+                    <Feather name="x-circle" size={15} color={colors.mutedForeground} />
+                  </TouchableOpacity>
+                )}
+              </View>
+
+              {/* Species list */}
+              <FlatList
+                data={palette.filter(p =>
+                  paletteSearch.trim().length === 0 ||
+                  p.botanicalName.toLowerCase().includes(paletteSearch.toLowerCase())
+                )}
+                keyExtractor={p => p.id}
+                keyboardShouldPersistTaps="handled"
+                ListEmptyComponent={
+                  <View style={{ padding: 24, alignItems: "center" }}>
+                    <Text style={{ color: colors.mutedForeground, fontSize: 14 }}>No species found</Text>
+                  </View>
+                }
+                renderItem={({ item: p }) => (
+                  <TouchableOpacity
+                    style={{ flexDirection: "row", alignItems: "center", paddingHorizontal: 16, paddingVertical: 13, borderBottomWidth: 1, borderBottomColor: colors.border }}
+                    onPress={() => {
+                      if (palettePickerIdx !== null) {
+                        setSpecies(prev => prev.map((r, i) => i === palettePickerIdx ? {
+                          ...r,
+                          speciesName: p.botanicalName,
+                          speciesCategory: SPECIES_CATEGORIES.includes(p.plantType) ? p.plantType : r.speciesCategory,
+                        } : r));
+                      }
+                      setPalettePickerIdx(null);
+                    }}
+                    activeOpacity={0.7}
+                  >
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ fontSize: 14, fontWeight: "600", color: colors.foreground }}>{p.botanicalName}</Text>
+                      <Text style={{ fontSize: 12, color: colors.mutedForeground, marginTop: 1 }}>{p.plantType}</Text>
+                    </View>
+                    <Feather name="chevron-right" size={15} color={colors.mutedForeground} />
+                  </TouchableOpacity>
+                )}
+              />
+            </View>
+          </View>
+        </Modal>
 
         {/* Footer */}
         <View style={[naStyles.footer, { borderTopColor: colors.border, backgroundColor: colors.card }]}>

@@ -167,25 +167,14 @@ function DailyGanttView({
     queryFn:  () => fetchScheduleRange(from, to, apiTeamId),
   });
 
-  if (isLoading) {
-    return (
-      <div className="p-6 space-y-3">
-        {Array.from({ length: 10 }).map((_, i) => (
-          <Skeleton key={i} className="w-full h-10 rounded-xl" />
-        ))}
-      </div>
-    );
-  }
-
+  // All derived state must be computed before any early returns (Rules of Hooks)
   const allRows = data?.rows ?? [];
   const q = searchTerm.trim().toLowerCase();
   const teamFiltered = selectedTeamIds.length > 1
     ? allRows.filter(r => selectedTeamIds.includes(r.teamId ?? ""))
     : allRows;
   const rows = q
-    ? teamFiltered.filter(r =>
-        r.assetName.toLowerCase().includes(q),
-      )
+    ? teamFiltered.filter(r => r.assetName.toLowerCase().includes(q))
     : teamFiltered;
 
   // Overdue = status "overdue" OR pending with a date already passed
@@ -199,6 +188,16 @@ function DailyGanttView({
   );
 
   useEffect(() => { onOverdueCount?.(overdueCount); }, [overdueCount, onOverdueCount]);
+
+  if (isLoading) {
+    return (
+      <div className="p-6 space-y-3">
+        {Array.from({ length: 10 }).map((_, i) => (
+          <Skeleton key={i} className="w-full h-10 rounded-xl" />
+        ))}
+      </div>
+    );
+  }
 
   // Index jobs by date for fast lookup
   const jobsByAssetDay = new Map<string, typeof rows[0]["jobs"]>();
