@@ -1333,7 +1333,7 @@ export default function AssetDetail() {
               {/* Stats grid */}
               <div className="grid grid-cols-2 gap-px bg-gray-200 border-b flex-shrink-0">
                 {[
-                  { icon: Ruler,        label: "Area",      value: `${asset.areaM2} m²` },
+                  { icon: Ruler,        label: "Area",      value: `${Number(asset.areaM2).toFixed(1)} m²` },
                   { icon: Clock,        label: "Service",   value: `${asset.serviceTimeMins} min` },
                   { icon: CalendarDays, label: "Frequency", value: asset.frequency },
                   { icon: Tag,          label: "Site Type", value: (asset as any).siteType || "—" },
