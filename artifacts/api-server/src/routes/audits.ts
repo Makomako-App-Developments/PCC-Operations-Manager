@@ -18,7 +18,8 @@ async function assertAuditTeamAccess(auditId: string, role: string, callerTeamId
   if (!audit) return { error: "Audit not found", status: 404 };
   if (role === "manager") {
     if (audit.auditorId !== callerId) return { error: "Forbidden", status: 403 };
-  } else if (!isPrivilegedRole(role) && audit.teamId !== callerTeamId) {
+  } else if (!isPrivilegedRole(role)) {
+    // worker / team_leader have no audit access
     return { error: "Forbidden", status: 403 };
   }
   return { audit };
@@ -100,7 +101,7 @@ function calcScore(items: { result: string }[]) {
 }
 
 // ── GET /api/audits/stats ─────────────────────────────────────────────────────
-router.get("/audits/stats", requireAuth, requireRole("manager", "supervisor", "team_leader"), async (_req, res) => {
+router.get("/audits/stats", requireAuth, requireRole("manager", "supervisor"), async (_req, res) => {
   // Team average scores
   const teamScores = await db
     .select({
@@ -137,10 +138,8 @@ router.get("/audits", requireAuth, async (req, res) => {
     // Managers see only audits they created
     conditions.push(eq(auditsTable.auditorId, req.auth!.userId));
   } else if (!isPrivilegedRole(role)) {
-    // Workers / team_leaders see audits for their team only
-    const callerTeamId = req.auth!.teamId;
-    if (!callerTeamId) { res.json({ data: [] }); return; }
-    conditions.push(eq(auditsTable.teamId, callerTeamId));
+    // worker / team_leader have no audit access
+    res.status(403).json({ error: "Forbidden" }); return;
   }
   // administrator / supervisor: no filter — see everything
 
@@ -177,7 +176,7 @@ router.get("/audits/:id", requireAuth, async (req, res) => {
 });
 
 // ── POST /api/audits ──────────────────────────────────────────────────────────
-router.post("/audits", requireAuth, requireRole("manager", "supervisor", "team_leader"), async (req, res) => {
+router.post("/audits", requireAuth, requireRole("manager", "supervisor"), async (req, res) => {
   const { assetId, teamId, conductedAt, notes, auditType } = req.body as Record<string, string>;
   if (!assetId) { res.status(400).json({ error: "assetId required" }); return; }
   const [created] = await db
@@ -197,15 +196,10 @@ router.post("/audits", requireAuth, requireRole("manager", "supervisor", "team_l
 });
 
 // ── PATCH /api/audits/:id ─────────────────────────────────────────────────────
-router.patch("/audits/:id", requireAuth, requireRole("manager", "supervisor", "team_leader"), async (req, res) => {
+router.patch("/audits/:id", requireAuth, requireRole("manager", "supervisor"), async (req, res) => {
   const id = String(req.params.id);
   const [before] = await db.select().from(auditsTable).where(eq(auditsTable.id, id)).limit(1);
   if (!before) { res.status(404).json({ error: "Audit not found" }); return; }
-
-  // team_leader may only edit audits belonging to their own team
-  if (!isPrivilegedRole(req.auth!.role) && before.teamId !== req.auth!.teamId) {
-    res.status(403).json({ error: "Forbidden" }); return;
-  }
   const { teamId, conductedAt, overallScore, status, notes, auditType } = req.body as Record<string, any>;
   const updateData: Record<string, unknown> = { updatedAt: new Date() };
   if (teamId !== undefined) updateData.teamId = teamId;
@@ -228,15 +222,10 @@ router.delete("/audits/:id", requireAuth, requireRole("manager", "supervisor"), 
 });
 
 // ── PUT /api/audits/:id/responses (bulk upsert) ───────────────────────────────
-router.put("/audits/:id/responses", requireAuth, requireRole("manager", "supervisor", "team_leader"), async (req, res) => {
+router.put("/audits/:id/responses", requireAuth, requireRole("manager", "supervisor"), async (req, res) => {
   const auditId = String(req.params.id);
   const [audit] = await db.select().from(auditsTable).where(eq(auditsTable.id, auditId)).limit(1);
   if (!audit) { res.status(404).json({ error: "Audit not found" }); return; }
-
-  // team_leader may only submit responses for audits belonging to their own team
-  if (!isPrivilegedRole(req.auth!.role) && audit.teamId !== req.auth!.teamId) {
-    res.status(403).json({ error: "Forbidden" }); return;
-  }
 
   const { responses } = req.body as { responses: Array<{ criterion: string; result: string; notes?: string; failLat?: number; failLng?: number; pestPlantsPresent?: string[] }> };
   if (!Array.isArray(responses)) { res.status(400).json({ error: "responses array required" }); return; }
