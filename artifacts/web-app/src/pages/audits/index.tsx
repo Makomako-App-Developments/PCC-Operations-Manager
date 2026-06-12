@@ -552,7 +552,7 @@ export default function Audits() {
                       <th className="text-left px-5 py-3">Site</th>
                       <th className="text-left px-5 py-3">Team</th>
                       <th className="text-left px-5 py-3">Score</th>
-                      <th className="text-left px-5 py-3">Actions</th>
+                      <th className="text-left px-5 py-3 w-px whitespace-nowrap">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
@@ -572,7 +572,7 @@ export default function Audits() {
                         <td className="px-5 py-3.5">
                           <ScoreBadge score={audit.overallScore} />
                         </td>
-                        <td className="px-5 py-3.5" onClick={(e) => e.stopPropagation()}>
+                        <td className="px-5 py-3.5 w-px whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
                           <div className="flex items-center justify-end gap-2">
                             <Button
                               variant="ghost"
