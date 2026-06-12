@@ -616,6 +616,7 @@ ${userMarker}
       setDoneScore(detail.overallScore != null ? Number(detail.overallScore) : null);
       qc.invalidateQueries({ queryKey: ["audits"] });
       qc.invalidateQueries({ queryKey: ["audit-quota-badge"] });
+      qc.invalidateQueries({ queryKey: ["audit-quota-current"] });
       setView("done");
     } catch {
       Alert.alert("Submit failed", "Could not save the audit. Please try again.");
