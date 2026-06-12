@@ -35,7 +35,7 @@ function NativeTabLayout({
   isManager: boolean;
   auditBadge: number;
 }) {
-  const { Icon, Label, Badge, NativeTabs } = require("expo-router/unstable-native-tabs") as typeof import("expo-router/unstable-native-tabs");
+  const { Icon, Label, NativeTabs } = require("expo-router/unstable-native-tabs") as typeof import("expo-router/unstable-native-tabs");
   return (
     <NativeTabs>
       {!isManager && (
@@ -51,8 +51,7 @@ function NativeTabLayout({
       {isPrivileged && (
         <NativeTabs.Trigger name="audits">
           <Icon sf={{ default: "checkmark.seal", selected: "checkmark.seal.fill" }} />
-          <Label>Audits</Label>
-          <Badge hidden={auditBadge === 0}>{String(auditBadge)}</Badge>
+          <Label>Audits{auditBadge > 0 ? ` (${auditBadge})` : ""}</Label>
         </NativeTabs.Trigger>
       )}
       {isPrivileged && (
