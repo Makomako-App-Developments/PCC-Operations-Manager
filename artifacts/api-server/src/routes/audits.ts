@@ -126,7 +126,20 @@ router.get("/audits/stats", requireAuth, requireRole("manager", "supervisor"), a
     .groupBy(auditItemsTable.criterion)
     .orderBy(desc(sql`count(*)`));
 
-  res.json({ teamScores, criterionFails });
+  // Fail counts per specification (gardenType)
+  const specificationFails = await db
+    .select({
+      specification: assetsTable.gardenType,
+      failCount:     sql<number>`cast(count(*) as int)`,
+    })
+    .from(auditItemsTable)
+    .innerJoin(auditsTable, eq(auditItemsTable.auditId, auditsTable.id))
+    .innerJoin(assetsTable, eq(auditsTable.assetId, assetsTable.id))
+    .where(eq(auditItemsTable.result, "fail"))
+    .groupBy(assetsTable.gardenType)
+    .orderBy(desc(sql`count(*)`));
+
+  res.json({ teamScores, criterionFails, specificationFails });
 });
 
 // ── GET /api/audits ───────────────────────────────────────────────────────────

@@ -17,9 +17,22 @@ import { useAuth } from "@/lib/auth";
 
 const BRAND = "#00AECD";
 
+const GARDEN_TYPE_LABELS: Record<string, string> = {
+  annuals:           "Annuals",
+  roses_perennials:  "Roses & Perennials",
+  ornamental:        "Ornamental",
+  amenity:           "Amenity",
+  rain_garden:       "Rain Garden",
+  reveg:             "Reveg",
+  bush:              "Bush",
+  tree_planter_pits: "Tree Planter Pits",
+  hedge:             "Hedge",
+};
+
 interface AuditStats {
   teamScores: { teamId: string; teamName: string; avgScore: number; auditCount: number }[];
   criterionFails: { criterion: string; failCount: number }[];
+  specificationFails: { specification: string; failCount: number }[];
 }
 
 function useAuditStats() {
@@ -344,8 +357,8 @@ export default function Audits() {
     return matchSearch && matchTeam;
   });
 
-  const { highTeam, lowTeam, topKpi } = useMemo(() => {
-    if (!stats) return { highTeam: null, lowTeam: null, topKpi: null };
+  const { highTeam, lowTeam, topKpi, topSpec } = useMemo(() => {
+    if (!stats) return { highTeam: null, lowTeam: null, topKpi: null, topSpec: null };
     const sorted = [...stats.teamScores].sort((a, b) => Number(b.avgScore) - Number(a.avgScore));
     const highTeam = sorted[0] ?? null;
     const lowTeam  = sorted[sorted.length - 1] !== sorted[0] ? sorted[sorted.length - 1] : null;
@@ -356,7 +369,14 @@ export default function Audits() {
           count: topCriterion.failCount,
         }
       : null;
-    return { highTeam, lowTeam, topKpi };
+    const topSpecRow = (stats.specificationFails ?? [])[0] ?? null;
+    const topSpec = topSpecRow
+      ? {
+          label: GARDEN_TYPE_LABELS[topSpecRow.specification] ?? topSpecRow.specification,
+          count: topSpecRow.failCount,
+        }
+      : null;
+    return { highTeam, lowTeam, topKpi, topSpec };
   }, [stats]);
 
   const handleExportCsv = () => {
@@ -444,9 +464,9 @@ export default function Audits() {
         />
         <StatCard
           icon={BookOpen}
-          label="Most Failed KPI"
-          value={topKpi ? topKpi.label : "—"}
-          sub={topKpi ? `Failed ${topKpi.count} time${topKpi.count !== 1 ? "s" : ""} across all audits` : "No failures recorded"}
+          label="Most Failed Specification"
+          value={topSpec ? topSpec.label : "—"}
+          sub={topSpec ? `Failed ${topSpec.count} time${topSpec.count !== 1 ? "s" : ""} across all audits` : "No failures recorded"}
           iconBg={`${BRAND}1a`}
           iconColor={BRAND}
           loading={statsLoading}
