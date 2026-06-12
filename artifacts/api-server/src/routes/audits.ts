@@ -13,10 +13,12 @@ function isPrivilegedRole(role: string): boolean {
   return ["administrator", "manager", "supervisor"].includes(role);
 }
 
-async function assertAuditTeamAccess(auditId: string, role: string, callerTeamId: string | null): Promise<{ audit: { id: string; teamId: string | null } } | { error: string; status: number }> {
-  const [audit] = await db.select({ id: auditsTable.id, teamId: auditsTable.teamId }).from(auditsTable).where(eq(auditsTable.id, auditId)).limit(1);
+async function assertAuditTeamAccess(auditId: string, role: string, callerTeamId: string | null, callerId?: string): Promise<{ audit: { id: string; teamId: string | null } } | { error: string; status: number }> {
+  const [audit] = await db.select({ id: auditsTable.id, teamId: auditsTable.teamId, auditorId: auditsTable.auditorId }).from(auditsTable).where(eq(auditsTable.id, auditId)).limit(1);
   if (!audit) return { error: "Audit not found", status: 404 };
-  if (!isPrivilegedRole(role) && audit.teamId !== callerTeamId) {
+  if (role === "manager") {
+    if (audit.auditorId !== callerId) return { error: "Forbidden", status: 403 };
+  } else if (!isPrivilegedRole(role) && audit.teamId !== callerTeamId) {
     return { error: "Forbidden", status: 403 };
   }
   return { audit };
@@ -130,12 +132,17 @@ router.get("/audits/stats", requireAuth, requireRole("manager", "supervisor", "t
 router.get("/audits", requireAuth, async (req, res) => {
   const conditions = [];
 
-  // Non-privileged users may only see audits belonging to their team
-  if (!isPrivilegedRole(req.auth!.role)) {
+  const role = req.auth!.role;
+  if (role === "manager") {
+    // Managers see only audits they created
+    conditions.push(eq(auditsTable.auditorId, req.auth!.userId));
+  } else if (!isPrivilegedRole(role)) {
+    // Workers / team_leaders see audits for their team only
     const callerTeamId = req.auth!.teamId;
     if (!callerTeamId) { res.json({ data: [] }); return; }
     conditions.push(eq(auditsTable.teamId, callerTeamId));
   }
+  // administrator / supervisor: no filter — see everything
 
   const rows = await db
     .select({
@@ -162,7 +169,7 @@ router.get("/audits", requireAuth, async (req, res) => {
 // ── GET /api/audits/:id ───────────────────────────────────────────────────────
 router.get("/audits/:id", requireAuth, async (req, res) => {
   const auditId = String(req.params.id);
-  const access = await assertAuditTeamAccess(auditId, req.auth!.role, req.auth!.teamId);
+  const access = await assertAuditTeamAccess(auditId, req.auth!.role, req.auth!.teamId, req.auth!.userId);
   if ("error" in access) { res.status(access.status).json({ error: access.error }); return; }
   const detail = await buildAuditDetail(auditId);
   if (!detail) { res.status(404).json({ error: "Audit not found" }); return; }
@@ -285,7 +292,7 @@ router.get("/audits/:id/items/:itemId/photos", requireAuth, async (req, res) => 
   const auditId = String(req.params.id);
   const itemId  = String(req.params.itemId);
 
-  const access = await assertAuditTeamAccess(auditId, req.auth!.role, req.auth!.teamId);
+  const access = await assertAuditTeamAccess(auditId, req.auth!.role, req.auth!.teamId, req.auth!.userId);
   if ("error" in access) { res.status(access.status).json({ error: access.error }); return; }
 
   // Verify the item belongs to the referenced audit (prevents cross-audit ID enumeration)
@@ -312,7 +319,7 @@ router.post(
     if (!userId) { res.status(401).json({ error: "Unauthorised" }); return; }
 
     // Authorization: verify the caller can act on this audit
-    const access = await assertAuditTeamAccess(auditId, req.auth!.role, req.auth!.teamId);
+    const access = await assertAuditTeamAccess(auditId, req.auth!.role, req.auth!.teamId, req.auth!.userId);
     if ("error" in access) { res.status(access.status).json({ error: access.error }); return; }
 
     // Ensure the audit item exists
@@ -332,7 +339,7 @@ router.delete("/audits/:id/items/:itemId/photos/:photoId", requireAuth, async (r
   const photoId = String(req.params.photoId);
 
   // Authorization: verify the caller can act on this audit
-  const access = await assertAuditTeamAccess(auditId, req.auth!.role, req.auth!.teamId);
+  const access = await assertAuditTeamAccess(auditId, req.auth!.role, req.auth!.teamId, req.auth!.userId);
   if ("error" in access) { res.status(access.status).json({ error: access.error }); return; }
 
   // Verify item belongs to this audit before operating on its photos
@@ -354,7 +361,7 @@ router.get("/audits/:id/pdf", requireAuth, async (req, res) => {
   const auditId = String(req.params.id);
 
   // Authorization: enforce the same team-access rules as GET /api/audits/:id
-  const access = await assertAuditTeamAccess(auditId, req.auth!.role, req.auth!.teamId);
+  const access = await assertAuditTeamAccess(auditId, req.auth!.role, req.auth!.teamId, req.auth!.userId);
   if ("error" in access) { res.status(access.status).json({ error: access.error }); return; }
 
   const detail = await buildAuditDetail(auditId);
