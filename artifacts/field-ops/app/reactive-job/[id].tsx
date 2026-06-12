@@ -58,7 +58,7 @@ const PRIORITY_CONFIG: Record<string, { label: string; color: string; bg: string
 };
 
 const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string; icon: string }> = {
-  raised:      { label: "Raised",      color: "#9333ea", bg: "#faf5ff", icon: "alert-circle" },
+  raised:      { label: "Draft",       color: "#9333ea", bg: "#faf5ff", icon: "alert-circle" },
   assigned:    { label: "Assigned",    color: "#0369a1", bg: "#eff6ff", icon: "user-check" },
   in_progress: { label: "In Progress", color: "#d97706", bg: "#fffbeb", icon: "play-circle" },
   completed:   { label: "Completed",   color: "#15803d", bg: "#f0fdf4", icon: "check-circle" },

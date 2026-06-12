@@ -135,7 +135,7 @@ export const STATUS_CONFIG: Record<
     icon: React.ComponentType<{ className?: string }>;
   }
 > = {
-  raised:      { label: "Raised",      color: "#6b7280", bg: "#f3f4f6", icon: AlertTriangle },
+  raised:      { label: "Draft",       color: "#6b7280", bg: "#f3f4f6", icon: AlertTriangle },
   assigned:    { label: "Assigned",    color: "#2563eb", bg: "#eff6ff", icon: Clock },
   in_progress: { label: "In Progress", color: "#16a34a", bg: "#dcfce7", icon: CheckCircle2 },
   completed:   { label: "Completed",  color: "#059669", bg: "#ecfdf5", icon: CheckCircle2 },

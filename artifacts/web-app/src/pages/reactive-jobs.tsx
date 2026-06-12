@@ -280,10 +280,10 @@ export default function ReactiveJobs() {
             </p>
           </div>
           <button
-            onClick={() => { setStatusFilter("raised"); setSearch(""); }}
+            onClick={() => { setStatusFilter("all"); setSearch(""); }}
             className="flex-shrink-0 px-3 py-1.5 rounded-lg text-xs font-semibold text-white bg-amber-500 hover:bg-amber-600 transition-colors whitespace-nowrap"
           >
-            Show raised
+            Show overdue
           </button>
         </div>
       )}
