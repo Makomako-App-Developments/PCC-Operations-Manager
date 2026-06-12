@@ -1,6 +1,7 @@
 import { Router } from "express";
-import { db, teamAvailabilityTable, teamMembersTable } from "@workspace/db";
-import { and, eq, gte, lte } from "drizzle-orm";
+import { db, teamAvailabilityTable, teamMembersTable, reactiveJobsTable, usersTable } from "@workspace/db";
+import { and, eq, gte, lte, inArray } from "drizzle-orm";
+import { notifySupervisors } from "../lib/push-notifications";
 import { z } from "zod";
 import { requireAuth, requireRole } from "../middlewares/auth";
 import { validateBody, validateQuery } from "../middlewares/validate";
@@ -123,7 +124,43 @@ router.put(
       }
     }
 
-    res.json({ ok: true, jobsRefreshed, capacityAfter, spilledCount, targetDate });
+    // Detect reactive jobs that were assigned to this person on this date
+    // and will be left stranded now that they're unavailable.
+    let strandedJobs: { id: string; issueType: string; description: string }[] = [];
+    if (status !== "available") {
+      const [user] = await db
+        .select({ id: usersTable.id })
+        .from(usersTable)
+        .where(eq(usersTable.name, personName))
+        .limit(1);
+
+      if (user) {
+        strandedJobs = await db
+          .select({
+            id:          reactiveJobsTable.id,
+            issueType:   reactiveJobsTable.issueType,
+            description: reactiveJobsTable.description,
+          })
+          .from(reactiveJobsTable)
+          .where(
+            and(
+              eq(reactiveJobsTable.assignedUserId, user.id),
+              eq(reactiveJobsTable.scheduledDate, date),
+              inArray(reactiveJobsTable.status, ["raised", "assigned", "in_progress"]),
+            ),
+          );
+
+        if (strandedJobs.length > 0) {
+          void notifySupervisors({
+            title: "Unscheduled Work Needs Reassignment",
+            body: `${personName} is unavailable on ${date}. ${strandedJobs.length} job${strandedJobs.length !== 1 ? "s" : ""} need reassigning.`,
+            data: { screen: "reactive-jobs", date },
+          });
+        }
+      }
+    }
+
+    res.json({ ok: true, jobsRefreshed, capacityAfter, spilledCount, targetDate, strandedJobs });
   },
 );
 

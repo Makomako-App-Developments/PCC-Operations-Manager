@@ -9,8 +9,9 @@ import {
 import { useQueryClient, useQuery } from "@tanstack/react-query";
 import {
   Zap, Plus, Search, X, MapPin, Clock, Calendar,
-  ChevronUp, ChevronDown, ChevronsUpDown, FileText, User, Hash,
+  ChevronUp, ChevronDown, ChevronsUpDown, FileText, User, Hash, AlertTriangle,
 } from "lucide-react";
+import { useSearch } from "wouter";
 import { useToast } from "@/hooks/use-toast";
 import {
   ReactiveJobWizard,
@@ -136,6 +137,9 @@ export default function ReactiveJobs() {
     return (job.location as string | null) ?? "—";
   };
 
+  const searchStr = useSearch();
+  const needsReassignmentParam = useMemo(() => new URLSearchParams(searchStr).get("needsReassignment") === "1", [searchStr]);
+
   const allJobs = (jobsData?.data ?? []) as unknown as Record<string, unknown>[];
 
   const filteredSortedJobs = useMemo(() => {
@@ -190,6 +194,16 @@ export default function ReactiveJobs() {
       return sortDir === "asc" ? cmp : -cmp;
     });
   }, [allJobs, statusFilter, search, sortCol, sortDir, assets, teams]);
+
+  const TODAY = new Date().toISOString().slice(0, 10);
+  const needsReassignmentJobs = useMemo(
+    () => allJobs.filter(j =>
+      j.scheduledDate != null &&
+      (j.scheduledDate as string) <= TODAY &&
+      !["completed", "cancelled"].includes(j.status as string),
+    ),
+    [allJobs],
+  );
 
   const statusCounts = useMemo(
     () => ({
@@ -249,6 +263,27 @@ export default function ReactiveJobs() {
           New Unscheduled Work
         </button>
       </header>
+
+      {/* Needs-reassignment banner — jobs with a past/today date still active */}
+      {needsReassignmentJobs.length > 0 && (
+        <div className="mx-8 mt-4 mb-0 bg-amber-50 border border-amber-200 rounded-xl px-5 py-3.5 flex items-center gap-4 flex-shrink-0">
+          <AlertTriangle className="w-4 h-4 text-amber-500 flex-shrink-0" />
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-semibold text-amber-800">
+              {needsReassignmentJobs.length} job{needsReassignmentJobs.length !== 1 ? "s" : ""} due today or overdue — action needed
+            </p>
+            <p className="text-xs text-amber-600 mt-0.5">
+              These unscheduled jobs have a scheduled date in the past and haven't been completed or cancelled yet.
+            </p>
+          </div>
+          <button
+            onClick={() => { setStatusFilter("raised"); setSearch(""); }}
+            className="flex-shrink-0 px-3 py-1.5 rounded-lg text-xs font-semibold text-white bg-amber-500 hover:bg-amber-600 transition-colors whitespace-nowrap"
+          >
+            Show raised
+          </button>
+        </div>
+      )}
 
       {/* Filters */}
       <div className="bg-white border-b px-8 py-3 flex items-center gap-3 flex-shrink-0 flex-wrap">

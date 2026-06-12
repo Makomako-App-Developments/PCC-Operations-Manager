@@ -959,10 +959,13 @@ export default function TeamPage() {
   const [weekMon, setWeekMon]     = useState<Date>(() => getMondayOfWeek(new Date()));
   const [activeDay, setActiveDay] = useState(0);
 
-  const [capacityWarning, setCapacityWarning] = useState<CapacityWarning | null>(null);
-  const [replanLoading, setReplanLoading]     = useState(false);
-  const [replanSuccess, setReplanSuccess]     = useState(false);
-  const [replanError, setReplanError]         = useState<string | null>(null);
+  const [capacityWarning,    setCapacityWarning]    = useState<CapacityWarning | null>(null);
+  const [replanLoading,      setReplanLoading]      = useState(false);
+  const [replanSuccess,      setReplanSuccess]      = useState(false);
+  const [replanError,        setReplanError]        = useState<string | null>(null);
+  const [strandedJobsWarn,   setStrandedJobsWarn]   = useState<{
+    personName: string; date: string; count: number;
+  } | null>(null);
 
   const { data: settingsData } = useQuery<{ workStartHour: number; workEndHour: number }>({
     queryKey: ["system-settings"],
@@ -1007,6 +1010,7 @@ export default function TeamPage() {
       capacityAfter: { totalScheduledMins: number; productiveTimeMins: number; utilizationPct: number } | null;
       spilledCount: number;
       targetDate: string;
+      strandedJobs: { id: string; issueType: string; description: string }[];
     }>;
   };
 
@@ -1036,8 +1040,9 @@ export default function TeamPage() {
     mutationFn: saveAvailability,
     onSuccess: (data, variables) => {
       qc.invalidateQueries({ queryKey: ["team-avail", weekStart] });
+
+      // Auto-spill toast
       if (data.spilledCount > 0) {
-        // Jobs were automatically moved — clear any warning and show a toast
         setCapacityWarning(null);
         const dayName = new Date(data.targetDate + "T12:00:00Z")
           .toLocaleDateString("en-NZ", { weekday: "long" });
@@ -1049,6 +1054,15 @@ export default function TeamPage() {
         qc.invalidateQueries({ queryKey: ["/api/schedule/range"] });
       } else {
         applyCapacityWarning(data, variables.personName, variables.date);
+      }
+
+      // Stranded reactive jobs warning
+      if (data.strandedJobs?.length > 0) {
+        setStrandedJobsWarn({ personName: variables.personName, date: variables.date, count: data.strandedJobs.length });
+        toast({
+          title: "Unscheduled work needs reassignment",
+          description: `${variables.personName} has ${data.strandedJobs.length} unscheduled job${data.strandedJobs.length !== 1 ? "s" : ""} on this day that need a new assignee.`,
+        });
       }
     },
   });
@@ -1071,8 +1085,18 @@ export default function TeamPage() {
   const handleSetWholeDay = async (personName: string, status: Status) => {
     // skipSpill=true on each parallel save to avoid race conditions — one
     // clean spill is triggered below after all saves have committed.
-    await Promise.all(HOURS.map(h => saveAvailability({ personName, date: dayDate, hour: h, status, skipSpill: true })));
+    const wholeResults = await Promise.all(HOURS.map(h => saveAvailability({ personName, date: dayDate, hour: h, status, skipSpill: true })));
     qc.invalidateQueries({ queryKey: ["team-avail", weekStart] });
+
+    // Check stranded reactive jobs from any of the parallel saves
+    const anyStranded = wholeResults.find(r => r.strandedJobs?.length > 0);
+    if (anyStranded?.strandedJobs?.length > 0) {
+      setStrandedJobsWarn({ personName, date: dayDate, count: anyStranded.strandedJobs.length });
+      toast({
+        title: "Unscheduled work needs reassignment",
+        description: `${personName} has ${anyStranded.strandedJobs.length} unscheduled job${anyStranded.strandedJobs.length !== 1 ? "s" : ""} on this day that need a new assignee.`,
+      });
+    }
 
     const person = PEOPLE.find(p => p.name === personName);
     if (person?.teamId) {
@@ -1339,6 +1363,40 @@ export default function TeamPage() {
                   )}
                   {replanLoading ? "Re-planning…" : "Re-plan this day"}
                 </Button>
+              </div>
+            )}
+
+            {/* Stranded reactive jobs warning */}
+            {strandedJobsWarn && (
+              <div className="bg-amber-50 border border-amber-200 rounded-xl px-5 py-4 flex items-start gap-4">
+                <AlertTriangle className="w-5 h-5 text-amber-500 flex-shrink-0 mt-0.5" />
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-semibold text-amber-800">
+                    {strandedJobsWarn.personName} has{" "}
+                    {strandedJobsWarn.count} unscheduled {strandedJobsWarn.count !== 1 ? "jobs" : "job"} on{" "}
+                    {new Date(strandedJobsWarn.date + "T12:00:00Z").toLocaleDateString("en-NZ", {
+                      weekday: "long", day: "numeric", month: "long",
+                    })}{" "}that need reassigning.
+                  </p>
+                  <p className="text-xs text-amber-600 mt-0.5">
+                    They're marked unavailable — these jobs won't get done without a new assignee.
+                  </p>
+                </div>
+                <div className="flex items-center gap-2 flex-shrink-0">
+                  <a
+                    href="/reactive-jobs"
+                    className="px-3 py-1.5 rounded-lg text-xs font-semibold text-white transition-opacity hover:opacity-90"
+                    style={{ background: "#f59e0b" }}
+                  >
+                    View Jobs
+                  </a>
+                  <button
+                    onClick={() => setStrandedJobsWarn(null)}
+                    className="text-amber-400 hover:text-amber-600 transition-colors"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
               </div>
             )}
 
