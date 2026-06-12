@@ -13,24 +13,25 @@ import AuditQuotaPage from "./AuditQuotaPage";
 import { useAuth } from "@/lib/auth";
 
 const BASE_TABS = [
-  { id: "users",                label: "Users",                icon: Users,           managerOnly: false },
-  { id: "roles",                label: "Roles & Permissions",  icon: Lock,            managerOnly: false },
-  { id: "audit-log",            label: "Audit Log",            icon: Shield,          managerOnly: false },
-  { id: "work-hours",           label: "Work Hours",           icon: Sunrise,         managerOnly: false },
-  { id: "reactive-priorities",  label: "Reactive Priorities",  icon: Zap,             managerOnly: false },
-  { id: "productive-time",      label: "Productive Time",      icon: Clock,           managerOnly: false },
-  { id: "route-optimisation",   label: "Route Optimisation",   icon: Route,           managerOnly: false },
-  { id: "mulching",             label: "Mulching",             icon: Layers,          managerOnly: false },
-  { id: "infill-planting",      label: "Infill Planting",      icon: Leaf,            managerOnly: false },
-  { id: "audit-quota",          label: "Audit Quota",          icon: ClipboardCheck,  managerOnly: true  },
+  { id: "users",                label: "Users",                icon: Users,           managerOnly: false, adminOnly: false },
+  { id: "roles",                label: "Roles & Permissions",  icon: Lock,            managerOnly: false, adminOnly: false },
+  { id: "audit-log",            label: "Change log",           icon: Shield,          managerOnly: false, adminOnly: true  },
+  { id: "work-hours",           label: "Work Hours",           icon: Sunrise,         managerOnly: false, adminOnly: false },
+  { id: "reactive-priorities",  label: "Reactive Priorities",  icon: Zap,             managerOnly: false, adminOnly: false },
+  { id: "productive-time",      label: "Productive Time",      icon: Clock,           managerOnly: false, adminOnly: false },
+  { id: "route-optimisation",   label: "Route Optimisation",   icon: Route,           managerOnly: false, adminOnly: false },
+  { id: "mulching",             label: "Mulching",             icon: Layers,          managerOnly: false, adminOnly: false },
+  { id: "infill-planting",      label: "Infill Planting",      icon: Leaf,            managerOnly: false, adminOnly: false },
+  { id: "audit-quota",          label: "Audit Quota",          icon: ClipboardCheck,  managerOnly: true,  adminOnly: false },
 ];
 
 export default function SettingsPage() {
   const [tab, setTab] = useState("users");
   const { user } = useAuth();
   const isManager = user?.role === "manager" || user?.role === "administrator";
+  const isAdmin = user?.role === "administrator";
 
-  const TABS = BASE_TABS.filter(t => !t.managerOnly || isManager);
+  const TABS = BASE_TABS.filter(t => (!t.managerOnly || isManager) && (!t.adminOnly || isAdmin));
 
   return (
     <div className="flex flex-col min-h-full bg-[#f5f7f9]">
