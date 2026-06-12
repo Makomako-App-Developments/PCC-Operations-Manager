@@ -62,6 +62,8 @@ const STANDARD_BADGES: Record<string, string> = {
 
 type ViewType = "day" | "week" | "gantt" | "gantt-day";
 
+interface GanttStats { total: number; completed: number; overdue: number; daysBehind: number }
+
 interface GanttAssetRow {
   assetId: string;
   assetName: string;
@@ -135,7 +137,7 @@ function DailyGanttView({
   getTeamColor,
   getTeamName,
   onJobClick,
-  onOverdueCount,
+  onStats,
 }: {
   ganttDayStart: Date;
   selectedTeamIds: string[];
@@ -143,7 +145,7 @@ function DailyGanttView({
   getTeamColor: (id?: string | null) => string;
   getTeamName: (id?: string | null) => string;
   onJobClick: (job: any) => void;
-  onOverdueCount?: (n: number) => void;
+  onStats?: (s: GanttStats) => void;
 }) {
   const from = format(ganttDayStart, "yyyy-MM-dd");
   const to   = format(addDays(ganttDayStart, GANTT_DAY_COUNT - 1), "yyyy-MM-dd");
@@ -181,13 +183,24 @@ function DailyGanttView({
   const isPastDue = (job: { status: string; scheduledDate: string }) =>
     job.status === "overdue" || (job.status === "pending" && job.scheduledDate < todayStr);
 
-  const overdueCount = useMemo(
-    () => rows.flatMap(r => r.jobs).filter(isPastDue).length,
+  const ganttStats = useMemo((): GanttStats => {
+    const allJobs = rows.flatMap(r => r.jobs);
+    const overdue = allJobs.filter(isPastDue).length;
+    const today = new Date(todayStr);
+    const diffs = allJobs.filter(isPastDue).map(j => {
+      const d = new Date(j.scheduledDate + "T00:00:00");
+      return Math.ceil((today.getTime() - d.getTime()) / 86400000);
+    });
+    return {
+      total:      allJobs.length,
+      completed:  allJobs.filter(j => j.status === "completed").length,
+      overdue,
+      daysBehind: diffs.length > 0 ? Math.max(...diffs) : 0,
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [rows, todayStr],
-  );
+  }, [rows, todayStr]);
 
-  useEffect(() => { onOverdueCount?.(overdueCount); }, [overdueCount, onOverdueCount]);
+  useEffect(() => { onStats?.(ganttStats); }, [ganttStats, onStats]);
 
   if (isLoading) {
     return (
@@ -1105,7 +1118,7 @@ export default function Schedule() {
   const [ganttDayStart, setGanttDayStart] = useState(() => startOfWeek(new Date(), { weekStartsOn: 1 }));
   const [selectedTeamIds, setSelectedTeamIds] = useState<string[]>([]);
   const [teamPickerOpen, setTeamPickerOpen] = useState(false);
-  const [ganttOverdueCount, setGanttOverdueCount] = useState(0);
+  const [ganttStats, setGanttStats] = useState<GanttStats>({ total: 0, completed: 0, overdue: 0, daysBehind: 0 });
   const [dialogOpen, setDialogOpen]     = useState(false);
   const [genFrom, setGenFrom]           = useState("");
   const [genTo, setGenTo]               = useState("");
@@ -1565,7 +1578,7 @@ export default function Schedule() {
           </PopoverContent>
         </Popover>
 
-        {view !== "gantt" && weekData && (
+        {view !== "gantt" && view !== "gantt-day" && weekData && (
           <div className="flex items-center gap-3 text-xs text-gray-500">
             <span className="flex items-center gap-1">
               <Route className="w-3.5 h-3.5 text-gray-400" />
@@ -1585,12 +1598,6 @@ export default function Schedule() {
                 <span>in progress</span>
               </span>
             )}
-            {view === "gantt-day" && ganttOverdueCount > 0 && (
-              <span className="flex items-center gap-1 font-semibold text-red-500">
-                <AlertTriangle className="w-3.5 h-3.5" />
-                {ganttOverdueCount} overdue
-              </span>
-            )}
           </div>
         )}
 
@@ -1606,6 +1613,59 @@ export default function Schedule() {
           </button>
         </div>
       </div>
+
+      {/* Variant C stat cards — Daily Gantt only */}
+      {view === "gantt-day" && (
+        <div className="bg-white border-b flex-shrink-0 grid grid-cols-4 divide-x divide-gray-100">
+          {/* Jobs */}
+          <div className="flex items-center gap-3 px-6 py-2.5" style={{ borderTop: "2px solid #00AECD" }}>
+            <div className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0" style={{ backgroundColor: "#00AECD18" }}>
+              <FileText className="w-4 h-4" style={{ color: "#00AECD" }} />
+            </div>
+            <div>
+              <div className="text-lg font-bold text-gray-800 leading-none">{ganttStats.total}</div>
+              <div className="text-[10px] text-gray-400 uppercase tracking-wide mt-0.5">Jobs this period</div>
+            </div>
+          </div>
+
+          {/* Completed */}
+          <div className="flex items-center gap-3 px-6 py-2.5" style={{ borderTop: "2px solid #10b981" }}>
+            <div className="w-7 h-7 rounded-lg bg-green-50 flex items-center justify-center flex-shrink-0">
+              <CheckCircle2 className="w-4 h-4 text-green-500" />
+            </div>
+            <div>
+              <div className="text-lg font-bold text-gray-800 leading-none">{ganttStats.completed}</div>
+              <div className="text-[10px] text-gray-400 uppercase tracking-wide mt-0.5">Completed</div>
+            </div>
+          </div>
+
+          {/* Overdue */}
+          <div className="flex items-center gap-3 px-6 py-2.5" style={{ borderTop: "2px solid #ef4444" }}>
+            <div className="w-7 h-7 rounded-lg bg-red-50 flex items-center justify-center flex-shrink-0">
+              <AlertTriangle className="w-4 h-4 text-red-500" />
+            </div>
+            <div>
+              <div className={`text-lg font-bold leading-none ${ganttStats.overdue > 0 ? "text-red-600" : "text-gray-800"}`}>
+                {ganttStats.overdue}
+              </div>
+              <div className="text-[10px] text-gray-400 uppercase tracking-wide mt-0.5">Overdue</div>
+            </div>
+          </div>
+
+          {/* Days behind */}
+          <div className="flex items-center gap-3 px-6 py-2.5" style={{ borderTop: "2px solid #f59e0b" }}>
+            <div className="w-7 h-7 rounded-lg bg-amber-50 flex items-center justify-center flex-shrink-0">
+              <Clock className="w-4 h-4 text-amber-500" />
+            </div>
+            <div>
+              <div className={`text-lg font-bold leading-none ${ganttStats.daysBehind > 0 ? "text-amber-700" : "text-gray-800"}`}>
+                {ganttStats.daysBehind}
+              </div>
+              <div className="text-[10px] text-gray-400 uppercase tracking-wide mt-0.5">Days behind</div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* View body */}
       <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
@@ -1642,7 +1702,7 @@ export default function Schedule() {
             getTeamColor={getTeamColor}
             getTeamName={getTeamName}
             onJobClick={handleJobClick}
-            onOverdueCount={setGanttOverdueCount}
+            onStats={setGanttStats}
           />
         )}
         {view === "gantt" && (
