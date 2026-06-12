@@ -7,3 +7,4 @@
 - [Artifact path conflicts](artifact-path-conflicts.md) — Expo's broad service paths (/node_modules/, /assets/) hijack sibling web-app requests on the main proxy; narrow to previewPath only.
 - [Photo storage — GCS not local disk](photo-storage-gcs.md) — photos use multer memoryStorage + GCS upload; Express 5 wildcard *splat returns array, join it.
 - [React Compiler TDZ bug](react-compiler-tdz.md) — babel-plugin-react-compiler auto-discovered by babel-preset-expo caused TDZ crash in production; disable with 'react-compiler':false in babel.config.js.
+- [Supervisor teamId — schedule API and unstable-native-tabs](supervisor-crash-lessons.md) — two bugs that crashed supervisors on login; {} vs [] and missing Badge export.
