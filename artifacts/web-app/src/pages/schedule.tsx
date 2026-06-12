@@ -1225,14 +1225,15 @@ export default function Schedule() {
   });
 
   const [rjStatus, setRjStatus] = useState("");
+  const [rjScheduledDate, setRjScheduledDate] = useState("");
 
   const updateReactiveJob = useMutation({
-    mutationFn: async ({ id, status }: { id: string; status: string }) => {
+    mutationFn: async ({ id, status, scheduledDate }: { id: string; status: string; scheduledDate?: string | null }) => {
       const r = await fetch(`/api/reactive-jobs/${id}`, {
         method: "PATCH",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status }),
+        body: JSON.stringify({ status, ...(scheduledDate !== undefined ? { scheduledDate: scheduledDate || null } : {}) }),
       });
       if (!r.ok) throw new Error("Failed to update");
       return r.json();
@@ -1267,6 +1268,7 @@ export default function Schedule() {
     setSelectedJob(job);
     if (job.jobType === "unscheduled") {
       setRjStatus(job.status ?? "raised");
+      setRjScheduledDate(job.scheduledDate ?? "");
     } else {
       setJobStatus(job.status);
       setJobActualTime(job.actualTimeMins ? String(job.actualTimeMins) : "");
@@ -1919,10 +1921,15 @@ export default function Schedule() {
                         <span className="text-gray-700">{reactiveJobDetail.location}</span>
                       </div>
                     )}
-                    <div className="flex justify-between">
-                      <dt className="text-gray-500 font-medium">Scheduled date</dt>
-                      <dd className="text-gray-900 font-semibold">
-                        {selectedJob.scheduledDate ? format(new Date(selectedJob.scheduledDate + "T00:00:00"), "d MMM yyyy") : "—"}
+                    <div className="flex items-center justify-between gap-3">
+                      <dt className="text-gray-500 font-medium shrink-0">Scheduled date</dt>
+                      <dd className="flex-1 flex justify-end">
+                        <input
+                          type="date"
+                          value={rjScheduledDate}
+                          onChange={e => setRjScheduledDate(e.target.value)}
+                          className="text-sm text-gray-900 font-semibold border border-gray-200 rounded-lg px-2.5 py-1 bg-white focus:outline-none focus:ring-2 focus:ring-[#00AECD]/30 focus:border-[#00AECD] cursor-pointer"
+                        />
                       </dd>
                     </div>
                     <div className="flex justify-between">
@@ -2134,10 +2141,10 @@ export default function Schedule() {
               <Button
                 style={{ background: "#c2410c" }}
                 className="text-white hover:opacity-90 flex-1"
-                onClick={() => updateReactiveJob.mutate({ id: selectedJob.id, status: rjStatus })}
+                onClick={() => updateReactiveJob.mutate({ id: selectedJob.id, status: rjStatus, scheduledDate: rjScheduledDate || null })}
                 disabled={updateReactiveJob.isPending || !reactiveJobDetail}
               >
-                {updateReactiveJob.isPending ? "Saving…" : "Save status"}
+                {updateReactiveJob.isPending ? "Saving…" : "Save changes"}
               </Button>
             ) : selectedJob?.jobType !== "mulching" && selectedJob?.jobType !== "infill_planting" && (
               <Button
