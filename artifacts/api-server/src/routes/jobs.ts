@@ -621,7 +621,15 @@ router.post("/reactive-jobs", requireAuth, validateBody(insertReactiveJobSchema.
 // GET /api/reactive-jobs/:id
 router.get("/reactive-jobs/:id", requireAuth, async (req, res) => {
   const id = String(req.params.id);
-  const [row] = await db.select().from(reactiveJobsTable).where(eq(reactiveJobsTable.id, id)).limit(1);
+  const [row] = await db
+    .select({
+      ...reactiveJobsTable,
+      raisedByName: usersTable.name,
+    })
+    .from(reactiveJobsTable)
+    .leftJoin(usersTable, eq(reactiveJobsTable.raisedById, usersTable.id))
+    .where(eq(reactiveJobsTable.id, id))
+    .limit(1);
   if (!row) { res.status(404).json({ error: "Reactive job not found" }); return; }
   res.json(row);
 });

@@ -170,14 +170,18 @@ function DailyGanttView({
   });
 
   // All derived state must be computed before any early returns (Rules of Hooks)
-  const allRows = data?.rows ?? [];
-  const q = searchTerm.trim().toLowerCase();
-  const teamFiltered = selectedTeamIds.length > 1
-    ? allRows.filter(r => selectedTeamIds.includes(r.teamId ?? ""))
-    : allRows;
-  const rows = q
-    ? teamFiltered.filter(r => r.assetName.toLowerCase().includes(q))
-    : teamFiltered;
+  // useMemo keeps references stable so downstream effects don't loop
+  const allRows = useMemo(() => data?.rows ?? [], [data]);
+  const teamIdsKey = selectedTeamIds.join(",");
+  const rows = useMemo(() => {
+    const q = searchTerm.trim().toLowerCase();
+    const teamFiltered = selectedTeamIds.length > 1
+      ? allRows.filter(r => selectedTeamIds.includes(r.teamId ?? ""))
+      : allRows;
+    return q ? teamFiltered.filter(r => r.assetName.toLowerCase().includes(q)) : teamFiltered;
+    // teamIdsKey used as stable string dep instead of the array reference
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [allRows, searchTerm, teamIdsKey]);
 
   // Overdue = status "overdue" OR pending with a date already passed
   const isPastDue = (job: { status: string; scheduledDate: string }) =>
@@ -185,19 +189,16 @@ function DailyGanttView({
 
   const ganttStats = useMemo((): GanttStats => {
     const allJobs = rows.flatMap(r => r.jobs);
-    const overdue = allJobs.filter(isPastDue).length;
     const today = new Date(todayStr);
-    const diffs = allJobs.filter(isPastDue).map(j => {
-      const d = new Date(j.scheduledDate + "T00:00:00");
-      return Math.ceil((today.getTime() - d.getTime()) / 86400000);
-    });
+    const overdueDiffs = allJobs
+      .filter(j => j.status === "overdue" || (j.status === "pending" && j.scheduledDate < todayStr))
+      .map(j => Math.ceil((today.getTime() - new Date(j.scheduledDate + "T00:00:00").getTime()) / 86400000));
     return {
       total:      allJobs.length,
       completed:  allJobs.filter(j => j.status === "completed").length,
-      overdue,
-      daysBehind: diffs.length > 0 ? Math.max(...diffs) : 0,
+      overdue:    overdueDiffs.length,
+      daysBehind: overdueDiffs.length > 0 ? Math.max(...overdueDiffs) : 0,
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rows, todayStr]);
 
   useEffect(() => { onStats?.(ganttStats); }, [ganttStats, onStats]);
@@ -1917,6 +1918,20 @@ export default function Schedule() {
                       <dt className="text-gray-500 font-medium">Team</dt>
                       <dd className="text-gray-900 font-semibold">{getTeamName(selectedJob.teamId)}</dd>
                     </div>
+                    {reactiveJobDetail.raisedByName && (
+                      <div className="flex justify-between">
+                        <dt className="text-gray-500 font-medium">Raised by</dt>
+                        <dd className="text-gray-900 font-semibold">{reactiveJobDetail.raisedByName}</dd>
+                      </div>
+                    )}
+                    {reactiveJobDetail.raisedAt && (
+                      <div className="flex justify-between">
+                        <dt className="text-gray-500 font-medium">Raised</dt>
+                        <dd className="text-gray-900 font-semibold">
+                          {format(new Date(reactiveJobDetail.raisedAt), "d MMM yyyy, h:mm a")}
+                        </dd>
+                      </div>
+                    )}
                     {selectedJob.estimatedTimeMins && (
                       <div className="flex justify-between">
                         <dt className="text-gray-500 font-medium">Est. time</dt>
