@@ -1503,170 +1503,181 @@ export default function Schedule() {
         </div>
       </header>
 
-      {/* Sub-toolbar */}
-      <div className="bg-white border-b px-8 py-2.5 flex items-center gap-4 flex-shrink-0 sticky top-[69px] z-10">
-        <div className="relative w-56">
-          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 pointer-events-none" />
-          <input
-            type="text"
-            placeholder="Search site name or ref…"
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            className="w-full pl-8 pr-7 py-1.5 text-sm border border-gray-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-[#00AECD]/30 focus:border-[#00AECD] placeholder:text-gray-400"
-          />
-          {search && (
-            <button
-              onClick={() => setSearch("")}
-              className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-            >
-              <X className="w-3.5 h-3.5" />
-            </button>
-          )}
-        </div>
-        {/* Multi-select team picker */}
-        <Popover open={teamPickerOpen} onOpenChange={setTeamPickerOpen}>
-          <PopoverTrigger asChild>
-            <button
-              data-testid="select-team"
-              className="flex items-center gap-2 h-9 px-3 py-1.5 rounded-lg border border-gray-200 bg-white text-sm text-gray-700 hover:bg-gray-50 transition-colors min-w-[11rem] max-w-[14rem]"
-            >
-              <Users className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />
-              <span className="truncate flex-1 text-left">
-                {selectedTeamIds.length === 0
-                  ? "All Teams"
-                  : selectedTeamIds.length === 1
-                  ? (teamsData?.find(t => t.id === selectedTeamIds[0])?.name ?? "1 team")
-                  : `${selectedTeamIds.length} teams`}
-              </span>
-              <ChevronDown className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />
-            </button>
-          </PopoverTrigger>
-          <PopoverContent align="start" className="p-1.5 w-52">
-            {/* All Teams toggle */}
-            <button
-              onClick={() => setSelectedTeamIds([])}
-              className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-md text-sm transition-colors ${
-                selectedTeamIds.length === 0
-                  ? "bg-[#00AECD]/10 text-[#00AECD] font-semibold"
-                  : "text-gray-700 hover:bg-gray-50"
-              }`}
-            >
-              <span className={`w-4 h-4 rounded border flex items-center justify-center flex-shrink-0 ${selectedTeamIds.length === 0 ? "bg-[#00AECD] border-[#00AECD]" : "border-gray-300"}`}>
-                {selectedTeamIds.length === 0 && <svg className="w-2.5 h-2.5 text-white" viewBox="0 0 10 8" fill="none"><path d="M1 4l3 3 5-6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>}
-              </span>
-              All Teams
-            </button>
-            <div className="my-1 border-t border-gray-100" />
-            {teamsData?.map(t => {
-              const checked = selectedTeamIds.includes(t.id);
-              return (
-                <button
-                  key={t.id}
-                  onClick={() => setSelectedTeamIds(prev =>
-                    checked ? prev.filter(id => id !== t.id) : [...prev, t.id]
-                  )}
-                  className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-md text-sm transition-colors ${
-                    checked ? "bg-[#00AECD]/10 text-[#00AECD] font-semibold" : "text-gray-700 hover:bg-gray-50"
-                  }`}
-                >
-                  <span className={`w-4 h-4 rounded border flex items-center justify-center flex-shrink-0 ${checked ? "bg-[#00AECD] border-[#00AECD]" : "border-gray-300"}`}>
-                    {checked && <svg className="w-2.5 h-2.5 text-white" viewBox="0 0 10 8" fill="none"><path d="M1 4l3 3 5-6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>}
-                  </span>
-                  {t.name}
-                </button>
-              );
-            })}
-          </PopoverContent>
-        </Popover>
-
-        {view !== "gantt" && view !== "gantt-day" && weekData && (
-          <div className="flex items-center gap-3 text-xs text-gray-500">
-            <span className="flex items-center gap-1">
-              <Route className="w-3.5 h-3.5 text-gray-400" />
-              <span className="font-semibold text-gray-700">{weekData.totalJobs}</span> jobs this week
-            </span>
-            <span className="flex items-center gap-1">
-              <CheckCircle2 className="w-3.5 h-3.5 text-green-500" />
-              <span className="font-semibold text-gray-700">{weekData.completedJobs}</span> completed
-            </span>
-            {(weekData as any).inProgressJobs > 0 && (
-              <span className="flex items-center gap-1">
-                <span className="relative flex h-2 w-2">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full opacity-75" style={{ backgroundColor: "#00AECD" }} />
-                  <span className="relative inline-flex rounded-full h-2 w-2" style={{ backgroundColor: "#00AECD" }} />
-                </span>
-                <span className="font-semibold" style={{ color: "#00AECD" }}>{(weekData as any).inProgressJobs}</span>
-                <span>in progress</span>
-              </span>
+      {/* Sub-toolbar — Variant B two-row hierarchy */}
+      <div className="bg-white border-b flex-shrink-0 sticky top-[69px] z-10">
+        {/* Row 1: Controls — search · team · [nav right] */}
+        <div className="px-8 py-2.5 flex items-center gap-4 border-b border-gray-100">
+          {/* Search */}
+          <div className="relative w-56">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 pointer-events-none" />
+            <input
+              type="text"
+              placeholder="Search site name or ref…"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              className="w-full pl-8 pr-7 py-1.5 text-sm border border-gray-200 rounded-lg bg-gray-50 focus:outline-none focus:ring-2 focus:ring-[#00AECD]/30 focus:border-[#00AECD] placeholder:text-gray-400"
+            />
+            {search && (
+              <button
+                onClick={() => setSearch("")}
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
             )}
           </div>
-        )}
 
-        <div className="flex items-center gap-2 ml-auto">
-          <button onClick={prevPeriod} className="p-1.5 rounded-lg bg-gray-50 border border-gray-200 text-gray-500 hover:text-gray-800 hover:bg-gray-100 transition-colors">
-            <ChevronLeft className="w-4 h-4" />
-          </button>
-          <span className="text-sm text-gray-600 font-medium px-2 min-w-[200px] text-center">
-            {periodLabel()}
-          </span>
-          <button onClick={nextPeriod} className="p-1.5 rounded-lg bg-gray-50 border border-gray-200 text-gray-500 hover:text-gray-800 hover:bg-gray-100 transition-colors" data-testid="btn-next-week">
-            <ChevronRight className="w-4 h-4" />
-          </button>
+          {/* Multi-select team picker */}
+          <Popover open={teamPickerOpen} onOpenChange={setTeamPickerOpen}>
+            <PopoverTrigger asChild>
+              <button
+                data-testid="select-team"
+                className="flex items-center gap-2 h-9 px-3 py-1.5 rounded-lg border border-gray-200 bg-white text-sm text-gray-700 hover:bg-gray-50 transition-colors min-w-[11rem] max-w-[14rem]"
+              >
+                <Users className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />
+                <span className="truncate flex-1 text-left">
+                  {selectedTeamIds.length === 0
+                    ? "All Teams"
+                    : selectedTeamIds.length === 1
+                    ? (teamsData?.find(t => t.id === selectedTeamIds[0])?.name ?? "1 team")
+                    : `${selectedTeamIds.length} teams`}
+                </span>
+                <ChevronDown className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />
+              </button>
+            </PopoverTrigger>
+            <PopoverContent align="start" className="p-1.5 w-52">
+              <button
+                onClick={() => setSelectedTeamIds([])}
+                className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-md text-sm transition-colors ${
+                  selectedTeamIds.length === 0
+                    ? "bg-[#00AECD]/10 text-[#00AECD] font-semibold"
+                    : "text-gray-700 hover:bg-gray-50"
+                }`}
+              >
+                <span className={`w-4 h-4 rounded border flex items-center justify-center flex-shrink-0 ${selectedTeamIds.length === 0 ? "bg-[#00AECD] border-[#00AECD]" : "border-gray-300"}`}>
+                  {selectedTeamIds.length === 0 && <svg className="w-2.5 h-2.5 text-white" viewBox="0 0 10 8" fill="none"><path d="M1 4l3 3 5-6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>}
+                </span>
+                All Teams
+              </button>
+              <div className="my-1 border-t border-gray-100" />
+              {teamsData?.map(t => {
+                const checked = selectedTeamIds.includes(t.id);
+                return (
+                  <button
+                    key={t.id}
+                    onClick={() => setSelectedTeamIds(prev =>
+                      checked ? prev.filter(id => id !== t.id) : [...prev, t.id]
+                    )}
+                    className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-md text-sm transition-colors ${
+                      checked ? "bg-[#00AECD]/10 text-[#00AECD] font-semibold" : "text-gray-700 hover:bg-gray-50"
+                    }`}
+                  >
+                    <span className={`w-4 h-4 rounded border flex items-center justify-center flex-shrink-0 ${checked ? "bg-[#00AECD] border-[#00AECD]" : "border-gray-300"}`}>
+                      {checked && <svg className="w-2.5 h-2.5 text-white" viewBox="0 0 10 8" fill="none"><path d="M1 4l3 3 5-6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>}
+                    </span>
+                    {t.name}
+                  </button>
+                );
+              })}
+            </PopoverContent>
+          </Popover>
+
+          {/* Date nav — pushed to the right */}
+          <div className="ml-auto flex items-center gap-2">
+            <button onClick={prevPeriod} className="p-1.5 rounded-lg bg-gray-50 border border-gray-200 text-gray-500 hover:text-gray-800 hover:bg-gray-100 transition-colors">
+              <ChevronLeft className="w-4 h-4" />
+            </button>
+            <span className="text-sm text-gray-600 font-medium px-2 min-w-[200px] text-center">
+              {periodLabel()}
+            </span>
+            <button onClick={nextPeriod} className="p-1.5 rounded-lg bg-gray-50 border border-gray-200 text-gray-500 hover:text-gray-800 hover:bg-gray-100 transition-colors" data-testid="btn-next-week">
+              <ChevronRight className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+
+        {/* Row 2: Stats strip */}
+        <div className="px-8 py-2 bg-gray-50 flex items-center gap-3 text-xs">
+          {view === "gantt-day" ? (
+            <>
+              <span className="flex items-center gap-1.5 text-gray-500">
+                <Route className="w-3.5 h-3.5 text-gray-400" />
+                <span className="font-semibold text-gray-700">{ganttStats.total}</span> jobs this period
+              </span>
+              <span className="text-gray-300">·</span>
+              <span className="flex items-center gap-1.5 text-gray-500">
+                <CheckCircle2 className="w-3.5 h-3.5 text-green-500" />
+                <span className="font-semibold text-gray-700">{ganttStats.completed}</span> completed
+              </span>
+              <span className="text-gray-300">·</span>
+              <span className="flex items-center gap-1.5">
+                <AlertTriangle className="w-3.5 h-3.5 text-red-500" />
+                <span className={`font-semibold ${ganttStats.overdue > 0 ? "text-red-600" : "text-gray-700"}`}>{ganttStats.overdue}</span>
+                <span className={ganttStats.overdue > 0 ? "text-red-500" : "text-gray-500"}>overdue</span>
+              </span>
+              {ganttStats.daysBehind > 0 && (
+                <>
+                  <span className="text-gray-300">·</span>
+                  <span className="flex items-center gap-1.5">
+                    <Clock className="w-3.5 h-3.5 text-amber-500" />
+                    <span className="font-semibold text-amber-700">{ganttStats.daysBehind}</span>
+                    <span className="text-amber-600">days behind</span>
+                  </span>
+                </>
+              )}
+              {ganttStats.total > 0 && (() => {
+                const pct = Math.round((ganttStats.completed / ganttStats.total) * 100);
+                return (
+                  <div className="ml-auto flex items-center gap-2 text-gray-500">
+                    <span>{pct}% complete</span>
+                    <div className="w-24 h-1.5 bg-gray-200 rounded-full overflow-hidden">
+                      <div className="h-full bg-green-400 rounded-full transition-all" style={{ width: `${pct}%` }} />
+                    </div>
+                  </div>
+                );
+              })()}
+            </>
+          ) : weekData ? (
+            <>
+              <span className="flex items-center gap-1.5 text-gray-500">
+                <Route className="w-3.5 h-3.5 text-gray-400" />
+                <span className="font-semibold text-gray-700">{weekData.totalJobs}</span> jobs this week
+              </span>
+              <span className="text-gray-300">·</span>
+              <span className="flex items-center gap-1.5 text-gray-500">
+                <CheckCircle2 className="w-3.5 h-3.5 text-green-500" />
+                <span className="font-semibold text-gray-700">{weekData.completedJobs}</span> completed
+              </span>
+              {(weekData as any).inProgressJobs > 0 && (
+                <>
+                  <span className="text-gray-300">·</span>
+                  <span className="flex items-center gap-1.5 text-gray-500">
+                    <span className="relative flex h-2 w-2">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full opacity-75" style={{ backgroundColor: "#00AECD" }} />
+                      <span className="relative inline-flex rounded-full h-2 w-2" style={{ backgroundColor: "#00AECD" }} />
+                    </span>
+                    <span className="font-semibold" style={{ color: "#00AECD" }}>{(weekData as any).inProgressJobs}</span>
+                    <span>in progress</span>
+                  </span>
+                </>
+              )}
+              {weekData.totalJobs > 0 && (() => {
+                const pct = Math.round((weekData.completedJobs / weekData.totalJobs) * 100);
+                return (
+                  <div className="ml-auto flex items-center gap-2 text-gray-500">
+                    <span>{pct}% complete</span>
+                    <div className="w-24 h-1.5 bg-gray-200 rounded-full overflow-hidden">
+                      <div className="h-full bg-green-400 rounded-full transition-all" style={{ width: `${pct}%` }} />
+                    </div>
+                  </div>
+                );
+              })()}
+            </>
+          ) : (
+            <span className="text-gray-400 text-xs">Loading…</span>
+          )}
         </div>
       </div>
-
-      {/* Variant C stat cards — Daily Gantt only */}
-      {view === "gantt-day" && (
-        <div className="bg-white border-b flex-shrink-0 grid grid-cols-4 divide-x divide-gray-100">
-          {/* Jobs */}
-          <div className="flex items-center gap-3 px-6 py-2.5" style={{ borderTop: "2px solid #00AECD" }}>
-            <div className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0" style={{ backgroundColor: "#00AECD18" }}>
-              <FileText className="w-4 h-4" style={{ color: "#00AECD" }} />
-            </div>
-            <div>
-              <div className="text-lg font-bold text-gray-800 leading-none">{ganttStats.total}</div>
-              <div className="text-[10px] text-gray-400 uppercase tracking-wide mt-0.5">Jobs this period</div>
-            </div>
-          </div>
-
-          {/* Completed */}
-          <div className="flex items-center gap-3 px-6 py-2.5" style={{ borderTop: "2px solid #10b981" }}>
-            <div className="w-7 h-7 rounded-lg bg-green-50 flex items-center justify-center flex-shrink-0">
-              <CheckCircle2 className="w-4 h-4 text-green-500" />
-            </div>
-            <div>
-              <div className="text-lg font-bold text-gray-800 leading-none">{ganttStats.completed}</div>
-              <div className="text-[10px] text-gray-400 uppercase tracking-wide mt-0.5">Completed</div>
-            </div>
-          </div>
-
-          {/* Overdue */}
-          <div className="flex items-center gap-3 px-6 py-2.5" style={{ borderTop: "2px solid #ef4444" }}>
-            <div className="w-7 h-7 rounded-lg bg-red-50 flex items-center justify-center flex-shrink-0">
-              <AlertTriangle className="w-4 h-4 text-red-500" />
-            </div>
-            <div>
-              <div className={`text-lg font-bold leading-none ${ganttStats.overdue > 0 ? "text-red-600" : "text-gray-800"}`}>
-                {ganttStats.overdue}
-              </div>
-              <div className="text-[10px] text-gray-400 uppercase tracking-wide mt-0.5">Overdue</div>
-            </div>
-          </div>
-
-          {/* Days behind */}
-          <div className="flex items-center gap-3 px-6 py-2.5" style={{ borderTop: "2px solid #f59e0b" }}>
-            <div className="w-7 h-7 rounded-lg bg-amber-50 flex items-center justify-center flex-shrink-0">
-              <Clock className="w-4 h-4 text-amber-500" />
-            </div>
-            <div>
-              <div className={`text-lg font-bold leading-none ${ganttStats.daysBehind > 0 ? "text-amber-700" : "text-gray-800"}`}>
-                {ganttStats.daysBehind}
-              </div>
-              <div className="text-[10px] text-gray-400 uppercase tracking-wide mt-0.5">Days behind</div>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* View body */}
       <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
