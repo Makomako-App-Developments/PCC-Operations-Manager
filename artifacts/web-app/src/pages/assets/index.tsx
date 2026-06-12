@@ -196,7 +196,7 @@ export default function Assets() {
       <header className="bg-white border-b px-8 py-4 flex items-center justify-between sticky top-0 z-10 flex-shrink-0">
         <div>
           <h1 className="text-lg font-semibold text-gray-900">Asset Register</h1>
-          <p className="text-xs text-gray-400">{assetsData?.total || 0} garden assets found</p>
+          <p className="text-xs text-gray-400">{assetsData?.total || 0} garden assets in register</p>
         </div>
         <div className="flex items-center gap-3">
           <Link href="/assets/new">
