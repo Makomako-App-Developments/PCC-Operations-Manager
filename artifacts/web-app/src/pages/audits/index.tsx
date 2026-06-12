@@ -552,7 +552,7 @@ export default function Audits() {
                       <th className="text-left px-5 py-3">Site</th>
                       <th className="text-left px-5 py-3">Team</th>
                       <th className="text-left px-5 py-3">Score</th>
-                      <th className="text-right px-5 py-3">Actions</th>
+                      <th className="text-left px-5 py-3">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
