@@ -91,6 +91,11 @@ export const mulchingRecordsTable = pgTable("mulching_records", {
   // alignedJobId is intentionally left without a FK reference to avoid a circular schema import
   alignedJobId:        uuid("aligned_job_id"),
   alignedJobDate:      date("aligned_job_date"),
+  // Multi-day split — all records in a split share splitGroupId; splitDayIndex / splitTotalDays
+  // tell the UI "this is day N of M". Single-day records have splitTotalDays = 1.
+  splitGroupId:        uuid("split_group_id"),
+  splitDayIndex:       integer("split_day_index").notNull().default(1),
+  splitTotalDays:      integer("split_total_days").notNull().default(1),
   createdAt:           timestamp("created_at").notNull().defaultNow(),
   updatedAt:           timestamp("updated_at").notNull().defaultNow(),
 }, (t) => [

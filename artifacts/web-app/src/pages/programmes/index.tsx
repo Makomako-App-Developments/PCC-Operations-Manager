@@ -32,7 +32,7 @@ import {
   Sprout, Plus, Layers, X, Search, ChevronRight,
   Calendar, Users, Leaf, FileText, AlertTriangle, CheckCircle2,
   Download, ChevronDown, ChevronUp, Package, List, Map as MapIcon, ExternalLink,
-  Ruler, History, ClipboardList, Zap, SkipForward, Trash2, Clock, Check, ChevronsUpDown,
+  Ruler, History, ClipboardList, Zap, SkipForward, Trash2, Clock, Check, ChevronsUpDown, Scissors,
 } from "lucide-react";
 import { useLocation, useSearch } from "wouter";
 import {
@@ -363,6 +363,17 @@ function RecordDepthDrawer({
 
 type ConflictAction = "none" | "push" | "defer" | "delete" | "reassign";
 
+/** Return `count` consecutive Mon–Fri working days starting from startDate (inclusive). */
+function nextWorkingDays(startDate: string, count: number): string[] {
+  const dates: string[] = [];
+  const d = new Date(startDate + "T12:00:00Z");
+  while (dates.length < count) {
+    if (d.getUTCDay() !== 0 && d.getUTCDay() !== 6) dates.push(d.toISOString().slice(0, 10));
+    if (dates.length < count) d.setUTCDate(d.getUTCDate() + 1);
+  }
+  return dates;
+}
+
 function MulchingReviewDrawer({
   record, teams, assetTeamId, onClose, onPublished,
 }: {
@@ -387,12 +398,28 @@ function MulchingReviewDrawer({
   const [overtimeAccepted, setOvertimeAccepted] = useState(false);
   const [saving, setSaving] = useState(false);
 
+  // Multi-day split state
+  const [splitEnabled, setSplitEnabled] = useState(false);
+  const [splitCount,   setSplitCount]   = useState(2);
+  const [splitDates,   setSplitDates]   = useState<string[]>(() =>
+    scheduledDate ? nextWorkingDays(scheduledDate, 2) : ["", ""],
+  );
+
   // Reset conflict state whenever scheduling inputs change — user must re-resolve
   useEffect(() => {
     setActions({});
     setReassignTo({});
     setOvertimeAccepted(false);
   }, [teamId, scheduledDate, estMins]);
+
+  // Keep split dates aligned when first date, count, or split toggle changes
+  useEffect(() => {
+    if (splitEnabled && scheduledDate) {
+      setSplitDates(nextWorkingDays(scheduledDate, splitCount));
+    } else if (!splitEnabled && scheduledDate) {
+      setSplitDates(nextWorkingDays(scheduledDate, splitCount));
+    }
+  }, [splitEnabled, splitCount, scheduledDate]);
 
   const selectedTeam = teams.find(t => t.id === teamId);
   const teamName = selectedTeam?.name ?? "Team";
@@ -434,7 +461,7 @@ function MulchingReviewDrawer({
     .reduce((s: number, j: any) => s + (j.serviceTimeMins ?? 0), 0);
   const resolvedTotal = totalWithMulch - resolvedSaved;
 
-  const showImpact = !!teamId && !!scheduledDate;
+  const showImpact = !!teamId && (splitEnabled ? mulchMins > 0 : !!scheduledDate);
   const isOverCapacity = resolvedTotal > PRODUCTIVE;
 
   const setAction = (id: string, a: ConflictAction) => {
@@ -442,10 +469,37 @@ function MulchingReviewDrawer({
     if (a !== "reassign") setReassignTo(prev => { const n = { ...prev }; delete n[id]; return n; });
   };
 
-  // Publish enabled when: team + date set, AND (resolved total ≤ PRODUCTIVE OR overtime explicitly accepted)
-  const canPublish = !!teamId && !!scheduledDate && (!isOverCapacity || overtimeAccepted) && !weekLoading;
+  // Publish enabled when: team + date(s) set, AND (resolved total ≤ PRODUCTIVE OR overtime accepted)
+  const canPublish = !!teamId && (
+    splitEnabled
+      ? splitDates.slice(0, splitCount).every(Boolean) && mulchMins > 0
+      : !!scheduledDate && (!isOverCapacity || overtimeAccepted) && !weekLoading
+  );
 
   const handlePublish = async () => {
+    // ── Split mode ────────────────────────────────────────────────────────────
+    if (splitEnabled) {
+      const activeDates = splitDates.slice(0, splitCount);
+      if (!teamId || activeDates.some(d => !d) || mulchMins <= 0) {
+        toast({ title: "Complete all day dates", variant: "destructive" }); return;
+      }
+      setSaving(true);
+      try {
+        const r = await fetch(`/api/mulching-records/${record.id}/split`, {
+          method: "POST", credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ dates: activeDates, teamId, totalMins: mulchMins }),
+        });
+        if (!r.ok) throw new Error(await r.text());
+        await qc.invalidateQueries({ queryKey: getListMulchingRecordsQueryKey() });
+        toast({ title: "Mulching job split & scheduled", description: `${record.assetName} → ${splitCount} days · ${teamName}` });
+        onPublished(); onClose();
+      } catch (e: unknown) {
+        toast({ title: "Failed to split", description: e instanceof Error ? e.message : "Unknown error", variant: "destructive" });
+      } finally { setSaving(false); }
+      return;
+    }
+    // ── Single-day mode ───────────────────────────────────────────────────────
     if (!teamId || !scheduledDate) { toast({ title: "Select a team and date", variant: "destructive" }); return; }
     if (isOverCapacity && !overtimeAccepted) {
       toast({ title: "Capacity conflict", description: "Resolve conflicts or accept overtime before publishing.", variant: "destructive" });
@@ -543,19 +597,110 @@ function MulchingReviewDrawer({
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <Label className="text-[11px] text-gray-500 mb-1.5 block">Scheduled Date</Label>
+                <Label className="text-[11px] text-gray-500 mb-1.5 block">
+                  {splitEnabled ? "Start Date (Day 1)" : "Scheduled Date"}
+                </Label>
                 <Input type="date" value={scheduledDate} onChange={e => setScheduledDate(e.target.value)} className="rounded-xl text-sm" />
               </div>
               <div>
-                <Label className="text-[11px] text-gray-500 mb-1.5 block">Est. time (mins)</Label>
+                <Label className="text-[11px] text-gray-500 mb-1.5 block">
+                  {splitEnabled ? "Total time (mins)" : "Est. time (mins)"}
+                </Label>
                 <Input type="number" value={estMins} onChange={e => setEstMins(e.target.value)}
                   placeholder="e.g. 120" min="0" className="rounded-xl text-sm" />
               </div>
             </div>
+
+            {/* Split toggle */}
+            <div className="flex items-center justify-between py-1 border-t border-gray-100 pt-3">
+              <div className="flex items-center gap-1.5">
+                <Scissors className="w-3.5 h-3.5 text-gray-400" />
+                <span className="text-[12px] text-gray-600 font-medium">Split over multiple days</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSplitEnabled(v => !v)}
+                className={`relative inline-flex h-5 w-9 flex-shrink-0 items-center rounded-full transition-colors ${splitEnabled ? "bg-[#00AECD]" : "bg-gray-200"}`}
+              >
+                <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform shadow-sm ${splitEnabled ? "translate-x-4" : "translate-x-0.5"}`} />
+              </button>
+            </div>
+
+            {/* Day pickers (split mode) */}
+            {splitEnabled && (
+              <div className="space-y-2 border border-[#00AECD]/20 rounded-xl p-3 bg-[#00AECD]/5">
+                <div>
+                  <Label className="text-[11px] text-gray-500 mb-1.5 block">Number of days</Label>
+                  <div className="flex gap-1.5">
+                    {[2, 3, 4, 5, 6, 7].map(n => (
+                      <button key={n} type="button" onClick={() => setSplitCount(n)}
+                        className="w-8 h-8 rounded-lg text-sm font-bold border transition-colors"
+                        style={splitCount === n
+                          ? { background: BRAND, color: "white", borderColor: BRAND }
+                          : { background: "white", color: "#6b7280", borderColor: "#e5e7eb" }}>
+                        {n}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-[11px] text-gray-500 block">Day dates</Label>
+                  {Array.from({ length: splitCount }, (_, i) => (
+                    <div key={i} className="flex items-center gap-2">
+                      <span className="text-[10px] font-bold w-10 text-[#00AECD] flex-shrink-0">Day {i + 1}</span>
+                      <Input
+                        type="date"
+                        value={splitDates[i] ?? ""}
+                        onChange={e => setSplitDates(prev => { const a = [...prev]; a[i] = e.target.value; return a; })}
+                        className="flex-1 rounded-xl text-sm h-8"
+                      />
+                      {mulchMins > 0 && (
+                        <span className="text-[10px] text-gray-400 flex-shrink-0 w-14 text-right">
+                          {i < splitCount - 1
+                            ? Math.floor(mulchMins / splitCount)
+                            : mulchMins - Math.floor(mulchMins / splitCount) * (splitCount - 1)
+                          } min
+                        </span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
 
+          {/* Step 2 – Split schedule summary */}
+          {showImpact && splitEnabled && (
+            <div className="space-y-3">
+              <p className="text-[11px] font-bold text-gray-500 uppercase tracking-wider">2 — Split Schedule</p>
+              <div className="rounded-xl border border-gray-100 bg-gray-50 p-4 space-y-1.5">
+                <p className="text-[10px] font-semibold text-gray-500 mb-2">
+                  ~{Math.round(mulchMins / splitCount)} min / day · {splitCount} days · {teamName}
+                </p>
+                {splitDates.slice(0, splitCount).map((d, i) => (
+                  <div key={i} className="flex items-center justify-between py-1 border-b border-gray-100 last:border-0 text-xs">
+                    <span className="font-semibold text-gray-700">
+                      Day {i + 1}
+                      {d && <span className="font-normal text-gray-400 ml-1">· {format(new Date(d + "T00:00:00"), "EEE d MMM")}</span>}
+                    </span>
+                    <span className="tabular-nums text-gray-500 font-mono text-[11px]">
+                      {i < splitCount - 1
+                        ? Math.floor(mulchMins / splitCount)
+                        : mulchMins - Math.floor(mulchMins / splitCount) * (splitCount - 1)
+                      } min
+                    </span>
+                  </div>
+                ))}
+                <p className="text-[10px] text-amber-600 flex items-start gap-1.5 mt-2">
+                  <AlertTriangle className="w-3 h-3 flex-shrink-0 mt-0.5" />
+                  Day-by-day capacity can be reviewed in the Scheduler after publishing.
+                </p>
+              </div>
+            </div>
+          )}
+
           {/* Step 2 – Capacity & Conflict Resolution */}
-          {showImpact && (
+          {showImpact && !splitEnabled && (
             <div className="space-y-3">
               <p className="text-[11px] font-bold text-gray-500 uppercase tracking-wider">2 — Capacity &amp; Conflicts</p>
               <div className="rounded-xl border border-gray-100 bg-gray-50 p-4 space-y-4">
@@ -2054,7 +2199,14 @@ function MulchingTab({
                     style={isDraft ? { background: "#faf5ff" } : undefined}
                   >
                     <td className="px-4 py-3">
-                      <p className="font-medium text-gray-800 text-sm">{r.assetName ?? "Unknown"}</p>
+                      <p className="font-medium text-gray-800 text-sm flex items-center gap-1.5 flex-wrap">
+                        {r.assetName ?? "Unknown"}
+                        {(r.splitTotalDays ?? 1) > 1 && (
+                          <span className="text-[9px] font-bold bg-violet-100 text-violet-700 rounded px-1.5 py-0.5 whitespace-nowrap">
+                            Day {r.splitDayIndex} of {r.splitTotalDays}
+                          </span>
+                        )}
+                      </p>
                       {isDraft && !r.alignedJobDate && <p className="text-[10px] text-violet-500 mt-0.5">Draft — awaiting review</p>}
                       {isDraft && r.alignedJobDate && (
                         <p className="text-[10px] mt-0.5 font-semibold" style={{ color: BRAND }}>

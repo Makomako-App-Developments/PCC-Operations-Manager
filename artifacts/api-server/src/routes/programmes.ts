@@ -330,6 +330,74 @@ router.patch(
   },
 );
 
+// POST /api/mulching-records/:id/split — split one draft/scheduled record across N days
+const splitMulchingSchema = z.object({
+  dates:     z.array(z.string().regex(/^\d{4}-\d{2}-\d{2}$/)).min(2).max(7),
+  teamId:    z.string().uuid(),
+  totalMins: z.number().int().positive(),
+});
+
+router.post(
+  "/mulching-records/:id/split",
+  requireAuth,
+  requireRole("manager", "supervisor"),
+  validateBody(splitMulchingSchema),
+  async (req, res) => {
+    const id = String(req.params.id);
+    const { dates, teamId, totalMins } = res.locals.body as z.infer<typeof splitMulchingSchema>;
+
+    const [original] = await db
+      .select()
+      .from(mulchingRecordsTable)
+      .where(eq(mulchingRecordsTable.id, id))
+      .limit(1);
+    if (!original) { res.status(404).json({ error: "Mulching record not found" }); return; }
+
+    const n = dates.length;
+    const minsPerDay = Math.floor(totalMins / n);
+    const lastDayMins = totalMins - minsPerDay * (n - 1);
+    const groupId = crypto.randomUUID();
+
+    const [day1] = await db
+      .update(mulchingRecordsTable)
+      .set({
+        scheduledDate:  dates[0],
+        assignedTeamId: teamId,
+        estimatedMins:  minsPerDay,
+        status:         "scheduled",
+        splitGroupId:   groupId,
+        splitDayIndex:  1,
+        splitTotalDays: n,
+        updatedAt:      new Date(),
+      })
+      .where(eq(mulchingRecordsTable.id, id))
+      .returning();
+
+    const siblings = n > 1
+      ? await db
+          .insert(mulchingRecordsTable)
+          .values(
+            dates.slice(1).map((date: string, i: number) => ({
+              assetId:         original.assetId,
+              scheduledDate:   date,
+              assignedTeamId:  teamId,
+              estimatedMins:   i === n - 2 ? lastDayMins : minsPerDay,
+              status:          "scheduled" as const,
+              mulchType:       original.mulchType,
+              notes:           original.notes,
+              sourceReadingId: original.sourceReadingId,
+              splitGroupId:    groupId,
+              splitDayIndex:   i + 2,
+              splitTotalDays:  n,
+            })),
+          )
+          .returning()
+      : [];
+
+    res.json({ groupId, records: [day1, ...siblings] });
+  },
+);
+
 // ─── Mulch Depth Readings ─────────────────────────────────────────────────────
 
 const createDepthReadingSchema = z.object({
