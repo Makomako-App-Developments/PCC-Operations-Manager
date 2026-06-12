@@ -181,8 +181,17 @@ async function loadQuotaDetail(quotaId: string) {
   if (!quota) return null;
 
   const items = await db
-    .select()
+    .select({
+      id:          auditQuotaItemsTable.id,
+      assetId:     auditQuotaItemsTable.assetId,
+      assetName:   auditQuotaItemsTable.assetName,
+      auditType:   auditQuotaItemsTable.auditType,
+      sourceJobId: auditQuotaItemsTable.sourceJobId,
+      auditId:     auditQuotaItemsTable.auditId,
+      suburb:      assetsTable.suburb,
+    })
     .from(auditQuotaItemsTable)
+    .leftJoin(assetsTable, eq(auditQuotaItemsTable.assetId, assetsTable.id))
     .where(eq(auditQuotaItemsTable.quotaId, quotaId));
 
   const cwItems = items.filter((i) => i.auditType === "completed-works");
@@ -206,6 +215,7 @@ async function loadQuotaDetail(quotaId: string) {
       sourceJobId: i.sourceJobId,
       auditId:     i.auditId,
       completed:   !!i.auditId,
+      suburb:      i.suburb ?? null,
     })),
   };
 }

@@ -34,6 +34,7 @@ interface QuotaItem {
   assetName: string;
   auditType: string;
   completed: boolean;
+  suburb: string | null;
 }
 
 interface QuotaDetail {
@@ -79,8 +80,29 @@ function WeeklyQueueBanner({
 
   const { done, total } = quota.progress.overall;
   const pct = total === 0 ? 0 : Math.round((done / total) * 100);
-  const pending = quota.items.filter((i) => !i.completed);
   const allDone = done >= total;
+
+  // Group pending items by suburb (sorted alphabetically, nulls last)
+  const pending = quota.items
+    .filter((i) => !i.completed)
+    .sort((a, b) => {
+      if (!a.suburb && !b.suburb) return a.assetName.localeCompare(b.assetName);
+      if (!a.suburb) return 1;
+      if (!b.suburb) return -1;
+      const s = a.suburb.localeCompare(b.suburb);
+      return s !== 0 ? s : a.assetName.localeCompare(b.assetName);
+    });
+
+  const suburbGroups: { suburb: string; items: QuotaItem[] }[] = [];
+  for (const item of pending) {
+    const label = item.suburb ?? "Other";
+    const last = suburbGroups[suburbGroups.length - 1];
+    if (last && last.suburb === label) {
+      last.items.push(item);
+    } else {
+      suburbGroups.push({ suburb: label, items: [item] });
+    }
+  }
 
   return (
     <View style={[bannerStyles.container, { backgroundColor: allDone ? colors.success + "11" : colors.primary + "0d", borderColor: allDone ? colors.success + "44" : colors.primary + "33" }]}>
@@ -119,33 +141,35 @@ function WeeklyQueueBanner({
         />
       </View>
 
-      {expanded && pending.length > 0 && (
+      {expanded && suburbGroups.length > 0 && (
         <View style={bannerStyles.list}>
-          {pending.slice(0, 8).map((item) => (
-            <TouchableOpacity
-              key={item.id}
-              style={[bannerStyles.item, { borderTopColor: colors.border }]}
-              onPress={() => onStartAudit(item.assetId, item.assetName)}
-              activeOpacity={0.7}
-            >
-              <View style={{ flex: 1 }}>
-                <Text style={[bannerStyles.itemName, { color: colors.foreground }]} numberOfLines={1}>
-                  {item.assetName}
-                </Text>
-                <Text style={[bannerStyles.itemType, { color: item.auditType === "completed-works" ? colors.primary : "#7c3aed" }]}>
-                  {item.auditType === "completed-works" ? "Completed Works" : "Outcomes Based"}
-                </Text>
+          {suburbGroups.map((group) => (
+            <View key={group.suburb}>
+              <View style={[bannerStyles.suburbHeader, { backgroundColor: colors.primary + "0d", borderTopColor: colors.border }]}>
+                <Feather name="map-pin" size={11} color={colors.primary} />
+                <Text style={[bannerStyles.suburbLabel, { color: colors.primary }]}>{group.suburb}</Text>
+                <Text style={[bannerStyles.suburbCount, { color: colors.mutedForeground }]}>{group.items.length}</Text>
               </View>
-              <Feather name="play-circle" size={20} color={item.auditType === "completed-works" ? colors.primary : "#7c3aed"} />
-            </TouchableOpacity>
-          ))}
-          {pending.length > 8 && (
-            <View style={[bannerStyles.item, { borderTopColor: colors.border }]}>
-              <Text style={[bannerStyles.itemType, { color: colors.mutedForeground }]}>
-                +{pending.length - 8} more pending…
-              </Text>
+              {group.items.map((item) => (
+                <TouchableOpacity
+                  key={item.id}
+                  style={[bannerStyles.item, { borderTopColor: colors.border }]}
+                  onPress={() => onStartAudit(item.assetId, item.assetName)}
+                  activeOpacity={0.7}
+                >
+                  <View style={{ flex: 1 }}>
+                    <Text style={[bannerStyles.itemName, { color: colors.foreground }]} numberOfLines={1}>
+                      {item.assetName}
+                    </Text>
+                    <Text style={[bannerStyles.itemType, { color: item.auditType === "completed-works" ? colors.primary : "#7c3aed" }]}>
+                      {item.auditType === "completed-works" ? "Completed Works" : "Outcomes Based"}
+                    </Text>
+                  </View>
+                  <Feather name="navigation" size={18} color={item.auditType === "completed-works" ? colors.primary : "#7c3aed"} />
+                </TouchableOpacity>
+              ))}
             </View>
-          )}
+          ))}
         </View>
       )}
 
@@ -189,6 +213,25 @@ const bannerStyles = StyleSheet.create({
   barTrack: { height: 4, marginHorizontal: 14, marginBottom: 4, borderRadius: 2, overflow: "hidden" },
   barFill: { height: "100%", borderRadius: 2 },
   list: {},
+  suburbHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderTopWidth: StyleSheet.hairlineWidth,
+  },
+  suburbLabel: {
+    fontFamily: "Inter_600SemiBold",
+    fontSize: 11,
+    flex: 1,
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+  },
+  suburbCount: {
+    fontFamily: "Inter_400Regular",
+    fontSize: 11,
+  },
   item: {
     flexDirection: "row",
     alignItems: "center",
