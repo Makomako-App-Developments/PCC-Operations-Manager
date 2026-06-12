@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { Link } from "wouter";
 import {
   useGetScheduleWeek,
@@ -135,6 +135,7 @@ function DailyGanttView({
   getTeamColor,
   getTeamName,
   onJobClick,
+  onOverdueCount,
 }: {
   ganttDayStart: Date;
   selectedTeamIds: string[];
@@ -142,6 +143,7 @@ function DailyGanttView({
   getTeamColor: (id?: string | null) => string;
   getTeamName: (id?: string | null) => string;
   onJobClick: (job: any) => void;
+  onOverdueCount?: (n: number) => void;
 }) {
   const from = format(ganttDayStart, "yyyy-MM-dd");
   const to   = format(addDays(ganttDayStart, GANTT_DAY_COUNT - 1), "yyyy-MM-dd");
@@ -185,6 +187,18 @@ function DailyGanttView({
         r.assetName.toLowerCase().includes(q),
       )
     : teamFiltered;
+
+  // Overdue = status "overdue" OR pending with a date already passed
+  const isPastDue = (job: { status: string; scheduledDate: string }) =>
+    job.status === "overdue" || (job.status === "pending" && job.scheduledDate < todayStr);
+
+  const overdueCount = useMemo(
+    () => rows.flatMap(r => r.jobs).filter(isPastDue).length,
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [rows, todayStr],
+  );
+
+  useEffect(() => { onOverdueCount?.(overdueCount); }, [overdueCount, onOverdueCount]);
 
   // Index jobs by date for fast lookup
   const jobsByAssetDay = new Map<string, typeof rows[0]["jobs"]>();
@@ -297,7 +311,7 @@ function DailyGanttView({
                               {cellJobs.map(job => {
                                 const done          = job.status === "completed";
                                 const inProgress    = job.status === "in_progress";
-                                const overdue       = job.status === "overdue";
+                                const overdue       = isPastDue(job);
                                 const isMulching    = job.jobType === "mulching";
                                 const isInfill      = job.jobType === "infill_planting";
                                 const isUnscheduled = job.jobType === "unscheduled";
@@ -1092,6 +1106,7 @@ export default function Schedule() {
   const [ganttDayStart, setGanttDayStart] = useState(() => startOfWeek(new Date(), { weekStartsOn: 1 }));
   const [selectedTeamIds, setSelectedTeamIds] = useState<string[]>([]);
   const [teamPickerOpen, setTeamPickerOpen] = useState(false);
+  const [ganttOverdueCount, setGanttOverdueCount] = useState(0);
   const [dialogOpen, setDialogOpen]     = useState(false);
   const [genFrom, setGenFrom]           = useState("");
   const [genTo, setGenTo]               = useState("");
@@ -1571,6 +1586,12 @@ export default function Schedule() {
                 <span>in progress</span>
               </span>
             )}
+            {view === "gantt-day" && ganttOverdueCount > 0 && (
+              <span className="flex items-center gap-1 font-semibold text-red-500">
+                <AlertTriangle className="w-3.5 h-3.5" />
+                {ganttOverdueCount} overdue
+              </span>
+            )}
           </div>
         )}
 
@@ -1622,6 +1643,7 @@ export default function Schedule() {
             getTeamColor={getTeamColor}
             getTeamName={getTeamName}
             onJobClick={handleJobClick}
+            onOverdueCount={setGanttOverdueCount}
           />
         )}
         {view === "gantt" && (
