@@ -1,5 +1,5 @@
 import {
-  pgTable, uuid, timestamp, text, numeric, date, varchar, index
+  pgTable, uuid, timestamp, text, numeric, date, varchar, index, uniqueIndex
 } from "drizzle-orm/pg-core";
 import { createInsertSchema, createSelectSchema } from "drizzle-zod";
 import { z } from "zod/v4";
@@ -7,6 +7,7 @@ import { auditStatusEnum, auditResultEnum } from "./enums";
 import { assetsTable } from "./assets";
 import { usersTable } from "./users";
 import { teamsTable } from "./teams";
+import { jobsTable } from "./jobs";
 
 export const auditsTable = pgTable("audits", {
   id:            uuid("id").primaryKey().defaultRandom(),
@@ -55,6 +56,33 @@ export const auditPhotosTable = pgTable("audit_photos", {
   index("audit_photos_audit_item_id_idx").on(t.auditItemId),
 ]);
 
+export const auditWeeklyQuotasTable = pgTable("audit_weekly_quotas", {
+  id:           uuid("id").primaryKey().defaultRandom(),
+  supervisorId: uuid("supervisor_id").notNull().references(() => usersTable.id),
+  weekStart:    date("week_start").notNull(),
+  generatedAt:  timestamp("generated_at").notNull().defaultNow(),
+  createdAt:    timestamp("created_at").notNull().defaultNow(),
+}, (t) => [
+  index("awq_supervisor_id_idx").on(t.supervisorId),
+  index("awq_week_start_idx").on(t.weekStart),
+  uniqueIndex("awq_unique_supervisor_week").on(t.supervisorId, t.weekStart),
+]);
+
+export const auditQuotaItemsTable = pgTable("audit_quota_items", {
+  id:          uuid("id").primaryKey().defaultRandom(),
+  quotaId:     uuid("quota_id").notNull().references(() => auditWeeklyQuotasTable.id, { onDelete: "cascade" }),
+  assetId:     uuid("asset_id").notNull().references(() => assetsTable.id),
+  assetName:   text("asset_name").notNull(),
+  auditType:   text("audit_type").notNull(),
+  sourceJobId: uuid("source_job_id").references(() => jobsTable.id),
+  auditId:     uuid("audit_id").references(() => auditsTable.id),
+  createdAt:   timestamp("created_at").notNull().defaultNow(),
+}, (t) => [
+  index("aqi_quota_id_idx").on(t.quotaId),
+  index("aqi_asset_id_idx").on(t.assetId),
+  index("aqi_audit_id_idx").on(t.auditId),
+]);
+
 export const insertAuditSchema     = createInsertSchema(auditsTable).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertAuditItemSchema = createInsertSchema(auditItemsTable).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertAuditPhotoSchema = createInsertSchema(auditPhotosTable).omit({ id: true, createdAt: true });
@@ -68,3 +96,5 @@ export type InsertAuditItem  = z.infer<typeof insertAuditItemSchema>;
 export type AuditItem        = typeof auditItemsTable.$inferSelect;
 export type InsertAuditPhoto = z.infer<typeof insertAuditPhotoSchema>;
 export type AuditPhoto       = typeof auditPhotosTable.$inferSelect;
+export type AuditWeeklyQuota = typeof auditWeeklyQuotasTable.$inferSelect;
+export type AuditQuotaItem   = typeof auditQuotaItemsTable.$inferSelect;

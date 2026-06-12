@@ -7,6 +7,7 @@ import { eq, and, desc, sql } from "drizzle-orm";
 import { requireAuth, requireRole } from "../middlewares/auth";
 import { auditLog } from "../lib/audit";
 import { objectStorageClient } from "../lib/objectStorage";
+import { linkQuotaItemIfMatches } from "./audit-quota";
 
 function isPrivilegedRole(role: string): boolean {
   return ["administrator", "manager", "supervisor"].includes(role);
@@ -264,6 +265,18 @@ router.put("/audits/:id/responses", requireAuth, requireRole("manager", "supervi
   await db.update(auditsTable).set({ overallScore: score !== null ? String(score) : null, status: newStatus, updatedAt: new Date() }).where(eq(auditsTable.id, auditId));
 
   const detail = await buildAuditDetail(auditId);
+
+  // Link to weekly quota once the audit is fully scored (passed or failed)
+  // Uses auditorId from the audit record — not the caller — so it correctly
+  // attributes the completion to the supervisor who created the audit.
+  const [freshAudit] = await db.select({ assetId: auditsTable.assetId, auditorId: auditsTable.auditorId, status: auditsTable.status })
+    .from(auditsTable).where(eq(auditsTable.id, auditId)).limit(1);
+  if (freshAudit && (freshAudit.status === "passed" || freshAudit.status === "failed")) {
+    linkQuotaItemIfMatches(freshAudit.assetId, freshAudit.auditorId, auditId).catch((err: unknown) => {
+      console.error("[quota-link] Failed to link quota item for audit", auditId, err);
+    });
+  }
+
   res.json(detail);
 });
 

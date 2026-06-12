@@ -26,6 +26,191 @@ import { useAuth } from "@/context/auth";
 import { useColors } from "@/hooks/useColors";
 import { getApiUrl } from "@/lib/api";
 
+// ─── Weekly Quota Banner ──────────────────────────────────────────────────────
+
+interface QuotaItem {
+  id: string;
+  assetId: string;
+  assetName: string;
+  auditType: string;
+  completed: boolean;
+}
+
+interface QuotaDetail {
+  progress: {
+    overall: { done: number; total: number };
+    completedWorks: { done: number; total: number };
+    outcomesBased: { done: number; total: number };
+  };
+  items: QuotaItem[];
+}
+
+function WeeklyQueueBanner({
+  token,
+  onStartAudit,
+}: {
+  token: string;
+  onStartAudit: (assetId: string, assetName: string) => void;
+}) {
+  const colors = useColors();
+  const [expanded, setExpanded] = useState(true);
+
+  const { data: quota, isLoading } = useQuery<QuotaDetail>({
+    queryKey: ["audit-quota-current"],
+    queryFn: async () => {
+      const res = await fetch(getApiUrl("/api/audit-quota/current"), {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) throw new Error("Failed to load quota");
+      return res.json();
+    },
+    staleTime: 60_000,
+  });
+
+  if (isLoading) {
+    return (
+      <View style={[bannerStyles.container, { backgroundColor: colors.card, borderColor: colors.border }]}>
+        <ActivityIndicator size="small" color={colors.primary} />
+      </View>
+    );
+  }
+
+  if (!quota || quota.progress.overall.total === 0) return null;
+
+  const { done, total } = quota.progress.overall;
+  const pct = total === 0 ? 0 : Math.round((done / total) * 100);
+  const pending = quota.items.filter((i) => !i.completed);
+  const allDone = done >= total;
+
+  return (
+    <View style={[bannerStyles.container, { backgroundColor: allDone ? colors.success + "11" : colors.primary + "0d", borderColor: allDone ? colors.success + "44" : colors.primary + "33" }]}>
+      <TouchableOpacity
+        style={bannerStyles.header}
+        onPress={() => setExpanded((v) => !v)}
+        activeOpacity={0.7}
+      >
+        <View style={bannerStyles.headerLeft}>
+          <Feather name="calendar" size={14} color={allDone ? colors.success : colors.primary} />
+          <Text style={[bannerStyles.title, { color: allDone ? colors.success : colors.primary }]}>
+            This Week's Queue
+          </Text>
+        </View>
+        <View style={bannerStyles.headerRight}>
+          <View style={[bannerStyles.progressPill, { backgroundColor: allDone ? colors.success + "22" : colors.primary + "22" }]}>
+            <Text style={[bannerStyles.progressText, { color: allDone ? colors.success : colors.primary }]}>
+              {done} / {total}
+            </Text>
+          </View>
+          <Feather
+            name={expanded ? "chevron-up" : "chevron-down"}
+            size={16}
+            color={colors.mutedForeground}
+          />
+        </View>
+      </TouchableOpacity>
+
+      {/* Progress bar */}
+      <View style={[bannerStyles.barTrack, { backgroundColor: allDone ? colors.success + "22" : colors.primary + "22" }]}>
+        <View
+          style={[
+            bannerStyles.barFill,
+            { width: `${pct}%` as any, backgroundColor: allDone ? colors.success : colors.primary },
+          ]}
+        />
+      </View>
+
+      {expanded && pending.length > 0 && (
+        <View style={bannerStyles.list}>
+          {pending.slice(0, 8).map((item) => (
+            <TouchableOpacity
+              key={item.id}
+              style={[bannerStyles.item, { borderTopColor: colors.border }]}
+              onPress={() => onStartAudit(item.assetId, item.assetName)}
+              activeOpacity={0.7}
+            >
+              <View style={{ flex: 1 }}>
+                <Text style={[bannerStyles.itemName, { color: colors.foreground }]} numberOfLines={1}>
+                  {item.assetName}
+                </Text>
+                <Text style={[bannerStyles.itemType, { color: item.auditType === "completed-works" ? colors.primary : "#7c3aed" }]}>
+                  {item.auditType === "completed-works" ? "Completed Works" : "Outcomes Based"}
+                </Text>
+              </View>
+              <Feather name="play-circle" size={20} color={item.auditType === "completed-works" ? colors.primary : "#7c3aed"} />
+            </TouchableOpacity>
+          ))}
+          {pending.length > 8 && (
+            <View style={[bannerStyles.item, { borderTopColor: colors.border }]}>
+              <Text style={[bannerStyles.itemType, { color: colors.mutedForeground }]}>
+                +{pending.length - 8} more pending…
+              </Text>
+            </View>
+          )}
+        </View>
+      )}
+
+      {expanded && allDone && (
+        <View style={bannerStyles.allDoneRow}>
+          <Feather name="check-circle" size={14} color={colors.success} />
+          <Text style={[bannerStyles.allDoneText, { color: colors.success }]}>
+            All audits complete for this week!
+          </Text>
+        </View>
+      )}
+    </View>
+  );
+}
+
+const bannerStyles = StyleSheet.create({
+  container: {
+    marginHorizontal: 16,
+    marginTop: 12,
+    marginBottom: 4,
+    borderRadius: 12,
+    borderWidth: 1,
+    overflow: "hidden",
+  },
+  header: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+  },
+  headerLeft: { flexDirection: "row", alignItems: "center", gap: 8 },
+  headerRight: { flexDirection: "row", alignItems: "center", gap: 8 },
+  title: { fontFamily: "Inter_600SemiBold", fontSize: 13 },
+  progressPill: {
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 10,
+  },
+  progressText: { fontFamily: "Inter_700Bold", fontSize: 12 },
+  barTrack: { height: 4, marginHorizontal: 14, marginBottom: 4, borderRadius: 2, overflow: "hidden" },
+  barFill: { height: "100%", borderRadius: 2 },
+  list: {},
+  item: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    gap: 10,
+  },
+  itemName: { fontFamily: "Inter_500Medium", fontSize: 13 },
+  itemType: { fontFamily: "Inter_400Regular", fontSize: 11, marginTop: 1 },
+  allDoneRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: "rgba(0,0,0,0.06)",
+  },
+  allDoneText: { fontFamily: "Inter_500Medium", fontSize: 12 },
+});
+
 // ─── KPI Config ───────────────────────────────────────────────────────────────
 
 const KPI_SECTIONS = [
@@ -479,6 +664,17 @@ ${userMarker}
     }
   };
 
+  const isSupervisor = user?.role === "supervisor";
+
+  const handleQueueItemStart = (assetId: string, assetName: string) => {
+    setSelectedAsset({ id: assetId, name: assetName });
+    fetch(getApiUrl(`/api/assets/${assetId}`), { headers: { Authorization: `Bearer ${token}` } })
+      .then((r) => r.ok ? r.json() : null)
+      .then((detail) => setSelectedAssetDetail(detail))
+      .catch(() => {});
+    createAudit.mutate(assetId);
+  };
+
   // ─── Render: List ─────────────────────────────────────────────────────────
 
   if (view === "list") {
@@ -497,10 +693,17 @@ ${userMarker}
 
         <ScrollView
           style={styles.scroll}
-          contentContainerStyle={{ padding: 16, gap: 10, paddingBottom: bottomPad }}
+          contentContainerStyle={{ padding: 0, paddingBottom: bottomPad }}
           refreshControl={<RefreshControl refreshing={isRefetching} onRefresh={refetch} tintColor={colors.primary} />}
           showsVerticalScrollIndicator={false}
         >
+          {isSupervisor && token && (
+            <WeeklyQueueBanner
+              token={token}
+              onStartAudit={handleQueueItemStart}
+            />
+          )}
+          <View style={{ padding: 16, gap: 10 }}>
           {loadingAudits ? (
             <ActivityIndicator style={{ marginTop: 48 }} color={colors.primary} size="large" />
           ) : !auditsList?.data?.length ? (
@@ -537,6 +740,7 @@ ${userMarker}
               </TouchableOpacity>
             ))
           )}
+          </View>
         </ScrollView>
       </View>
     );

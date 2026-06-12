@@ -8,13 +8,14 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
+import { Progress } from "@/components/ui/progress";
 import { format } from "date-fns";
-import { ClipboardCheck, Plus, Eye, Download, Search, Trophy, TrendingDown, XCircle, BookOpen, Trash2, Pencil } from "lucide-react";
+import { ClipboardCheck, Plus, Eye, Download, Search, Trophy, TrendingDown, XCircle, BookOpen, Trash2, Pencil, CalendarCheck, ChevronDown, ChevronUp, RotateCcw } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { KPI_SECTIONS, ALL_KPIS } from "./kpi-config";
+import { useAuth } from "@/lib/auth";
 
 const BRAND = "#00AECD";
-const NAVY  = "#0f2a36";
 
 interface AuditStats {
   teamScores: { teamId: string; teamName: string; avgScore: number; auditCount: number }[];
@@ -30,6 +31,39 @@ function useAuditStats() {
       return res.json();
     },
     staleTime: 2 * 60 * 1000,
+  });
+}
+
+interface QuotaItem {
+  id: string;
+  assetId: string;
+  assetName: string;
+  auditType: string;
+  sourceJobId: string | null;
+  auditId: string | null;
+  completed: boolean;
+}
+
+interface QuotaDetail {
+  id: string;
+  weekStart: string;
+  progress: {
+    completedWorks: { done: number; total: number };
+    outcomesBased: { done: number; total: number };
+    overall: { done: number; total: number };
+  };
+  items: QuotaItem[];
+}
+
+function useWeeklyQuota() {
+  return useQuery<QuotaDetail>({
+    queryKey: ["audit-quota-current"],
+    queryFn: async () => {
+      const res = await fetch("/api/audit-quota/current", { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to load quota");
+      return res.json();
+    },
+    staleTime: 60_000,
   });
 }
 
@@ -78,13 +112,201 @@ function StatCard({ icon: Icon, label, value, sub, iconBg, iconColor, loading }:
   );
 }
 
+function ProgressStrip({ label, done, total, color }: { label: string; done: number; total: number; color: string }) {
+  const pct = total === 0 ? 0 : Math.round((done / total) * 100);
+  return (
+    <div className="flex-1 min-w-0">
+      <div className="flex items-center justify-between mb-1.5">
+        <span className="text-xs font-semibold text-gray-700">{label}</span>
+        <span className="text-xs font-bold" style={{ color }}>
+          {done} / {total}
+        </span>
+      </div>
+      <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+        <div
+          className="h-full rounded-full transition-all"
+          style={{ width: `${pct}%`, background: color }}
+        />
+      </div>
+    </div>
+  );
+}
+
+function ThisWeekTab() {
+  const [, navigate] = useLocation();
+  const { data: quota, isLoading, refetch } = useWeeklyQuota();
+  const { toast } = useToast();
+  const [regenerating, setRegenerating] = useState(false);
+
+  if (isLoading) {
+    return (
+      <div className="flex flex-col gap-4 p-8">
+        <Skeleton className="h-24 rounded-xl" />
+        <Skeleton className="h-64 rounded-xl" />
+      </div>
+    );
+  }
+
+  if (!quota) {
+    return (
+      <div className="flex flex-col items-center justify-center py-20 text-gray-400">
+        <CalendarCheck className="w-12 h-12 mb-3 opacity-30" />
+        <p className="text-sm font-medium">Could not load this week's quota</p>
+      </div>
+    );
+  }
+
+  const { progress, items } = quota;
+  const cwPending = items.filter((i) => i.auditType === "completed-works" && !i.completed);
+  const obPending = items.filter((i) => i.auditType === "outcomes-based" && !i.completed);
+  const cwDone    = items.filter((i) => i.auditType === "completed-works" && i.completed);
+  const obDone    = items.filter((i) => i.auditType === "outcomes-based"  && i.completed);
+
+  const weekLabel = format(new Date(quota.weekStart + "T00:00:00"), "d MMM yyyy");
+
+  const handleStartAudit = (item: QuotaItem) => {
+    navigate(`/audits/new?assetId=${item.assetId}`);
+  };
+
+  return (
+    <div className="p-8 space-y-6 max-w-3xl">
+      {/* Header + progress */}
+      <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-5 space-y-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-base font-bold text-gray-900">Week of {weekLabel}</h2>
+            <p className="text-xs text-gray-400 mt-0.5">
+              {progress.overall.done} of {progress.overall.total} audits completed
+            </p>
+          </div>
+        </div>
+        <div className="flex gap-6">
+          <ProgressStrip
+            label="Completed Works"
+            done={progress.completedWorks.done}
+            total={progress.completedWorks.total}
+            color={BRAND}
+          />
+          <ProgressStrip
+            label="Outcomes Based"
+            done={progress.outcomesBased.done}
+            total={progress.outcomesBased.total}
+            color="#7c3aed"
+          />
+        </div>
+      </div>
+
+      {/* Pending items */}
+      {cwPending.length > 0 && (
+        <section>
+          <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2 px-1">
+            Completed Works — {cwPending.length} pending
+          </h3>
+          <Card className="rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+            <div className="divide-y divide-gray-100">
+              {cwPending.map((item) => (
+                <div key={item.id} className="flex items-center justify-between px-5 py-3.5 hover:bg-gray-50">
+                  <div>
+                    <p className="text-sm font-medium text-gray-900">{item.assetName}</p>
+                    <span className="inline-flex items-center text-[10px] font-bold px-2 py-0.5 rounded-full bg-[#e0f7fb] text-[#00AECD] mt-1">
+                      Completed Works
+                    </span>
+                  </div>
+                  <Button
+                    size="sm"
+                    className="bg-[#00AECD] hover:bg-[#0097b2] text-white h-8 text-xs"
+                    onClick={() => handleStartAudit(item)}
+                  >
+                    Start Audit
+                  </Button>
+                </div>
+              ))}
+            </div>
+          </Card>
+        </section>
+      )}
+
+      {obPending.length > 0 && (
+        <section>
+          <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2 px-1">
+            Outcomes Based — {obPending.length} pending
+          </h3>
+          <Card className="rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+            <div className="divide-y divide-gray-100">
+              {obPending.map((item) => (
+                <div key={item.id} className="flex items-center justify-between px-5 py-3.5 hover:bg-gray-50">
+                  <div>
+                    <p className="text-sm font-medium text-gray-900">{item.assetName}</p>
+                    <span className="inline-flex items-center text-[10px] font-bold px-2 py-0.5 rounded-full bg-purple-100 text-purple-700 mt-1">
+                      Outcomes Based
+                    </span>
+                  </div>
+                  <Button
+                    size="sm"
+                    className="bg-purple-600 hover:bg-purple-700 text-white h-8 text-xs"
+                    onClick={() => handleStartAudit(item)}
+                  >
+                    Start Audit
+                  </Button>
+                </div>
+              ))}
+            </div>
+          </Card>
+        </section>
+      )}
+
+      {/* Completed items */}
+      {(cwDone.length > 0 || obDone.length > 0) && (
+        <section>
+          <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2 px-1">
+            Completed this week — {cwDone.length + obDone.length}
+          </h3>
+          <Card className="rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+            <div className="divide-y divide-gray-100">
+              {[...cwDone, ...obDone].map((item) => (
+                <div key={item.id} className="flex items-center justify-between px-5 py-3 bg-gray-50/50">
+                  <div>
+                    <p className="text-sm font-medium text-gray-500 line-through">{item.assetName}</p>
+                    <span className={`inline-flex items-center text-[10px] font-bold px-2 py-0.5 rounded-full mt-1 ${item.auditType === "completed-works" ? "bg-[#e0f7fb] text-[#00AECD]" : "bg-purple-100 text-purple-700"}`}>
+                      {item.auditType === "completed-works" ? "Completed Works" : "Outcomes Based"}
+                    </span>
+                  </div>
+                  <span className="text-xs text-green-600 font-semibold flex items-center gap-1">
+                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" /></svg>
+                    Done
+                  </span>
+                </div>
+              ))}
+            </div>
+          </Card>
+        </section>
+      )}
+
+      {progress.overall.total === 0 && (
+        <div className="flex flex-col items-center justify-center py-16 text-gray-400">
+          <CalendarCheck className="w-12 h-12 mb-3 opacity-30" />
+          <p className="text-sm font-medium">No completed jobs found to sample from</p>
+          <p className="text-xs mt-1 text-center max-w-xs">
+            The quota draws from jobs completed in the last 3–90 days. No eligible jobs were found for this week.
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function Audits() {
   const [, navigate] = useLocation();
   const [search, setSearch] = useState("");
   const [teamFilter, setTeamFilter] = useState("all");
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<"results" | "this-week">("results");
   const { toast } = useToast();
   const qc = useQueryClient();
+  const { user } = useAuth();
+
+  const isSupervisor = (user as any)?.role === "supervisor";
+  // Only supervisors see the quota tab and weekly queue
 
   const { data: auditsData, isLoading } = useListAudits({ query: { queryKey: getListAuditsQueryKey() } });
   const { data: assetsData } = useListAssets({ limit: 2000 });
@@ -122,15 +344,11 @@ export default function Audits() {
     return matchSearch && matchTeam;
   });
 
-  // ── Derived stats ───────────────────────────────────────────────────────────
-  const { highTeam, lowTeam, topKpi, topSpec } = useMemo(() => {
-    if (!stats) return { highTeam: null, lowTeam: null, topKpi: null, topSpec: null };
-
+  const { highTeam, lowTeam, topKpi } = useMemo(() => {
+    if (!stats) return { highTeam: null, lowTeam: null, topKpi: null };
     const sorted = [...stats.teamScores].sort((a, b) => Number(b.avgScore) - Number(a.avgScore));
     const highTeam = sorted[0] ?? null;
     const lowTeam  = sorted[sorted.length - 1] !== sorted[0] ? sorted[sorted.length - 1] : null;
-
-    // Most failed KPI
     const topCriterion = stats.criterionFails[0] ?? null;
     const topKpi = topCriterion
       ? {
@@ -138,17 +356,7 @@ export default function Audits() {
           count: topCriterion.failCount,
         }
       : null;
-
-    // Most failed specification (section)
-    const sectionFails: Record<string, number> = {};
-    for (const { criterion, failCount } of stats.criterionFails) {
-      const section = KPI_SECTIONS.find(s => s.kpis.some(k => k.key === criterion));
-      if (section) sectionFails[section.title] = (sectionFails[section.title] ?? 0) + Number(failCount);
-    }
-    const topSectionEntry = Object.entries(sectionFails).sort((a, b) => b[1] - a[1])[0] ?? null;
-    const topSpec = topSectionEntry ? { title: topSectionEntry[0], count: topSectionEntry[1] } : null;
-
-    return { highTeam, lowTeam, topKpi, topSpec };
+    return { highTeam, lowTeam, topKpi };
   }, [stats]);
 
   const handleExportCsv = () => {
@@ -180,12 +388,21 @@ export default function Audits() {
           <p className="text-xs text-gray-400">Porirua Gardens audit results</p>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" size="sm" className="gap-1.5 h-9 text-sm" onClick={handleExportCsv}>
-            <Download className="w-4 h-4" /> Export CSV
-          </Button>
-          <Button className="bg-[#00AECD] hover:bg-[#0097b2] text-white gap-1.5 h-9 text-sm" onClick={() => navigate("/audits/new")}>
-            <Plus className="w-4 h-4" /> New Audit
-          </Button>
+          {activeTab === "results" && (
+            <>
+              <Button variant="outline" size="sm" className="gap-1.5 h-9 text-sm" onClick={handleExportCsv}>
+                <Download className="w-4 h-4" /> Export CSV
+              </Button>
+              <Button className="bg-[#00AECD] hover:bg-[#0097b2] text-white gap-1.5 h-9 text-sm" onClick={() => navigate("/audits/new")}>
+                <Plus className="w-4 h-4" /> New Audit
+              </Button>
+            </>
+          )}
+          {activeTab === "this-week" && (
+            <Button className="bg-[#00AECD] hover:bg-[#0097b2] text-white gap-1.5 h-9 text-sm" onClick={() => navigate("/audits/new")}>
+              <Plus className="w-4 h-4" /> New Audit
+            </Button>
+          )}
         </div>
       </header>
 
@@ -235,112 +452,147 @@ export default function Audits() {
         />
       </div>
 
-      <div className="px-8 py-3 border-b bg-white flex gap-3 sticky top-[73px] z-10 shadow-sm flex-shrink-0 mt-4">
-        <div className="relative flex-1 max-w-xs">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-          <Input
-            placeholder="Search audits..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="pl-9 h-9 text-sm bg-white"
-          />
-        </div>
-        <Select value={teamFilter} onValueChange={setTeamFilter}>
-          <SelectTrigger className="w-[160px] h-9 text-sm bg-white">
-            <SelectValue placeholder="All Teams" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All Teams</SelectItem>
-            {teams.map((t) => (
-              <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
-
-      <div className="flex-1 overflow-auto p-8">
-        {isLoading ? (
-          <div className="space-y-3">
-            {[1, 2, 3].map((i) => <Skeleton key={i} className="w-full h-14 rounded-xl" />)}
-          </div>
-        ) : filtered.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-20 text-gray-400">
-            <ClipboardCheck className="w-12 h-12 mb-3 opacity-30" />
-            <p className="text-sm font-medium">No audits yet</p>
-            <p className="text-xs mt-1">
-              {search || teamFilter !== "all" ? "Try adjusting your filters" : "Click '+ New Audit' to conduct your first audit"}
-            </p>
-          </div>
-        ) : (
-          <Card className="rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-            <table className="w-full text-sm" data-testid="table-audits">
-              <thead className="bg-gray-50 border-b border-gray-200">
-                <tr className="text-xs font-bold text-gray-500 uppercase tracking-wide">
-                  <th className="text-left px-5 py-3">Date</th>
-                  <th className="text-left px-5 py-3">Site</th>
-                  <th className="text-left px-5 py-3">Team</th>
-                  <th className="text-left px-5 py-3">Score</th>
-                  <th className="text-right px-5 py-3">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {filtered.map((audit) => (
-                  <tr key={audit.id} className="hover:bg-gray-50/50 transition-colors cursor-pointer" onClick={() => navigate(`/audits/${audit.id}`)}>
-                    <td className="px-5 py-3.5 text-gray-600 text-sm">
-                      {format(new Date(audit.conductedAt ?? audit.createdAt), "d MMM yyyy")}
-                    </td>
-                    <td className="px-5 py-3.5 font-medium text-gray-900">{getAssetName(audit.assetId)}</td>
-                    <td className="px-5 py-3.5 text-gray-600">{getTeamName(audit.teamId)}</td>
-                    <td className="px-5 py-3.5">
-                      <ScoreBadge score={audit.overallScore} />
-                    </td>
-                    <td className="px-5 py-3.5" onClick={(e) => e.stopPropagation()}>
-                      <div className="flex items-center justify-end gap-2">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-8 w-8 p-0 text-[#00AECD] hover:text-[#00AECD] hover:bg-[#e6f8fb]"
-                          onClick={() => navigate(`/audits/${audit.id}`)}
-                          title="View audit"
-                        >
-                          <Eye className="w-4 h-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-8 w-8 p-0 text-gray-500 hover:text-gray-700"
-                          onClick={() => navigate(`/audits/${audit.id}/edit`)}
-                          title="Edit audit"
-                        >
-                          <Pencil className="w-4 h-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-8 w-8 p-0 text-gray-500 hover:text-gray-700"
-                          onClick={() => window.open(`/api/audits/${audit.id}/pdf`, "_blank")}
-                          title="Download PDF"
-                        >
-                          <Download className="w-4 h-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-8 w-8 p-0 text-gray-400 hover:text-red-600 hover:bg-red-50"
-                          onClick={() => setConfirmDeleteId(audit.id)}
-                          title="Delete audit"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </Button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </Card>
+      {/* ── Tabs ───────────────────────────────────────────────────────────── */}
+      <div className="px-8 mt-4 border-b bg-white flex items-center gap-0 sticky top-[73px] z-10 shadow-sm flex-shrink-0">
+        <button
+          onClick={() => setActiveTab("results")}
+          className={`px-4 py-3 text-sm font-semibold border-b-2 transition-colors ${
+            activeTab === "results"
+              ? "border-[#00AECD] text-[#00AECD]"
+              : "border-transparent text-gray-500 hover:text-gray-700"
+          }`}
+        >
+          All Results
+        </button>
+        {isSupervisor && (
+          <button
+            onClick={() => setActiveTab("this-week")}
+            className={`px-4 py-3 text-sm font-semibold border-b-2 transition-colors flex items-center gap-1.5 ${
+              activeTab === "this-week"
+                ? "border-[#00AECD] text-[#00AECD]"
+                : "border-transparent text-gray-500 hover:text-gray-700"
+            }`}
+          >
+            <CalendarCheck className="w-4 h-4" />
+            This Week
+          </button>
         )}
       </div>
+
+      {activeTab === "this-week" && isSupervisor ? (
+        <div className="flex-1 overflow-auto">
+          <ThisWeekTab />
+        </div>
+      ) : (
+        <>
+          <div className="px-8 py-3 border-b bg-white flex gap-3 flex-shrink-0 mt-0">
+            <div className="relative flex-1 max-w-xs">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+              <Input
+                placeholder="Search audits..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="pl-9 h-9 text-sm bg-white"
+              />
+            </div>
+            <Select value={teamFilter} onValueChange={setTeamFilter}>
+              <SelectTrigger className="w-[160px] h-9 text-sm bg-white">
+                <SelectValue placeholder="All Teams" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Teams</SelectItem>
+                {teams.map((t) => (
+                  <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="flex-1 overflow-auto p-8">
+            {isLoading ? (
+              <div className="space-y-3">
+                {[1, 2, 3].map((i) => <Skeleton key={i} className="w-full h-14 rounded-xl" />)}
+              </div>
+            ) : filtered.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-20 text-gray-400">
+                <ClipboardCheck className="w-12 h-12 mb-3 opacity-30" />
+                <p className="text-sm font-medium">No audits yet</p>
+                <p className="text-xs mt-1">
+                  {search || teamFilter !== "all" ? "Try adjusting your filters" : "Click '+ New Audit' to conduct your first audit"}
+                </p>
+              </div>
+            ) : (
+              <Card className="rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+                <table className="w-full text-sm" data-testid="table-audits">
+                  <thead className="bg-gray-50 border-b border-gray-200">
+                    <tr className="text-xs font-bold text-gray-500 uppercase tracking-wide">
+                      <th className="text-left px-5 py-3">Date</th>
+                      <th className="text-left px-5 py-3">Site</th>
+                      <th className="text-left px-5 py-3">Team</th>
+                      <th className="text-left px-5 py-3">Score</th>
+                      <th className="text-right px-5 py-3">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {filtered.map((audit) => (
+                      <tr key={audit.id} className="hover:bg-gray-50/50 transition-colors cursor-pointer" onClick={() => navigate(`/audits/${audit.id}`)}>
+                        <td className="px-5 py-3.5 text-gray-600 text-sm">
+                          {format(new Date(audit.conductedAt ?? audit.createdAt), "d MMM yyyy")}
+                        </td>
+                        <td className="px-5 py-3.5 font-medium text-gray-900">{getAssetName(audit.assetId)}</td>
+                        <td className="px-5 py-3.5 text-gray-600">{getTeamName(audit.teamId)}</td>
+                        <td className="px-5 py-3.5">
+                          <ScoreBadge score={audit.overallScore} />
+                        </td>
+                        <td className="px-5 py-3.5" onClick={(e) => e.stopPropagation()}>
+                          <div className="flex items-center justify-end gap-2">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-8 w-8 p-0 text-[#00AECD] hover:text-[#00AECD] hover:bg-[#e6f8fb]"
+                              onClick={() => navigate(`/audits/${audit.id}`)}
+                              title="View audit"
+                            >
+                              <Eye className="w-4 h-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-8 w-8 p-0 text-gray-500 hover:text-gray-700"
+                              onClick={() => navigate(`/audits/${audit.id}/edit`)}
+                              title="Edit audit"
+                            >
+                              <Pencil className="w-4 h-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-8 w-8 p-0 text-gray-500 hover:text-gray-700"
+                              onClick={() => window.open(`/api/audits/${audit.id}/pdf`, "_blank")}
+                              title="Download PDF"
+                            >
+                              <Download className="w-4 h-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-8 w-8 p-0 text-gray-400 hover:text-red-600 hover:bg-red-50"
+                              onClick={() => setConfirmDeleteId(audit.id)}
+                              title="Delete audit"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </Button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </Card>
+            )}
+          </div>
+        </>
+      )}
 
       <AlertDialog open={!!confirmDeleteId} onOpenChange={(open) => { if (!open) setConfirmDeleteId(null); }}>
         <AlertDialogContent>
