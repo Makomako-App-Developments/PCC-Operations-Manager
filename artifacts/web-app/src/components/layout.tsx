@@ -1,6 +1,7 @@
 import React from "react";
 import { Link, useLocation } from "wouter";
 import { useAuth } from "@/lib/auth";
+import { useQuery } from "@tanstack/react-query";
 import {
   LayoutDashboard,
   List,
@@ -19,9 +20,27 @@ import {
   UsersRound,
 } from "lucide-react";
 
+function useAuditBadge(isSupervisor: boolean) {
+  return useQuery<{ outstanding: number }>({
+    queryKey: ["audit-quota-badge"],
+    queryFn: async () => {
+      const res = await fetch("/api/audit-quota/badge", { credentials: "include" });
+      if (!res.ok) return { outstanding: 0 };
+      return res.json();
+    },
+    enabled: isSupervisor,
+    staleTime: 60_000,
+    refetchInterval: 5 * 60_000,
+  });
+}
+
 export function Layout({ children }: { children: React.ReactNode }) {
   const [location] = useLocation();
   const { user, logout } = useAuth();
+
+  const isSupervisor = user?.role === "supervisor";
+  const { data: badgeData } = useAuditBadge(isSupervisor);
+  const auditBadge = badgeData?.outstanding ?? 0;
 
   const allNav = [
     { icon: LayoutDashboard, label: "Dashboard",       href: "/dashboard",        managerOnly: false },
@@ -54,6 +73,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
         <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
           {nav.map(({ icon: Icon, label, href, managerOnly: _m }) => {
             const isActive = location.startsWith(href);
+            const showBadge = label === "Audits" && isSupervisor && auditBadge > 0;
             return (
               <Link key={label} href={href} className="block">
                 <div
@@ -62,8 +82,13 @@ export function Layout({ children }: { children: React.ReactNode }) {
                   }`}
                   data-testid={`nav-${label.toLowerCase().replace(" ", "-")}`}
                 >
-                  <Icon className="w-4 h-4" />
-                  <span className="text-sm font-medium">{label}</span>
+                  <Icon className="w-4 h-4 flex-shrink-0" />
+                  <span className="text-sm font-medium flex-1">{label}</span>
+                  {showBadge && (
+                    <span className="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-red-500 text-white text-[10px] font-bold leading-none">
+                      {auditBadge}
+                    </span>
+                  )}
                 </div>
               </Link>
             );

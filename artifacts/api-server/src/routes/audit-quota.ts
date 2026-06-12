@@ -210,6 +210,32 @@ async function loadQuotaDetail(quotaId: string) {
   };
 }
 
+// ── GET /api/audit-quota/badge ────────────────────────────────────────────────
+// Supervisor: auto-generates (or loads) the current week's quota and returns
+// { outstanding: number } so the tab badge is accurate from the moment the
+// supervisor logs in, not only after they open Audits.
+// Manager/admin: returns { outstanding: 0 } — they don't own a quota.
+router.get("/audit-quota/badge", requireAuth, requireRole("supervisor", "manager", "administrator"), async (req, res) => {
+  const { userId, role } = req.auth!;
+
+  if (role !== "supervisor") {
+    res.json({ outstanding: 0 });
+    return;
+  }
+
+  const weekStart = getISOWeekStart(new Date());
+  const detail = await buildOrLoadQuota(userId, weekStart);
+
+  if (!detail) {
+    res.json({ outstanding: 0 });
+    return;
+  }
+
+  const { done, total } = detail.progress.overall;
+  const outstanding = Math.max(0, total - done);
+  res.json({ outstanding });
+});
+
 // ── GET /api/audit-quota/current ──────────────────────────────────────────────
 // Supervisor-only: loads or auto-generates the calling supervisor's quota
 // for the current ISO week.

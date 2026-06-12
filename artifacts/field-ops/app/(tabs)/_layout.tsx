@@ -2,14 +2,40 @@ import { Feather } from "@expo/vector-icons";
 import React from "react";
 import { Platform, StyleSheet, View, useColorScheme } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useQuery } from "@tanstack/react-query";
 
 import { useAuth } from "@/context/auth";
 import { useColors } from "@/hooks/useColors";
+import { getApiUrl } from "@/lib/api";
 
 const PRIVILEGED_ROLES = ["administrator", "manager", "supervisor"];
 
-function NativeTabLayout({ isPrivileged, isManager }: { isPrivileged: boolean; isManager: boolean }) {
-  const { Icon, Label, NativeTabs } = require("expo-router/unstable-native-tabs") as typeof import("expo-router/unstable-native-tabs");
+function useAuditBadge(token: string | null, isPrivileged: boolean) {
+  return useQuery<{ outstanding: number }>({
+    queryKey: ["audit-quota-badge"],
+    queryFn: async () => {
+      const res = await fetch(getApiUrl("/api/audit-quota/badge"), {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) return { outstanding: 0 };
+      return res.json();
+    },
+    enabled: isPrivileged && !!token,
+    staleTime: 60_000,
+    refetchInterval: 5 * 60_000,
+  });
+}
+
+function NativeTabLayout({
+  isPrivileged,
+  isManager,
+  auditBadge,
+}: {
+  isPrivileged: boolean;
+  isManager: boolean;
+  auditBadge: number;
+}) {
+  const { Icon, Label, Badge, NativeTabs } = require("expo-router/unstable-native-tabs") as typeof import("expo-router/unstable-native-tabs");
   return (
     <NativeTabs>
       {!isManager && (
@@ -26,6 +52,7 @@ function NativeTabLayout({ isPrivileged, isManager }: { isPrivileged: boolean; i
         <NativeTabs.Trigger name="audits">
           <Icon sf={{ default: "checkmark.seal", selected: "checkmark.seal.fill" }} />
           <Label>Audits</Label>
+          <Badge hidden={auditBadge === 0}>{String(auditBadge)}</Badge>
         </NativeTabs.Trigger>
       )}
       {isPrivileged && (
@@ -54,7 +81,15 @@ function NativeTabLayout({ isPrivileged, isManager }: { isPrivileged: boolean; i
   );
 }
 
-function ClassicTabLayout({ isPrivileged, isManager }: { isPrivileged: boolean; isManager: boolean }) {
+function ClassicTabLayout({
+  isPrivileged,
+  isManager,
+  auditBadge,
+}: {
+  isPrivileged: boolean;
+  isManager: boolean;
+  auditBadge: number;
+}) {
   const { Tabs } = require("expo-router") as typeof import("expo-router");
   const { BlurView } = require("expo-blur") as typeof import("expo-blur");
   const { SymbolView } = require("expo-symbols") as typeof import("expo-symbols");
@@ -134,6 +169,7 @@ function ClassicTabLayout({ isPrivileged, isManager }: { isPrivileged: boolean; 
         name="audits"
         options={isPrivileged ? {
           title: "Audits",
+          tabBarBadge: auditBadge > 0 ? auditBadge : undefined,
           tabBarIcon: ({ color }) =>
             isIOS ? (
               <SymbolView name="checkmark.seal" tintColor={color} size={24} />
@@ -183,15 +219,18 @@ function ClassicTabLayout({ isPrivileged, isManager }: { isPrivileged: boolean; 
 }
 
 export default function TabLayout() {
-  const { user } = useAuth();
+  const { user, token } = useAuth();
   const isPrivileged = PRIVILEGED_ROLES.includes(user?.role ?? "");
   const isManager = user?.role === "manager";
+
+  const { data: badgeData } = useAuditBadge(token, isPrivileged);
+  const auditBadge = badgeData?.outstanding ?? 0;
 
   if (Platform.OS !== "web") {
     const { isLiquidGlassAvailable } = require("expo-glass-effect") as typeof import("expo-glass-effect");
     if (isLiquidGlassAvailable()) {
-      return <NativeTabLayout isPrivileged={isPrivileged} isManager={isManager} />;
+      return <NativeTabLayout isPrivileged={isPrivileged} isManager={isManager} auditBadge={auditBadge} />;
     }
   }
-  return <ClassicTabLayout isPrivileged={isPrivileged} isManager={isManager} />;
+  return <ClassicTabLayout isPrivileged={isPrivileged} isManager={isManager} auditBadge={auditBadge} />;
 }
