@@ -741,7 +741,7 @@ export default function MapPage() {
                       {[
                         { l: "Type",      v: TYPE_LABELS[asset.gardenType] ?? asset.gardenType },
                         { l: "Standard",  v: asset.standard.charAt(0).toUpperCase() + asset.standard.slice(1) },
-                        { l: "Area",      v: `${asset.areaM2} m²` },
+                        { l: "Area",      v: `${Number(asset.areaM2).toFixed(1)} m²` },
                         { l: "Service",   v: `${asset.serviceTimeMins} min` },
                         { l: "Frequency", v: FREQ_LABELS[asset.frequency] ?? asset.frequency },
                         { l: "Team",      v: teamName },
@@ -839,7 +839,7 @@ export default function MapPage() {
                       {[
                         { l: "Type",      v: TYPE_LABELS[asset.gardenType] ?? asset.gardenType },
                         { l: "Standard",  v: asset.standard.charAt(0).toUpperCase() + asset.standard.slice(1) },
-                        { l: "Area",      v: `${asset.areaM2} m²` },
+                        { l: "Area",      v: `${Number(asset.areaM2).toFixed(1)} m²` },
                         { l: "Service",   v: `${asset.serviceTimeMins} min` },
                         { l: "Frequency", v: FREQ_LABELS[asset.frequency] ?? asset.frequency },
                         { l: "Team",      v: teamName },
