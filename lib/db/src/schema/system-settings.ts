@@ -17,6 +17,8 @@ export const systemSettingsTable = pgTable("system_settings", {
   reactivePriorities:  jsonb("reactive_priorities"),                       // ReactivePriority[]
   infillPlantingRates: jsonb("infill_planting_rates"),                     // Record<PlantGrade, number> mins per plant
   routesLastOptimised: timestamp("routes_last_optimised"),
+  auditQuotaCompletedWorksCount: integer("audit_quota_completed_works_count").notNull().default(15),
+  auditQuotaOutcomesBasedCount:  integer("audit_quota_outcomes_based_count").notNull().default(5),
   updatedAt:           timestamp("updated_at").notNull().defaultNow(),
 });
 

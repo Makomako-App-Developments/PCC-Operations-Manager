@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Shield, Users, Clock, Route, Sunrise, Zap, Lock, Layers, Leaf } from "lucide-react";
+import { Shield, Users, Clock, Route, Sunrise, Zap, Lock, Layers, Leaf, ClipboardCheck } from "lucide-react";
 import UsersPage from "@/pages/users/index";
 import AuditLogPage from "@/pages/audit-log/index";
 import ProductiveTimePage from "./ProductiveTimePage";
@@ -9,21 +9,28 @@ import ReactivePrioritiesPage from "./ReactivePrioritiesPage";
 import RolesPermissionsPage from "./RolesPermissionsPage";
 import MulchingSettingsPage from "./MulchingSettingsPage";
 import PlantPaletteSettingsPage from "./PlantPaletteSettingsPage";
+import AuditQuotaPage from "./AuditQuotaPage";
+import { useAuth } from "@/lib/auth";
 
-const TABS = [
-  { id: "users",                label: "Users",                icon: Users       },
-  { id: "roles",                label: "Roles & Permissions",  icon: Lock        },
-  { id: "audit-log",            label: "Audit Log",            icon: Shield      },
-  { id: "work-hours",           label: "Work Hours",           icon: Sunrise     },
-  { id: "reactive-priorities",  label: "Reactive Priorities",  icon: Zap         },
-  { id: "productive-time",      label: "Productive Time",      icon: Clock       },
-  { id: "route-optimisation",   label: "Route Optimisation",   icon: Route       },
-  { id: "mulching",             label: "Mulching",             icon: Layers      },
-  { id: "infill-planting",      label: "Infill Planting",      icon: Leaf        },
+const BASE_TABS = [
+  { id: "users",                label: "Users",                icon: Users,           managerOnly: false },
+  { id: "roles",                label: "Roles & Permissions",  icon: Lock,            managerOnly: false },
+  { id: "audit-log",            label: "Audit Log",            icon: Shield,          managerOnly: false },
+  { id: "work-hours",           label: "Work Hours",           icon: Sunrise,         managerOnly: false },
+  { id: "reactive-priorities",  label: "Reactive Priorities",  icon: Zap,             managerOnly: false },
+  { id: "productive-time",      label: "Productive Time",      icon: Clock,           managerOnly: false },
+  { id: "route-optimisation",   label: "Route Optimisation",   icon: Route,           managerOnly: false },
+  { id: "mulching",             label: "Mulching",             icon: Layers,          managerOnly: false },
+  { id: "infill-planting",      label: "Infill Planting",      icon: Leaf,            managerOnly: false },
+  { id: "audit-quota",          label: "Audit Quota",          icon: ClipboardCheck,  managerOnly: true  },
 ];
 
 export default function SettingsPage() {
   const [tab, setTab] = useState("users");
+  const { user } = useAuth();
+  const isManager = user?.role === "manager" || user?.role === "administrator";
+
+  const TABS = BASE_TABS.filter(t => !t.managerOnly || isManager);
 
   return (
     <div className="flex flex-col min-h-full bg-[#f5f7f9]">
@@ -33,7 +40,7 @@ export default function SettingsPage() {
       </div>
 
       <div className="bg-white border-b border-gray-100 px-8">
-        <div className="flex gap-0">
+        <div className="flex gap-0 flex-wrap">
           {TABS.map(t => (
             <button
               key={t.id}
@@ -61,6 +68,7 @@ export default function SettingsPage() {
         {tab === "route-optimisation" && <RouteOptimisationPage />}
         {tab === "mulching"           && <MulchingSettingsPage />}
         {tab === "infill-planting"    && <PlantPaletteSettingsPage />}
+        {tab === "audit-quota"        && isManager && <AuditQuotaPage />}
       </div>
     </div>
   );

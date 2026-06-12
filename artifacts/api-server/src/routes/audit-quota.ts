@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { db, auditsTable, auditWeeklyQuotasTable, auditQuotaItemsTable, jobsTable, assetsTable } from "@workspace/db";
+import { db, auditsTable, auditWeeklyQuotasTable, auditQuotaItemsTable, jobsTable, assetsTable, systemSettingsTable } from "@workspace/db";
 import { eq, and, sql, isNull } from "drizzle-orm";
 import { requireAuth, requireRole } from "../middlewares/auth";
 
@@ -91,6 +91,14 @@ async function buildOrLoadQuota(supervisorId: string, weekStart: Date) {
 async function generateQuota(supervisorId: string, weekStartStr: string) {
   const weekStart = new Date(weekStartStr + "T00:00:00Z");
 
+  // Read configurable quota targets from system settings
+  const [sysSettings] = await db.select({
+    cwTarget: systemSettingsTable.auditQuotaCompletedWorksCount,
+    obTarget: systemSettingsTable.auditQuotaOutcomesBasedCount,
+  }).from(systemSettingsTable).limit(1);
+  const CW_TARGET = sysSettings?.cwTarget ?? 15;
+  const OB_TARGET = sysSettings?.obTarget ?? 5;
+
   // Find or create the quota record for this supervisor+week
   let [quota] = await db
     .select()
@@ -139,8 +147,8 @@ async function generateQuota(supervisorId: string, weekStartStr: string) {
   const cwDone = existingCompleted.filter((i) => i.auditType === "completed-works").length;
   const obDone = existingCompleted.filter((i) => i.auditType === "outcomes-based").length;
 
-  const cwNeeded = Math.max(0, 15 - cwDone);
-  const obNeeded = Math.max(0, 5  - obDone);
+  const cwNeeded = Math.max(0, CW_TARGET - cwDone);
+  const obNeeded = Math.max(0, OB_TARGET - obDone);
 
   const [cwPool, obPool] = await Promise.all([
     cwNeeded > 0 ? samplePool(weekStart, "completed-works", cwNeeded) : Promise.resolve([]),

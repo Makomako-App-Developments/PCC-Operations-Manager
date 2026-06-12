@@ -38,6 +38,8 @@ const patchSettingsSchema = z.object({
   mulchDecayRateMmPerMonth:   z.number().min(0.1).max(50).optional(),
   mulchSpreadingRateM3PerHour: z.number().min(0.1).max(20).optional(),
   infillPlantingRates:        z.record(z.string(), z.number().min(0).max(999)).optional(),
+  auditQuotaCompletedWorksCount: z.number().int().min(0).max(100).optional(),
+  auditQuotaOutcomesBasedCount:  z.number().int().min(0).max(100).optional(),
 });
 
 // PATCH /api/settings
@@ -48,6 +50,16 @@ router.patch(
   validateBody(patchSettingsSchema),
   async (req, res) => {
     const patch = req.body as z.infer<typeof patchSettingsSchema>;
+
+    // Audit quota counts are manager/administrator only
+    if (
+      (patch.auditQuotaCompletedWorksCount !== undefined ||
+       patch.auditQuotaOutcomesBasedCount  !== undefined) &&
+      !["manager", "administrator"].includes(req.auth!.role)
+    ) {
+      res.status(403).json({ error: "Only managers can change audit quota settings" });
+      return;
+    }
 
     const [updated] = await db
       .insert(systemSettingsTable)
