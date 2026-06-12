@@ -516,7 +516,7 @@ router.get(
     // supervisors and field workers are restricted to their own team.
     if (!["administrator", "manager"].includes(req.auth!.role)) {
       const callerTeamId = req.auth!.teamId;
-      if (!callerTeamId) { res.json({ days: {} }); return; }
+      if (!callerTeamId) { res.json({ days: [] }); return; }
       teamId = callerTeamId;
     }
 
