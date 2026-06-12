@@ -721,9 +721,11 @@ function NewAssessmentModal({ visible, token, onClose, onSuccess, initialAsset }
           </View>
         </ScrollView>
 
-        {/* Palette picker modal */}
-        <Modal
-          visible={palettePickerIdx !== null}
+        {/* Palette picker modal — only mount content when open so autoFocus
+            doesn't fire while hidden (React Native Web renders Modal children
+            into a portal even when visible=false, which triggers error #300). */}
+        {palettePickerIdx !== null && <Modal
+          visible
           animationType="slide"
           transparent
           onRequestClose={() => setPalettePickerIdx(null)}
@@ -750,7 +752,7 @@ function NewAssessmentModal({ visible, token, onClose, onSuccess, initialAsset }
                   placeholderTextColor={colors.mutedForeground}
                   value={paletteSearch}
                   onChangeText={setPaletteSearch}
-                  autoFocus
+                  autoFocus={Platform.OS !== "web"}
                   autoCorrect={false}
                 />
                 {paletteSearch.length > 0 && (
@@ -798,7 +800,7 @@ function NewAssessmentModal({ visible, token, onClose, onSuccess, initialAsset }
               />
             </View>
           </View>
-        </Modal>
+        </Modal>}
 
         {/* Footer */}
         <View style={[naStyles.footer, { borderTopColor: colors.border, backgroundColor: colors.card }]}>
