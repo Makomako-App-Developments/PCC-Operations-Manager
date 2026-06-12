@@ -3,7 +3,7 @@ import {
 } from "drizzle-orm/pg-core";
 import { createInsertSchema, createSelectSchema } from "drizzle-zod";
 import { z } from "zod/v4";
-import { jobTypeEnum, jobStatusEnum, reactivePriorityEnum, reactiveJobStatusEnum, crewStatusEnum } from "./enums";
+import { jobTypeEnum, jobStatusEnum, reactivePriorityEnum, reactiveJobStatusEnum, crewStatusEnum, reactiveJobOriginEnum } from "./enums";
 import { assetsTable } from "./assets";
 import { teamsTable } from "./teams";
 import { usersTable } from "./users";
@@ -92,6 +92,7 @@ export const reactiveJobsTable = pgTable("reactive_jobs", {
   actualTimeMins:    integer("actual_time_mins"),
   notes:              text("notes"),
   pestPlantsPresent:  text("pest_plants_present"),
+  origin:             reactiveJobOriginEnum("origin"),
   createdAt:          timestamp("created_at").notNull().defaultNow(),
   updatedAt:          timestamp("updated_at").notNull().defaultNow(),
 }, (t) => [

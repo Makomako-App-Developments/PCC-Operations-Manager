@@ -110,3 +110,9 @@ export const infillJobStatusEnum = pgEnum("infill_job_status", [
   "completed",
   "cancelled",
 ]);
+
+export const reactiveJobOriginEnum = pgEnum("reactive_job_origin", [
+  "supervisor",
+  "field_worker",
+  "manager",
+]);

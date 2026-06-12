@@ -20,7 +20,7 @@ import {
   type ReactivePriority, type AssetStub, type TeamStub,
 } from "@/components/reactive-job-wizard";
 
-type SortCol = "site" | "description" | "priority" | "status" | "scheduledDate" | "team" | "time";
+type SortCol = "site" | "description" | "priority" | "status" | "scheduledDate" | "team" | "time" | "origin";
 type SortDir = "asc" | "desc";
 
 const PRIORITY_ORDER: Record<string, number> = { urgent: 0, high: 1, medium: 2, low: 3, standard: 2, routine: 3 };
@@ -190,6 +190,9 @@ export default function ReactiveJobs() {
           cmp = ta - tb;
           break;
         }
+        case "origin":
+          cmp = String(a.origin ?? "").localeCompare(String(b.origin ?? ""));
+          break;
       }
       return sortDir === "asc" ? cmp : -cmp;
     });
@@ -345,6 +348,7 @@ export default function ReactiveJobs() {
                   { col: "scheduledDate", label: "Scheduled" },
                   { col: "team",          label: "Team" },
                   { col: "time",          label: "Time (min)" },
+                  { col: "origin",        label: "Origin" },
                 ] as { col: SortCol; label: string }[]).map(({ col, label }) => (
                   <th
                     key={col}
@@ -425,6 +429,26 @@ export default function ReactiveJobs() {
                     {/* Time */}
                     <td className="px-4 py-3 text-gray-600 text-[12px] tabular-nums">
                       {(job.estimatedTimeMins as number | null) ?? <span className="text-gray-300">—</span>}
+                    </td>
+
+                    {/* Origin */}
+                    <td className="px-4 py-3">
+                      {(() => {
+                        const o = job.origin as string | null;
+                        if (!o) return <span className="text-gray-300 text-[12px]">—</span>;
+                        const cfg: Record<string, { label: string; color: string; bg: string }> = {
+                          manager:      { label: "Manager",      color: "#0f2a36", bg: "#e0f4f8" },
+                          supervisor:   { label: "Supervisor",   color: "#7c3aed", bg: "#ede9fe" },
+                          field_worker: { label: "Field Worker", color: "#b45309", bg: "#fef3c7" },
+                        };
+                        const c = cfg[o] ?? { label: o, color: "#6b7280", bg: "#f3f4f6" };
+                        return (
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full whitespace-nowrap"
+                            style={{ color: c.color, background: c.bg }}>
+                            {c.label}
+                          </span>
+                        );
+                      })()}
                     </td>
                   </tr>
                 );
@@ -553,6 +577,22 @@ export default function ReactiveJobs() {
                   >
                     {pConf.label}
                   </span>
+                  {(() => {
+                    const o = selectedJob.origin as string | null;
+                    if (!o) return null;
+                    const originCfg: Record<string, { label: string; color: string; bg: string }> = {
+                      manager:      { label: "Manager",      color: "#0f2a36", bg: "#e0f4f8" },
+                      supervisor:   { label: "Supervisor",   color: "#7c3aed", bg: "#ede9fe" },
+                      field_worker: { label: "Field Worker", color: "#b45309", bg: "#fef3c7" },
+                    };
+                    const oc = originCfg[o] ?? { label: o, color: "#6b7280", bg: "#f3f4f6" };
+                    return (
+                      <span className="text-[10px] font-bold px-2.5 py-1 rounded-full"
+                        style={{ color: oc.color, background: oc.bg }}>
+                        via {oc.label}
+                      </span>
+                    );
+                  })()}
                   {(selectedJob.raisedAt as string) && (
                     <span className="text-[10px] text-gray-400 bg-gray-50 px-2.5 py-1 rounded-full ml-auto">
                       Raised {format(new Date(selectedJob.raisedAt as string), "d MMM yyyy, h:mm a")}
