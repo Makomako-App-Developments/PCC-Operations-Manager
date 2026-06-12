@@ -9,6 +9,7 @@ import {
   ActivityIndicator,
   Alert,
   Image,
+  Linking,
   Platform,
   Pressable,
   RefreshControl,
@@ -35,6 +36,8 @@ interface QuotaItem {
   auditType: string;
   completed: boolean;
   suburb: string | null;
+  lat: number | null;
+  lng: number | null;
 }
 
 interface QuotaDetail {
@@ -150,24 +153,50 @@ function WeeklyQueueBanner({
                 <Text style={[bannerStyles.suburbLabel, { color: colors.primary }]}>{group.suburb}</Text>
                 <Text style={[bannerStyles.suburbCount, { color: colors.mutedForeground }]}>{group.items.length}</Text>
               </View>
-              {group.items.map((item) => (
-                <TouchableOpacity
-                  key={item.id}
-                  style={[bannerStyles.item, { borderTopColor: colors.border }]}
-                  onPress={() => onStartAudit(item.assetId, item.assetName)}
-                  activeOpacity={0.7}
-                >
-                  <View style={{ flex: 1 }}>
-                    <Text style={[bannerStyles.itemName, { color: colors.foreground }]} numberOfLines={1}>
-                      {item.assetName}
-                    </Text>
-                    <Text style={[bannerStyles.itemType, { color: item.auditType === "completed-works" ? colors.primary : "#7c3aed" }]}>
-                      {item.auditType === "completed-works" ? "Completed Works" : "Outcomes Based"}
-                    </Text>
-                  </View>
-                  <Feather name="navigation" size={18} color={item.auditType === "completed-works" ? colors.primary : "#7c3aed"} />
-                </TouchableOpacity>
-              ))}
+              {group.items.map((item) => {
+                const iconColor = item.auditType === "completed-works" ? colors.primary : "#7c3aed";
+                const hasCoords = item.lat != null && item.lng != null;
+                const openMaps = () => {
+                  if (!hasCoords) return;
+                  const label = encodeURIComponent(item.assetName);
+                  const url = Platform.select({
+                    ios:     `maps:?q=${label}&ll=${item.lat},${item.lng}`,
+                    android: `geo:${item.lat},${item.lng}?q=${item.lat},${item.lng}(${label})`,
+                    default: `https://www.google.com/maps/dir/?api=1&destination=${item.lat},${item.lng}`,
+                  });
+                  Linking.openURL(url!);
+                };
+                return (
+                  <TouchableOpacity
+                    key={item.id}
+                    style={[bannerStyles.item, { borderTopColor: colors.border }]}
+                    onPress={() => onStartAudit(item.assetId, item.assetName)}
+                    activeOpacity={0.7}
+                  >
+                    <View style={{ flex: 1 }}>
+                      <Text style={[bannerStyles.itemName, { color: colors.foreground }]} numberOfLines={1}>
+                        {item.assetName}
+                      </Text>
+                      <Text style={[bannerStyles.itemType, { color: iconColor }]}>
+                        {item.auditType === "completed-works" ? "Completed Works" : "Outcomes Based"}
+                      </Text>
+                    </View>
+                    <TouchableOpacity
+                      onPress={openMaps}
+                      hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                      style={[
+                        bannerStyles.navButton,
+                        { borderColor: iconColor + "33", backgroundColor: iconColor + "12" },
+                        !hasCoords && { opacity: 0.3 },
+                      ]}
+                      activeOpacity={0.6}
+                      disabled={!hasCoords}
+                    >
+                      <Feather name="navigation" size={15} color={iconColor} />
+                    </TouchableOpacity>
+                  </TouchableOpacity>
+                );
+              })}
             </View>
           ))}
         </View>
@@ -242,6 +271,14 @@ const bannerStyles = StyleSheet.create({
   },
   itemName: { fontFamily: "Inter_500Medium", fontSize: 13 },
   itemType: { fontFamily: "Inter_400Regular", fontSize: 11, marginTop: 1 },
+  navButton: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    borderWidth: 1,
+    alignItems: "center",
+    justifyContent: "center",
+  },
   allDoneRow: {
     flexDirection: "row",
     alignItems: "center",

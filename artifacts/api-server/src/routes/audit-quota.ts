@@ -197,6 +197,8 @@ async function loadQuotaDetail(quotaId: string) {
       sourceJobId: auditQuotaItemsTable.sourceJobId,
       auditId:     auditQuotaItemsTable.auditId,
       suburb:      assetsTable.suburb,
+      lat:         assetsTable.lat,
+      lng:         assetsTable.lng,
     })
     .from(auditQuotaItemsTable)
     .leftJoin(assetsTable, eq(auditQuotaItemsTable.assetId, assetsTable.id))
@@ -224,6 +226,8 @@ async function loadQuotaDetail(quotaId: string) {
       auditId:     i.auditId,
       completed:   !!i.auditId,
       suburb:      i.suburb ?? null,
+      lat:         i.lat != null ? parseFloat(String(i.lat)) : null,
+      lng:         i.lng != null ? parseFloat(String(i.lng)) : null,
     })),
   };
 }
