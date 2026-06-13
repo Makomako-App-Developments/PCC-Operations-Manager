@@ -2309,19 +2309,27 @@ function MulchingTab({
                         style={{ color: st.color, background: st.bg }}>{st.label}</span>
                     </td>
                     <td className="px-4 py-3 text-right" onClick={e => e.stopPropagation()}>
-                      <div className="flex items-center justify-end gap-0.5">
-                        {isDraft && (
+                      {r.status !== "completed" && (
+                        <div className="flex items-center justify-end gap-0.5">
                           <Button
                             variant="ghost" size="sm"
                             className="h-8 w-8 p-0 hover:bg-[#e0f7fb]"
                             style={{ color: JOB_STATUS.scheduled.color }}
-                            title="Review & schedule"
-                            onClick={() => setReviewTarget(r)}
+                            title={isDraft ? "Review & schedule" : "Edit schedule"}
+                            onClick={() => isDraft ? setReviewTarget(r) : setSelectedMulch(r)}
                           >
                             <CalendarCheck className="w-4 h-4" />
                           </Button>
-                        )}
-                      </div>
+                          <Button
+                            variant="ghost" size="sm"
+                            className="h-8 w-8 p-0 text-gray-400 hover:text-red-600 hover:bg-red-50"
+                            title="Mark as not required"
+                            onClick={() => (updateMulch.mutateAsync as any)({ id: r.id, data: { status: "not_required" } }).then(handleRefresh)}
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </Button>
+                        </div>
+                      )}
                     </td>
                   </tr>
                 );

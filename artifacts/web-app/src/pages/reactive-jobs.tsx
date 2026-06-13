@@ -8,9 +8,10 @@ import {
 } from "@workspace/api-client-react";
 import { useQueryClient, useQuery } from "@tanstack/react-query";
 import {
-  Zap, Plus, Search, X, MapPin, Clock, Calendar,
+  Zap, Plus, Search, X, MapPin, Clock, Calendar, CalendarCheck, Trash2,
   ChevronUp, ChevronDown, ChevronsUpDown, FileText, User, Hash, AlertTriangle,
 } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { useSearch } from "wouter";
 import { useToast } from "@/hooks/use-toast";
 import {
@@ -358,6 +359,7 @@ export default function ReactiveJobs() {
                     {label}<SortIcon col={col} />
                   </th>
                 ))}
+                <th className="px-4 py-3 border-b border-gray-100 text-right text-[11px] font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap">Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -449,6 +451,29 @@ export default function ReactiveJobs() {
                           </span>
                         );
                       })()}
+                    </td>
+
+                    {/* Actions */}
+                    <td className="px-4 py-3" onClick={e => e.stopPropagation()}>
+                      {job.status !== "completed" && job.status !== "cancelled" && (
+                        <div className="flex items-center justify-end gap-0.5">
+                          <Button
+                            variant="ghost" size="sm"
+                            className="h-8 w-8 p-0 hover:bg-[#e0f7fb]"
+                            style={{ color: "#2563eb" }}
+                            title="Open to schedule"
+                            onClick={() => setSelectedJob(job)}>
+                            <CalendarCheck className="w-4 h-4" />
+                          </Button>
+                          <Button
+                            variant="ghost" size="sm"
+                            className="h-8 w-8 p-0 text-gray-400 hover:text-red-600 hover:bg-red-50"
+                            title="Cancel job"
+                            onClick={() => updateMutation.mutate({ id: job.id as string, data: { status: "cancelled" } })}>
+                            <Trash2 className="w-4 h-4" />
+                          </Button>
+                        </div>
+                      )}
                     </td>
                   </tr>
                 );
