@@ -316,8 +316,8 @@ export default function ReactiveJobs() {
             <AlertTriangle className="w-4 h-4 text-amber-500" />
           </div>
           <div className="min-w-0">
-            <p className="text-[11px] font-medium text-gray-400 uppercase tracking-wide leading-tight">Raised</p>
-            <p className="text-xl font-black mt-0.5 text-amber-500">{statusCounts.raised}</p>
+            <p className="text-[11px] font-medium text-gray-400 uppercase tracking-wide leading-tight">Draft</p>
+            <p className="text-xl font-black mt-0.5" style={{ color: NAVY }}>{statusCounts.raised}</p>
           </div>
         </div>
         <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4 flex items-start gap-3">
@@ -326,7 +326,7 @@ export default function ReactiveJobs() {
           </div>
           <div className="min-w-0">
             <p className="text-[11px] font-medium text-gray-400 uppercase tracking-wide leading-tight">Assigned</p>
-            <p className="text-xl font-black mt-0.5 text-blue-500">{statusCounts.assigned}</p>
+            <p className="text-xl font-black mt-0.5" style={{ color: NAVY }}>{statusCounts.assigned}</p>
           </div>
         </div>
         <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4 flex items-start gap-3">
@@ -335,7 +335,7 @@ export default function ReactiveJobs() {
           </div>
           <div className="min-w-0">
             <p className="text-[11px] font-medium text-gray-400 uppercase tracking-wide leading-tight">Completed</p>
-            <p className="text-xl font-black mt-0.5 text-green-600">{statusCounts.completed}</p>
+            <p className="text-xl font-black mt-0.5" style={{ color: NAVY }}>{statusCounts.completed}</p>
           </div>
         </div>
       </div>
@@ -363,26 +363,7 @@ export default function ReactiveJobs() {
 
       {/* Filters */}
       <div className="bg-white border-b px-8 py-3 flex items-center gap-3 flex-shrink-0 flex-wrap">
-        <div className="flex gap-1 flex-wrap">
-          {(["all", "raised", "assigned", "in_progress", "completed", "cancelled"] as const).map(s => {
-            const label = s === "all" ? "All" : (STATUS_CONFIG[s]?.label ?? s);
-            const count = statusCounts[s] ?? 0;
-            return (
-              <button
-                key={s}
-                onClick={() => setStatusFilter(s)}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${statusFilter === s ? "text-white" : "text-gray-500 hover:bg-gray-50"}`}
-                style={statusFilter === s ? { background: BRAND } : {}}
-              >
-                {label}
-                <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-bold ${statusFilter === s ? "bg-white/20 text-white" : "bg-gray-100 text-gray-500"}`}>
-                  {count}
-                </span>
-              </button>
-            );
-          })}
-        </div>
-        <div className="ml-auto flex items-center gap-2 flex-wrap">
+        <div className="flex items-center gap-2 flex-wrap">
           <div className="relative">
             <Search className="w-3.5 h-3.5 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
             <Input
