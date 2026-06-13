@@ -167,11 +167,15 @@ router.post("/realloc-full-team", requireAuth, async (req, res) => {
     `);
     const jobsUpdated = (jobResult as any).rowCount ?? 0;
 
+    // Null out any audit references (FK), then delete the team row
+    await db.execute(sql`UPDATE audits SET team_id = NULL WHERE team_id = ${FULL_TEAM_ID}`);
+    await db.execute(sql`DELETE FROM teams WHERE id = ${FULL_TEAM_ID}`);
+
     res.json({
       ok: true,
       assetsUpdated,
       jobsUpdated,
-      message: `Reallocated ${assetsUpdated} assets and ${jobsUpdated} pending jobs from Full Team → Mobile 2`,
+      message: `Reallocated ${assetsUpdated} assets and ${jobsUpdated} pending jobs from Full Team → Mobile 2; Full Team deleted`,
     });
   } catch (err: any) {
     console.error("[admin/realloc-full-team]", err);
