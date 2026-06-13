@@ -152,13 +152,27 @@ router.post("/realloc-full-team", requireAuth, async (req, res) => {
   const MOBILE2_ID   = "5456bd91-2512-47f9-9e77-82e44d0b06f6";
 
   try {
-    const result = await db.execute(sql`
+    const assetResult = await db.execute(sql`
       UPDATE assets
       SET team_id = ${MOBILE2_ID}
       WHERE team_id = ${FULL_TEAM_ID}
     `);
-    const rowsUpdated = (result as any).rowCount ?? (result as any).count ?? 0;
-    res.json({ ok: true, rowsUpdated, message: `Reallocated ${rowsUpdated} assets from Full Team → Mobile 2` });
+    const assetsUpdated = (assetResult as any).rowCount ?? 0;
+
+    const jobResult = await db.execute(sql`
+      UPDATE jobs
+      SET team_id = ${MOBILE2_ID}
+      WHERE team_id = ${FULL_TEAM_ID}
+      AND status = 'pending'
+    `);
+    const jobsUpdated = (jobResult as any).rowCount ?? 0;
+
+    res.json({
+      ok: true,
+      assetsUpdated,
+      jobsUpdated,
+      message: `Reallocated ${assetsUpdated} assets and ${jobsUpdated} pending jobs from Full Team → Mobile 2`,
+    });
   } catch (err: any) {
     console.error("[admin/realloc-full-team]", err);
     res.status(500).json({ error: err.message });
