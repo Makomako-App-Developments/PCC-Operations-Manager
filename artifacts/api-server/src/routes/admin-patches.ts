@@ -13,7 +13,8 @@ const router = Router();
  * Requires manager role.
  */
 router.post("/patch-areas", requireAuth, async (req, res) => {
-  if ((req as any).user?.role !== "manager") {
+  const role = req.auth?.role;
+  if (role !== "manager" && role !== "administrator") {
     res.status(403).json({ error: "Manager role required" });
     return;
   }
@@ -141,7 +142,8 @@ router.post("/patch-areas", requireAuth, async (req, res) => {
  * Requires manager role.
  */
 router.post("/realloc-full-team", requireAuth, async (req, res) => {
-  if ((req as any).user?.role !== "manager" && (req as any).user?.role !== "administrator") {
+  const role = req.auth?.role;
+  if (role !== "manager" && role !== "administrator") {
     res.status(403).json({ error: "Manager role required" });
     return;
   }
