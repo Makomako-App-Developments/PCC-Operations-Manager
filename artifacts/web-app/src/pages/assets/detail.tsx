@@ -1067,7 +1067,7 @@ function MulchingTab({ assetId, assetName }: { assetId: string; assetName: strin
   }[s] ?? s);
   const statusColor = (s: string) => ({
     due: "bg-amber-100 text-amber-700",
-    draft: "bg-violet-100 text-violet-700",
+    draft: "bg-gray-100 text-gray-500",
     scheduled: "bg-blue-100 text-blue-700",
     completed: "bg-green-100 text-green-700",
     not_required: "bg-gray-100 text-gray-500",
@@ -1144,7 +1144,7 @@ function MulchingTab({ assetId, assetName }: { assetId: string; assetName: strin
                   <div
                     key={rec.id}
                     onClick={isDraft ? () => navigate(`/programmes?tab=mulching&review=${rec.id}`) : undefined}
-                    className={`bg-white border rounded-xl px-4 py-3 flex items-center gap-3 shadow-sm transition-colors ${isDraft ? "border-violet-200 cursor-pointer hover:bg-violet-50" : "border-gray-100"}`}
+                    className={`bg-white border rounded-xl px-4 py-3 flex items-center gap-3 shadow-sm transition-colors ${isDraft ? "border-gray-200 cursor-pointer hover:bg-gray-50" : "border-gray-100"}`}
                   >
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">

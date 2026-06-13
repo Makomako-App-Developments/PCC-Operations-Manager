@@ -2207,7 +2207,7 @@ function MulchingTab({
                           </span>
                         )}
                       </p>
-                      {isDraft && !r.alignedJobDate && <p className="text-[10px] text-violet-500 mt-0.5">Draft — awaiting review</p>}
+                      {isDraft && !r.alignedJobDate && <p className="text-[10px] text-gray-400 mt-0.5">Draft — awaiting review</p>}
                       {isDraft && r.alignedJobDate && (
                         <p className="text-[10px] mt-0.5 font-semibold" style={{ color: BRAND }}>
                           📅 Aligned to maintenance visit · {fmt(r.alignedJobDate)}
