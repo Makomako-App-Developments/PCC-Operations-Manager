@@ -348,7 +348,7 @@ export default function ReactiveJobs() {
             <Zap className="w-5 h-5 text-amber-500" />
             Unscheduled Work
           </h1>
-          <p className="text-xs text-gray-400">Ad-hoc requests, emergency work, and community issues</p>
+          <p className="text-xs text-gray-400">Ad-hoc requests, emergency work</p>
         </div>
         <div className="flex items-center gap-2">
           <button
