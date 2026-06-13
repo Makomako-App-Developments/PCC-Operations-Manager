@@ -604,7 +604,6 @@ export default function CompletedWorks() {
                   {[
                     { key: "scheduledDate", label: "Date", align: "left", nowrap: true },
                     { key: "assetName", label: "Site", align: "left", nowrap: false },
-                    { key: "assetDescription", label: "Description", align: "left", nowrap: false },
                     { key: "gardenType", label: "Specification", align: "left", nowrap: true },
                     { key: "ward", label: "Ward", align: "left", nowrap: false },
                     { key: "teamName", label: "Team", align: "left", nowrap: false },
@@ -649,9 +648,9 @@ export default function CompletedWorks() {
                       </td>
                       <td className="px-4 py-2.5">
                         <div className="font-medium text-gray-900 truncate max-w-[220px]">{row.assetName ?? "—"}</div>
-                      </td>
-                      <td className="px-4 py-2.5">
-                        <div className="text-xs text-gray-600 truncate max-w-[260px]">{row.assetDescription ?? "—"}</div>
+                        {row.assetDescription && (
+                          <div className="text-[10px] text-gray-400 mt-0.5 truncate max-w-[220px]">{row.assetDescription}</div>
+                        )}
                       </td>
                       <td className="px-4 py-2.5 whitespace-nowrap">
                         <span className="text-xs text-gray-600">

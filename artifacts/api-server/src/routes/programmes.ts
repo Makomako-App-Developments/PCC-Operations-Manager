@@ -278,6 +278,7 @@ router.get("/mulching-records", requireAuth, async (req, res) => {
       id:                  mulchingRecordsTable.id,
       assetId:             mulchingRecordsTable.assetId,
       assetName:           assetsTable.name,
+      assetDescription:    assetsTable.description,
       scheduledDate:       mulchingRecordsTable.scheduledDate,
       completedDate:       mulchingRecordsTable.completedDate,
       volumeM3:            mulchingRecordsTable.volumeM3,
