@@ -1459,15 +1459,7 @@ export default function Schedule() {
       <header className="bg-white border-b px-8 py-4 flex items-center justify-between sticky top-0 z-10 flex-shrink-0">
         <div>
           <h1 className="text-lg font-semibold text-gray-900">Maintenance Scheduler</h1>
-          <p className="text-xs text-gray-400">
-            {view === "gantt"
-              ? `${format(ganttStart, "d MMM")} – ${format(addWeeks(ganttStart, GANTT_WEEK_COUNT - 1), "d MMM yyyy")} · Porirua City Gardens`
-              : view === "gantt-day"
-              ? `${format(ganttDayStart, "d MMM")} – ${format(addDays(ganttDayStart, GANTT_DAY_COUNT - 1), "d MMM yyyy")} · Porirua City Gardens`
-              : weekData
-                ? `Week of ${format(new Date(weekData.weekStart + "T00:00:00"), "d MMM")} – ${format(new Date(weekData.weekEnd + "T00:00:00"), "d MMM yyyy")}`
-                : "Loading..."}
-          </p>
+          <p className="text-xs text-gray-400">List of jobs in date &amp; geosequence order</p>
         </div>
 
         <div className="flex items-center gap-3">
