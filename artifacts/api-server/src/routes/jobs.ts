@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { db, jobsTable, reactiveJobsTable, insertJobSchema, insertReactiveJobSchema, assetsTable, teamsTable, usersTable, jobTeamCompletionsTable, jobTaskSkipReasonsTable, mulchingRecordsTable } from "@workspace/db";
+import { db, jobsTable, reactiveJobsTable, insertJobSchema, insertReactiveJobSchema, assetsTable, teamsTable, usersTable, jobTeamCompletionsTable, jobTaskSkipReasonsTable, mulchingRecordsTable, jobPhotosTable } from "@workspace/db";
 import { eq, and, inArray, or, gte, lte, ilike, desc } from "drizzle-orm";
 import { z } from "zod";
 import { requireAuth, requireRole } from "../middlewares/auth";
@@ -7,6 +7,7 @@ import { validateBody, validateQuery } from "../middlewares/validate";
 import { auditLog } from "../lib/audit";
 import { FREQ_DAYS } from "../lib/crew-utils";
 import { notifyTeam } from "../lib/push-notifications";
+import { objectStorageClient } from "../lib/objectStorage";
 
 const router = Router();
 
@@ -145,6 +146,7 @@ router.get("/jobs/:id/pdf", requireAuth, async (req, res) => {
       id:               jobsTable.id,
       jobType:          jobsTable.jobType,
       scheduledDate:    jobsTable.scheduledDate,
+      startedAt:        jobsTable.startedAt,
       completedAt:      jobsTable.completedAt,
       actualTimeMins:   jobsTable.actualTimeMins,
       estimatedTimeMins: jobsTable.estimatedTimeMins,
@@ -177,6 +179,28 @@ router.get("/jobs/:id/pdf", requireAuth, async (req, res) => {
     }
   }
 
+  // Fetch photos
+  const photos = await db
+    .select({ id: jobPhotosTable.id, blobUrl: jobPhotosTable.blobUrl, caption: jobPhotosTable.caption })
+    .from(jobPhotosTable)
+    .where(eq(jobPhotosTable.jobId, id));
+
+  // Download image buffers from GCS (images only, skip docs/PDFs)
+  const IMAGE_EXTS = /\.(jpe?g|png|webp|gif)$/i;
+  const bucketId = process.env["DEFAULT_OBJECT_STORAGE_BUCKET_ID"] ?? "";
+  const photoBuffers: { buf: Buffer; caption: string | null }[] = [];
+  for (const p of photos) {
+    if (!IMAGE_EXTS.test(p.blobUrl)) continue;
+    try {
+      // blobUrl format: /api/uploads/<objectName>  e.g. /api/uploads/uploads/123-uuid.jpg
+      const objectName = p.blobUrl.replace(/^\/api\/uploads\//, "");
+      const [buf] = await objectStorageClient.bucket(bucketId).file(objectName).download();
+      photoBuffers.push({ buf: buf as Buffer, caption: p.caption });
+    } catch {
+      // skip unreadable photos
+    }
+  }
+
   const PDFDocument = (await import("pdfkit")).default;
   const doc = new PDFDocument({ margin: 50, size: "A4" });
   const siteName = row.assetName ?? "Unknown Site";
@@ -187,6 +211,14 @@ router.get("/jobs/:id/pdf", requireAuth, async (req, res) => {
   const TEAL = "#00AECD";
   const NAVY = "#0f2a36";
   const GREY = "#6b7280";
+
+  function addFooter() {
+    doc.fontSize(8).font("Helvetica").fillColor(GREY)
+      .text(
+        `Generated on ${new Date().toLocaleDateString("en-NZ", { day: "numeric", month: "long", year: "numeric" })} — Porirua City Council Gardens Manager`,
+        50, doc.page.height - 60, { align: "center", width: 495 },
+      );
+  }
 
   // ── Header ────────────────────────────────────────────────────────────────
   doc.fontSize(20).font("Helvetica-Bold").fillColor(NAVY).text("Completed Works Record", 50, 50);
@@ -269,10 +301,16 @@ router.get("/jobs/:id/pdf", requireAuth, async (req, res) => {
     return min === 0 ? `${h}h` : `${h}h ${min}m`;
   }
 
-  const timeRows: [string, string][] = [
+  const startedStr = row.startedAt
+    ? new Date(row.startedAt).toLocaleTimeString("en-NZ", { hour: "2-digit", minute: "2-digit", hour12: true })
+    : null;
+
+  const timeRows: [string, string][] = [];
+  if (startedStr) timeRows.push(["Start time", startedStr]);
+  timeRows.push(
     ["Scheduled", formatMinsStr(row.estimatedTimeMins)],
     ["Actual", formatMinsStr(row.actualTimeMins)],
-  ];
+  );
   if (row.actualTimeMins != null && row.estimatedTimeMins != null) {
     const v = row.actualTimeMins - row.estimatedTimeMins;
     const vStr = v === 0 ? "On time" : v > 0 ? `+${formatMinsStr(v)} over` : `${formatMinsStr(Math.abs(v))} under`;
@@ -297,13 +335,49 @@ router.get("/jobs/:id/pdf", requireAuth, async (req, res) => {
     doc.fontSize(10).font("Helvetica").fillColor("#374151").text(row.notes, 50, doc.y, { width: 495 });
   }
 
-  // ── Footer ────────────────────────────────────────────────────────────────
-  doc.fontSize(8).font("Helvetica").fillColor(GREY)
-    .text(
-      `Generated on ${new Date().toLocaleDateString("en-NZ", { day: "numeric", month: "long", year: "numeric" })} — Porirua City Council Gardens Manager`,
-      50, doc.page.height - 60, { align: "center", width: 495 },
-    );
+  // ── Photos ────────────────────────────────────────────────────────────────
+  if (photoBuffers.length > 0) {
+    doc.moveDown(0.5);
+    doc.moveTo(50, doc.y).lineTo(545, doc.y).strokeColor("#e5e7eb").stroke();
+    doc.moveDown(0.6);
+    doc.fontSize(12).font("Helvetica-Bold").fillColor(TEAL).text(`Photos (${photoBuffers.length})`, 50, doc.y);
+    doc.moveDown(0.6);
 
+    const IMG_W = 240;
+    const IMG_H = 170;
+    const GAP   = 15;
+    const COLS  = 2;
+
+    for (let i = 0; i < photoBuffers.length; i++) {
+      const col = i % COLS;
+      const isNewRow = col === 0;
+
+      // Check page space: need room for image + optional caption
+      if (isNewRow && doc.y + IMG_H + 30 > doc.page.height - 80) {
+        addFooter();
+        doc.addPage();
+        doc.y = 50;
+      }
+
+      const x = col === 0 ? 50 : 50 + IMG_W + GAP;
+      const y = doc.y;
+
+      doc.image(photoBuffers[i].buf, x, y, { width: IMG_W, height: IMG_H, fit: [IMG_W, IMG_H] });
+
+      if (photoBuffers[i].caption) {
+        doc.fontSize(8).font("Helvetica").fillColor(GREY)
+          .text(photoBuffers[i].caption!, x, y + IMG_H + 3, { width: IMG_W });
+      }
+
+      // After placing right-hand column (or last photo), advance y
+      if (col === COLS - 1 || i === photoBuffers.length - 1) {
+        doc.y = y + IMG_H + (photoBuffers[i].caption ? 18 : 8) + GAP;
+      }
+    }
+  }
+
+  // ── Footer ────────────────────────────────────────────────────────────────
+  addFooter();
   doc.end();
 });
 
