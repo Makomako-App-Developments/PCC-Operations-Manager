@@ -3195,7 +3195,7 @@ export default function Programmes() {
                         <tr className="border-b border-gray-100 bg-gray-50">
                           {([
                             { key: "assetName",       label: "Site name" },
-                            { key: "assessmentNotes",  label: "Description" },
+                            { key: "assessmentNotes",  label: "Job details" },
                             { key: "totalPlants",      label: "Plants" },
                             { key: "status",           label: "Status" },
                             { key: "plannedDate",      label: "Scheduled Date" },

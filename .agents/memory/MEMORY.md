@@ -7,5 +7,6 @@
 - [Artifact path conflicts](artifact-path-conflicts.md) — Expo's broad service paths (/node_modules/, /assets/) hijack sibling web-app requests on the main proxy; narrow to previewPath only.
 - [Photo storage — GCS not local disk](photo-storage-gcs.md) — photos use multer memoryStorage + GCS upload; Express 5 wildcard *splat returns array, join it.
 - [React Compiler TDZ bug](react-compiler-tdz.md) — babel-plugin-react-compiler auto-discovered by babel-preset-expo caused TDZ crash in production; disable with 'react-compiler':false in babel.config.js.
+- [Asset description always shown](asset-description-always-shown.md) — site name must always have asset description subtitle so same-name gardens are distinguishable; pattern: semibold name + text-[10px] text-gray-400 subtitle.
 - [RN Web Modal portal always mounts children](rnweb-modal-portal.md) — React Native Web Modal renders children into a DOM portal even when visible=false; autoFocus or other mount-time side effects fire immediately → React error #300. Fix: conditionally mount with {condition && <Modal visible ...>}.
 - [Supervisor teamId — schedule API and unstable-native-tabs](supervisor-crash-lessons.md) — two bugs that crashed supervisors on login; {} vs [] and missing Badge export.
