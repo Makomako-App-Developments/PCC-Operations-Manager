@@ -328,11 +328,11 @@ function DailyGanttView({
                                 const isMulching    = job.jobType === "mulching";
                                 const isInfill      = job.jobType === "infill_planting";
                                 const isUnscheduled = job.jobType === "unscheduled";
-                                const MULCH_COLOR   = "#92400e";
+                                const MULCH_COLOR   = "#6b4f2a";
                                 const INFILL_COLOR  = "#166534";
                                 const UNSCHED_COLOR = "#c2410c";
                                 const bg = done          ? "#10b981"
-                                         : isMulching    ? "#fef3c7"
+                                         : isMulching    ? "#f5f0eb"
                                          : isInfill      ? "#f0fdf4"
                                          : isUnscheduled ? "#fff7ed"
                                          : overdue       ? "#ef4444"
@@ -342,7 +342,7 @@ function DailyGanttView({
                                                : isInfill && !done      ? INFILL_COLOR
                                                : isUnscheduled && !done ? UNSCHED_COLOR
                                                : "white";
-                                const borderCol = isMulching && !done    ? "#fde68a"
+                                const borderCol = isMulching && !done    ? "#c4a882"
                                                : isInfill && !done      ? "#86efac"
                                                : isUnscheduled && !done ? "#fed7aa"
                                                : "transparent";
@@ -998,18 +998,18 @@ function WeekView({
                               const isUnscheduled = job.jobType === "unscheduled";
                               const displayTime   = job.estimatedTimeMins ?? job.serviceTimeMins;
 
-                              const MULCH_COLOR   = "#92400e";
+                              const MULCH_COLOR   = "#6b4f2a";
                               const INFILL_COLOR  = "#166534";
                               const UNSCHED_COLOR = "#c2410c";
                               const dotBg     = done           ? "#d1fae5"
-                                              : isMulching    && !done ? "#fef3c7"
+                                              : isMulching    && !done ? "#f5f0eb"
                                               : isInfill      && !done ? "#f0fdf4"
                                               : isUnscheduled && !done ? "#fff7ed"
                                               : inProg        ? color + "22"
                                               : overdue       ? "#fee2e2"
                                               : "#f1f5f9";
                               const dotBorder = done           ? "#a7f3d0"
-                                              : isMulching    && !done ? "#fde68a"
+                                              : isMulching    && !done ? "#c4a882"
                                               : isInfill      && !done ? "#86efac"
                                               : isUnscheduled && !done ? "#fed7aa"
                                               : inProg        ? color
@@ -1028,7 +1028,7 @@ function WeekView({
                                   key={job.id}
                                   onClick={() => onJobClick(job)}
                                   className={`flex items-start gap-3 py-2 px-1 rounded-xl cursor-pointer transition-colors hover:bg-gray-50 ${
-                                    isMulching    && !done ? "bg-amber-50/20 hover:bg-amber-50/40" :
+                                    isMulching    && !done ? "bg-stone-100/40 hover:bg-stone-100/70" :
                                     isInfill      && !done ? "bg-green-50/20 hover:bg-green-50/40" :
                                     isUnscheduled && !done ? "bg-orange-50/20 hover:bg-orange-50/40" :
                                     crewNone    ? "bg-red-50/40 hover:bg-red-50/60" :
@@ -1041,7 +1041,7 @@ function WeekView({
                                     className="w-6 h-6 rounded-full flex-shrink-0 flex items-center justify-center text-[10px] font-bold border-2 z-10"
                                     style={{ borderColor: dotBorder, background: dotBg, color: dotColor }}
                                   >
-                                    {done ? <CheckCircle2 className="w-3 h-3" style={{ color: "#10b981" }} /> : idx + 1}
+                                    {done ? <CheckCircle2 className="w-3 h-3" style={{ color: isMulching ? "#6b4f2a" : "#10b981" }} /> : idx + 1}
                                   </div>
 
                                   {/* Job info */}
@@ -1051,7 +1051,7 @@ function WeekView({
                                     </p>
                                     <p className="text-[10px] text-gray-400 mt-0.5 truncate">{(job as any).assetDesc}</p>
                                     <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
-                                      {isMulching  && <span className="text-[9px] px-1 py-0.5 rounded font-semibold" style={{ background: "#fef3c7", color: "#92400e" }}>Mulching</span>}
+                                      {isMulching  && <span className="text-[9px] px-1 py-0.5 rounded font-semibold" style={{ background: "#f5f0eb", color: "#6b4f2a" }}>Mulching</span>}
                                       {isInfill    && <span className="text-[9px] px-1 py-0.5 rounded font-semibold" style={{ background: "#f0fdf4", color: "#166534" }}>Infill</span>}
                                       {overdue     && <span className="text-[9px] px-1 py-0.5 rounded bg-red-100 text-red-700 font-semibold">Overdue</span>}
                                       {crewNone    && <span className="text-[9px] px-1 py-0.5 rounded bg-red-100 text-red-700 font-semibold flex items-center gap-0.5"><XCircle className="w-2 h-2" />No crew</span>}
@@ -2378,8 +2378,8 @@ export default function Schedule() {
           {selectedJob && selectedJob.jobType === "mulching" ? (
             /* ── Mulching job — read-only info panel ── */
             <div className="flex-1 overflow-y-auto py-5 space-y-5">
-              <div className="rounded-lg px-4 py-3 border flex items-center gap-2 text-sm font-medium" style={{ background: "#fef3c7", borderColor: "#fde68a", color: "#92400e" }}>
-                <span className="text-base">🌱</span>
+              <div className="rounded-lg px-4 py-3 border flex items-center gap-2 text-sm font-medium" style={{ background: "#f5f0eb", borderColor: "#c4a882", color: "#6b4f2a" }}>
+                <Layers className="w-4 h-4 flex-shrink-0" />
                 Mulching job
               </div>
               <dl className="space-y-3 text-sm">
@@ -2408,7 +2408,7 @@ export default function Schedule() {
                 )}
                 <div className="flex justify-between">
                   <dt className="text-gray-500 font-medium">Status</dt>
-                  <dd className="font-semibold capitalize" style={{ color: selectedJob.status === "completed" ? "#10b981" : "#92400e" }}>
+                  <dd className="font-semibold capitalize" style={{ color: selectedJob.status === "completed" ? "#10b981" : "#6b4f2a" }}>
                     {selectedJob.status === "completed" ? "Completed" : "Scheduled"}
                   </dd>
                 </div>
