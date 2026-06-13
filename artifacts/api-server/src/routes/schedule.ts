@@ -124,10 +124,13 @@ async function buildAbsenceMap(
 //   contiguous while allowing minor date shifts to maintain flow. When a day
 //   fills up, remaining eligible assets spill to the next working day.
 //
-// ±3-day window rule:
+// Forward-flex window rule:
 //   An asset is "eligible" for a given day if:
-//     naturalDueDate - 3 ≤ candidateDay ≤ naturalDueDate + 3
+//     naturalDueDate ≤ candidateDay ≤ naturalDueDate + 3
 //   AND it has not already been placed this cycle.
+//   Sites are NEVER placed before their due date (no backward flex).
+//   This ensures a site always lands on the same day regardless of which
+//   date range you generate — carry-queue overflow only goes forward.
 // ─────────────────────────────────────────────────────────────────────────────
 const DUE_DATE_FLEX_DAYS = 3;
 
@@ -391,17 +394,19 @@ router.post(
         //    whose due date window includes today)
         const newEligible: { asset: AssetRow; dueDate: string }[] = [];
         for (const sched of schedules) {
-          // Find the first unplaced due date that is eligible for today
+          // Find the first unplaced due date that is eligible for today.
+          // Eligibility starts ON the due date (no early placement) so that a
+          // site's scheduled day is the same regardless of which range you
+          // generate — the carry queue then handles forward overflow only.
           for (const dueDate of sched.dueDates) {
             if (sched.placedDates.has(dueDate)) continue;
-            const earliest = addDays(dueDate, -DUE_DATE_FLEX_DAYS);
-            const latest   = addDays(dueDate,  DUE_DATE_FLEX_DAYS);
+            const earliest = dueDate;                          // never place before due date
+            const latest   = addDays(dueDate, DUE_DATE_FLEX_DAYS);
             if (today >= earliest && today <= latest) {
               newEligible.push({ asset: sched.asset, dueDate });
               break; // only one due-date cycle per asset per pass
             }
-            // If today is before the window opens for this due date, stop checking
-            // further due dates for this asset (they'll be even later)
+            // If today is before the due date, stop — later due dates are even further out
             if (today < earliest) break;
           }
         }
@@ -434,18 +439,19 @@ router.post(
             tid, today, membersByTeam, absenceMap, asset.serviceTimeMins, standardCrewSize,
           );
 
+          // Forward-flex window end: the latest day this site can be placed.
+          // We never carry beyond this boundary — overflow defers to the next
+          // generation run (which picks it up via the epoch-anchored due date).
+          const windowEnd = addDays(dueDate, DUE_DATE_FLEX_DAYS);
+
           if (dayFull) {
-            // Day is full — always carry to next working day (capacity always wins;
-            // no force-placement based on overdue status to prevent pile-up)
-            if (nextWorkDay <= addDays(toDate, DUE_DATE_FLEX_DAYS)) {
+            // Day is full — carry to next working day if still within window
+            if (nextWorkDay <= windowEnd && nextWorkDay <= addDays(toDate, DUE_DATE_FLEX_DAYS)) {
               if (!carryQueue.has(teamKey)) carryQueue.set(teamKey, []);
               carryQueue.get(teamKey)!.push({ asset, dueDate });
               jobsSpilled++;
-            } else {
-              // No more working days in range — place on last day
-              placeJob(asset, today, estMins, cs);
-              sched.placedDates.add(dueDate);
             }
+            // else: window expired or end of range — defer to next generation
             continue;
           }
 
@@ -457,15 +463,13 @@ router.post(
               dayFull = true;
             }
           } else {
-            // Doesn't fit — carry to next working day
-            if (nextWorkDay <= addDays(toDate, DUE_DATE_FLEX_DAYS)) {
+            // Doesn't fit — carry to next working day if still within window
+            if (nextWorkDay <= windowEnd && nextWorkDay <= addDays(toDate, DUE_DATE_FLEX_DAYS)) {
               if (!carryQueue.has(teamKey)) carryQueue.set(teamKey, []);
               carryQueue.get(teamKey)!.push({ asset, dueDate });
               jobsSpilled++;
-            } else {
-              placeJob(asset, today, estMins, cs);
-              sched.placedDates.add(dueDate);
             }
+            // else: window expired or end of range — defer to next generation
             dayFull = true;
           }
         }
