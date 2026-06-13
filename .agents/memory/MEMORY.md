@@ -10,3 +10,4 @@
 - [Asset description always shown](asset-description-always-shown.md) — site name must always have asset description subtitle so same-name gardens are distinguishable; pattern: semibold name + text-[10px] text-gray-400 subtitle.
 - [RN Web Modal portal always mounts children](rnweb-modal-portal.md) — React Native Web Modal renders children into a DOM portal even when visible=false; autoFocus or other mount-time side effects fire immediately → React error #300. Fix: conditionally mount with {condition && <Modal visible ...>}.
 - [Supervisor teamId — schedule API and unstable-native-tabs](supervisor-crash-lessons.md) — two bugs that crashed supervisors on login; {} vs [] and missing Badge export.
+- [Stat card filter-awareness pattern](stat-card-filter-awareness.md) — use a *BaseFiltered var (search/team/date only, no status) for per-status counts; declare it AFTER the sorted source to avoid TDZ.
