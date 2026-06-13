@@ -1,6 +1,5 @@
 import { Router } from "express";
 import path from "path";
-import { fileURLToPath } from "url";
 import { db, jobsTable, reactiveJobsTable, insertJobSchema, insertReactiveJobSchema, assetsTable, teamsTable, usersTable, jobTeamCompletionsTable, jobTaskSkipReasonsTable, mulchingRecordsTable, jobPhotosTable } from "@workspace/db";
 import { eq, and, inArray, or, gte, lte, ilike, desc } from "drizzle-orm";
 import { z } from "zod";
@@ -11,8 +10,12 @@ import { FREQ_DAYS } from "../lib/crew-utils";
 import { notifyTeam } from "../lib/push-notifications";
 import { objectStorageClient } from "../lib/objectStorage";
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const LOGO_PATH = path.resolve(__dirname, "../assets/porirua-city-logo.png");
+const LOGO_PATH = path.resolve(
+  process.cwd(),
+  process.env.NODE_ENV === "production"
+    ? "artifacts/api-server/src/assets/porirua-city-logo.png"
+    : "src/assets/porirua-city-logo.png"
+);
 
 const router = Router();
 
