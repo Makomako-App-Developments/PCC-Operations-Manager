@@ -312,6 +312,9 @@ export default function Audits() {
   const [, navigate] = useLocation();
   const [search, setSearch] = useState("");
   const [teamFilter, setTeamFilter] = useState("all");
+  const [dateRange, setDateRange] = useState<"all" | "this-week" | "this-month" | "custom">("all");
+  const [customFrom, setCustomFrom] = useState("");
+  const [customTo, setCustomTo] = useState("");
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<"results" | "this-week">("results");
   const { toast } = useToast();
@@ -354,7 +357,29 @@ export default function Audits() {
     const name = getAssetName(a.assetId).toLowerCase();
     const matchSearch = !search || name.includes(search.toLowerCase());
     const matchTeam   = teamFilter === "all" || a.teamId === teamFilter;
-    return matchSearch && matchTeam;
+
+    let matchDate = true;
+    const auditDate = new Date(a.conductedAt ?? a.createdAt);
+    const today = new Date();
+    if (dateRange === "this-week") {
+      const dow = today.getDay(); // 0=Sun
+      const weekStart = new Date(today);
+      weekStart.setDate(today.getDate() - ((dow + 6) % 7)); // Monday
+      weekStart.setHours(0, 0, 0, 0);
+      matchDate = auditDate >= weekStart;
+    } else if (dateRange === "this-month") {
+      const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
+      matchDate = auditDate >= monthStart;
+    } else if (dateRange === "custom") {
+      if (customFrom) matchDate = matchDate && auditDate >= new Date(customFrom);
+      if (customTo) {
+        const end = new Date(customTo);
+        end.setHours(23, 59, 59, 999);
+        matchDate = matchDate && auditDate <= end;
+      }
+    }
+
+    return matchSearch && matchTeam && matchDate;
   });
 
   const { highTeam, lowTeam, topKpi, topSpec } = useMemo(() => {
@@ -506,7 +531,7 @@ export default function Audits() {
         </div>
       ) : (
         <>
-          <div className="px-8 py-3 border-b bg-white flex gap-3 flex-shrink-0 mt-0">
+          <div className="px-8 py-3 border-b bg-white flex flex-wrap gap-3 items-center flex-shrink-0 mt-0">
             <div className="relative flex-1 max-w-xs">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
               <Input
@@ -527,6 +552,43 @@ export default function Audits() {
                 ))}
               </SelectContent>
             </Select>
+            {/* Date range chips */}
+            <div className="flex gap-1.5">
+              {(["all", "this-week", "this-month", "custom"] as const).map((opt) => {
+                const label = opt === "all" ? "All dates" : opt === "this-week" ? "This week" : opt === "this-month" ? "This month" : "Custom";
+                const active = dateRange === opt;
+                return (
+                  <button
+                    key={opt}
+                    onClick={() => setDateRange(opt)}
+                    className={`h-9 px-3 rounded-md text-sm font-medium border transition-colors ${
+                      active
+                        ? "bg-[#00AECD] text-white border-[#00AECD]"
+                        : "bg-white text-gray-600 border-gray-200 hover:bg-gray-50"
+                    }`}
+                  >
+                    {label}
+                  </button>
+                );
+              })}
+            </div>
+            {dateRange === "custom" && (
+              <>
+                <input
+                  type="date"
+                  value={customFrom}
+                  onChange={e => setCustomFrom(e.target.value)}
+                  className="h-9 rounded-md border border-input bg-background px-3 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#00AECD] focus:ring-offset-0"
+                />
+                <span className="text-xs text-gray-400">to</span>
+                <input
+                  type="date"
+                  value={customTo}
+                  onChange={e => setCustomTo(e.target.value)}
+                  className="h-9 rounded-md border border-input bg-background px-3 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#00AECD] focus:ring-offset-0"
+                />
+              </>
+            )}
           </div>
 
           <div className="flex-1 overflow-auto p-8">
