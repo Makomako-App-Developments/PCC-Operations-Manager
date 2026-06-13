@@ -30,9 +30,9 @@ import { format, parseISO } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
 import {
   Sprout, Plus, Layers, X, Search, ChevronRight,
-  Calendar, Users, Leaf, FileText, AlertTriangle, CheckCircle2,
+  Calendar, CalendarCheck, Users, Leaf, FileText, AlertTriangle, CheckCircle2,
   Download, ChevronDown, ChevronUp, Package, List, Map as MapIcon, ExternalLink,
-  Ruler, History, ClipboardList, Zap, SkipForward, Trash2, Clock, Check, ChevronsUpDown, Scissors,
+  Ruler, History, ClipboardList, Zap, SkipForward, Trash2, Clock, Check, ChevronsUpDown, Scissors, Pencil,
 } from "lucide-react";
 import { useLocation, useSearch } from "wouter";
 import {
@@ -3198,27 +3198,32 @@ export default function Programmes() {
                                 }
                               </td>
                               <td className="px-4 py-3" onClick={e => e.stopPropagation()}>
-                                <div className="flex items-center gap-1.5 justify-end">
+                                <div className="flex items-center gap-0.5 justify-end">
                                   {canSchedule && (
-                                    <button
-                                      onClick={() => setSelectedJobId(job.id)}
-                                      className="text-[11px] font-semibold px-2.5 py-1 rounded-lg transition-colors"
-                                      style={{ color: JOB_STATUS.scheduled.color, background: JOB_STATUS.scheduled.bg }}>
-                                      Schedule
-                                    </button>
+                                    <Button
+                                      variant="ghost" size="sm"
+                                      className="h-8 w-8 p-0 hover:bg-[#e0f7fb]"
+                                      style={{ color: JOB_STATUS.scheduled.color }}
+                                      title="Schedule job"
+                                      onClick={() => setSelectedJobId(job.id)}>
+                                      <CalendarCheck className="w-4 h-4" />
+                                    </Button>
                                   )}
-                                  <button
-                                    onClick={() => setSelectedJobId(job.id)}
-                                    className="text-[11px] font-semibold px-2.5 py-1 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors">
-                                    Edit
-                                  </button>
+                                  <Button
+                                    variant="ghost" size="sm"
+                                    className="h-8 w-8 p-0 text-gray-500 hover:text-gray-700"
+                                    title="Edit job"
+                                    onClick={() => setSelectedJobId(job.id)}>
+                                    <Pencil className="w-4 h-4" />
+                                  </Button>
                                   {canCancel && (
-                                    <button
-                                      onClick={() => updateJob.mutate({ id: job.id, data: { status: "cancelled" } })}
-                                      className="text-[11px] font-semibold px-2.5 py-1 rounded-lg transition-colors"
-                                      style={{ color: "#dc2626", background: "#fef2f2" }}>
-                                      Cancel
-                                    </button>
+                                    <Button
+                                      variant="ghost" size="sm"
+                                      className="h-8 w-8 p-0 text-gray-400 hover:text-red-600 hover:bg-red-50"
+                                      title="Cancel job"
+                                      onClick={() => updateJob.mutate({ id: job.id, data: { status: "cancelled" } })}>
+                                      <X className="w-4 h-4" />
+                                    </Button>
                                   )}
                                 </div>
                               </td>
