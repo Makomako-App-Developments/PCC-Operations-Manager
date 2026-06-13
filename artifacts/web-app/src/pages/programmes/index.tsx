@@ -3056,19 +3056,6 @@ export default function Programmes() {
           )}
         </div>
 
-        {/* Sub-page nav */}
-        <div className="flex items-end gap-0 mt-4 border-b border-gray-200">
-          <button
-            onClick={() => navigate("/programmes/infill")}
-            className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors flex items-center gap-1.5 ${isInfill ? "border-[#00AECD] text-[#00AECD]" : "border-transparent text-gray-500 hover:text-gray-700"}`}>
-            <Sprout className="w-4 h-4" /> Infill Planting
-          </button>
-          <button
-            onClick={() => navigate("/programmes/mulching")}
-            className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors flex items-center gap-1.5 ${!isInfill ? "border-[#00AECD] text-[#00AECD]" : "border-transparent text-gray-500 hover:text-gray-700"}`}>
-            <Layers className="w-4 h-4" /> Mulching
-          </button>
-        </div>
       </div>
 
       {/* ── Infill Planting ── */}
