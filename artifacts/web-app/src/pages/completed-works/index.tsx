@@ -1,12 +1,14 @@
 import React, { useState, useMemo, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useSearch } from "wouter";
-import { Search, X, Clock, Camera, FileText, ChevronRight, CheckCircle2, ArrowUpRight, ArrowDownRight, Minus, ChevronsUpDown, ChevronUp, ChevronDown, MapPin, Maximize2, Download } from "lucide-react";
+import { Search, X, Clock, Camera, FileText, ChevronRight, CheckCircle2, ArrowUpRight, ArrowDownRight, Minus, ChevronsUpDown, ChevronUp, ChevronDown, MapPin, Maximize2, Download, Loader2 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Checkbox } from "@/components/ui/checkbox";
 
 // ─── types ───────────────────────────────────────────────────────────────────
 
@@ -275,6 +277,16 @@ export default function CompletedWorks() {
   const [sortKey, setSortKey] = useState<string>("scheduledDate");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
 
+  // ── CSV export dialog state ───────────────────────────────────────────────
+  const [exportOpen, setExportOpen] = useState(false);
+  const [exportFrom, setExportFrom] = useState(() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-01`;
+  });
+  const [exportTo, setExportTo] = useState(() => new Date().toISOString().slice(0, 10));
+  const [exportTeamIds, setExportTeamIds] = useState<Set<string>>(new Set());
+  const [exportLoading, setExportLoading] = useState(false);
+
   // Compute from/to from dateRange preset
   const computedFrom = (() => {
     if (dateRange === "this-week") {
@@ -407,34 +419,76 @@ export default function CompletedWorks() {
 
   const hasFilters = search || teamId !== "all" || gardenType !== "all" || dateRange !== "all";
 
-  function handleExportCSV() {
-    const headers = ["Date", "Site", "Description", "Specification", "Ward", "Suburb", "Team", "Estimated (min)", "Actual (min)", "Variance (min)", "Status", "Notes"];
-    const csvRows = rows.map(r => {
-      const est = r.estimatedTimeMins ?? 0;
-      const act = r.actualTimeMins ?? est;
-      return [
-        r.scheduledDate ?? "",
-        r.assetName ?? "",
-        r.assetDescription ?? "",
-        GARDEN_TYPE_LABELS[r.gardenType ?? ""] ?? r.gardenType ?? "",
-        r.ward ?? "",
-        r.suburb ?? "",
-        r.teamName ?? "",
-        est,
-        act,
-        act - est,
-        r.crewStatus,
-        (r.notes ?? "").replace(/"/g, '""'),
-      ];
+  async function handleExportCSV() {
+    setExportLoading(true);
+    try {
+      const params = new URLSearchParams({ limit: "10000" });
+      if (exportFrom) params.set("from", exportFrom);
+      if (exportTo)   params.set("to", exportTo);
+
+      const res = await fetch(`/api/completed-works?${params}`, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to fetch data");
+      const json: { data: CompletedWork[] } = await res.json();
+
+      const allRows = json.data;
+      const filtered = exportTeamIds.size > 0
+        ? allRows.filter(r => r.teamId != null && exportTeamIds.has(r.teamId))
+        : allRows;
+
+      const headers = ["Date", "Site", "Description", "Specification", "Ward", "Suburb", "Team", "Estimated (min)", "Actual (min)", "Variance (min)", "Status", "Notes"];
+      const csvRows = filtered.map(r => {
+        const est = r.estimatedTimeMins ?? 0;
+        const act = r.actualTimeMins ?? est;
+        return [
+          r.scheduledDate ?? "",
+          r.assetName ?? "",
+          r.assetDescription ?? "",
+          GARDEN_TYPE_LABELS[r.gardenType ?? ""] ?? r.gardenType ?? "",
+          WARD_LABELS[r.ward ?? ""] ?? r.ward ?? "",
+          r.suburb ?? "",
+          r.isAllTeams ? "All Teams" : (r.teamName ?? ""),
+          est,
+          act,
+          act - est,
+          r.crewStatus,
+          (r.notes ?? "").replace(/"/g, '""'),
+        ];
+      });
+
+      const csv = [headers, ...csvRows].map(row => row.map(v => `"${v}"`).join(",")).join("\n");
+      const blob = new Blob([csv], { type: "text/csv" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      const fromLabel = exportFrom || "all";
+      const toLabel = exportTo || "all";
+      a.download = `completed-works-${fromLabel}-to-${toLabel}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+      setExportOpen(false);
+    } finally {
+      setExportLoading(false);
+    }
+  }
+
+  function openExportDialog() {
+    setExportTeamIds(new Set());
+    setExportOpen(true);
+  }
+
+  function toggleExportTeam(id: string) {
+    setExportTeamIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
     });
-    const csv = [headers, ...csvRows].map(row => row.map(v => `"${v}"`).join(",")).join("\n");
-    const blob = new Blob([csv], { type: "text/csv" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `completed-works-${new Date().toISOString().slice(0, 10)}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
+  }
+
+  function toggleAllTeams(checked: boolean) {
+    if (checked) {
+      setExportTeamIds(new Set());
+    }
   }
 
   return (
@@ -454,7 +508,7 @@ export default function CompletedWorks() {
                 <X className="w-3.5 h-3.5" /> Clear filters
               </Button>
             )}
-            <Button variant="outline" size="sm" onClick={handleExportCSV} className="gap-1.5 h-9 text-sm">
+            <Button variant="outline" size="sm" onClick={openExportDialog} className="gap-1.5 h-9 text-sm">
               <Download className="w-4 h-4" /> Export CSV
             </Button>
           </div>
@@ -692,6 +746,88 @@ export default function CompletedWorks() {
       {selectedJob && (
         <DetailPanel job={selectedJob} onClose={() => setSelectedJob(null)} />
       )}
+
+      {/* ── CSV Export Dialog ──────────────────────────────────────────────── */}
+      <Dialog open={exportOpen} onOpenChange={setExportOpen}>
+        <DialogContent className="sm:max-w-[420px]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Download className="w-4 h-4 text-[#00AECD]" />
+              Export Completed Works
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-5 py-2">
+            {/* Date range */}
+            <div className="space-y-2">
+              <p className="text-sm font-medium text-gray-700">Date range</p>
+              <div className="flex items-center gap-2">
+                <input
+                  type="date"
+                  value={exportFrom}
+                  onChange={e => setExportFrom(e.target.value)}
+                  className="flex-1 h-9 rounded-md border border-input bg-background px-3 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#00AECD] focus:ring-offset-0"
+                />
+                <span className="text-xs text-gray-400 flex-shrink-0">to</span>
+                <input
+                  type="date"
+                  value={exportTo}
+                  onChange={e => setExportTo(e.target.value)}
+                  className="flex-1 h-9 rounded-md border border-input bg-background px-3 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#00AECD] focus:ring-offset-0"
+                />
+              </div>
+            </div>
+
+            {/* Team selection */}
+            <div className="space-y-2">
+              <p className="text-sm font-medium text-gray-700">Teams</p>
+              <div className="border border-gray-200 rounded-lg divide-y divide-gray-100 max-h-48 overflow-y-auto">
+                {/* All teams option */}
+                <label className="flex items-center gap-3 px-3 py-2.5 cursor-pointer hover:bg-gray-50 transition-colors">
+                  <Checkbox
+                    id="export-team-all"
+                    checked={exportTeamIds.size === 0}
+                    onCheckedChange={(checked) => toggleAllTeams(!!checked)}
+                  />
+                  <span className="text-sm text-gray-700 font-medium">All teams</span>
+                </label>
+                {teams.map(t => (
+                  <label key={t.id} className="flex items-center gap-3 px-3 py-2.5 cursor-pointer hover:bg-gray-50 transition-colors">
+                    <Checkbox
+                      id={`export-team-${t.id}`}
+                      checked={exportTeamIds.has(t.id)}
+                      onCheckedChange={() => toggleExportTeam(t.id)}
+                    />
+                    <span className="text-sm text-gray-700">{t.name}</span>
+                  </label>
+                ))}
+              </div>
+              {exportTeamIds.size > 0 && (
+                <p className="text-xs text-[#00AECD]">
+                  {exportTeamIds.size} team{exportTeamIds.size !== 1 ? "s" : ""} selected
+                </p>
+              )}
+            </div>
+          </div>
+
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setExportOpen(false)} disabled={exportLoading}>
+              Cancel
+            </Button>
+            <Button
+              onClick={handleExportCSV}
+              disabled={exportLoading || !exportFrom || !exportTo}
+              className="bg-[#00AECD] hover:bg-[#0099b8] text-white gap-2"
+            >
+              {exportLoading ? (
+                <><Loader2 className="w-4 h-4 animate-spin" /> Exporting…</>
+              ) : (
+                <><Download className="w-4 h-4" /> Export CSV</>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
