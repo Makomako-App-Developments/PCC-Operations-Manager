@@ -9,6 +9,7 @@ import { z } from "zod";
 import { requireAuth, requireRole } from "../middlewares/auth";
 import { validateBody, validateQuery } from "../middlewares/validate";
 import { FREQ_DAYS, calcCrewAdjustment, loadSystemSettings, buildAbsenceDataForTeamDate, type CrewStatus } from "../lib/crew-utils";
+import { checkDayCapacity } from "../lib/day-capacity";
 
 const router = Router();
 
@@ -35,14 +36,41 @@ function isWeekend(dateStr: string): boolean {
 }
 
 /** Advance n calendar days, skipping weekends. */
-function addWorkingDays(dateStr: string, n: number): string {
+function addWorkingDays(dateStr: string, n: number, skipDates?: Set<string>): string {
   let d = dateStr;
   let added = 0;
   while (added < n) {
     d = addDays(d, 1);
-    if (!isWeekend(d)) added++;
+    if (!isWeekend(d) && (!skipDates || !skipDates.has(d))) added++;
   }
+  // Advance past any trailing weekend or team non-working days
+  while (isWeekend(d) || (skipDates && skipDates.has(d))) d = addDays(d, 1);
   return d;
+}
+
+/** Returns a set of dates in [fromDate, toDate] where ALL team members are fully absent. */
+async function buildTeamNonWorkingDays(
+  teamId: string,
+  fromDate: string,
+  toDate: string,
+): Promise<Set<string>> {
+  const members = await db
+    .select({ personName: teamMembersTable.personName })
+    .from(teamMembersTable)
+    .where(eq(teamMembersTable.teamId, teamId));
+
+  const personNames = members.map(m => m.personName).filter(Boolean) as string[];
+  if (personNames.length === 0) return new Set();
+
+  const absenceMap = await buildAbsenceMap(fromDate, toDate, personNames);
+  const nonWorkingDays = new Set<string>();
+
+  for (const [date, absentSet] of absenceMap) {
+    if (personNames.every(name => absentSet.has(name))) {
+      nonWorkingDays.add(date);
+    }
+  }
+  return nonWorkingDays;
 }
 
 /** Move dateStr forward to the nearest weekday (no-op if already a weekday). */
@@ -1202,6 +1230,7 @@ router.get(
     const [settings] = await db.select().from(systemSettingsTable).limit(1);
     const productiveTimeMins = settings?.productiveTimeMins ?? 390;
 
+    // Detailed job list (for display — regular maintenance only)
     const jobs = await db
       .select({
         id:                jobsTable.id,
@@ -1227,10 +1256,24 @@ router.get(
       )
       .orderBy(sql`${assetsTable.routeOrder} NULLS LAST`, assetsTable.name);
 
-    const totalMins = jobs.reduce(
-      (sum, j) => sum + (j.estimatedTimeMins ?? j.serviceTimeMins),
-      0,
-    );
+    // Total minutes across ALL active job types (maintenance + infill + mulching)
+    const { computeTotalScheduledMins: computeTotal } = await import("../lib/day-capacity");
+    const totalMins = await computeTotal(teamId, date);
+
+    // Count pending scheduled (regular maintenance) jobs on or after this date for the team.
+    // This is what the push-forward endpoint would shift if triggered.
+    const [pendingCountRow] = await db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(jobsTable)
+      .where(
+        and(
+          eq(jobsTable.teamId, teamId),
+          gte(jobsTable.scheduledDate, date),
+          eq(jobsTable.status, "pending"),
+          eq(jobsTable.jobType, "scheduled"),
+        ),
+      );
+    const pendingScheduledFromCount = pendingCountRow?.count ?? 0;
 
     res.json({
       date,
@@ -1239,7 +1282,164 @@ router.get(
       totalScheduledMins: totalMins,
       utilizationPct:     Math.round((totalMins / productiveTimeMins) * 100),
       jobs,
+      pendingScheduledFromCount,
     });
+  },
+);
+
+// ─────────────────────────────────────────────────────────────────────────────
+// POST /api/schedule/push-forward
+// Shifts all pending regular maintenance (jobType="scheduled") jobs for a team
+// on or after fromDate forward by deltaDays working days. Only touches pending
+// scheduled jobs — never infill, mulching, reactive/contingency, completed, or
+// in-progress jobs.
+// ─────────────────────────────────────────────────────────────────────────────
+const pushForwardBodySchema = z.object({
+  teamId:    z.string().uuid(),
+  fromDate:  z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  deltaDays: z.number().int().min(1).max(30).default(1),
+});
+
+router.post(
+  "/schedule/push-forward",
+  requireAuth,
+  requireRole("manager", "supervisor"),
+  validateBody(pushForwardBodySchema),
+  async (req, res) => {
+    const { teamId, fromDate, deltaDays } = res.locals.body as z.infer<typeof pushForwardBodySchema>;
+
+    // Only shift pending scheduled (regular maintenance) jobs for this team on or after fromDate.
+    const pendingJobs = await db
+      .select({
+        id:            jobsTable.id,
+        scheduledDate: sql<string>`to_char(${jobsTable.scheduledDate}, 'YYYY-MM-DD')`,
+      })
+      .from(jobsTable)
+      .where(
+        and(
+          eq(jobsTable.teamId, teamId),
+          gte(jobsTable.scheduledDate, fromDate),
+          eq(jobsTable.status, "pending"),
+          eq(jobsTable.jobType, "scheduled"),
+        ),
+      );
+
+    if (pendingJobs.length === 0) {
+      res.json({ affectedCount: 0, fromDate, toDate: fromDate });
+      return;
+    }
+
+    // Compute team non-working days (days where entire team is absent) for the
+    // relevant window so we skip those in addition to weekends.
+    const latestCurrentDate = pendingJobs.reduce(
+      (max, j) => (j.scheduledDate > max ? j.scheduledDate : max),
+      fromDate,
+    );
+    // Upper bound: latest job date + deltaDays * 3 + 60 days (generous buffer)
+    const windowEnd = addDays(latestCurrentDate, deltaDays * 3 + 60);
+    const teamNonWorkingDays = await buildTeamNonWorkingDays(teamId, fromDate, windowEnd);
+
+    // Compute new date for each job (shift by deltaDays working days).
+    // The shift is computed from each job's current scheduledDate so the
+    // relative spacing between jobs is fully preserved.
+    const updates: { id: string; newDate: string }[] = [];
+    for (const job of pendingJobs) {
+      const newDate = addWorkingDays(job.scheduledDate, deltaDays, teamNonWorkingDays);
+      updates.push({ id: job.id, newDate });
+    }
+
+    // Batch update — group by new date to minimise round-trips
+    const byDate = new Map<string, string[]>();
+    for (const { id, newDate } of updates) {
+      if (!byDate.has(newDate)) byDate.set(newDate, []);
+      byDate.get(newDate)!.push(id);
+    }
+    for (const [newDate, ids] of byDate) {
+      await db
+        .update(jobsTable)
+        .set({ scheduledDate: newDate, updatedAt: new Date() })
+        .where(inArray(jobsTable.id, ids));
+    }
+
+    const newDates = updates.map(u => u.newDate).sort();
+    res.json({
+      affectedCount: updates.length,
+      fromDate,
+      toDate: newDates[newDates.length - 1] ?? fromDate,
+    });
+  },
+);
+
+// ─────────────────────────────────────────────────────────────────────────────
+// POST /api/schedule/insert-job
+// Creates an infill planting or mulching job without the species-line
+// requirement of the programmes flow. Performs server-side capacity detection
+// before inserting; returns { capacityConflict: true, capacity: {...} } when
+// the day would be over capacity and force is not set.
+// ─────────────────────────────────────────────────────────────────────────────
+const insertJobBodySchema = z.object({
+  jobType:       z.enum(["infill", "mulch"]),
+  assetId:       z.string().uuid(),
+  teamId:        z.string().uuid().nullable().optional(),
+  date:          z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  estimatedMins: z.number().int().positive(),
+  notes:         z.string().nullable().optional(),
+  force:         z.boolean().default(false),
+});
+
+router.post(
+  "/schedule/insert-job",
+  requireAuth,
+  requireRole("manager", "supervisor"),
+  validateBody(insertJobBodySchema),
+  async (req, res) => {
+    const { jobType, assetId, teamId, date, estimatedMins, notes, force } =
+      res.locals.body as z.infer<typeof insertJobBodySchema>;
+
+    // ── Server-side capacity check (all active job types for this team/day) ─
+    if (!force && teamId) {
+      const conflict = await checkDayCapacity(teamId, date, estimatedMins);
+      if (conflict) {
+        res.json({ capacityConflict: true, capacity: conflict });
+        return;
+      }
+    }
+
+    // ── Create the job ─────────────────────────────────────────────────────
+    if (jobType === "infill") {
+      // assessmentDate is required by the DB schema; use today as a placeholder
+      // since this is a schedule-first (not assess-first) flow.
+      const today = new Date().toISOString().slice(0, 10);
+      const [created] = await db
+        .insert(infillJobsTable)
+        .values({
+          assetId,
+          assignedTeamId:  teamId ?? null,
+          assessmentDate:  today,
+          assessmentNotes: notes ?? null,
+          plannedDate:     date,
+          estimatedMins,
+          status:          "scheduled",
+          assessedById:    req.auth!.userId,
+        })
+        .returning();
+
+      res.status(201).json({ jobType: "infill", ...created });
+    } else {
+      const [created] = await db
+        .insert(mulchingRecordsTable)
+        .values({
+          assetId,
+          assignedTeamId: teamId ?? null,
+          scheduledDate:  date,
+          estimatedMins,
+          notes:          notes ?? null,
+          status:         "scheduled",
+        })
+        .returning();
+
+      res.status(201).json({ jobType: "mulch", ...created });
+    }
   },
 );
 

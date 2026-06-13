@@ -30,7 +30,7 @@ import {
   ChevronLeft, ChevronRight, ChevronDown, Route, CheckCircle2, Clock,
   CalendarRange, CalendarDays, Calendar, LayoutGrid, CheckCircle, AlertTriangle, XCircle,
   Zap, RotateCcw, PlayCircle, Search, X, Users, MapPin, FileText, Paperclip,
-  Layers, Sprout, Printer,
+  Layers, Sprout, Printer, ArrowRight, Plus,
 } from "lucide-react";
 import { ReactiveJobWizard, STATUS_CONFIG as RJ_STATUS_CONFIG, PRIORITY_CONFIG as RJ_PRIORITY_CONFIG_WIZ } from "@/components/reactive-job-wizard";
 import type { AssetStub, TeamStub } from "@/components/reactive-job-wizard";
@@ -1151,6 +1151,24 @@ export default function Schedule() {
   const [printWeekStart, setPrintWeekStart]   = useState<Date>(() => startOfWeek(new Date(), { weekStartsOn: 1 }));
   const [printLoading, setPrintLoading]       = useState(false);
 
+  // ── Insert Infill / Mulch job ────────────────────────────────────────────
+  const [insertOpen, setInsertOpen]         = useState(false);
+  const [insertType, setInsertType]         = useState<"infill" | "mulch">("infill");
+  const [insertSearch, setInsertSearch]     = useState("");
+  const [insertAsset, setInsertAsset]       = useState<any | null>(null);
+  const [insertDate, setInsertDate]         = useState("");
+  const [insertMins, setInsertMins]         = useState("");
+  const [insertNotes, setInsertNotes]       = useState("");
+  const [insertLoading, setInsertLoading]   = useState(false);
+
+  // Push-forward confirmation
+  const [pushOpen, setPushOpen]             = useState(false);
+  const [pushCapacity, setPushCapacity]     = useState<any | null>(null);
+  const [pushDelta, setPushDelta]           = useState(1);
+  const [pushLoading, setPushLoading]       = useState(false);
+  // Pending job creation payload stored while push dialog is open
+  const [pendingInsert, setPendingInsert]   = useState<any | null>(null);
+
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
@@ -1405,7 +1423,7 @@ export default function Schedule() {
   // ── Urgent job ──────────────────────────────────────────────────────────────
   const { data: allAssets } = useListAssets(
     { limit: 2000 },
-    { query: { enabled: urgentOpen || wizardOpen } },
+    { query: { enabled: urgentOpen || wizardOpen || insertOpen } },
   );
 
   const createJob = useCreateJob({
@@ -1515,6 +1533,160 @@ export default function Schedule() {
     a.name.toLowerCase().includes(urgentSearch.toLowerCase()),
   ).slice(0, 8);
 
+  const insertFilteredAssets = (allAssets?.data ?? []).filter((a: any) =>
+    insertSearch.length < 2 ? false :
+    a.name.toLowerCase().includes(insertSearch.toLowerCase()),
+  ).slice(0, 8);
+
+  const openInsertJob = () => {
+    setInsertType("infill");
+    setInsertSearch("");
+    setInsertAsset(null);
+    setInsertDate(format(new Date(), "yyyy-MM-dd"));
+    setInsertMins("");
+    setInsertNotes("");
+    setInsertOpen(true);
+  };
+
+  const jobTypeLabel = insertType === "infill" ? "Infill" : "Mulching";
+
+  /**
+   * Call POST /api/schedule/insert-job.
+   * When force=false the server checks capacity; it returns { capacityConflict: true, capacity: {...} }
+   * if the day would be over-capacity. With force=true it always creates.
+   */
+  const callInsertJobApi = async (force: boolean): Promise<{ ok: boolean; conflict?: any }> => {
+    if (!insertAsset) return { ok: false };
+    const estMins = parseInt(insertMins);
+    if (isNaN(estMins) || estMins <= 0) return { ok: false };
+
+    const r = await fetch("/api/schedule/insert-job", {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        jobType:       insertType,
+        assetId:       insertAsset.id,
+        teamId:        insertAsset.teamId ?? null,
+        date:          insertDate,
+        estimatedMins: estMins,
+        notes:         insertNotes || null,
+        force,
+      }),
+    });
+
+    if (!r.ok) return { ok: false };
+    const data = await r.json();
+
+    if (data.capacityConflict) {
+      return { ok: false, conflict: data.capacity };
+    }
+    return { ok: true };
+  };
+
+  /** Submit the insert job form — server checks capacity, shows push dialog if needed. */
+  const handleInsertSubmit = async () => {
+    if (!insertAsset || !insertDate || !insertMins) return;
+    const estMins = parseInt(insertMins);
+    if (isNaN(estMins) || estMins <= 0) return;
+
+    setInsertLoading(true);
+    try {
+      const result = await callInsertJobApi(false);
+      if (result.conflict) {
+        // Server detected a capacity conflict — transition to push-forward dialog
+        setPushCapacity(result.conflict);
+        setPendingInsert({
+          teamId: insertAsset.teamId ?? null,
+          date:   insertDate,
+          estMins,
+          notes:  insertNotes,
+        });
+        setPushDelta(1);
+        setInsertOpen(false);
+        setPushOpen(true);
+      } else if (result.ok) {
+        setInsertOpen(false);
+        toast({
+          title: `${jobTypeLabel} job added`,
+          description: `Scheduled for ${format(new Date(insertDate + "T00:00:00"), "d MMM yyyy")}.`,
+        });
+        queryClient.invalidateQueries({ queryKey: ["/api/schedule/week"] });
+        queryClient.invalidateQueries({ queryKey: ["/api/schedule/range"] });
+      } else {
+        toast({ title: "Failed to add job", variant: "destructive" });
+      }
+    } catch {
+      toast({ title: "Failed to add job", variant: "destructive" });
+    } finally {
+      setInsertLoading(false);
+    }
+  };
+
+  /** "Push & Place" — call push-forward then force-create the job. */
+  const handlePushAndPlace = async () => {
+    if (!pendingInsert || !pushCapacity) return;
+    setPushLoading(true);
+    try {
+      const pushRes = await fetch("/api/schedule/push-forward", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          teamId:    pendingInsert.teamId,
+          fromDate:  pendingInsert.date,
+          deltaDays: pushDelta,
+        }),
+      });
+      if (!pushRes.ok) throw new Error("Push failed");
+      const pushData = await pushRes.json();
+
+      // Force-create: capacity conflict already shown; user approved the push
+      const result = await callInsertJobApi(true);
+      if (result.ok) {
+        setPushOpen(false);
+        setPendingInsert(null);
+        toast({
+          title: `${jobTypeLabel} job placed`,
+          description: `${pushData.affectedCount} regular maintenance job${pushData.affectedCount !== 1 ? "s" : ""} pushed forward by ${pushDelta} working day${pushDelta !== 1 ? "s" : ""}.`,
+        });
+        queryClient.invalidateQueries({ queryKey: ["/api/schedule/week"] });
+        queryClient.invalidateQueries({ queryKey: ["/api/schedule/range"] });
+      } else {
+        toast({ title: "Push succeeded but job creation failed", variant: "destructive" });
+      }
+    } catch {
+      toast({ title: "Failed to push schedule", variant: "destructive" });
+    } finally {
+      setPushLoading(false);
+    }
+  };
+
+  /** "Place Anyway" — force-create the job without pushing. */
+  const handlePlaceAnyway = async () => {
+    if (!pendingInsert) return;
+    setPushLoading(true);
+    try {
+      const result = await callInsertJobApi(true);
+      if (result.ok) {
+        setPushOpen(false);
+        setPendingInsert(null);
+        toast({
+          title: `${jobTypeLabel} job placed (over capacity)`,
+          description: `Scheduled for ${format(new Date(pendingInsert.date + "T00:00:00"), "d MMM yyyy")}.`,
+        });
+        queryClient.invalidateQueries({ queryKey: ["/api/schedule/week"] });
+        queryClient.invalidateQueries({ queryKey: ["/api/schedule/range"] });
+      } else {
+        toast({ title: "Failed to add job", variant: "destructive" });
+      }
+    } catch {
+      toast({ title: "Failed to add job", variant: "destructive" });
+    } finally {
+      setPushLoading(false);
+    }
+  };
+
   const openGenerateDialog = () => {
     setGenFrom(defaultFrom(currentDate));
     setGenTo(defaultTo(currentDate));
@@ -1617,6 +1789,16 @@ export default function Schedule() {
           >
             <Printer className="w-4 h-4" />
             Print Schedule
+          </Button>
+
+          <Button
+            size="sm"
+            variant="outline"
+            className="gap-2 bg-white border-green-500 text-green-700 hover:bg-green-50"
+            onClick={openInsertJob}
+          >
+            <Plus className="w-4 h-4" />
+            Insert Infill / Mulch
           </Button>
 
           <Button
@@ -1922,6 +2104,257 @@ export default function Schedule() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* ── Insert Infill / Mulch Job Dialog ──────────────────────────────── */}
+      <Dialog open={insertOpen} onOpenChange={open => { if (!open) setInsertOpen(false); }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Plus className="w-4 h-4 text-green-600" />
+              Insert Infill / Mulch Job
+            </DialogTitle>
+            <DialogDescription>
+              Place an unscheduled infill planting or mulching job on a specific date. If the day is over capacity, you'll be given the option to push regular maintenance jobs forward.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-1">
+            {/* Job type */}
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold text-gray-700 uppercase tracking-wide">Job Type</Label>
+              <div className="grid grid-cols-2 gap-2">
+                {(["infill", "mulch"] as const).map(t => (
+                  <button
+                    key={t}
+                    onClick={() => setInsertType(t)}
+                    className={`flex items-center gap-2 px-3 py-2.5 rounded-xl text-sm font-semibold border-2 transition-all ${
+                      insertType === t
+                        ? t === "infill"
+                          ? "border-green-500 bg-green-50 text-green-800"
+                          : "border-amber-500 bg-amber-50 text-amber-800"
+                        : "border-gray-200 text-gray-600 hover:border-gray-300 bg-white"
+                    }`}
+                  >
+                    {t === "infill" ? <Sprout className="w-4 h-4" /> : <Layers className="w-4 h-4" />}
+                    {t === "infill" ? "Infill Planting" : "Mulching"}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Asset search */}
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold text-gray-700 uppercase tracking-wide">Site</Label>
+              {insertAsset ? (
+                <div className="flex items-center gap-2 px-3 py-2 bg-gray-50 rounded-lg border border-gray-200">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-semibold text-gray-800 truncate">{insertAsset.name}</p>
+                    {insertAsset.description && (
+                      <p className="text-[10px] text-gray-400 truncate">{insertAsset.description}</p>
+                    )}
+                  </div>
+                  <button onClick={() => { setInsertAsset(null); setInsertSearch(""); }} className="text-gray-400 hover:text-gray-600 flex-shrink-0">
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+              ) : (
+                <div className="relative">
+                  <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 pointer-events-none" />
+                  <Input
+                    placeholder="Search site name…"
+                    value={insertSearch}
+                    onChange={e => setInsertSearch(e.target.value)}
+                    className="pl-8 text-sm"
+                  />
+                  {insertFilteredAssets.length > 0 && (
+                    <div className="absolute left-0 right-0 top-full mt-1 bg-white rounded-xl border border-gray-200 shadow-lg z-50 overflow-hidden max-h-48 overflow-y-auto">
+                      {insertFilteredAssets.map((a: any) => (
+                        <button
+                          key={a.id}
+                          onClick={() => {
+                            setInsertAsset(a);
+                            setInsertSearch("");
+                            if (a.serviceTimeMins && !insertMins) setInsertMins(String(a.serviceTimeMins));
+                          }}
+                          className="w-full flex flex-col items-start px-3 py-2 text-sm hover:bg-gray-50 transition-colors text-left"
+                        >
+                          <span className="font-semibold text-gray-800 truncate w-full">{a.name}</span>
+                          {a.description && (
+                            <span className="text-[10px] text-gray-400 truncate w-full">{a.description}</span>
+                          )}
+                          {a.teamId && (
+                            <span className="text-[10px] text-teal-600 font-medium mt-0.5">{getTeamName(a.teamId)}</span>
+                          )}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+              {insertAsset?.teamId && (
+                <p className="text-xs text-gray-500 flex items-center gap-1">
+                  <Users className="w-3 h-3" />
+                  Team: <span className="font-medium text-gray-700">{getTeamName(insertAsset.teamId)}</span>
+                </p>
+              )}
+            </div>
+
+            {/* Date + estimated time */}
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label htmlFor="insert-date" className="text-xs font-semibold text-gray-700 uppercase tracking-wide">Date</Label>
+                <Input id="insert-date" type="date" value={insertDate} onChange={e => setInsertDate(e.target.value)} className="text-sm" />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="insert-mins" className="text-xs font-semibold text-gray-700 uppercase tracking-wide">Est. Time (min)</Label>
+                <Input
+                  id="insert-mins"
+                  type="number"
+                  min="1"
+                  placeholder="e.g. 120"
+                  value={insertMins}
+                  onChange={e => setInsertMins(e.target.value)}
+                  className="text-sm"
+                />
+              </div>
+            </div>
+
+            {/* Notes */}
+            <div className="space-y-1.5">
+              <Label htmlFor="insert-notes" className="text-xs font-semibold text-gray-700 uppercase tracking-wide">Notes (optional)</Label>
+              <Textarea
+                id="insert-notes"
+                placeholder="Assessment notes, species, requirements…"
+                value={insertNotes}
+                onChange={e => setInsertNotes(e.target.value)}
+                className="text-sm min-h-[60px]"
+              />
+            </div>
+          </div>
+
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setInsertOpen(false)}>Cancel</Button>
+            <Button
+              className="gap-2 text-white hover:opacity-90"
+              style={{ background: "#16a34a" }}
+              onClick={handleInsertSubmit}
+              disabled={insertLoading || !insertAsset || !insertDate || !insertMins || parseInt(insertMins) <= 0}
+            >
+              {insertLoading ? "Checking…" : "Schedule Job"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Push-Forward Confirmation Dialog ──────────────────────────────── */}
+      {pushCapacity && (
+        <Dialog open={pushOpen} onOpenChange={open => { if (!open) { setPushOpen(false); setPendingInsert(null); } }}>
+          <DialogContent className="sm:max-w-lg">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2 text-amber-700">
+                <AlertTriangle className="w-5 h-5 text-amber-500" />
+                Day Capacity Conflict
+              </DialogTitle>
+              <DialogDescription>
+                Adding this {insertType === "infill" ? "infill planting" : "mulching"} job to{" "}
+                <strong>{format(new Date(pendingInsert!.date + "T00:00:00"), "EEEE d MMM yyyy")}</strong>{" "}
+                exceeds the team's daily productive time.
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="space-y-4 py-1">
+              {/* Capacity bar */}
+              <div className="bg-gray-50 rounded-xl p-4 space-y-3">
+                <div className="flex justify-between items-center text-sm">
+                  <span className="text-gray-600">Regular maintenance</span>
+                  <span className="font-semibold text-gray-800">{pushCapacity.totalScheduledMins} min</span>
+                </div>
+                <div className="flex justify-between items-center text-sm">
+                  <span className="text-gray-600">This new job</span>
+                  <span className="font-semibold" style={{ color: "#166534" }}>+ {pushCapacity.newJobMins} min</span>
+                </div>
+                <div className="border-t border-gray-200 pt-2 flex justify-between items-center text-sm">
+                  <span className="font-semibold text-gray-700">Total</span>
+                  <span className="font-bold text-red-700">
+                    {pushCapacity.totalScheduledMins + pushCapacity.newJobMins} / {pushCapacity.productiveTimeMins} min
+                  </span>
+                </div>
+                {/* Progress bar */}
+                <div className="w-full h-2 bg-gray-200 rounded-full overflow-hidden">
+                  <div
+                    className="h-full rounded-full transition-all"
+                    style={{
+                      width: `${Math.min(100, Math.round(((pushCapacity.totalScheduledMins + pushCapacity.newJobMins) / pushCapacity.productiveTimeMins) * 100))}%`,
+                      background: "#dc2626",
+                    }}
+                  />
+                </div>
+                <p className="text-xs text-red-600 font-semibold">
+                  {pushCapacity.shortfallMins} min over capacity
+                </p>
+              </div>
+
+              {/* Push option */}
+              <div className="bg-blue-50 rounded-xl p-4 space-y-3 border border-blue-100">
+                <div className="flex items-start gap-2">
+                  <ArrowRight className="w-4 h-4 text-blue-600 mt-0.5 flex-shrink-0" />
+                  <div>
+                    <p className="text-sm font-semibold text-blue-800">Push regular maintenance jobs forward</p>
+                    {pushCapacity.pendingScheduledFromCount > 0 ? (
+                      <p className="text-xs text-blue-600 mt-0.5">
+                        {pushCapacity.pendingScheduledFromCount} pending regular maintenance job{pushCapacity.pendingScheduledFromCount !== 1 ? "s" : ""} on or after this date will shift forward by the chosen number of working days. Route order and spacing are preserved.
+                      </p>
+                    ) : (
+                      <p className="text-xs text-blue-600 mt-0.5">
+                        No pending regular maintenance jobs found on or after this date.
+                      </p>
+                    )}
+                  </div>
+                </div>
+                <div className="flex items-center gap-3">
+                  <Label className="text-xs font-semibold text-gray-700 whitespace-nowrap">Shift by</Label>
+                  <Input
+                    type="number"
+                    min="1"
+                    max="30"
+                    value={pushDelta}
+                    onChange={e => setPushDelta(Math.max(1, Math.min(30, parseInt(e.target.value) || 1)))}
+                    className="w-20 text-sm"
+                  />
+                  <span className="text-sm text-gray-600">working day{pushDelta !== 1 ? "s" : ""}</span>
+                </div>
+              </div>
+            </div>
+
+            <DialogFooter className="flex flex-col sm:flex-row gap-2">
+              <Button
+                variant="outline"
+                className="sm:mr-auto"
+                onClick={() => { setPushOpen(false); setPendingInsert(null); setInsertOpen(true); }}
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="outline"
+                className="border-amber-300 text-amber-700 hover:bg-amber-50"
+                onClick={handlePlaceAnyway}
+                disabled={pushLoading}
+              >
+                Place Anyway (over capacity)
+              </Button>
+              <Button
+                className="gap-2 text-white hover:opacity-90"
+                style={{ background: "#2563eb" }}
+                onClick={handlePushAndPlace}
+                disabled={pushLoading || pushCapacity.pendingScheduledFromCount === 0}
+              >
+                <ArrowRight className="w-4 h-4" />
+                {pushLoading ? "Pushing…" : `Push ${pushDelta}d & Place`}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
 
       {/* ── Job Update Sheet ───────────────────────────────────────────────── */}
       <Sheet open={!!selectedJob} onOpenChange={open => { if (!open) setSelectedJob(null); }}>

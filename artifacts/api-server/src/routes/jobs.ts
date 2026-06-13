@@ -9,6 +9,7 @@ import { auditLog } from "../lib/audit";
 import { FREQ_DAYS } from "../lib/crew-utils";
 import { notifyTeam } from "../lib/push-notifications";
 import { objectStorageClient } from "../lib/objectStorage";
+import { checkDayCapacity, computeTotalScheduledMins } from "../lib/day-capacity";
 
 const LOGO_PATH = path.resolve(
   process.cwd(),
@@ -470,13 +471,53 @@ router.get("/jobs/:id", requireAuth, async (req, res) => {
 });
 
 // POST /api/jobs
+// Accepts an optional `force: boolean` field alongside the standard job
+// schema. When force is false (default) and the job would put the team over
+// productive-time capacity for that day, returns
+// { capacityConflict: true, capacity: { ... } } instead of inserting.
+// Callers can re-submit with force: true to bypass the check (e.g. after
+// showing the push-forward dialog and the user chose "Place Anyway").
+const createJobSchema = insertJobSchema.extend({
+  force: z.boolean().default(false),
+});
+
 router.post(
   "/jobs",
   requireAuth,
   requireRole("manager", "supervisor"),
-  validateBody(insertJobSchema),
+  validateBody(createJobSchema),
   async (req, res) => {
-    const [created] = await db.insert(jobsTable).values(req.body).returning();
+    const { force, ...jobData } = res.locals.body as z.infer<typeof createJobSchema>;
+
+    // ── Capacity conflict check ───────────────────────────────────────────
+    // Only relevant when a teamId and scheduledDate are set (not all-teams jobs).
+    const teamId       = jobData.teamId as string | null | undefined;
+    const scheduledDate = jobData.scheduledDate as string | null | undefined;
+
+    if (!force && teamId && scheduledDate) {
+      // Estimate the job's time contribution (estimatedTimeMins or asset's serviceTimeMins)
+      let newJobMins = (jobData.estimatedTimeMins as number | null | undefined) ?? 0;
+      if (!newJobMins && jobData.assetId) {
+        const [asset] = await db
+          .select({ serviceTimeMins: assetsTable.serviceTimeMins })
+          .from(assetsTable)
+          .where(eq(assetsTable.id, jobData.assetId as string))
+          .limit(1);
+        newJobMins = asset?.serviceTimeMins ?? 0;
+      }
+
+      if (newJobMins > 0) {
+        const conflict = await checkDayCapacity(teamId, scheduledDate, newJobMins);
+        if (conflict) {
+          // Use 409 Conflict so existing consumers that rely on response.ok
+          // treat this as an error (false) rather than a silent success.
+          res.status(409).json({ capacityConflict: true, capacity: conflict });
+          return;
+        }
+      }
+    }
+
+    const [created] = await db.insert(jobsTable).values(jobData as any).returning();
     await auditLog({
       tableName: "jobs", recordId: created.id, action: "INSERT",
       changedById: req.auth?.userId ?? null, newData: created as Record<string, unknown>,
