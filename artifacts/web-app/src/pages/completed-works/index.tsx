@@ -135,7 +135,7 @@ function DetailPanel({ job, onClose }: { job: CompletedWork; onClose: () => void
           <InfoBlock label="Ward" value={job.ward ? WARD_LABELS[job.ward] ?? job.ward : "—"} />
           <InfoBlock label="Garden Type" value={job.gardenType ? GARDEN_TYPE_LABELS[job.gardenType] ?? job.gardenType : "—"} />
           {job.suburb && <InfoBlock label="Suburb" value={job.suburb} />}
-          {job.areaM2 != null && <InfoBlock label="Area" value={`${job.areaM2.toLocaleString()} m²`} />}
+          {job.areaM2 != null && <InfoBlock label="Area" value={`${Number(job.areaM2).toFixed(1)} m²`} />}
           <InfoBlock
             label="Team"
             value={job.crewStatus === "full" ? "Full crew" : job.crewStatus === "reduced" ? "Reduced crew" : "No crew"}
@@ -533,7 +533,7 @@ export default function CompletedWorks() {
               <div>
                 <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Total Area</p>
                 <p className="text-xl font-bold text-gray-900 leading-tight">
-                  {isLoading ? "—" : `${stats.areaM2.toLocaleString()} m²`}
+                  {isLoading ? "—" : `${Number(stats.areaM2).toFixed(1)} m²`}
                 </p>
               </div>
             </div>

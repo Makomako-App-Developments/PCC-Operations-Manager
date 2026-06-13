@@ -726,7 +726,7 @@ function WorkloadTab() {
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
         {[
           { icon: MapPin,     label: "Total Sites",       value: fmt(totals?.siteCount ?? 0),                              sub: "active garden sites"   },
-          { icon: Ruler,      label: "Total Area",        value: `${fmt(totals?.totalAreaM2 ?? 0)} m²`,                   sub: "across all teams"      },
+          { icon: Ruler,      label: "Total Area",        value: `${Number(totals?.totalAreaM2 ?? 0).toFixed(1)} m²`,     sub: "across all teams"      },
           { icon: Clock,      label: "Annual Hours",      value: `${fmt(totals?.annualHours ?? 0)} hrs`,                  sub: "scheduled maintenance" },
           { icon: UserCheck,  label: "FTEs Required",     value: `${totals?.ftesRequired.toFixed(1) ?? "—"} FTE`,         sub: "for named teams"       },
         ].map(({ icon: Icon, label, value, sub }) => (
@@ -793,7 +793,7 @@ function WorkloadTab() {
                       <span className="text-sm font-semibold text-gray-800">{fmt(row.siteCount)}</span>
                     </td>
                     <td className="px-4 py-4 text-right">
-                      <span className="text-sm font-semibold text-gray-800">{fmt(row.totalAreaM2)}</span>
+                      <span className="text-sm font-semibold text-gray-800">{Number(row.totalAreaM2).toFixed(1)}</span>
                     </td>
                     <td className="px-4 py-4 text-right">
                       <span className="text-sm font-semibold text-gray-800">{(row.annualHours / 52).toFixed(1)}</span>
@@ -835,7 +835,7 @@ function WorkloadTab() {
                     <span className="text-sm font-bold" style={{ color: NAVY }}>{fmt(totals.siteCount)}</span>
                   </td>
                   <td className="px-4 py-3 text-right">
-                    <span className="text-sm font-bold" style={{ color: NAVY }}>{fmt(totals.totalAreaM2)} m²</span>
+                    <span className="text-sm font-bold" style={{ color: NAVY }}>{Number(totals.totalAreaM2).toFixed(1)} m²</span>
                   </td>
                   <td className="px-4 py-3 text-right">
                     <span className="text-sm font-bold" style={{ color: NAVY }}>{(totals.annualHours / 52).toFixed(1)} hrs</span>

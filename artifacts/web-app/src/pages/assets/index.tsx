@@ -512,7 +512,7 @@ function AssetDetailDrawer({ assetId, onClose, teamName }: { assetId: string | n
             {!editing && (
               <div className="grid grid-cols-4 gap-0 border-b flex-shrink-0 bg-white">
                 {[
-                  { label: "Area",    value: `${asset.areaM2} m²` },
+                  { label: "Area",    value: `${Number(asset.areaM2).toFixed(1)} m²` },
                   { label: "Service", value: `${asset.serviceTimeMins} min` },
                   { label: "Freq",    value: asset.frequency },
                   { label: "Ward",    value: asset.ward || "-" },
