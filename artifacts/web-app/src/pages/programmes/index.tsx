@@ -2069,6 +2069,30 @@ function MulchingTab({
     setMulchDateTo("");
   }
 
+  function exportMulchCSV() {
+    const rows = filteredMulchRecords as any[];
+    const header = ["Site", "Description", "Scheduled Date", "Mulch Type", "Volume (m³)", "Status", "Team"];
+    const lines = [
+      header.join(","),
+      ...rows.map(r => [
+        `"${(r.assetName ?? "").replace(/"/g, '""')}"`,
+        `"${(r.assetDescription ?? "").replace(/"/g, '""')}"`,
+        r.scheduledDate ? fmt(r.scheduledDate) : "",
+        `"${(r.mulchType ?? "").replace(/"/g, '""')}"`,
+        r.volumeM3 ?? "",
+        r.status ?? "",
+        `"${(r.teamName ?? "Unassigned").replace(/"/g, '""')}"`,
+      ].join(",")),
+    ];
+    const blob = new Blob([lines.join("\n")], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `mulching-export-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
   return (
     <div className="flex-1 flex flex-col min-h-0 bg-[#f5f7f9]">
 
@@ -2084,6 +2108,12 @@ function MulchingTab({
               <X className="w-3.5 h-3.5" /> Clear filters
             </Button>
           )}
+          <button
+            onClick={exportMulchCSV}
+            className="flex items-center gap-1.5 text-sm font-semibold px-3 py-2 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors"
+          >
+            <Download className="w-4 h-4" /> Export CSV
+          </button>
           <button
             onClick={() => { setDepthPickerAssetId(""); setDepthPickerOpen(true); }}
             className="flex items-center gap-1.5 text-sm font-semibold px-3 py-2 rounded-lg transition-colors text-white"
