@@ -1,5 +1,4 @@
-- [Full Team](full-team.md) — 186 sites where every crew attends; was imported as NULL team_id, now correctly linked to the "Full Team" teams row.
-- [Master data source](master-data-source.md) — the Excel spreadsheet is the authoritative asset list for this client; all null-team assets are "Full team" by design.
+- [Master data source](master-data-source.md) — the Excel spreadsheet is the authoritative asset list for this client; all null-team assets were originally "Full team" but have since been reallocated to Mobile 2.
 - [Express asset route ordering](express-asset-route-ordering.md) — any named sub-path under /assets/* must live in assets.ts BEFORE the /:id wildcard handler.
 - [Geosequence-first scheduler](geosequence-scheduler.md) — scheduler uses ±3-day flex window; generate always deletes pending jobs first for a clean slate.
 - [Expo Auth Routing](expo-auth-routing.md) — use AuthGuard in _layout.tsx; never bare Redirect/router.replace on login screen or it escapes to web app
