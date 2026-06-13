@@ -677,7 +677,7 @@ export default function CompletedWorks() {
                         </th>
                       );
                     })}
-                    <th className="px-5 py-3 w-10"></th>
+                    <th className="px-4 py-3 text-right w-20">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
@@ -727,9 +727,16 @@ export default function CompletedWorks() {
                             <span className="text-xs font-medium text-green-600">−{formatMins(Math.abs(v))}</span>
                           )}
                         </td>
-                        <td className="px-5 py-3">
+                        <td className="px-4 py-3">
                           <div className="flex items-center gap-1 justify-end">
-                            {row.notes && <FileText className="w-3 h-3 text-amber-500" title="Has notes" />}
+                            {row.notes && <FileText className="w-3 h-3 text-amber-400 flex-shrink-0" title="Has notes" />}
+                            <button
+                              title="Download PDF"
+                              onClick={e => { e.stopPropagation(); window.open(`/api/jobs/${row.id}/pdf`, "_blank"); }}
+                              className="p-1 rounded hover:bg-gray-200 text-gray-400 hover:text-[#00AECD] transition-colors"
+                            >
+                              <Download className="w-3.5 h-3.5" />
+                            </button>
                           </div>
                         </td>
                       </tr>
