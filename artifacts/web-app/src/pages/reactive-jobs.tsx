@@ -241,16 +241,53 @@ export default function ReactiveJobs() {
     [allJobs],
   );
 
+  const reactiveBaseFiltered = useMemo(() => {
+    let jobs = allJobs;
+    if (search.trim()) {
+      const q = search.trim().toLowerCase();
+      jobs = jobs.filter(j =>
+        getSiteName(j).toLowerCase().includes(q) ||
+        String(j.issueType ?? "").toLowerCase().includes(q) ||
+        String(j.description ?? "").toLowerCase().includes(q) ||
+        getTeamName(j.assignedTeamId as string | null).toLowerCase().includes(q),
+      );
+    }
+    if (teamFilter !== "all") {
+      jobs = jobs.filter(j => (j.assignedTeamId as string | null) === teamFilter);
+    }
+    if (dateFilter !== "all") {
+      const today = new Date();
+      const monday = new Date(today);
+      monday.setDate(today.getDate() - ((today.getDay() + 6) % 7));
+      monday.setHours(0, 0, 0, 0);
+      const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
+      jobs = jobs.filter(j => {
+        const d = j.scheduledDate as string | null;
+        if (!d) return false;
+        const date = new Date(d + "T00:00:00");
+        if (dateFilter === "this_week") return date >= monday;
+        if (dateFilter === "this_month") return date >= monthStart;
+        if (dateFilter === "custom") {
+          if (dateFrom && date < new Date(dateFrom)) return false;
+          if (dateTo && date > new Date(dateTo)) return false;
+          return true;
+        }
+        return true;
+      });
+    }
+    return jobs;
+  }, [allJobs, search, teamFilter, dateFilter, dateFrom, dateTo]);
+
   const statusCounts = useMemo(
     () => ({
-      all: allJobs.length,
-      raised: allJobs.filter(j => j.status === "raised").length,
-      assigned: allJobs.filter(j => j.status === "assigned").length,
-      in_progress: allJobs.filter(j => j.status === "in_progress").length,
-      completed: allJobs.filter(j => j.status === "completed").length,
-      cancelled: allJobs.filter(j => j.status === "cancelled").length,
+      all: reactiveBaseFiltered.length,
+      raised: reactiveBaseFiltered.filter(j => j.status === "raised").length,
+      assigned: reactiveBaseFiltered.filter(j => j.status === "assigned").length,
+      in_progress: reactiveBaseFiltered.filter(j => j.status === "in_progress").length,
+      completed: reactiveBaseFiltered.filter(j => j.status === "completed").length,
+      cancelled: reactiveBaseFiltered.filter(j => j.status === "cancelled").length,
     }),
-    [allJobs],
+    [reactiveBaseFiltered],
   );
 
   const handleSort = (col: SortCol) => {

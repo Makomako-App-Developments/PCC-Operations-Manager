@@ -1982,13 +1982,55 @@ function MulchingTab({
     [mulchDetailDayJobs],
   );
 
-  const draftCount      = mulchRecords.filter(r => r.status === "draft").length;
-  const scheduledCount  = mulchRecords.filter(r => r.status === "scheduled").length;
-  const inProgressCount = mulchRecords.filter(r => r.status === "in_progress").length;
-  const completedCount  = mulchRecords.filter(r => r.status === "completed").length;
+  const mulchBaseFiltered = useMemo(() => {
+    let records = sortedMulchRecords as any[];
+    if (mulchSearch.trim()) {
+      const q = mulchSearch.toLowerCase();
+      records = records.filter(r =>
+        (r.assetName ?? "").toLowerCase().includes(q) ||
+        (r.mulchType ?? "").toLowerCase().includes(q)
+      );
+    }
+    if (mulchDateFilter !== "all") {
+      const today = new Date(); today.setHours(0, 0, 0, 0);
+      if (mulchDateFilter === "this_week") {
+        const dow = today.getDay() === 0 ? 6 : today.getDay() - 1;
+        const mon = new Date(today); mon.setDate(today.getDate() - dow);
+        const sun = new Date(mon); sun.setDate(mon.getDate() + 6);
+        records = records.filter(r => {
+          if (!r.scheduledDate) return false;
+          const d = new Date(r.scheduledDate);
+          return d >= mon && d <= sun;
+        });
+      } else if (mulchDateFilter === "this_month") {
+        records = records.filter(r => {
+          if (!r.scheduledDate) return false;
+          const d = new Date(r.scheduledDate);
+          return d.getFullYear() === today.getFullYear() && d.getMonth() === today.getMonth();
+        });
+      } else if (mulchDateFilter === "custom") {
+        const from = mulchDateFrom ? new Date(mulchDateFrom) : null;
+        const to   = mulchDateTo   ? new Date(mulchDateTo)   : null;
+        records = records.filter(r => {
+          if (!r.scheduledDate) return false;
+          const d = new Date(r.scheduledDate);
+          return (!from || d >= from) && (!to || d <= to);
+        });
+      }
+    }
+    if (mulchTeamFilter !== "all") {
+      records = records.filter(r => r.assignedTeamId === mulchTeamFilter);
+    }
+    return records;
+  }, [sortedMulchRecords, mulchSearch, mulchDateFilter, mulchDateFrom, mulchDateTo, mulchTeamFilter]);
+
+  const draftCount      = mulchBaseFiltered.filter((r: any) => r.status === "draft").length;
+  const scheduledCount  = mulchBaseFiltered.filter((r: any) => r.status === "scheduled").length;
+  const inProgressCount = mulchBaseFiltered.filter((r: any) => r.status === "in_progress").length;
+  const completedCount  = mulchBaseFiltered.filter((r: any) => r.status === "completed").length;
 
   const sumVol = (pred: (r: any) => boolean) =>
-    mulchRecords.filter(pred).reduce((acc, r) => acc + (parseFloat(r.volumeM3) || 0), 0);
+    mulchBaseFiltered.filter(pred).reduce((acc: number, r: any) => acc + (parseFloat(r.volumeM3) || 0), 0);
 
   const totalRequired = sumVol(r => r.status === "scheduled" || r.status === "in_progress");
   const totalApplied  = sumVol(r => r.status === "completed");
@@ -3063,23 +3105,57 @@ export default function Programmes() {
     });
   }, [filteredJobs, sortKey, sortDir]);
 
+  const infillBaseFiltered = useMemo(() => {
+    let result = jobs;
+    if (infillSearch) {
+      const q = infillSearch.toLowerCase();
+      result = result.filter(j =>
+        (j.assetName ?? "").toLowerCase().includes(q) ||
+        (j.assessmentNotes ?? "").toLowerCase().includes(q)
+      );
+    }
+    if (infillTeamFilter !== "all") {
+      result = result.filter(j => j.assignedTeamId === infillTeamFilter);
+    }
+    if (infillDateFilter !== "all") {
+      const today = new Date();
+      const monday = new Date(today);
+      monday.setDate(today.getDate() - ((today.getDay() + 6) % 7));
+      monday.setHours(0, 0, 0, 0);
+      const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
+      result = result.filter(j => {
+        if (!j.plannedDate) return false;
+        const d = new Date(j.plannedDate);
+        if (infillDateFilter === "this_week") return d >= monday;
+        if (infillDateFilter === "this_month") return d >= monthStart;
+        if (infillDateFilter === "custom") {
+          if (infillDateFrom && d < new Date(infillDateFrom)) return false;
+          if (infillDateTo && d > new Date(infillDateTo)) return false;
+          return true;
+        }
+        return true;
+      });
+    }
+    return result;
+  }, [jobs, infillSearch, infillTeamFilter, infillDateFilter, infillDateFrom, infillDateTo]);
+
   const statCounts = useMemo(() => {
-    const c: Partial<Record<JobStatus | "all", number>> = { all: jobs.length };
-    for (const j of jobs) c[j.status] = (c[j.status] ?? 0) + 1;
+    const c: Partial<Record<JobStatus | "all", number>> = { all: infillBaseFiltered.length };
+    for (const j of infillBaseFiltered) c[j.status] = (c[j.status] ?? 0) + 1;
     return c;
-  }, [jobs]);
+  }, [infillBaseFiltered]);
 
   const plantTotals = useMemo(() => {
     let required = 0;
     let inGround = 0;
-    for (const j of jobs) {
+    for (const j of infillBaseFiltered) {
       if (j.status === "cancelled") continue;
       const qty = j.species.reduce((s, sp) => s + sp.quantity, 0);
       required += qty;
       if (j.status === "completed") inGround += qty;
     }
     return { required, inGround };
-  }, [jobs]);
+  }, [infillBaseFiltered]);
 
   type SpeciesScope = "all" | "needs_ordering" | "in_ground";
   type SpeciesSortKey = "speciesName" | "category" | "totalQty" | "sites" | "completedQty";
