@@ -10,7 +10,7 @@ import { useQueryClient, useQuery } from "@tanstack/react-query";
 import {
   Zap, Plus, Search, X, MapPin, Clock, Calendar, CalendarCheck, Trash2,
   ChevronUp, ChevronDown, ChevronsUpDown, FileText, User, Hash, AlertTriangle,
-  CheckCircle2,
+  CheckCircle2, Download,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -276,6 +276,29 @@ export default function ReactiveJobs() {
     );
   }
 
+  function exportCSV() {
+    const rows = filteredSortedJobs.map(j => ({
+      Site:             getSiteName(j),
+      "Issue Type":     j.issueType ?? "",
+      Description:      j.description ?? "",
+      Priority:         PRIORITY_CONFIG[j.priority as string]?.label ?? (j.priority ?? ""),
+      Status:           STATUS_CONFIG[j.status as string]?.label ?? (j.status ?? ""),
+      "Scheduled Date": j.scheduledDate ? format(new Date((j.scheduledDate as string) + "T00:00:00"), "d MMM yyyy") : "",
+      Team:             getTeamName(j.assignedTeamId as string | null),
+      "Est. Time (min)": j.estimatedTimeMins ?? "",
+      Origin:           j.origin ?? "",
+    }));
+    if (!rows.length) return;
+    const headers = Object.keys(rows[0]);
+    const escape = (v: unknown) => `"${String(v ?? "").replace(/"/g, '""')}"`;
+    const csv = [headers.join(","), ...rows.map(r => headers.map(h => escape(r[h as keyof typeof r])).join(","))].join("\n");
+    const blob = new Blob([csv], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = "unscheduled-work.csv"; a.click();
+    URL.revokeObjectURL(url);
+  }
+
   return (
     <div className="flex-1 flex flex-col min-h-0 bg-[#f5f7f9]">
       {/* Header */}
@@ -290,14 +313,23 @@ export default function ReactiveJobs() {
           </h1>
           <p className="text-xs text-gray-400">Ad-hoc requests, emergency work, and community issues</p>
         </div>
-        <button
-          onClick={() => setWizardOpen(true)}
-          className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold text-white shadow-sm hover:opacity-90 transition-opacity"
-          style={{ background: BRAND }}
-        >
-          <Plus className="w-4 h-4" />
-          New Unscheduled Work
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={exportCSV}
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold border border-gray-200 text-gray-600 bg-white hover:bg-gray-50 transition-colors"
+          >
+            <Download className="w-4 h-4" />
+            Export CSV
+          </button>
+          <button
+            onClick={() => setWizardOpen(true)}
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold text-white shadow-sm hover:opacity-90 transition-opacity"
+            style={{ background: BRAND }}
+          >
+            <Plus className="w-4 h-4" />
+            New Unscheduled Work
+          </button>
+        </div>
       </header>
 
       {/* ── Stat cards ── */}
