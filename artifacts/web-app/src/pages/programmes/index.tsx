@@ -2919,7 +2919,6 @@ export default function Programmes() {
   const [prefilledAssetId, setPrefilledAssetId] = useState("");
   const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<JobStatus | "all">("all");
-  const [infillView, setInfillView] = useState<"list" | "map">("list");
 
   useEffect(() => {
     const params = new URLSearchParams(search);
@@ -3175,35 +3174,10 @@ export default function Programmes() {
                       {filteredJobs.length} assessment{filteredJobs.length !== 1 ? "s" : ""}
                       {statusFilter !== "all" && ` · ${JOB_STATUS[statusFilter].label}`}
                     </p>
-                    <div className="flex rounded-lg border border-gray-200 overflow-hidden flex-shrink-0">
-                      <button
-                        onClick={() => setInfillView("list")}
-                        className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold transition-colors ${infillView === "list" ? "text-white" : "bg-white text-gray-500 hover:bg-gray-50"}`}
-                        style={infillView === "list" ? { background: BRAND } : {}}>
-                        <List className="w-3.5 h-3.5" /> List
-                      </button>
-                      <button
-                        onClick={() => setInfillView("map")}
-                        className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold transition-colors border-l border-gray-200 ${infillView === "map" ? "text-white" : "bg-white text-gray-500 hover:bg-gray-50"}`}
-                        style={infillView === "map" ? { background: BRAND } : {}}>
-                        <MapIcon className="w-3.5 h-3.5" /> Map
-                      </button>
-                    </div>
                   </div>
                 </div>
 
-                {/* Map view */}
-                {infillView === "map" && (
-                  <InfillMapView
-                    jobs={jobs}
-                    assets={assets}
-                    statusFilter={statusFilter}
-                    onSelectJob={setSelectedJobId}
-                  />
-                )}
-
-                {/* List view */}
-                {infillView === "list" && (jobsLoading ? (
+                {jobsLoading ? (
                   <div className="space-y-2">{[...Array(4)].map((_, i) => <Skeleton key={i} className="h-10 w-full rounded-lg" />)}</div>
                 ) : sortedJobs.length === 0 ? (
                   <div className="text-center py-16 text-gray-400">
@@ -3316,7 +3290,7 @@ export default function Programmes() {
                       </tbody>
                     </table>
                   </div>
-                ))}
+                )}
               </div>
             </TabsContent>
 
