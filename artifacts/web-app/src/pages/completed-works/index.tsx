@@ -221,6 +221,18 @@ function DetailPanel({ job, onClose }: { job: CompletedWork; onClose: () => void
             </div>
           )}
         </section>
+
+        {/* Download PDF */}
+        <div className="pt-1 pb-2">
+          <Button
+            variant="outline"
+            className="w-full gap-2"
+            onClick={() => window.open(`/api/jobs/${job.id}/pdf`, "_blank")}
+          >
+            <Download className="w-4 h-4" />
+            Download PDF
+          </Button>
+        </div>
       </div>
     </div>
   );

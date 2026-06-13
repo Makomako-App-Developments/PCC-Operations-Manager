@@ -136,6 +136,177 @@ router.get("/completed-works", requireAuth, validateQuery(completedWorksQuerySch
   res.json({ data: rows, page: q.page, limit: q.limit });
 });
 
+// GET /api/jobs/:id/pdf
+router.get("/jobs/:id/pdf", requireAuth, async (req, res) => {
+  const id = String(req.params.id);
+
+  const [row] = await db
+    .select({
+      id:               jobsTable.id,
+      jobType:          jobsTable.jobType,
+      scheduledDate:    jobsTable.scheduledDate,
+      completedAt:      jobsTable.completedAt,
+      actualTimeMins:   jobsTable.actualTimeMins,
+      estimatedTimeMins: jobsTable.estimatedTimeMins,
+      notes:            jobsTable.notes,
+      crewStatus:       jobsTable.crewStatus,
+      isAllTeams:       jobsTable.isAllTeams,
+      teamId:           jobsTable.teamId,
+      teamName:         teamsTable.name,
+      assetId:          assetsTable.id,
+      assetName:        assetsTable.name,
+      assetDescription: assetsTable.description,
+      gardenType:       assetsTable.gardenType,
+      ward:             assetsTable.ward,
+      suburb:           assetsTable.suburb,
+      areaM2:           assetsTable.areaM2,
+    })
+    .from(jobsTable)
+    .leftJoin(assetsTable, eq(jobsTable.assetId, assetsTable.id))
+    .leftJoin(teamsTable, eq(jobsTable.teamId, teamsTable.id))
+    .where(and(eq(jobsTable.id, id), eq(jobsTable.status, "completed")))
+    .limit(1);
+
+  if (!row) { res.status(404).json({ error: "Completed job not found" }); return; }
+
+  // Authorization
+  if (!isPrivilegedRole(req.auth!.role)) {
+    const callerTeamId = req.auth!.teamId;
+    if (!row.isAllTeams && row.teamId !== callerTeamId) {
+      res.status(403).json({ error: "Forbidden" }); return;
+    }
+  }
+
+  const PDFDocument = (await import("pdfkit")).default;
+  const doc = new PDFDocument({ margin: 50, size: "A4" });
+  const siteName = row.assetName ?? "Unknown Site";
+  res.setHeader("Content-Type", "application/pdf");
+  res.setHeader("Content-Disposition", `attachment; filename="completed-job-${row.id}.pdf"`);
+  doc.pipe(res);
+
+  const TEAL = "#00AECD";
+  const NAVY = "#0f2a36";
+  const GREY = "#6b7280";
+
+  // ── Header ────────────────────────────────────────────────────────────────
+  doc.fontSize(20).font("Helvetica-Bold").fillColor(NAVY).text("Completed Works Record", 50, 50);
+  doc.fontSize(10).font("Helvetica").fillColor(GREY).text("Porirua City Council — Gardens Manager", 50, 75);
+  doc.moveTo(50, 100).lineTo(545, 100).strokeColor("#e5e7eb").stroke();
+
+  // ── Site name ─────────────────────────────────────────────────────────────
+  doc.fontSize(16).font("Helvetica-Bold").fillColor(NAVY).text(siteName, 50, 112);
+  if (row.assetDescription) {
+    doc.fontSize(9).font("Helvetica").fillColor(GREY).text(row.assetDescription, 50, doc.y + 2);
+  }
+
+  doc.moveDown(1);
+  doc.moveTo(50, doc.y).lineTo(545, doc.y).strokeColor("#e5e7eb").stroke();
+  doc.moveDown(0.6);
+
+  // ── Key details grid ─────────────────────────────────────────────────────
+  const JOB_TYPE_LABELS: Record<string, string> = {
+    scheduled: "Scheduled", reactive: "Reactive", mulching: "Mulching", audit: "Audit",
+  };
+  const WARD_LABELS: Record<string, string> = {
+    northern: "Northern", eastern: "Eastern", southern: "Southern", central: "Central", western: "Western",
+  };
+  const GARDEN_TYPE_LABELS: Record<string, string> = {
+    ornamental: "Ornamental", amenity: "Amenity", civic: "Civic",
+    mixed: "Mixed", natural: "Natural", sports: "Sports",
+  };
+
+  function fmt9(label: string, value: string | null | undefined, col: number, y: number) {
+    if (!value) return;
+    doc.fontSize(8).font("Helvetica-Bold").fillColor(GREY).text(label.toUpperCase(), col, y);
+    doc.fontSize(10).font("Helvetica").fillColor(NAVY).text(value, col, y + 11);
+  }
+
+  const scheduledStr = row.scheduledDate
+    ? new Date(`${row.scheduledDate}T00:00:00Z`).toLocaleDateString("en-NZ", { day: "numeric", month: "long", year: "numeric" })
+    : "—";
+  const completedStr = row.completedAt
+    ? new Date(row.completedAt).toLocaleDateString("en-NZ", { day: "numeric", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit" })
+    : "—";
+  const teamStr = row.isAllTeams ? "Full crew" : (row.teamName ?? "—");
+  const jobTypeStr = JOB_TYPE_LABELS[row.jobType] ?? row.jobType;
+  const wardStr = row.ward ? (WARD_LABELS[row.ward] ?? row.ward) : "—";
+  const gardenTypeStr = row.gardenType ? (GARDEN_TYPE_LABELS[row.gardenType] ?? row.gardenType) : "—";
+  const areaStr = row.areaM2 != null ? `${Number(row.areaM2).toFixed(1)} m²` : null;
+  const suburbStr = row.suburb ?? null;
+
+  const startY = doc.y;
+  fmt9("Scheduled Date", scheduledStr, 50, startY);
+  fmt9("Completed", completedStr, 220, startY);
+  fmt9("Team", teamStr, 400, startY);
+  doc.moveDown(2.4);
+
+  const row2Y = doc.y;
+  fmt9("Job Type", jobTypeStr, 50, row2Y);
+  fmt9("Ward", wardStr, 220, row2Y);
+  fmt9("Garden Type", gardenTypeStr, 400, row2Y);
+  doc.moveDown(2.4);
+
+  if (suburbStr || areaStr) {
+    const row3Y = doc.y;
+    fmt9("Suburb", suburbStr, 50, row3Y);
+    if (areaStr) fmt9("Area", areaStr, 220, row3Y);
+    doc.moveDown(2.4);
+  }
+
+  doc.moveDown(0.5);
+  doc.moveTo(50, doc.y).lineTo(545, doc.y).strokeColor("#e5e7eb").stroke();
+  doc.moveDown(0.6);
+
+  // ── Time ──────────────────────────────────────────────────────────────────
+  doc.fontSize(12).font("Helvetica-Bold").fillColor(TEAL).text("Time", 50, doc.y);
+  doc.moveDown(0.4);
+
+  function formatMinsStr(m: number | null): string {
+    if (m == null) return "—";
+    const h = Math.floor(m / 60);
+    const min = m % 60;
+    if (h === 0) return `${min}m`;
+    return min === 0 ? `${h}h` : `${h}h ${min}m`;
+  }
+
+  const timeRows: [string, string][] = [
+    ["Scheduled", formatMinsStr(row.estimatedTimeMins)],
+    ["Actual", formatMinsStr(row.actualTimeMins)],
+  ];
+  if (row.actualTimeMins != null && row.estimatedTimeMins != null) {
+    const v = row.actualTimeMins - row.estimatedTimeMins;
+    const vStr = v === 0 ? "On time" : v > 0 ? `+${formatMinsStr(v)} over` : `${formatMinsStr(Math.abs(v))} under`;
+    timeRows.push(["Variance", vStr]);
+  }
+  for (const [label, val] of timeRows) {
+    const ty = doc.y;
+    doc.fontSize(9).font("Helvetica").fillColor(GREY).text(label, 50, ty);
+    doc.fontSize(10).font("Helvetica-Bold").fillColor(NAVY).text(val, 400, ty, { width: 145, align: "right" });
+    doc.moveDown(0.6);
+    doc.moveTo(50, doc.y).lineTo(545, doc.y).strokeColor("#f3f4f6").stroke();
+    doc.moveDown(0.2);
+  }
+
+  // ── Notes ─────────────────────────────────────────────────────────────────
+  if (row.notes) {
+    doc.moveDown(0.5);
+    doc.moveTo(50, doc.y).lineTo(545, doc.y).strokeColor("#e5e7eb").stroke();
+    doc.moveDown(0.6);
+    doc.fontSize(12).font("Helvetica-Bold").fillColor(TEAL).text("Worker Notes", 50, doc.y);
+    doc.moveDown(0.4);
+    doc.fontSize(10).font("Helvetica").fillColor("#374151").text(row.notes, 50, doc.y, { width: 495 });
+  }
+
+  // ── Footer ────────────────────────────────────────────────────────────────
+  doc.fontSize(8).font("Helvetica").fillColor(GREY)
+    .text(
+      `Generated on ${new Date().toLocaleDateString("en-NZ", { day: "numeric", month: "long", year: "numeric" })} — Porirua City Council Gardens Manager`,
+      50, doc.page.height - 60, { align: "center", width: 495 },
+    );
+
+  doc.end();
+});
+
 // GET /api/jobs/:id
 // Falls through to mulching_records when the id is not in the jobs table.
 router.get("/jobs/:id", requireAuth, async (req, res) => {
