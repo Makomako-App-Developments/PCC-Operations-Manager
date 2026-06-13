@@ -2946,6 +2946,11 @@ export default function Programmes() {
   const [prefilledAssetId, setPrefilledAssetId] = useState("");
   const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<JobStatus | "all">("all");
+  const [infillSearch, setInfillSearch] = useState("");
+  const [infillTeamFilter, setInfillTeamFilter] = useState("all");
+  const [infillDateFilter, setInfillDateFilter] = useState<"all" | "this_week" | "this_month" | "custom">("all");
+  const [infillDateFrom, setInfillDateFrom] = useState("");
+  const [infillDateTo, setInfillDateTo] = useState("");
 
   useEffect(() => {
     const params = new URLSearchParams(search);
@@ -2974,10 +2979,39 @@ export default function Programmes() {
 
   const selectedJob = jobs.find(j => j.id === selectedJobId) ?? null;
 
-  const filteredJobs = useMemo(
-    () => statusFilter === "all" ? jobs : jobs.filter(j => j.status === statusFilter),
-    [jobs, statusFilter]
-  );
+  const filteredJobs = useMemo(() => {
+    let result = statusFilter === "all" ? jobs : jobs.filter(j => j.status === statusFilter);
+    if (infillSearch) {
+      const q = infillSearch.toLowerCase();
+      result = result.filter(j =>
+        (j.assetName ?? "").toLowerCase().includes(q) ||
+        (j.assessmentNotes ?? "").toLowerCase().includes(q)
+      );
+    }
+    if (infillTeamFilter !== "all") {
+      result = result.filter(j => j.assignedTeamId === infillTeamFilter);
+    }
+    if (infillDateFilter !== "all") {
+      const today = new Date();
+      const monday = new Date(today);
+      monday.setDate(today.getDate() - ((today.getDay() + 6) % 7));
+      monday.setHours(0, 0, 0, 0);
+      const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
+      result = result.filter(j => {
+        if (!j.plannedDate) return false;
+        const d = new Date(j.plannedDate);
+        if (infillDateFilter === "this_week") return d >= monday;
+        if (infillDateFilter === "this_month") return d >= monthStart;
+        if (infillDateFilter === "custom") {
+          if (infillDateFrom && d < new Date(infillDateFrom)) return false;
+          if (infillDateTo && d > new Date(infillDateTo)) return false;
+          return true;
+        }
+        return true;
+      });
+    }
+    return result;
+  }, [jobs, statusFilter, infillSearch, infillTeamFilter, infillDateFilter, infillDateFrom, infillDateTo]);
 
   const sortedJobs = useMemo(() => {
     return [...filteredJobs].sort((a, b) => {
@@ -3111,65 +3145,127 @@ export default function Programmes() {
   };
 
   return (
-    <div className={isInfill ? "p-6 w-full" : "h-full flex flex-col overflow-hidden"}>
+    <div className="h-full flex flex-col overflow-hidden">
       {/* ── Page header (Infill only) ── */}
       {isInfill && (
-      <div className="mb-0">
-        <div className="flex items-center justify-between mb-1">
-          <div>
-            <h1 className="text-xl font-bold" style={{ color: NAVY }}>
-              Infill Planting
-            </h1>
-            {isInfill && (
-              <div className="flex items-center gap-3 mt-1.5 flex-wrap">
-                <span className="text-sm">
-                  <span className="font-bold" style={{ color: BRAND }}>
-                    {jobsLoading ? "—" : plantTotals.required.toLocaleString()}
-                  </span>
-                  <span className="text-gray-400 ml-1">total plants required</span>
-                </span>
-                <span className="text-gray-300 select-none">·</span>
-                <span className="text-sm">
-                  <span className="font-bold text-green-600">
-                    {jobsLoading ? "—" : plantTotals.inGround.toLocaleString()}
-                  </span>
-                  <span className="text-gray-400 ml-1">plants in the ground</span>
-                </span>
-                <span className="text-gray-300 select-none">·</span>
-                <span className="text-sm">
-                  <span className="font-bold" style={{ color: JOB_STATUS.draft.color }}>
-                    {statCounts.draft ?? 0}
-                  </span>
-                  <span className="text-gray-400 ml-1">draft</span>
-                </span>
-                <span className="text-gray-300 select-none">·</span>
-                <span className="text-sm">
-                  <span className="font-bold" style={{ color: JOB_STATUS.scheduled.color }}>
-                    {statCounts.scheduled ?? 0}
-                  </span>
-                  <span className="text-gray-400 ml-1">scheduled</span>
-                </span>
-                <span className="text-gray-300 select-none">·</span>
-                <span className="text-sm">
-                  <span className="font-bold" style={{ color: JOB_STATUS.completed.color }}>
-                    {statCounts.completed ?? 0}
-                  </span>
-                  <span className="text-gray-400 ml-1">completed</span>
-                </span>
+        <>
+          <header className="bg-white border-b px-8 py-4 flex items-center justify-between sticky top-0 z-10 flex-shrink-0">
+            <div>
+              <h1 className="text-lg font-semibold text-gray-900">Infill Planting</h1>
+              <p className="text-xs text-gray-400">Planting assessments and species orders</p>
+            </div>
+            <Button
+              onClick={() => setDrawerOpen(true)}
+              className="text-white gap-1.5 h-9 text-sm"
+              style={{ background: BRAND }}
+            >
+              <Plus className="w-4 h-4" /> New Assessment
+            </Button>
+          </header>
+
+          {/* Stat cards */}
+          <div className="px-8 pt-5 pb-5 grid grid-cols-2 lg:grid-cols-4 gap-3 flex-shrink-0">
+            <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4 flex items-start gap-3">
+              <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0" style={{ background: `${BRAND}1a` }}>
+                <Leaf className="w-4 h-4" style={{ color: BRAND }} />
               </div>
+              <div className="min-w-0">
+                <p className="text-[11px] font-medium text-gray-400 uppercase tracking-wide leading-tight">Plants Required</p>
+                <p className="text-xl font-black mt-0.5" style={{ color: NAVY }}>
+                  {jobsLoading ? "—" : plantTotals.required.toLocaleString()}
+                </p>
+              </div>
+            </div>
+            <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4 flex items-start gap-3">
+              <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0" style={{ background: "#dcfce7" }}>
+                <CheckCircle2 className="w-4 h-4 text-green-600" />
+              </div>
+              <div className="min-w-0">
+                <p className="text-[11px] font-medium text-gray-400 uppercase tracking-wide leading-tight">Plants in Ground</p>
+                <p className="text-xl font-black mt-0.5 text-green-600">
+                  {jobsLoading ? "—" : plantTotals.inGround.toLocaleString()}
+                </p>
+              </div>
+            </div>
+            <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4 flex items-start gap-3">
+              <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0" style={{ background: JOB_STATUS.draft.bg }}>
+                <ClipboardList className="w-4 h-4" style={{ color: JOB_STATUS.draft.color }} />
+              </div>
+              <div className="min-w-0">
+                <p className="text-[11px] font-medium text-gray-400 uppercase tracking-wide leading-tight">Draft</p>
+                <p className="text-xl font-black mt-0.5" style={{ color: JOB_STATUS.draft.color }}>
+                  {jobsLoading ? "—" : (statCounts.draft ?? 0)}
+                </p>
+              </div>
+            </div>
+            <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4 flex items-start gap-3">
+              <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0" style={{ background: JOB_STATUS.scheduled.bg }}>
+                <CalendarCheck className="w-4 h-4" style={{ color: JOB_STATUS.scheduled.color }} />
+              </div>
+              <div className="min-w-0">
+                <p className="text-[11px] font-medium text-gray-400 uppercase tracking-wide leading-tight">Scheduled</p>
+                <p className="text-xl font-black mt-0.5" style={{ color: JOB_STATUS.scheduled.color }}>
+                  {jobsLoading ? "—" : (statCounts.scheduled ?? 0)}
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* Filter bar */}
+          <div className="px-8 py-3 border-b bg-white flex flex-wrap gap-3 items-center flex-shrink-0">
+            <div className="relative flex-1 max-w-xs">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+              <Input
+                placeholder="Search assessments..."
+                value={infillSearch}
+                onChange={e => setInfillSearch(e.target.value)}
+                className="pl-9 h-9 text-sm bg-white"
+              />
+            </div>
+            <Select value={infillTeamFilter} onValueChange={setInfillTeamFilter}>
+              <SelectTrigger className="w-[160px] h-9 text-sm bg-white">
+                <SelectValue placeholder="All Teams" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Teams</SelectItem>
+                {teams.map(t => <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>)}
+              </SelectContent>
+            </Select>
+            <Select value={infillDateFilter} onValueChange={v => setInfillDateFilter(v as typeof infillDateFilter)}>
+              <SelectTrigger className="w-[160px] h-9 text-sm bg-white">
+                <SelectValue placeholder="All dates" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All dates</SelectItem>
+                <SelectItem value="this_week">This week</SelectItem>
+                <SelectItem value="this_month">This month</SelectItem>
+                <SelectItem value="custom">Custom</SelectItem>
+              </SelectContent>
+            </Select>
+            {infillDateFilter === "custom" && (
+              <>
+                <input
+                  type="date"
+                  value={infillDateFrom}
+                  onChange={e => setInfillDateFrom(e.target.value)}
+                  className="h-9 rounded-md border border-input bg-background px-3 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#00AECD] focus:ring-offset-0"
+                />
+                <span className="text-xs text-gray-400">to</span>
+                <input
+                  type="date"
+                  value={infillDateTo}
+                  onChange={e => setInfillDateTo(e.target.value)}
+                  className="h-9 rounded-md border border-input bg-background px-3 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#00AECD] focus:ring-offset-0"
+                />
+              </>
             )}
           </div>
-          <Button onClick={() => setDrawerOpen(true)} className="flex-shrink-0" style={{ background: BRAND }}>
-            <Plus className="w-4 h-4 mr-1" /> New Assessment
-          </Button>
-        </div>
-
-      </div>
+        </>
       )}{/* end isInfill header */}
 
       {/* ── Infill Planting ── */}
       {isInfill && (
-        <div className="mt-5">
+        <div className="flex-1 overflow-auto p-6">
           <Tabs defaultValue="planting-jobs">
             <TabsList className="mb-4">
               <TabsTrigger value="planting-jobs">Planting Jobs</TabsTrigger>
