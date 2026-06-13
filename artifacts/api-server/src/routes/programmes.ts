@@ -26,9 +26,10 @@ router.get("/infill-jobs", requireAuth, async (req, res) => {
   const jobs = await db
     .select({
       id:              infillJobsTable.id,
-      assetId:         infillJobsTable.assetId,
-      assetName:       assetsTable.name,
-      assessedById:    infillJobsTable.assessedById,
+      assetId:          infillJobsTable.assetId,
+      assetName:        assetsTable.name,
+      assetDescription: assetsTable.description,
+      assessedById:     infillJobsTable.assessedById,
       assessorName:    usersTable.name,
       assessmentDate:  infillJobsTable.assessmentDate,
       assessmentNotes: infillJobsTable.assessmentNotes,

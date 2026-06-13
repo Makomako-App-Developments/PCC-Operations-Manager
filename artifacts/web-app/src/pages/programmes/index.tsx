@@ -1093,6 +1093,7 @@ interface InfillJob {
   id: string;
   assetId: string;
   assetName: string | null;
+  assetDescription: string | null;
   assessorName: string | null;
   assessmentDate: string;
   assessmentNotes: string | null;
@@ -3227,9 +3228,11 @@ export default function Programmes() {
                                 <span className="font-semibold text-gray-900 group-hover:text-[#00AECD] transition-colors">
                                   {job.assetName ?? "—"}
                                 </span>
-                                <div className="text-[10px] text-gray-400 mt-0.5">
-                                  {fmt(job.assessmentDate)}{job.assessorName ? ` · ${job.assessorName}` : ""}
-                                </div>
+                                {job.assetDescription && (
+                                  <div className="text-[10px] text-gray-400 mt-0.5 truncate max-w-[220px]">
+                                    {job.assetDescription}
+                                  </div>
+                                )}
                               </td>
                               <td className="px-4 py-3 max-w-[220px]">
                                 <span className="text-gray-600 line-clamp-2 text-xs">
