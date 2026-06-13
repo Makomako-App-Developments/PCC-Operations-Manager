@@ -10,8 +10,13 @@ import { useQueryClient, useQuery } from "@tanstack/react-query";
 import {
   Zap, Plus, Search, X, MapPin, Clock, Calendar, CalendarCheck, Trash2,
   ChevronUp, ChevronDown, ChevronsUpDown, FileText, User, Hash, AlertTriangle,
+  CheckCircle2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from "@/components/ui/select";
 import { useSearch } from "wouter";
 import { useToast } from "@/hooks/use-toast";
 import {
@@ -31,6 +36,10 @@ export default function ReactiveJobs() {
   const [wizardOpen, setWizardOpen] = useState(false);
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [search, setSearch] = useState("");
+  const [teamFilter, setTeamFilter] = useState("all");
+  const [dateFilter, setDateFilter] = useState<"all" | "this_week" | "this_month" | "custom">("all");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
   const [selectedJob, setSelectedJob] = useState<Record<string, unknown> | null>(null);
   const [sortCol, setSortCol] = useState<SortCol>("scheduledDate");
   const [sortDir, setSortDir] = useState<SortDir>("asc");
@@ -155,6 +164,29 @@ export default function ReactiveJobs() {
         getTeamName(j.assignedTeamId as string | null).toLowerCase().includes(q),
       );
     }
+    if (teamFilter !== "all") {
+      jobs = jobs.filter(j => (j.assignedTeamId as string | null) === teamFilter);
+    }
+    if (dateFilter !== "all") {
+      const today = new Date();
+      const monday = new Date(today);
+      monday.setDate(today.getDate() - ((today.getDay() + 6) % 7));
+      monday.setHours(0, 0, 0, 0);
+      const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
+      jobs = jobs.filter(j => {
+        const d = j.scheduledDate as string | null;
+        if (!d) return false;
+        const date = new Date(d + "T00:00:00");
+        if (dateFilter === "this_week") return date >= monday;
+        if (dateFilter === "this_month") return date >= monthStart;
+        if (dateFilter === "custom") {
+          if (dateFrom && date < new Date(dateFrom)) return false;
+          if (dateTo && date > new Date(dateTo)) return false;
+          return true;
+        }
+        return true;
+      });
+    }
 
     return [...jobs].sort((a, b) => {
       let cmp = 0;
@@ -268,9 +300,49 @@ export default function ReactiveJobs() {
         </button>
       </header>
 
+      {/* ── Stat cards ── */}
+      <div className="px-8 pt-5 pb-5 grid grid-cols-2 lg:grid-cols-4 gap-3 flex-shrink-0">
+        <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4 flex items-start gap-3">
+          <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0" style={{ background: `${BRAND}1a` }}>
+            <Zap className="w-4 h-4" style={{ color: BRAND }} />
+          </div>
+          <div className="min-w-0">
+            <p className="text-[11px] font-medium text-gray-400 uppercase tracking-wide leading-tight">Total Jobs</p>
+            <p className="text-xl font-black mt-0.5" style={{ color: NAVY }}>{statusCounts.all}</p>
+          </div>
+        </div>
+        <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4 flex items-start gap-3">
+          <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0" style={{ background: "#fef3c7" }}>
+            <AlertTriangle className="w-4 h-4 text-amber-500" />
+          </div>
+          <div className="min-w-0">
+            <p className="text-[11px] font-medium text-gray-400 uppercase tracking-wide leading-tight">Raised</p>
+            <p className="text-xl font-black mt-0.5 text-amber-500">{statusCounts.raised}</p>
+          </div>
+        </div>
+        <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4 flex items-start gap-3">
+          <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0" style={{ background: "#eff6ff" }}>
+            <Calendar className="w-4 h-4 text-blue-500" />
+          </div>
+          <div className="min-w-0">
+            <p className="text-[11px] font-medium text-gray-400 uppercase tracking-wide leading-tight">Assigned</p>
+            <p className="text-xl font-black mt-0.5 text-blue-500">{statusCounts.assigned}</p>
+          </div>
+        </div>
+        <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4 flex items-start gap-3">
+          <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0" style={{ background: "#dcfce7" }}>
+            <CheckCircle2 className="w-4 h-4 text-green-600" />
+          </div>
+          <div className="min-w-0">
+            <p className="text-[11px] font-medium text-gray-400 uppercase tracking-wide leading-tight">Completed</p>
+            <p className="text-xl font-black mt-0.5 text-green-600">{statusCounts.completed}</p>
+          </div>
+        </div>
+      </div>
+
       {/* Needs-reassignment banner — jobs with a past/today date still active */}
       {needsReassignmentJobs.length > 0 && (
-        <div className="mx-8 mt-4 mb-4 bg-amber-50 border border-amber-200 rounded-xl px-5 py-3.5 flex items-center gap-4 flex-shrink-0">
+        <div className="mx-8 mb-4 bg-amber-50 border border-amber-200 rounded-xl px-5 py-3.5 flex items-center gap-4 flex-shrink-0">
           <AlertTriangle className="w-4 h-4 text-amber-500 flex-shrink-0" />
           <div className="flex-1 min-w-0">
             <p className="text-sm font-semibold text-amber-800">
@@ -310,27 +382,66 @@ export default function ReactiveJobs() {
             );
           })}
         </div>
-        <div className="ml-auto relative">
-          <Search className="w-3.5 h-3.5 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
-          <input
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            placeholder="Search…"
-            className="pl-8 pr-3 py-1.5 text-xs border border-gray-200 rounded-lg outline-none focus:border-[#00AECD] w-48"
-          />
+        <div className="ml-auto flex items-center gap-2 flex-wrap">
+          <div className="relative">
+            <Search className="w-3.5 h-3.5 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
+            <Input
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              placeholder="Search…"
+              className="pl-8 h-9 text-sm bg-white w-44"
+            />
+          </div>
+          <Select value={teamFilter} onValueChange={setTeamFilter}>
+            <SelectTrigger className="w-[150px] h-9 text-sm bg-white">
+              <SelectValue placeholder="All Teams" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Teams</SelectItem>
+              {teams.map(t => <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>)}
+            </SelectContent>
+          </Select>
+          <Select value={dateFilter} onValueChange={v => setDateFilter(v as typeof dateFilter)}>
+            <SelectTrigger className="w-[150px] h-9 text-sm bg-white">
+              <SelectValue placeholder="All dates" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All dates</SelectItem>
+              <SelectItem value="this_week">This week</SelectItem>
+              <SelectItem value="this_month">This month</SelectItem>
+              <SelectItem value="custom">Custom</SelectItem>
+            </SelectContent>
+          </Select>
+          {dateFilter === "custom" && (
+            <>
+              <input
+                type="date"
+                value={dateFrom}
+                onChange={e => setDateFrom(e.target.value)}
+                className="h-9 rounded-md border border-input bg-background px-3 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#00AECD] focus:ring-offset-0"
+              />
+              <span className="text-xs text-gray-400">to</span>
+              <input
+                type="date"
+                value={dateTo}
+                onChange={e => setDateTo(e.target.value)}
+                className="h-9 rounded-md border border-input bg-background px-3 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#00AECD] focus:ring-offset-0"
+              />
+            </>
+          )}
         </div>
       </div>
 
       {/* Table */}
-      <div className="flex-1 overflow-auto">
+      <div className="flex-1 overflow-auto p-6">
         {isLoading ? (
-          <div className="p-8 space-y-2">
+          <div className="space-y-2">
             {[...Array(6)].map((_, i) => (
               <div key={i} className="h-12 rounded-xl bg-gray-100 animate-pulse" />
             ))}
           </div>
         ) : filteredSortedJobs.length === 0 ? (
-          <div className="m-8 py-20 text-center bg-white rounded-2xl border border-dashed border-gray-200">
+          <div className="py-20 text-center bg-white rounded-2xl border border-dashed border-gray-200">
             <Zap className="w-10 h-10 text-gray-100 mx-auto mb-3" />
             <p className="text-gray-500 font-semibold">No unscheduled work</p>
             <p className="text-sm text-gray-400 mt-1">
@@ -338,8 +449,9 @@ export default function ReactiveJobs() {
             </p>
           </div>
         ) : (
+          <div className="rounded-xl border border-gray-200 overflow-hidden bg-white">
           <table className="w-full border-collapse text-sm">
-            <thead className="sticky top-0 z-10 bg-white shadow-sm">
+            <thead className="bg-gray-50">
               <tr className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide">
                 {([
                   { col: "site",          label: "Site" },
@@ -354,7 +466,7 @@ export default function ReactiveJobs() {
                   <th
                     key={col}
                     onClick={() => handleSort(col)}
-                    className="text-left px-4 py-3 border-b border-gray-100 cursor-pointer hover:bg-gray-50 select-none whitespace-nowrap"
+                    className="text-left px-4 py-3 border-b border-gray-100 cursor-pointer hover:bg-gray-100 select-none whitespace-nowrap"
                   >
                     {label}<SortIcon col={col} />
                   </th>
@@ -488,11 +600,12 @@ export default function ReactiveJobs() {
               })}
             </tbody>
           </table>
-        )}
-        {filteredSortedJobs.length > 0 && (
-          <p className="text-center text-[11px] text-gray-400 py-3">
-            {filteredSortedJobs.length} job{filteredSortedJobs.length !== 1 ? "s" : ""}
-          </p>
+          {filteredSortedJobs.length > 0 && (
+            <p className="text-center text-[11px] text-gray-400 py-3 border-t border-gray-100">
+              {filteredSortedJobs.length} job{filteredSortedJobs.length !== 1 ? "s" : ""}
+            </p>
+          )}
+          </div>
         )}
       </div>
 
