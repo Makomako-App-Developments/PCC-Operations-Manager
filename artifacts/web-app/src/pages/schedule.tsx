@@ -1471,26 +1471,6 @@ export default function Schedule() {
         </div>
 
         <div className="flex items-center gap-3">
-          {/* View toggle */}
-          <div className="flex rounded-lg overflow-hidden border border-gray-200 text-xs font-medium shadow-sm">
-            {([
-              { v: "day",       Icon: CalendarDays, label: "Day"       },
-              { v: "week",      Icon: LayoutGrid,   label: "Week"      },
-              { v: "gantt-day", Icon: CalendarDays, label: "Daily"     },
-              { v: "gantt",     Icon: Calendar,     label: "Weekly"    },
-            ] as { v: ViewType; Icon: React.ElementType; label: string }[]).map(({ v, Icon, label }) => (
-              <button
-                key={v}
-                onClick={() => handleSetView(v)}
-                className={`px-3 py-1.5 flex items-center gap-1.5 transition-colors border-r border-gray-200 last:border-r-0 ${
-                  view === v ? "bg-[#00AECD] text-white" : "bg-white text-gray-600 hover:bg-gray-50"
-                }`}
-              >
-                <Icon className="w-3.5 h-3.5" />
-                {label}
-              </button>
-            ))}
-          </div>
 
           <Button
             size="sm"
