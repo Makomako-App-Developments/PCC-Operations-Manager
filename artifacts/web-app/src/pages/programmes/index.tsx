@@ -3386,29 +3386,11 @@ export default function Programmes() {
             {/* Tab: Planting Jobs */}
             <TabsContent value="planting-jobs">
               <div className="space-y-4">
-                {/* Status filters + toolbar */}
-                <div className="flex items-center gap-2 flex-wrap">
-                  {(["all", "draft", "scheduled", "in_progress", "completed"] as const).map(s => {
-                    const cfg = s === "all" ? null : JOB_STATUS[s];
-                    const active = statusFilter === s;
-                    return (
-                      <button key={s} onClick={() => setStatusFilter(s)}
-                        className="text-xs font-semibold px-3 py-1.5 rounded-full border transition-all"
-                        style={{
-                          borderColor: active ? (cfg?.color ?? BRAND) : "#e5e7eb",
-                          background:  active ? (cfg?.bg ?? "#e0f7fb") : "white",
-                          color:       active ? (cfg?.color ?? BRAND) : "#6b7280",
-                        }}>
-                        {s === "all" ? `All (${statCounts.all ?? 0})` : `${cfg!.label} (${statCounts[s] ?? 0})`}
-                      </button>
-                    );
-                  })}
-                  <div className="ml-auto flex items-center gap-2">
-                    <p className="text-sm text-gray-500">
-                      {filteredJobs.length} assessment{filteredJobs.length !== 1 ? "s" : ""}
-                      {statusFilter !== "all" && ` · ${JOB_STATUS[statusFilter].label}`}
-                    </p>
-                  </div>
+                {/* Toolbar */}
+                <div className="flex items-center justify-end">
+                  <p className="text-sm text-gray-500">
+                    {filteredJobs.length} assessment{filteredJobs.length !== 1 ? "s" : ""}
+                  </p>
                 </div>
 
                 {jobsLoading ? (
