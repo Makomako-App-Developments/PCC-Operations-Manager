@@ -485,7 +485,7 @@ export default function Audits() {
       </header>
 
       {/* ── Summary stat cards ─────────────────────────────────────────────── */}
-      <div className="px-8 pt-5 pb-1 grid grid-cols-2 lg:grid-cols-4 gap-3 flex-shrink-0">
+      <div className="px-8 pt-5 pb-5 grid grid-cols-2 lg:grid-cols-4 gap-3 flex-shrink-0">
         <StatCard
           icon={Trophy}
           label="Highest Performing Team"
