@@ -423,18 +423,19 @@ router.post(
         const newEligible: { asset: AssetRow; dueDate: string }[] = [];
         for (const sched of schedules) {
           // Find the first unplaced due date that is eligible for today.
-          // Eligibility starts ON the due date (no early placement) so that a
-          // site's scheduled day is the same regardless of which range you
-          // generate — the carry queue then handles forward overflow only.
+          // Eligibility window: [dueDate - flex, dueDate + flex]. Backward flex
+          // allows a site to be placed up to DUE_DATE_FLEX_DAYS before its due
+          // date so that capacity is spread across days rather than clustering
+          // all sites onto a single epoch-aligned due date.
           for (const dueDate of sched.dueDates) {
             if (sched.placedDates.has(dueDate)) continue;
-            const earliest = dueDate;                          // never place before due date
+            const earliest = addDays(dueDate, -DUE_DATE_FLEX_DAYS);
             const latest   = addDays(dueDate, DUE_DATE_FLEX_DAYS);
             if (today >= earliest && today <= latest) {
               newEligible.push({ asset: sched.asset, dueDate });
               break; // only one due-date cycle per asset per pass
             }
-            // If today is before the due date, stop — later due dates are even further out
+            // If today is before the earliest eligibility, stop — later due dates are even further out
             if (today < earliest) break;
           }
         }
@@ -467,19 +468,11 @@ router.post(
             tid, today, membersByTeam, absenceMap, asset.serviceTimeMins, standardCrewSize,
           );
 
-          // Forward-flex window end: the latest day this site can be placed.
-          // We never carry beyond this boundary — overflow defers to the next
-          // generation run (which picks it up via the epoch-anchored due date).
-          const windowEnd = addDays(dueDate, DUE_DATE_FLEX_DAYS);
-
           if (dayFull) {
-            // Day is full — carry to next working day if still within window
-            if (nextWorkDay <= windowEnd && nextWorkDay <= addDays(toDate, DUE_DATE_FLEX_DAYS)) {
-              if (!carryQueue.has(teamKey)) carryQueue.set(teamKey, []);
-              carryQueue.get(teamKey)!.push({ asset, dueDate });
-              jobsSpilled++;
-            }
-            // else: window expired or end of range — defer to next generation
+            // Day is full — carry to next working day (no expiry; capacity always wins)
+            if (!carryQueue.has(teamKey)) carryQueue.set(teamKey, []);
+            carryQueue.get(teamKey)!.push({ asset, dueDate });
+            jobsSpilled++;
             continue;
           }
 
@@ -491,13 +484,10 @@ router.post(
               dayFull = true;
             }
           } else {
-            // Doesn't fit — carry to next working day if still within window
-            if (nextWorkDay <= windowEnd && nextWorkDay <= addDays(toDate, DUE_DATE_FLEX_DAYS)) {
-              if (!carryQueue.has(teamKey)) carryQueue.set(teamKey, []);
-              carryQueue.get(teamKey)!.push({ asset, dueDate });
-              jobsSpilled++;
-            }
-            // else: window expired or end of range — defer to next generation
+            // Doesn't fit — carry to next working day (no expiry)
+            if (!carryQueue.has(teamKey)) carryQueue.set(teamKey, []);
+            carryQueue.get(teamKey)!.push({ asset, dueDate });
+            jobsSpilled++;
             dayFull = true;
           }
         }
