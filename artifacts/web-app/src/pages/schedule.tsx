@@ -1382,6 +1382,16 @@ export default function Schedule() {
 
   const [search, setSearch] = useState("");
 
+  const computedDatePreset = useMemo(() => {
+    const todayMonday = startOfWeek(new Date(), { weekStartsOn: 1 });
+    const curMonday   = startOfWeek(currentDate, { weekStartsOn: 1 });
+    const diffWeeks   = Math.round((curMonday.getTime() - todayMonday.getTime()) / (7 * 24 * 60 * 60 * 1000));
+    if (diffWeeks === -1) return "last-week";
+    if (diffWeeks ===  0) return "this-week";
+    if (diffWeeks ===  1) return "next-week";
+    return "";
+  }, [currentDate]);
+
   const filteredAssets = (allAssets?.data ?? []).filter((a: any) =>
     urgentSearch.length < 2 ? false :
     a.name.toLowerCase().includes(urgentSearch.toLowerCase()),
@@ -1583,6 +1593,26 @@ export default function Schedule() {
               })}
             </PopoverContent>
           </Popover>
+
+          {/* Date preset dropdown */}
+          <Select
+            value={computedDatePreset}
+            onValueChange={(v) => {
+              const today = new Date();
+              if (v === "last-week") setCurrentDate(addWeeks(today, -1));
+              if (v === "this-week") setCurrentDate(today);
+              if (v === "next-week") setCurrentDate(addWeeks(today,  1));
+            }}
+          >
+            <SelectTrigger className="w-[145px] h-9 text-sm bg-white">
+              <SelectValue placeholder="All dates" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="last-week">Last week</SelectItem>
+              <SelectItem value="this-week">This week</SelectItem>
+              <SelectItem value="next-week">Next week</SelectItem>
+            </SelectContent>
+          </Select>
 
           {/* Date nav — pushed to the right */}
           <div className="ml-auto flex items-center gap-2">
