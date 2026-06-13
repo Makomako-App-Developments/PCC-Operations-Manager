@@ -30,7 +30,7 @@ import {
   ChevronLeft, ChevronRight, ChevronDown, Route, CheckCircle2, Clock,
   CalendarRange, CalendarDays, Calendar, LayoutGrid, CheckCircle, AlertTriangle, XCircle,
   Zap, RotateCcw, PlayCircle, Search, X, Users, MapPin, FileText, Paperclip,
-  Layers, Sprout,
+  Layers, Sprout, Printer,
 } from "lucide-react";
 import { ReactiveJobWizard } from "@/components/reactive-job-wizard";
 import type { AssetStub, TeamStub } from "@/components/reactive-job-wizard";
@@ -1145,6 +1145,12 @@ export default function Schedule() {
   const [dayCapLoading, setDayCapLoading]   = useState(false);
   const [jobsToPush, setJobsToPush]         = useState<Set<string>>(new Set());
 
+  // Print schedule
+  const [printDialogOpen, setPrintDialogOpen] = useState(false);
+  const [printTeamId, setPrintTeamId]         = useState<string>("");
+  const [printWeekStart, setPrintWeekStart]   = useState<Date>(() => startOfWeek(new Date(), { weekStartsOn: 1 }));
+  const [printLoading, setPrintLoading]       = useState(false);
+
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
@@ -1282,6 +1288,117 @@ export default function Schedule() {
     if (jobNotes) patch.notes = jobNotes;
     if (jobActualTime && jobStatus === "completed") patch.actualTimeMins = parseInt(jobActualTime);
     updateJob.mutate({ id: selectedJob.id, data: patch as any });
+  };
+
+  const handlePrintSchedule = async () => {
+    const team = teamsData?.find(t => t.id === printTeamId);
+    const from = format(printWeekStart, "yyyy-MM-dd");
+    const to   = format(addDays(printWeekStart, 4), "yyyy-MM-dd"); // Mon–Fri
+    setPrintLoading(true);
+    try {
+      const data: GanttData = await fetchScheduleRange(from, to, printTeamId || undefined);
+      const days = Array.from({ length: 5 }, (_, i) => addDays(printWeekStart, i));
+      const typeLabel = (t: string) =>
+        t.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase());
+
+      const daySections = days.map(day => {
+        const dayStr = format(day, "yyyy-MM-dd");
+        const rowsForDay = data.rows
+          .filter(r => r.jobs.some(j => j.scheduledDate === dayStr))
+          .sort((a, b) => (a.routeOrder ?? 9999) - (b.routeOrder ?? 9999));
+        const totalMins = rowsForDay.reduce((acc, r) => acc + r.serviceTimeMins, 0);
+        if (rowsForDay.length === 0) return "";
+        const hrs  = Math.floor(totalMins / 60);
+        const mins = totalMins % 60;
+        const rows = rowsForDay.map(r => {
+          const job = r.jobs.find(j => j.scheduledDate === dayStr)!;
+          const status = job.status === "completed" ? "✓" : job.status === "in_progress" ? "►" : "";
+          return `<tr>
+            <td style="width:40px;text-align:center;color:#6b7280;font-size:11px;">${r.routeOrder ?? "–"}</td>
+            <td><strong>${r.assetName}</strong>${r.assetDesc ? `<br><span style="color:#9ca3af;font-size:11px;">${r.assetDesc}</span>` : ""}</td>
+            <td style="font-size:12px;">${typeLabel(r.gardenType)}</td>
+            <td style="font-size:12px;">${r.frequency}</td>
+            <td style="text-align:right;font-size:12px;">${r.serviceTimeMins} min</td>
+            <td style="text-align:center;font-size:14px;color:#10b981;">${status}</td>
+          </tr>`;
+        }).join("");
+        return `
+          <div class="day-section">
+            <div class="day-header">
+              <span>${format(day, "EEEE d MMMM yyyy")}</span>
+              <span class="day-total">${rowsForDay.length} sites · ${hrs > 0 ? `${hrs}h ` : ""}${mins > 0 ? `${mins}m` : ""}</span>
+            </div>
+            <table>
+              <thead><tr>
+                <th style="width:40px;">GS#</th>
+                <th>Site</th>
+                <th>Garden Type</th>
+                <th>Frequency</th>
+                <th style="text-align:right;">Time</th>
+                <th style="width:30px;"></th>
+              </tr></thead>
+              <tbody>${rows}</tbody>
+            </table>
+          </div>`;
+      }).filter(Boolean).join("");
+
+      const weekLabel = `${format(printWeekStart, "d MMM")} – ${format(addDays(printWeekStart, 4), "d MMM yyyy")}`;
+      const html = `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Schedule – ${team?.name ?? "All Teams"} – ${weekLabel}</title>
+  <style>
+    @page { size: A4; margin: 18mm 15mm; }
+    * { box-sizing: border-box; }
+    body { font-family: -apple-system, Arial, sans-serif; font-size: 13px; color: #111; margin: 0; }
+    .header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 18px; padding-bottom: 12px; border-bottom: 2px solid #00AECD; }
+    .header-left h1 { margin: 0; font-size: 20px; color: #0f2a36; }
+    .header-left p { margin: 4px 0 0; color: #6b7280; font-size: 12px; }
+    .header-right { text-align: right; color: #6b7280; font-size: 12px; line-height: 1.6; }
+    .header-right strong { color: #0f2a36; font-size: 14px; }
+    .day-section { margin-bottom: 20px; page-break-inside: avoid; }
+    .day-header { display: flex; justify-content: space-between; align-items: center; background: #f1f5f9; padding: 7px 10px; border-left: 3px solid #00AECD; margin-bottom: 0; font-weight: 700; font-size: 13px; color: #0f2a36; }
+    .day-total { font-weight: 400; color: #6b7280; font-size: 12px; }
+    table { width: 100%; border-collapse: collapse; }
+    th { background: #f8fafc; text-align: left; padding: 6px 8px; font-size: 11px; font-weight: 600; color: #6b7280; text-transform: uppercase; letter-spacing: 0.04em; border-bottom: 1px solid #e5e7eb; }
+    td { padding: 7px 8px; border-bottom: 1px solid #f3f4f6; vertical-align: top; }
+    tr:last-child td { border-bottom: none; }
+    tr:nth-child(even) td { background: #fafafa; }
+    .footer { margin-top: 24px; padding-top: 10px; border-top: 1px solid #e5e7eb; text-align: right; color: #9ca3af; font-size: 11px; }
+    @media print { body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <div class="header-left">
+      <h1>Maintenance Schedule</h1>
+      <p>Porirua City Council – Gardens Manager</p>
+    </div>
+    <div class="header-right">
+      <strong>${team?.name ?? "All Teams"}</strong><br>
+      ${weekLabel}<br>
+      Jobs in geosequence order
+    </div>
+  </div>
+  ${daySections || '<p style="color:#9ca3af;text-align:center;padding:40px;">No jobs scheduled for this week.</p>'}
+  <div class="footer">Printed ${format(new Date(), "d MMM yyyy 'at' h:mm a")}</div>
+</body>
+</html>`;
+
+      const win = window.open("", "_blank");
+      if (win) {
+        win.document.write(html);
+        win.document.close();
+        win.focus();
+        setTimeout(() => win.print(), 500);
+      }
+      setPrintDialogOpen(false);
+    } catch {
+      toast({ title: "Print failed", description: "Could not load schedule data.", variant: "destructive" });
+    } finally {
+      setPrintLoading(false);
+    }
   };
 
   // ── Urgent job ──────────────────────────────────────────────────────────────
@@ -1463,6 +1580,20 @@ export default function Schedule() {
         </div>
 
         <div className="flex items-center gap-3">
+
+          <Button
+            size="sm"
+            variant="outline"
+            className="gap-2 bg-white border-gray-200 text-gray-600 hover:bg-gray-50"
+            onClick={() => {
+              setPrintWeekStart(ganttDayStart);
+              setPrintTeamId(selectedTeamIds.length === 1 ? selectedTeamIds[0] : "");
+              setPrintDialogOpen(true);
+            }}
+          >
+            <Printer className="w-4 h-4" />
+            Print Schedule
+          </Button>
 
           <Button
             size="sm"
@@ -2358,6 +2489,76 @@ export default function Schedule() {
           onPublished={() => setWizardOpen(false)}
         />
       )}
+
+      {/* ── Print Schedule Dialog ───────────────────────────────────────────── */}
+      <Dialog open={printDialogOpen} onOpenChange={setPrintDialogOpen}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Printer className="w-4 h-4" />
+              Print Schedule
+            </DialogTitle>
+            <DialogDescription>
+              Generate a printable A4 schedule for a team's week.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-1">
+            {/* Team selector */}
+            <div className="space-y-1.5">
+              <Label>Team</Label>
+              <Select value={printTeamId} onValueChange={setPrintTeamId}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select a team…" />
+                </SelectTrigger>
+                <SelectContent>
+                  {teamsData?.map(t => (
+                    <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Week navigator */}
+            <div className="space-y-1.5">
+              <Label>Week</Label>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setPrintWeekStart(d => addWeeks(d, -1))}
+                  className="p-1.5 rounded border border-gray-200 text-gray-500 hover:bg-gray-50 transition-colors"
+                >
+                  <ChevronLeft className="w-4 h-4" />
+                </button>
+                <div className="flex-1 text-center text-sm font-medium text-gray-700">
+                  {format(printWeekStart, "d MMM")} – {format(addDays(printWeekStart, 4), "d MMM yyyy")}
+                </div>
+                <button
+                  onClick={() => setPrintWeekStart(d => addWeeks(d, 1))}
+                  className="p-1.5 rounded border border-gray-200 text-gray-500 hover:bg-gray-50 transition-colors"
+                >
+                  <ChevronRight className="w-4 h-4" />
+                </button>
+              </div>
+              <p className="text-xs text-gray-400">Monday – Friday</p>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setPrintDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              style={{ background: BRAND }}
+              className="text-white hover:opacity-90 gap-2"
+              disabled={!printTeamId || printLoading}
+              onClick={handlePrintSchedule}
+            >
+              <Printer className="w-4 h-4" />
+              {printLoading ? "Loading…" : "Print"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
