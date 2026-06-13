@@ -229,6 +229,12 @@ router.post(
     // ── Step 2: For each team+asset, compute all natural due dates in range ──
     // naturalDueDates[teamKey][assetId] = array of due date strings (weekdays)
     // within [fromDate - flex, toDate + flex] so window lookups work at edges.
+    //
+    // Due dates are anchored to a fixed epoch (not fromDate) so that the
+    // schedule for any given day is identical regardless of which date range
+    // the user chooses to generate. Anchoring to fromDate caused June 19 to
+    // show different work when generating 8–21 Jun vs 15–28 Jun.
+    const SCHEDULE_EPOCH = "2024-01-01";
     type AssetSchedule = {
       asset: AssetRow;
       dueDates: string[]; // sorted natural weekday due dates within the range
@@ -241,15 +247,26 @@ router.post(
       for (const asset of teamAssets) {
         const intervalDays = FREQ_DAYS[asset.frequency] ?? 28;
         const dueDates: string[] = [];
-        // Start from before fromDate so first due date in range is caught
-        let cursor = fromDate;
-        while (cursor <= addDays(toDate, DUE_DATE_FLEX_DAYS)) {
+
+        const windowStart = addDays(fromDate, -DUE_DATE_FLEX_DAYS);
+        const windowEnd   = addDays(toDate,   DUE_DATE_FLEX_DAYS);
+        const epochMs      = new Date(SCHEDULE_EPOCH + "T00:00:00Z").getTime();
+        const intervalMs   = intervalDays * 86400000;
+        const windowStartMs = new Date(windowStart + "T00:00:00Z").getTime();
+
+        // Find the first k where EPOCH + k*interval is at or just before windowStart,
+        // then walk forward until we pass windowEnd.
+        const firstK = Math.max(0, Math.floor((windowStartMs - epochMs) / intervalMs) - 1);
+        let cursor = addDays(SCHEDULE_EPOCH, firstK * intervalDays);
+
+        while (cursor <= windowEnd) {
           const weekday = toWeekday(cursor);
-          if (weekday >= addDays(fromDate, -DUE_DATE_FLEX_DAYS)) {
+          if (weekday >= windowStart) {
             dueDates.push(weekday);
           }
           cursor = addDays(cursor, intervalDays);
         }
+
         schedules.push({ asset, dueDates, placedDates: new Set() });
       }
       teamSchedules.set(teamKey, schedules);
@@ -455,7 +472,10 @@ router.post(
       }
     }
 
-    // ── Step 6: Flush remaining carry-overs (past toDate — place on last day) ─
+    // ── Step 6: Flush remaining carry-overs onto the last working day ──────────
+    // Respect daily capacity — only place what fits. Any remaining overflow is
+    // left unscheduled; the epoch-anchored due dates ensure those sites will be
+    // picked up automatically when the user generates the next date range.
     const lastWorkDay = workingDays[workingDays.length - 1] ?? toDate;
     for (const [teamKey, remaining] of carryQueue) {
       const tid = teamKey === "__none__" ? null : teamKey;
@@ -465,6 +485,8 @@ router.post(
         const { estimatedTimeMins: estMins, crewStatus: cs } = calcCrewAdjustment(
           tid, lastWorkDay, membersByTeam, absenceMap, asset.serviceTimeMins, standardCrewSize,
         );
+        const usedLast = tid ? getMins(minutesUsed, tid, lastWorkDay) : 0;
+        if (tid && usedLast + estMins > productiveTimeMins) continue; // day full — defer
         placeJob(asset, lastWorkDay, estMins, cs);
         sched.placedDates.add(dueDate);
       }

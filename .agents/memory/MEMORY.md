@@ -1,6 +1,6 @@
 - [Master data source](master-data-source.md) — the Excel spreadsheet is the authoritative asset list for this client; all null-team assets were originally "Full team" but have since been reallocated to Mobile 2.
 - [Express asset route ordering](express-asset-route-ordering.md) — any named sub-path under /assets/* must live in assets.ts BEFORE the /:id wildcard handler.
-- [Geosequence-first scheduler](geosequence-scheduler.md) — scheduler uses ±3-day flex window; generate always deletes pending jobs first for a clean slate.
+- [Geosequence-first scheduler](geosequence-scheduler.md) — scheduler uses ±3-day flex window; epoch-anchored due dates; Step 6 is capacity-limited (no last-day overflow dump).
 - [Expo Auth Routing](expo-auth-routing.md) — use AuthGuard in _layout.tsx; never bare Redirect/router.replace on login screen or it escapes to web app
 - [Expo web API base URL](expo-web-base-url.md) — never call setBaseUrl() on web; use relative /api/... paths instead so prod domain isn't baked in at dev-build time.
 - [Artifact path conflicts](artifact-path-conflicts.md) — Expo's broad service paths (/node_modules/, /assets/) hijack sibling web-app requests on the main proxy; narrow to previewPath only.
