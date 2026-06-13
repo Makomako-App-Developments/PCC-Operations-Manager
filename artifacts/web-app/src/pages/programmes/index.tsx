@@ -1922,6 +1922,10 @@ function MulchingTab({
   // Sort + filter state
   const [mulchSort, setMulchSort] = useState<{ key: string; dir: "asc" | "desc" }>({ key: "scheduledDate", dir: "asc" });
   const [mulchStatusFilter, setMulchStatusFilter] = useState<string>("all");
+  const [mulchSearch, setMulchSearch] = useState("");
+  const [mulchDateFilter, setMulchDateFilter] = useState<"all" | "this_week" | "this_month" | "custom">("all");
+  const [mulchDateFrom, setMulchDateFrom] = useState("");
+  const [mulchDateTo, setMulchDateTo] = useState("");
 
   const handleRefresh = () => {
     qc.invalidateQueries({ queryKey: getListMulchingRecordsQueryKey() });
@@ -2005,10 +2009,49 @@ function MulchingTab({
     setMulchSort(s => s.key === key ? { key, dir: s.dir === "asc" ? "desc" : "asc" } : { key, dir: "asc" });
   };
 
-  const filteredMulchRecords = useMemo(
-    () => mulchStatusFilter === "all" ? sortedMulchRecords : sortedMulchRecords.filter((r: any) => r.status === mulchStatusFilter),
-    [sortedMulchRecords, mulchStatusFilter],
-  );
+  const filteredMulchRecords = useMemo(() => {
+    let records = mulchStatusFilter === "all"
+      ? sortedMulchRecords
+      : sortedMulchRecords.filter((r: any) => r.status === mulchStatusFilter);
+
+    if (mulchSearch.trim()) {
+      const q = mulchSearch.toLowerCase();
+      records = records.filter((r: any) =>
+        (r.assetName ?? "").toLowerCase().includes(q) ||
+        (r.mulchType ?? "").toLowerCase().includes(q)
+      );
+    }
+
+    if (mulchDateFilter !== "all") {
+      const today = new Date(); today.setHours(0, 0, 0, 0);
+      if (mulchDateFilter === "this_week") {
+        const dow = today.getDay() === 0 ? 6 : today.getDay() - 1;
+        const mon = new Date(today); mon.setDate(today.getDate() - dow);
+        const sun = new Date(mon); sun.setDate(mon.getDate() + 6);
+        records = records.filter((r: any) => {
+          if (!r.scheduledDate) return false;
+          const d = new Date(r.scheduledDate);
+          return d >= mon && d <= sun;
+        });
+      } else if (mulchDateFilter === "this_month") {
+        records = records.filter((r: any) => {
+          if (!r.scheduledDate) return false;
+          const d = new Date(r.scheduledDate);
+          return d.getFullYear() === today.getFullYear() && d.getMonth() === today.getMonth();
+        });
+      } else if (mulchDateFilter === "custom") {
+        const from = mulchDateFrom ? new Date(mulchDateFrom) : null;
+        const to   = mulchDateTo   ? new Date(mulchDateTo)   : null;
+        records = records.filter((r: any) => {
+          if (!r.scheduledDate) return false;
+          const d = new Date(r.scheduledDate);
+          return (!from || d >= from) && (!to || d <= to);
+        });
+      }
+    }
+
+    return records;
+  }, [sortedMulchRecords, mulchStatusFilter, mulchSearch, mulchDateFilter, mulchDateFrom, mulchDateTo]);
 
   return (
     <div className="space-y-4">
@@ -2019,7 +2062,7 @@ function MulchingTab({
           <p className="text-sm text-gray-400">
             {mulchRecords.length} records
             {draftCount > 0 && (
-              <span className="ml-2 text-[11px] font-bold px-2 py-0.5 rounded-full" style={{ color: "#7c3aed", background: "#f5f3ff" }}>
+              <span className="ml-2 text-[11px] font-bold px-2 py-0.5 rounded-full" style={{ color: MULCH_STATUS.draft.color, background: MULCH_STATUS.draft.bg }}>
                 {draftCount} draft{draftCount !== 1 ? "s" : ""} awaiting review
               </span>
             )}
@@ -2150,6 +2193,45 @@ function MulchingTab({
         />
       )}
 
+      {/* Search + date filter toolbar */}
+      {!mulchLoading && mulchRecords.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="relative flex-1 min-w-[180px]">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 pointer-events-none" />
+            <input
+              type="text"
+              placeholder="Search site or mulch type…"
+              value={mulchSearch}
+              onChange={e => setMulchSearch(e.target.value)}
+              className="w-full pl-8 pr-3 py-1.5 text-sm border border-gray-200 rounded-lg bg-white focus:outline-none focus:border-[#00AECD] transition-colors"
+            />
+          </div>
+          <div className="flex items-center gap-1">
+            {(["all", "this_week", "this_month", "custom"] as const).map(opt => (
+              <button
+                key={opt}
+                onClick={() => setMulchDateFilter(opt)}
+                className="text-xs px-2.5 py-1.5 rounded-lg font-medium transition-colors whitespace-nowrap"
+                style={mulchDateFilter === opt
+                  ? { background: "#00AECD", color: "white" }
+                  : { background: "#f3f4f6", color: "#6b7280" }}
+              >
+                {{ all: "All dates", this_week: "This week", this_month: "This month", custom: "Custom" }[opt]}
+              </button>
+            ))}
+          </div>
+          {mulchDateFilter === "custom" && (
+            <div className="flex items-center gap-1.5">
+              <input type="date" value={mulchDateFrom} onChange={e => setMulchDateFrom(e.target.value)}
+                className="text-xs px-2 py-1.5 border border-gray-200 rounded-lg bg-white focus:outline-none focus:border-[#00AECD]" />
+              <span className="text-xs text-gray-400">–</span>
+              <input type="date" value={mulchDateTo} onChange={e => setMulchDateTo(e.target.value)}
+                className="text-xs px-2 py-1.5 border border-gray-200 rounded-lg bg-white focus:outline-none focus:border-[#00AECD]" />
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Records table */}
       {mulchLoading ? (
         <div className="space-y-2">{[...Array(4)].map((_, i) => <Skeleton key={i} className="h-10 w-full rounded-xl" />)}</div>
@@ -2196,13 +2278,12 @@ function MulchingTab({
                   <tr key={r.id}
                     onClick={() => setSelectedMulch(r)}
                     className="hover:bg-gray-50 cursor-pointer transition-colors"
-                    style={isDraft ? { background: "#faf5ff" } : undefined}
                   >
                     <td className="px-4 py-3">
                       <p className="font-medium text-gray-800 text-sm flex items-center gap-1.5 flex-wrap">
                         {r.assetName ?? "Unknown"}
                         {(r.splitTotalDays ?? 1) > 1 && (
-                          <span className="text-[9px] font-bold bg-violet-100 text-violet-700 rounded px-1.5 py-0.5 whitespace-nowrap">
+                          <span className="text-[9px] font-bold bg-gray-100 text-gray-500 rounded px-1.5 py-0.5 whitespace-nowrap">
                             Day {r.splitDayIndex} of {r.splitTotalDays}
                           </span>
                         )}
@@ -2232,21 +2313,12 @@ function MulchingTab({
                         {isDraft && (
                           <Button
                             variant="ghost" size="sm"
-                            className="h-8 w-8 p-0 text-violet-500 hover:text-violet-700 hover:bg-violet-50"
+                            className="h-8 w-8 p-0 hover:bg-[#e0f7fb]"
+                            style={{ color: JOB_STATUS.scheduled.color }}
                             title="Review & schedule"
                             onClick={() => setReviewTarget(r)}
                           >
-                            <Zap className="w-4 h-4" />
-                          </Button>
-                        )}
-                        {r.status !== "completed" && !isDraft && (
-                          <Button
-                            variant="ghost" size="sm"
-                            className="h-8 w-8 p-0 text-gray-400 hover:text-green-600 hover:bg-green-50"
-                            title="Mark as done"
-                            onClick={() => (updateMulch.mutateAsync as any)({ id: r.id, data: { status: "completed", completedDate: new Date().toISOString().slice(0, 10) } }).then(handleRefresh)}
-                          >
-                            <CheckCircle2 className="w-4 h-4" />
+                            <CalendarCheck className="w-4 h-4" />
                           </Button>
                         )}
                       </div>
