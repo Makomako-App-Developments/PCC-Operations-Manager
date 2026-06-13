@@ -343,7 +343,7 @@ export default function ReactiveJobs() {
               <tr className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide">
                 {([
                   { col: "site",          label: "Site" },
-                  { col: "description",   label: "Description" },
+                  { col: "description",   label: "Job details" },
                   { col: "priority",      label: "Priority" },
                   { col: "status",        label: "Status" },
                   { col: "scheduledDate", label: "Scheduled" },
@@ -377,11 +377,19 @@ export default function ReactiveJobs() {
                     className={`${rowBg} border-b border-gray-100 cursor-pointer hover:bg-[#00AECD]/5 transition-colors`}
                   >
                     {/* Site */}
-                    <td className="px-4 py-3 font-semibold text-gray-800 max-w-[180px]">
+                    <td className="px-4 py-3 max-w-[180px]">
                       <div className="flex items-center gap-1.5">
                         <MapPin className="w-3 h-3 text-gray-300 flex-shrink-0" />
-                        <span className="truncate" title={site}>{site}</span>
+                        <span className="font-semibold text-gray-800 truncate" title={site}>{site}</span>
                       </div>
+                      {(() => {
+                        const desc = job.assetId
+                          ? assets.find(a => a.id === (job.assetId as string))?.description
+                          : null;
+                        return desc
+                          ? <p className="text-[10px] text-gray-400 truncate mt-0.5 pl-4">{desc}</p>
+                          : null;
+                      })()}
                     </td>
 
                     {/* Description */}
