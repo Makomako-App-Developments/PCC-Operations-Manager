@@ -75,7 +75,9 @@ function Router() {
       <Route path="/audits/:id/edit"><ProtectedRoute path="/audits" component={EditAudit} /></Route>
       <Route path="/audits/:id"><ProtectedRoute path="/audits" component={AuditDetail} /></Route>
       <Route path="/audits"><ProtectedRoute path="/audits" component={Audits} /></Route>
-      <Route path="/programmes"><ProtectedRoute path="/programmes" component={Programmes} /></Route>
+      <Route path="/programmes/infill"><ProtectedRoute path="/programmes" component={Programmes} /></Route>
+      <Route path="/programmes/mulching"><ProtectedRoute path="/programmes" component={Programmes} /></Route>
+      <Route path="/programmes"><Redirect to="/programmes/infill" /></Route>
       <Route path="/reports"><ProtectedRoute path="/reports" component={Reports} /></Route>
       <Route path="/audit-log"><ProtectedRoute path="/audit-log" component={AuditLog} /></Route>
       <Route path="/users"><ProtectedRoute path="/users" component={Users} /></Route>

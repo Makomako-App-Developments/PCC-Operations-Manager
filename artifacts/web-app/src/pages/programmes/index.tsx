@@ -2782,10 +2782,10 @@ export default function Programmes() {
   const qc = useQueryClient();
   const { toast } = useToast();
   const search = useSearch();
-  const [, navigate] = useLocation();
+  const [location, navigate] = useLocation();
   const params = new URLSearchParams(search);
   const initialReviewId = params.get("review") ?? undefined;
-  const [activeTab, setActiveTab] = useState<string>(params.get("tab") === "mulching" ? "mulching" : "infill");
+  const isInfill = !location.includes("/mulching");
 
   // Infill jobs
   const { data: jobsData, isLoading: jobsLoading } = useQuery<{ data: InfillJob[]; total: number }>({
@@ -2844,13 +2844,13 @@ export default function Programmes() {
     if (assetId) {
       setPrefilledAssetId(assetId);
       setDrawerOpen(true);
-      navigate("/programmes", { replace: true });
+      navigate("/programmes/infill", { replace: true });
       return;
     }
     const jobId = params.get("jobId");
     if (jobId) {
       setSelectedJobId(jobId);
-      navigate("/programmes", { replace: true });
+      navigate("/programmes/infill", { replace: true });
     }
   }, [search]);
 
@@ -2908,7 +2908,6 @@ export default function Programmes() {
   const [speciesScope, setSpeciesScope]         = useState<SpeciesScope>("all");
   const [speciesSortKey, setSpeciesSortKey]     = useState<SpeciesSortKey>("totalQty");
   const [speciesSortDir, setSpeciesSortDir]     = useState<"asc" | "desc">("desc");
-  const [speciesExpanded, setSpeciesExpanded]   = useState(false);
 
   const handleSpeciesSort = (key: SpeciesSortKey) => {
     if (speciesSortKey === key) setSpeciesSortDir(d => d === "asc" ? "desc" : "asc");
@@ -3004,169 +3003,350 @@ export default function Programmes() {
 
   return (
     <div className="p-6 w-full">
-      <div className="mb-6">
-        <h1 className="text-xl font-bold" style={{ color: NAVY }}>Programmes</h1>
-        <p className="text-sm text-gray-500">Infill planting assessments and mulching records</p>
+      {/* ── Page header ── */}
+      <div className="mb-0">
+        <div className="flex items-center justify-between mb-1">
+          <div>
+            <h1 className="text-xl font-bold" style={{ color: NAVY }}>
+              {isInfill ? "Infill Planting" : "Mulching"}
+            </h1>
+            {isInfill && (
+              <div className="flex items-center gap-3 mt-1.5 flex-wrap">
+                <span className="text-sm">
+                  <span className="font-bold" style={{ color: BRAND }}>
+                    {jobsLoading ? "—" : plantTotals.required.toLocaleString()}
+                  </span>
+                  <span className="text-gray-400 ml-1">total plants required</span>
+                </span>
+                <span className="text-gray-300 select-none">·</span>
+                <span className="text-sm">
+                  <span className="font-bold text-green-600">
+                    {jobsLoading ? "—" : plantTotals.inGround.toLocaleString()}
+                  </span>
+                  <span className="text-gray-400 ml-1">plants in the ground</span>
+                </span>
+                <span className="text-gray-300 select-none">·</span>
+                <span className="text-sm">
+                  <span className="font-bold" style={{ color: JOB_STATUS.draft.color }}>
+                    {statCounts.draft ?? 0}
+                  </span>
+                  <span className="text-gray-400 ml-1">draft</span>
+                </span>
+                <span className="text-gray-300 select-none">·</span>
+                <span className="text-sm">
+                  <span className="font-bold" style={{ color: JOB_STATUS.scheduled.color }}>
+                    {statCounts.scheduled ?? 0}
+                  </span>
+                  <span className="text-gray-400 ml-1">scheduled</span>
+                </span>
+                <span className="text-gray-300 select-none">·</span>
+                <span className="text-sm">
+                  <span className="font-bold" style={{ color: JOB_STATUS.completed.color }}>
+                    {statCounts.completed ?? 0}
+                  </span>
+                  <span className="text-gray-400 ml-1">completed</span>
+                </span>
+              </div>
+            )}
+          </div>
+          {isInfill && (
+            <Button onClick={() => setDrawerOpen(true)} className="flex-shrink-0" style={{ background: BRAND }}>
+              <Plus className="w-4 h-4 mr-1" /> New Assessment
+            </Button>
+          )}
+        </div>
+
+        {/* Sub-page nav */}
+        <div className="flex items-end gap-0 mt-4 border-b border-gray-200">
+          <button
+            onClick={() => navigate("/programmes/infill")}
+            className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors flex items-center gap-1.5 ${isInfill ? "border-[#00AECD] text-[#00AECD]" : "border-transparent text-gray-500 hover:text-gray-700"}`}>
+            <Sprout className="w-4 h-4" /> Infill Planting
+          </button>
+          <button
+            onClick={() => navigate("/programmes/mulching")}
+            className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors flex items-center gap-1.5 ${!isInfill ? "border-[#00AECD] text-[#00AECD]" : "border-transparent text-gray-500 hover:text-gray-700"}`}>
+            <Layers className="w-4 h-4" /> Mulching
+          </button>
+        </div>
       </div>
 
-      <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="mb-6">
-          <TabsTrigger value="infill" className="flex items-center gap-1.5">
-            <Sprout className="w-4 h-4" /> Infill Planting
-          </TabsTrigger>
-          <TabsTrigger value="mulching" className="flex items-center gap-1.5">
-            <Layers className="w-4 h-4" /> Mulching
-          </TabsTrigger>
-        </TabsList>
+      {/* ── Infill Planting ── */}
+      {isInfill && (
+        <div className="mt-5">
+          <Tabs defaultValue="planting-jobs">
+            <TabsList className="mb-4">
+              <TabsTrigger value="planting-jobs">Planting Jobs</TabsTrigger>
+              <TabsTrigger value="species-summary">Species Order Summary</TabsTrigger>
+            </TabsList>
 
-        {/* ── Infill Planting ── */}
-        <TabsContent value="infill">
-          <div className="space-y-5">
-            {/* Plant totals summary */}
-            <div className="grid grid-cols-2 gap-3">
-              <div className="rounded-xl border p-4 bg-white flex items-center gap-4">
-                <div className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0"
-                  style={{ background: "#e0f7fb" }}>
-                  <Sprout className="w-5 h-5" style={{ color: BRAND }} />
-                </div>
-                <div>
-                  <p className="text-2xl font-black" style={{ color: BRAND }}>
-                    {jobsLoading ? "—" : plantTotals.required.toLocaleString()}
-                  </p>
-                  <p className="text-xs text-gray-500 mt-0.5">Total plants required</p>
-                </div>
-              </div>
-              <div className="rounded-xl border p-4 bg-white flex items-center gap-4">
-                <div className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0"
-                  style={{ background: "#dcfce7" }}>
-                  <CheckCircle2 className="w-5 h-5 text-green-600" />
-                </div>
-                <div>
-                  <p className="text-2xl font-black text-green-600">
-                    {jobsLoading ? "—" : plantTotals.inGround.toLocaleString()}
-                  </p>
-                  <p className="text-xs text-gray-500 mt-0.5">Total plants in the ground</p>
-                </div>
-              </div>
-            </div>
-
-            {/* Species order summary */}
-            <div className="rounded-xl border border-gray-200 bg-white overflow-hidden">
-              {/* Header */}
-              <div className="px-4 py-3 flex items-center justify-between border-b border-gray-100 bg-gray-50">
-                <button
-                  className="flex items-center gap-2 text-sm font-semibold text-gray-700 hover:text-gray-900"
-                  onClick={() => setSpeciesExpanded(v => !v)}>
-                  <Package className="w-4 h-4" style={{ color: BRAND }} />
-                  Species Order Summary
-                  <span className="text-[11px] font-normal text-gray-400 ml-1">
-                    {speciesSummary.length} species
-                  </span>
-                  {speciesExpanded
-                    ? <ChevronUp className="w-3.5 h-3.5 text-gray-400" />
-                    : <ChevronDown className="w-3.5 h-3.5 text-gray-400" />}
-                </button>
-                <button
-                  onClick={exportSpeciesCSV}
-                  className="flex items-center gap-1.5 text-[11px] font-semibold px-3 py-1.5 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors">
-                  <Download className="w-3 h-3" /> Export CSV
-                </button>
-              </div>
-
-              {speciesExpanded && (
-                <>
-                  {/* Scope filter */}
-                  <div className="px-4 py-2.5 border-b border-gray-100 flex items-center gap-2">
-                    <span className="text-[11px] text-gray-400 mr-1">Show:</span>
-                    {([
-                      { key: "all",            label: "All" },
-                      { key: "needs_ordering", label: "Needs ordering" },
-                      { key: "in_ground",      label: "In ground" },
-                    ] as { key: SpeciesScope; label: string }[]).map(s => (
-                      <button key={s.key}
-                        onClick={() => setSpeciesScope(s.key)}
-                        className="text-[11px] font-semibold px-2.5 py-1 rounded-full border transition-colors"
+            {/* Tab: Planting Jobs */}
+            <TabsContent value="planting-jobs">
+              <div className="space-y-4">
+                {/* Status filters + toolbar */}
+                <div className="flex items-center gap-2 flex-wrap">
+                  {(["all", "draft", "scheduled", "in_progress", "completed"] as const).map(s => {
+                    const cfg = s === "all" ? null : JOB_STATUS[s];
+                    const active = statusFilter === s;
+                    return (
+                      <button key={s} onClick={() => setStatusFilter(s)}
+                        className="text-xs font-semibold px-3 py-1.5 rounded-full border transition-all"
                         style={{
-                          borderColor: speciesScope === s.key ? BRAND : "#e5e7eb",
-                          background:  speciesScope === s.key ? "#e0f7fb" : "white",
-                          color:       speciesScope === s.key ? BRAND : "#6b7280",
+                          borderColor: active ? (cfg?.color ?? BRAND) : "#e5e7eb",
+                          background:  active ? (cfg?.bg ?? "#e0f7fb") : "white",
+                          color:       active ? (cfg?.color ?? BRAND) : "#6b7280",
                         }}>
-                        {s.label}
+                        {s === "all" ? `All (${statCounts.all ?? 0})` : `${cfg!.label} (${statCounts[s] ?? 0})`}
                       </button>
-                    ))}
-                  </div>
-
-                  {/* Table */}
-                  {speciesSummary.length === 0 ? (
-                    <div className="py-8 text-center text-gray-400 text-sm">
-                      No species data for this filter.
+                    );
+                  })}
+                  <div className="ml-auto flex items-center gap-2">
+                    <p className="text-sm text-gray-500">
+                      {filteredJobs.length} assessment{filteredJobs.length !== 1 ? "s" : ""}
+                      {statusFilter !== "all" && ` · ${JOB_STATUS[statusFilter].label}`}
+                    </p>
+                    <div className="flex rounded-lg border border-gray-200 overflow-hidden flex-shrink-0">
+                      <button
+                        onClick={() => setInfillView("list")}
+                        className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold transition-colors ${infillView === "list" ? "text-white" : "bg-white text-gray-500 hover:bg-gray-50"}`}
+                        style={infillView === "list" ? { background: BRAND } : {}}>
+                        <List className="w-3.5 h-3.5" /> List
+                      </button>
+                      <button
+                        onClick={() => setInfillView("map")}
+                        className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold transition-colors border-l border-gray-200 ${infillView === "map" ? "text-white" : "bg-white text-gray-500 hover:bg-gray-50"}`}
+                        style={infillView === "map" ? { background: BRAND } : {}}>
+                        <MapIcon className="w-3.5 h-3.5" /> Map
+                      </button>
                     </div>
-                  ) : (
+                  </div>
+                </div>
+
+                {/* Map view */}
+                {infillView === "map" && (
+                  <InfillMapView
+                    jobs={jobs}
+                    assets={assets}
+                    statusFilter={statusFilter}
+                    onSelectJob={setSelectedJobId}
+                  />
+                )}
+
+                {/* List view */}
+                {infillView === "list" && (jobsLoading ? (
+                  <div className="space-y-2">{[...Array(4)].map((_, i) => <Skeleton key={i} className="h-10 w-full rounded-lg" />)}</div>
+                ) : sortedJobs.length === 0 ? (
+                  <div className="text-center py-16 text-gray-400">
+                    <Sprout className="w-12 h-12 mx-auto mb-3 opacity-20" />
+                    <p className="text-sm font-medium">No assessments found</p>
+                    {statusFilter === "all" && (
+                      <p className="text-xs mt-1">Click <strong>New Assessment</strong> to create the first one.</p>
+                    )}
+                  </div>
+                ) : (
+                  <div className="rounded-xl border border-gray-200 overflow-hidden bg-white">
                     <table className="w-full text-sm">
                       <thead>
-                        <tr className="border-b border-gray-100">
+                        <tr className="border-b border-gray-100 bg-gray-50">
                           {([
-                            { key: "speciesName", label: "Species" },
-                            { key: "category",    label: "Grade/size" },
-                            { key: "totalQty",    label: "Total qty" },
-                            { key: "sites",       label: "Sites" },
-                          ] as { key: SpeciesSortKey; label: string }[]).map(col => (
+                            { key: "assetName",       label: "Site name" },
+                            { key: "assessmentNotes",  label: "Description" },
+                            { key: "totalPlants",      label: "Plants" },
+                            { key: "status",           label: "Status" },
+                            { key: "plannedDate",      label: "Scheduled Date" },
+                            { key: "teamName",         label: "Team" },
+                          ] as { key: SortKey; label: string }[]).map(col => (
                             <th key={col.key}
-                              className="px-4 py-2.5 text-left text-[11px] font-semibold text-gray-400 uppercase tracking-wider cursor-pointer select-none hover:text-gray-700 whitespace-nowrap"
-                              onClick={() => handleSpeciesSort(col.key)}>
+                              className="px-4 py-3 text-left text-[11px] font-semibold text-gray-500 uppercase tracking-wider select-none cursor-pointer hover:text-gray-800 whitespace-nowrap"
+                              onClick={() => handleSort(col.key)}>
                               <span className="flex items-center gap-1">
                                 {col.label}
                                 <span className="text-gray-300">
-                                  {speciesSortKey === col.key ? (speciesSortDir === "asc" ? "↑" : "↓") : "↕"}
+                                  {sortKey === col.key ? (sortDir === "asc" ? "↑" : "↓") : "↕"}
                                 </span>
                               </span>
                             </th>
                           ))}
-                          <th
-                            className="px-4 py-2.5 text-left text-[11px] font-semibold text-gray-400 uppercase tracking-wider cursor-pointer select-none hover:text-gray-700 whitespace-nowrap"
-                            onClick={() => handleSpeciesSort("completedQty")}>
-                            <span className="flex items-center gap-1">
-                              Breakdown
-                              <span className="text-gray-300">
-                                {speciesSortKey === "completedQty" ? (speciesSortDir === "asc" ? "↑" : "↓") : "↕"}
-                              </span>
-                            </span>
-                          </th>
+                          <th className="px-4 py-3 text-right text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Actions</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-gray-50">
-                        {speciesSummary.map(row => (
-                          <tr key={`${row.speciesName}||${row.category}`} className="hover:bg-gray-50">
-                            <td className="px-4 py-2.5">
-                              <span className="font-semibold text-gray-800 italic">{row.speciesName}</span>
-                            </td>
-                            <td className="px-4 py-2.5">
-                              <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${GRADE_COLORS[row.category as PlantGrade] ?? "bg-gray-100 text-gray-600"}`}>
-                                {row.category}
+                        {sortedJobs.map(job => {
+                          const totalPlants = job.species.reduce((s, sp) => s + sp.quantity, 0);
+                          const canSchedule = job.status === "draft";
+                          const canCancel   = job.status === "draft" || job.status === "scheduled";
+                          return (
+                            <tr key={job.id}
+                              className="hover:bg-[#f0fafb] cursor-pointer transition-colors group"
+                              onClick={() => setSelectedJobId(job.id)}>
+                              <td className="px-4 py-3">
+                                <span className="font-semibold text-gray-900 group-hover:text-[#00AECD] transition-colors">
+                                  {job.assetName ?? "—"}
+                                </span>
+                                <div className="text-[10px] text-gray-400 mt-0.5">
+                                  {fmt(job.assessmentDate)}{job.assessorName ? ` · ${job.assessorName}` : ""}
+                                </div>
+                              </td>
+                              <td className="px-4 py-3 max-w-[220px]">
+                                <span className="text-gray-600 line-clamp-2 text-xs">
+                                  {job.assessmentNotes || <span className="text-gray-300 italic">—</span>}
+                                </span>
+                              </td>
+                              <td className="px-4 py-3 text-center">
+                                <span className="font-bold text-base" style={{ color: BRAND }}>{totalPlants}</span>
+                              </td>
+                              <td className="px-4 py-3">
+                                <StatusBadge status={job.status} />
+                              </td>
+                              <td className="px-4 py-3 whitespace-nowrap">
+                                {job.plannedDate
+                                  ? <span className="text-xs text-gray-700 flex items-center gap-1"><Calendar className="w-3 h-3 text-gray-400 flex-shrink-0" />{fmt(job.plannedDate)}</span>
+                                  : <span className="text-gray-300 text-xs italic">—</span>
+                                }
+                              </td>
+                              <td className="px-4 py-3">
+                                {job.teamName
+                                  ? <span className="text-xs font-medium text-gray-700">{job.teamName}</span>
+                                  : <span className="text-gray-300 text-xs italic">Unassigned</span>
+                                }
+                              </td>
+                              <td className="px-4 py-3" onClick={e => e.stopPropagation()}>
+                                <div className="flex items-center gap-1.5 justify-end">
+                                  {canSchedule && (
+                                    <button
+                                      onClick={() => setSelectedJobId(job.id)}
+                                      className="text-[11px] font-semibold px-2.5 py-1 rounded-lg transition-colors"
+                                      style={{ color: JOB_STATUS.scheduled.color, background: JOB_STATUS.scheduled.bg }}>
+                                      Schedule
+                                    </button>
+                                  )}
+                                  <button
+                                    onClick={() => setSelectedJobId(job.id)}
+                                    className="text-[11px] font-semibold px-2.5 py-1 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors">
+                                    Edit
+                                  </button>
+                                  {canCancel && (
+                                    <button
+                                      onClick={() => updateJob.mutate({ id: job.id, data: { status: "cancelled" } })}
+                                      className="text-[11px] font-semibold px-2.5 py-1 rounded-lg transition-colors"
+                                      style={{ color: "#dc2626", background: "#fef2f2" }}>
+                                      Cancel
+                                    </button>
+                                  )}
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                ))}
+              </div>
+            </TabsContent>
+
+            {/* Tab: Species Order Summary */}
+            <TabsContent value="species-summary">
+              <div className="rounded-xl border border-gray-200 bg-white overflow-hidden mt-1">
+                <div className="px-4 py-3 flex items-center justify-between border-b border-gray-100 bg-gray-50">
+                  <div className="flex items-center gap-2">
+                    <Package className="w-4 h-4" style={{ color: BRAND }} />
+                    <span className="text-sm font-semibold text-gray-700">
+                      {speciesSummary.length} species
+                    </span>
+                    <div className="flex items-center gap-1.5 ml-3">
+                      {([
+                        { key: "all",            label: "All" },
+                        { key: "needs_ordering", label: "Needs ordering" },
+                        { key: "in_ground",      label: "In ground" },
+                      ] as { key: SpeciesScope; label: string }[]).map(s => (
+                        <button key={s.key}
+                          onClick={() => setSpeciesScope(s.key)}
+                          className="text-[11px] font-semibold px-2.5 py-1 rounded-full border transition-colors"
+                          style={{
+                            borderColor: speciesScope === s.key ? BRAND : "#e5e7eb",
+                            background:  speciesScope === s.key ? "#e0f7fb" : "white",
+                            color:       speciesScope === s.key ? BRAND : "#6b7280",
+                          }}>
+                          {s.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <button
+                    onClick={exportSpeciesCSV}
+                    className="flex items-center gap-1.5 text-[11px] font-semibold px-3 py-1.5 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors">
+                    <Download className="w-3 h-3" /> Export CSV
+                  </button>
+                </div>
+                {speciesSummary.length === 0 ? (
+                  <div className="py-8 text-center text-gray-400 text-sm">No species data for this filter.</div>
+                ) : (
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-gray-100">
+                        {([
+                          { key: "speciesName", label: "Species" },
+                          { key: "category",    label: "Grade/size" },
+                          { key: "totalQty",    label: "Total qty" },
+                          { key: "sites",       label: "Sites" },
+                        ] as { key: SpeciesSortKey; label: string }[]).map(col => (
+                          <th key={col.key}
+                            className="px-4 py-2.5 text-left text-[11px] font-semibold text-gray-400 uppercase tracking-wider cursor-pointer select-none hover:text-gray-700 whitespace-nowrap"
+                            onClick={() => handleSpeciesSort(col.key)}>
+                            <span className="flex items-center gap-1">
+                              {col.label}
+                              <span className="text-gray-300">
+                                {speciesSortKey === col.key ? (speciesSortDir === "asc" ? "↑" : "↓") : "↕"}
                               </span>
-                            </td>
-                            <td className="px-4 py-2.5">
-                              <span className="text-lg font-black" style={{ color: BRAND }}>{row.totalQty}</span>
-                            </td>
-                            <td className="px-4 py-2.5 text-sm text-gray-600">{row.sites}</td>
-                            <td className="px-4 py-2.5">
-                              <div className="flex items-center gap-1.5 flex-wrap">
-                                {row.draftQty > 0 && (
-                                  <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full"
-                                    style={{ background: JOB_STATUS.draft.bg, color: JOB_STATUS.draft.color }}>
-                                    {row.draftQty} draft
-                                  </span>
-                                )}
-                                {row.scheduledQty > 0 && (
-                                  <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full"
-                                    style={{ background: JOB_STATUS.scheduled.bg, color: JOB_STATUS.scheduled.color }}>
-                                    {row.scheduledQty} scheduled
-                                  </span>
-                                )}
-                                {row.completedQty > 0 && (
-                                  <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full"
-                                    style={{ background: JOB_STATUS.completed.bg, color: JOB_STATUS.completed.color }}>
-                                    {row.completedQty} in ground
+                            </span>
+                          </th>
+                        ))}
+                        <th
+                          className="px-4 py-2.5 text-left text-[11px] font-semibold text-gray-400 uppercase tracking-wider cursor-pointer select-none hover:text-gray-700 whitespace-nowrap"
+                          onClick={() => handleSpeciesSort("completedQty")}>
+                          <span className="flex items-center gap-1">
+                            Breakdown
+                            <span className="text-gray-300">
+                              {speciesSortKey === "completedQty" ? (speciesSortDir === "asc" ? "↑" : "↓") : "↕"}
+                            </span>
+                          </span>
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-50">
+                      {speciesSummary.map(row => (
+                        <tr key={`${row.speciesName}||${row.category}`} className="hover:bg-gray-50">
+                          <td className="px-4 py-2.5">
+                            <span className="font-semibold text-gray-800 italic">{row.speciesName}</span>
+                          </td>
+                          <td className="px-4 py-2.5">
+                            <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${GRADE_COLORS[row.category as PlantGrade] ?? "bg-gray-100 text-gray-600"}`}>
+                              {row.category}
+                            </span>
+                          </td>
+                          <td className="px-4 py-2.5">
+                            <span className="text-lg font-black" style={{ color: BRAND }}>{row.totalQty}</span>
+                          </td>
+                          <td className="px-4 py-2.5 text-sm text-gray-600">{row.sites}</td>
+                          <td className="px-4 py-2.5">
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              {row.draftQty > 0 && (
+                                <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full"
+                                  style={{ background: JOB_STATUS.draft.bg, color: JOB_STATUS.draft.color }}>
+                                  {row.draftQty} draft
+                                </span>
+                              )}
+                              {row.scheduledQty > 0 && (
+                                <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full"
+                                  style={{ background: JOB_STATUS.scheduled.bg, color: JOB_STATUS.scheduled.color }}>
+                                  {row.scheduledQty} scheduled
+                                </span>
+                              )}
+                              {row.completedQty > 0 && (
+                                <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full"
+                                  style={{ background: JOB_STATUS.completed.bg, color: JOB_STATUS.completed.color }}>
+                                  {row.completedQty} in ground
                                   </span>
                                 )}
                               </div>
@@ -3176,185 +3356,18 @@ export default function Programmes() {
                       </tbody>
                     </table>
                   )}
-                </>
-              )}
-            </div>
-
-            {/* Stat chips */}
-            <div className="grid grid-cols-5 gap-3">
-              {(["all", "draft", "scheduled", "in_progress", "completed"] as const).map(s => {
-                const cfg = s === "all" ? null : JOB_STATUS[s];
-                const active = statusFilter === s;
-                return (
-                  <button key={s} onClick={() => setStatusFilter(s)}
-                    className="rounded-xl border p-3 text-left transition-all"
-                    style={{
-                      borderColor: active ? (cfg?.color ?? BRAND) : "#e5e7eb",
-                      background:  active ? (cfg?.bg ?? "#f0fafb") : "white",
-                    }}>
-                    <p className="text-xl font-bold" style={{ color: cfg?.color ?? BRAND }}>{statCounts[s] ?? 0}</p>
-                    <p className="text-[11px] text-gray-500 mt-0.5">{s === "all" ? "All Jobs" : cfg!.label}</p>
-                  </button>
-                );
-              })}
-            </div>
-
-            {/* Toolbar */}
-            <div className="flex items-center justify-between gap-3">
-              <p className="text-sm text-gray-500 flex-1">
-                {filteredJobs.length} assessment{filteredJobs.length !== 1 ? "s" : ""}
-                {statusFilter !== "all" && ` · ${JOB_STATUS[statusFilter].label}`}
-              </p>
-              {/* List / Map toggle */}
-              <div className="flex rounded-lg border border-gray-200 overflow-hidden flex-shrink-0">
-                <button
-                  onClick={() => setInfillView("list")}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold transition-colors ${infillView === "list" ? "text-white" : "bg-white text-gray-500 hover:bg-gray-50"}`}
-                  style={infillView === "list" ? { background: BRAND } : {}}>
-                  <List className="w-3.5 h-3.5" /> List
-                </button>
-                <button
-                  onClick={() => setInfillView("map")}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold transition-colors border-l border-gray-200 ${infillView === "map" ? "text-white" : "bg-white text-gray-500 hover:bg-gray-50"}`}
-                  style={infillView === "map" ? { background: BRAND } : {}}>
-                  <MapIcon className="w-3.5 h-3.5" /> Map
-                </button>
               </div>
-              <Button onClick={() => setDrawerOpen(true)} style={{ background: BRAND }}>
-                <Plus className="w-4 h-4 mr-1" /> New Assessment
-              </Button>
-            </div>
+            </TabsContent>
+          </Tabs>
+        </div>
+      )}
 
-            {/* Map view */}
-            {infillView === "map" && (
-              <InfillMapView
-                jobs={jobs}
-                assets={assets}
-                statusFilter={statusFilter}
-                onSelectJob={setSelectedJobId}
-              />
-            )}
-
-            {/* Jobs table (list view) */}
-            {infillView === "list" && (jobsLoading ? (
-              <div className="space-y-2">{[...Array(4)].map((_, i) => <Skeleton key={i} className="h-10 w-full rounded-lg" />)}</div>
-            ) : sortedJobs.length === 0 ? (
-              <div className="text-center py-16 text-gray-400">
-                <Sprout className="w-12 h-12 mx-auto mb-3 opacity-20" />
-                <p className="text-sm font-medium">No assessments found</p>
-                {statusFilter === "all" && (
-                  <p className="text-xs mt-1">Click <strong>New Assessment</strong> to create the first one.</p>
-                )}
-              </div>
-            ) : (
-              <div className="rounded-xl border border-gray-200 overflow-hidden bg-white">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b border-gray-100 bg-gray-50">
-                      {([
-                        { key: "assetName",       label: "Site name" },
-                        { key: "assessmentNotes",  label: "Description" },
-                        { key: "totalPlants",      label: "Plants" },
-                        { key: "status",           label: "Status" },
-                        { key: "plannedDate",      label: "Scheduled Date" },
-                        { key: "teamName",         label: "Team" },
-                      ] as { key: SortKey; label: string }[]).map(col => (
-                        <th key={col.key}
-                          className="px-4 py-3 text-left text-[11px] font-semibold text-gray-500 uppercase tracking-wider select-none cursor-pointer hover:text-gray-800 whitespace-nowrap"
-                          onClick={() => handleSort(col.key)}>
-                          <span className="flex items-center gap-1">
-                            {col.label}
-                            <span className="text-gray-300">
-                              {sortKey === col.key
-                                ? sortDir === "asc" ? "↑" : "↓"
-                                : "↕"}
-                            </span>
-                          </span>
-                        </th>
-                      ))}
-                      <th className="px-4 py-3 text-right text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-50">
-                    {sortedJobs.map(job => {
-                      const totalPlants = job.species.reduce((s, sp) => s + sp.quantity, 0);
-                      const canSchedule = job.status === "draft";
-                      const canCancel   = job.status === "draft" || job.status === "scheduled";
-                      return (
-                        <tr key={job.id}
-                          className="hover:bg-[#f0fafb] cursor-pointer transition-colors group"
-                          onClick={() => setSelectedJobId(job.id)}>
-                          <td className="px-4 py-3">
-                            <span className="font-semibold text-gray-900 group-hover:text-[#00AECD] transition-colors">
-                              {job.assetName ?? "—"}
-                            </span>
-                            <div className="text-[10px] text-gray-400 mt-0.5">
-                              {fmt(job.assessmentDate)}{job.assessorName ? ` · ${job.assessorName}` : ""}
-                            </div>
-                          </td>
-                          <td className="px-4 py-3 max-w-[220px]">
-                            <span className="text-gray-600 line-clamp-2 text-xs">
-                              {job.assessmentNotes || <span className="text-gray-300 italic">—</span>}
-                            </span>
-                          </td>
-                          <td className="px-4 py-3 text-center">
-                            <span className="font-bold text-base" style={{ color: BRAND }}>{totalPlants}</span>
-                          </td>
-                          <td className="px-4 py-3">
-                            <StatusBadge status={job.status} />
-                          </td>
-                          <td className="px-4 py-3 whitespace-nowrap">
-                            {job.plannedDate
-                              ? <span className="text-xs text-gray-700 flex items-center gap-1"><Calendar className="w-3 h-3 text-gray-400 flex-shrink-0" />{fmt(job.plannedDate)}</span>
-                              : <span className="text-gray-300 text-xs italic">—</span>
-                            }
-                          </td>
-                          <td className="px-4 py-3">
-                            {job.teamName
-                              ? <span className="text-xs font-medium text-gray-700">{job.teamName}</span>
-                              : <span className="text-gray-300 text-xs italic">Unassigned</span>
-                            }
-                          </td>
-                          <td className="px-4 py-3" onClick={e => e.stopPropagation()}>
-                            <div className="flex items-center gap-1.5 justify-end">
-                              {canSchedule && (
-                                <button
-                                  onClick={() => setSelectedJobId(job.id)}
-                                  className="text-[11px] font-semibold px-2.5 py-1 rounded-lg transition-colors"
-                                  style={{ color: JOB_STATUS.scheduled.color, background: JOB_STATUS.scheduled.bg }}>
-                                  Schedule
-                                </button>
-                              )}
-                              <button
-                                onClick={() => setSelectedJobId(job.id)}
-                                className="text-[11px] font-semibold px-2.5 py-1 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors">
-                                Edit
-                              </button>
-                              {canCancel && (
-                                <button
-                                  onClick={() => updateJob.mutate({ id: job.id, data: { status: "cancelled" } })}
-                                  className="text-[11px] font-semibold px-2.5 py-1 rounded-lg transition-colors"
-                                  style={{ color: "#dc2626", background: "#fef2f2" }}>
-                                  Cancel
-                                </button>
-                              )}
-                            </div>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            ))}
-          </div>
-        </TabsContent>
-
-        {/* ── Mulching ── */}
-        <TabsContent value="mulching">
+      {/* ── Mulching ── */}
+      {!isInfill && (
+        <div className="mt-5">
           <MulchingTab assets={assets} teams={teams} initialReviewId={initialReviewId} />
-        </TabsContent>
-      </Tabs>
+        </div>
+      )}
 
       {/* Modals */}
       {drawerOpen && (

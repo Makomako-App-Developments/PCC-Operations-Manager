@@ -43,17 +43,17 @@ export function Layout({ children }: { children: React.ReactNode }) {
   const auditBadge = badgeData?.outstanding ?? 0;
 
   const allNav = [
-    { icon: LayoutDashboard, label: "Dashboard",       href: "/dashboard",        managerOnly: false },
-    { icon: List,            label: "Asset Register",  href: "/assets",           managerOnly: false },
-    { icon: Map,             label: "Map",             href: "/map",              managerOnly: false },
-    { icon: CalendarDays,    label: "Schedule",        href: "/schedule",         managerOnly: false },
-    { icon: AlertTriangle,   label: "Unscheduled Work",   href: "/reactive-jobs",    managerOnly: false },
-    { icon: Sprout,          label: "Programmes",      href: "/programmes",       managerOnly: false },
-    { icon: Layers,          label: "Completed Works", href: "/completed-works",  managerOnly: false },
-    { icon: ClipboardCheck,  label: "Audits",          href: "/audits",           managerOnly: false },
-    { icon: BarChart2,       label: "Reports",         href: "/reports",          managerOnly: false },
-    { icon: FileText,        label: "Specification",   href: "/specification",    managerOnly: false },
-    { icon: UsersRound,      label: "Team",            href: "/team",             managerOnly: false },
+    { icon: LayoutDashboard, label: "Dashboard",       href: "/dashboard",         activePrefix: "/dashboard",     managerOnly: false },
+    { icon: List,            label: "Asset Register",  href: "/assets",            activePrefix: "/assets",        managerOnly: false },
+    { icon: Map,             label: "Map",             href: "/map",               activePrefix: "/map",           managerOnly: false },
+    { icon: CalendarDays,    label: "Schedule",        href: "/schedule",          activePrefix: "/schedule",      managerOnly: false },
+    { icon: AlertTriangle,   label: "Unscheduled Work",href: "/reactive-jobs",     activePrefix: "/reactive-jobs", managerOnly: false },
+    { icon: Sprout,          label: "Programmes",      href: "/programmes/infill", activePrefix: "/programmes",    managerOnly: false },
+    { icon: Layers,          label: "Completed Works", href: "/completed-works",   activePrefix: "/completed-works", managerOnly: false },
+    { icon: ClipboardCheck,  label: "Audits",          href: "/audits",            activePrefix: "/audits",        managerOnly: false },
+    { icon: BarChart2,       label: "Reports",         href: "/reports",           activePrefix: "/reports",       managerOnly: false },
+    { icon: FileText,        label: "Specification",   href: "/specification",     activePrefix: "/specification", managerOnly: false },
+    { icon: UsersRound,      label: "Team",            href: "/team",              activePrefix: "/team",          managerOnly: false },
   ];
   const isWorker = user?.role === "field_worker";
   const isPrivileged = user?.role === "administrator" || user?.role === "manager" || user?.role === "supervisor";
@@ -71,8 +71,8 @@ export function Layout({ children }: { children: React.ReactNode }) {
           <p className="text-white/50 text-[10px] text-center mt-1 uppercase tracking-widest">Gardens Manager</p>
         </div>
         <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
-          {nav.map(({ icon: Icon, label, href, managerOnly: _m }) => {
-            const isActive = location.startsWith(href);
+          {nav.map(({ icon: Icon, label, href, activePrefix, managerOnly: _m }) => {
+            const isActive = location.startsWith(activePrefix);
             const showBadge = label === "Audits" && isSupervisor && auditBadge > 0;
             return (
               <Link key={label} href={href} className="block">
