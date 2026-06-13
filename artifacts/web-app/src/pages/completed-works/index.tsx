@@ -5,6 +5,7 @@ import { Search, X, Clock, Camera, FileText, ChevronRight, CheckCircle2, ArrowUp
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Card } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 // ─── types ───────────────────────────────────────────────────────────────────
@@ -424,171 +425,147 @@ export default function CompletedWorks() {
   return (
     <div className="flex h-[calc(100vh-0px)] overflow-hidden">
       {/* Main content */}
-      <div className="flex-1 flex flex-col overflow-hidden">
-        {/* Page header */}
-        <div className="px-8 pt-7 pb-4 bg-white border-b border-gray-100 flex-shrink-0">
-          <div className="flex items-center justify-between mb-4">
-            <div>
-              <h1 className="text-xl font-bold text-gray-900">Completed Works</h1>
-              <p className="text-sm text-gray-500 mt-0.5">History of all finished jobs with times, notes and photos</p>
-            </div>
-            <div className="flex items-center gap-2">
-              {hasFilters && (
-                <Button variant="ghost" size="sm" onClick={clearFilters} className="text-gray-500 gap-1.5">
-                  <X className="w-3.5 h-3.5" /> Clear filters
-                </Button>
-              )}
-              <Button variant="outline" size="sm" onClick={handleExportCSV} className="gap-1.5 h-9">
-                <Download className="w-3.5 h-3.5" /> Export CSV
+      <div className="flex-1 flex flex-col min-h-0 bg-[#f5f7f9]">
+
+        {/* ── Page header ───────────────────────────────────────────────────── */}
+        <header className="bg-white border-b px-8 py-4 flex items-center justify-between sticky top-0 z-10 flex-shrink-0">
+          <div>
+            <h1 className="text-lg font-semibold text-gray-900">Completed Works</h1>
+            <p className="text-xs text-gray-400">History of all finished jobs with times, notes and photos</p>
+          </div>
+          <div className="flex items-center gap-2">
+            {hasFilters && (
+              <Button variant="ghost" size="sm" onClick={clearFilters} className="text-gray-500 gap-1.5">
+                <X className="w-3.5 h-3.5" /> Clear filters
               </Button>
+            )}
+            <Button variant="outline" size="sm" onClick={handleExportCSV} className="gap-1.5 h-9 text-sm">
+              <Download className="w-4 h-4" /> Export CSV
+            </Button>
+          </div>
+        </header>
+
+        {/* ── Summary stat cards ────────────────────────────────────────────── */}
+        <div className="px-8 pt-5 pb-1 grid grid-cols-2 lg:grid-cols-4 gap-3 flex-shrink-0">
+          {/* Gardens Serviced */}
+          <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4 flex items-start gap-3 min-w-0">
+            <div className="w-9 h-9 rounded-lg bg-[#00AECD]/10 flex items-center justify-center flex-shrink-0">
+              <MapPin className="w-4 h-4 text-[#00AECD]" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-0.5">Gardens Serviced</p>
+              <p className="text-sm font-bold text-gray-900">{isLoading ? "—" : stats.gardens.toLocaleString()}</p>
+              <p className="text-[11px] text-gray-400">unique sites in view</p>
             </div>
           </div>
-
-          {/* Filter bar */}
-          <div className="flex flex-wrap gap-2 items-center">
-            {/* Search */}
-            <div className="relative flex-1 min-w-[200px] max-w-xs">
-              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 pointer-events-none" />
-              <Input
-                placeholder="Search site, suburb, notes…"
-                value={search}
-                onChange={e => setSearch(e.target.value)}
-                className="pl-8 h-9 text-sm"
-              />
+          {/* Total Service Hours */}
+          <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4 flex items-start gap-3 min-w-0">
+            <div className="w-9 h-9 rounded-lg bg-[#00AECD]/10 flex items-center justify-center flex-shrink-0">
+              <Clock className="w-4 h-4 text-[#00AECD]" />
             </div>
-
-            {/* Team */}
-            <Select value={teamId} onValueChange={setTeamId}>
-              <SelectTrigger className="h-9 text-sm w-[160px]">
-                <SelectValue placeholder="All teams" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All teams</SelectItem>
-                {teams.map(t => (
-                  <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-
-            {/* Ward */}
-            <Select value={ward} onValueChange={setWard}>
-              <SelectTrigger className="h-9 text-sm w-[140px]">
-                <SelectValue placeholder="All wards" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All wards</SelectItem>
-                <SelectItem value="eastern">Eastern</SelectItem>
-                <SelectItem value="northern">Northern</SelectItem>
-                <SelectItem value="western">Western</SelectItem>
-              </SelectContent>
-            </Select>
-
-            {/* Garden type */}
-            <Select value={gardenType} onValueChange={setGardenType}>
-              <SelectTrigger className="h-9 text-sm w-[180px]">
-                <SelectValue placeholder="All specifications" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All specifications</SelectItem>
-                {Object.entries(GARDEN_TYPE_LABELS).map(([k, v]) => (
-                  <SelectItem key={k} value={k}>{v}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-
-            {/* Date range */}
-            <input
-              type="date"
-              value={from}
-              onChange={e => setFrom(e.target.value)}
-              className="h-9 rounded-md border border-input bg-background px-3 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#00AECD] focus:ring-offset-0"
-            />
-            <span className="text-xs text-gray-400">to</span>
-            <input
-              type="date"
-              value={to}
-              onChange={e => setTo(e.target.value)}
-              className="h-9 rounded-md border border-input bg-background px-3 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#00AECD] focus:ring-offset-0"
-            />
+            <div className="min-w-0 flex-1">
+              <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-0.5">Total Service Hours</p>
+              <p className="text-sm font-bold text-gray-900">{isLoading ? "—" : `${stats.hours.toFixed(1)} hrs`}</p>
+              <p className="text-[11px] text-gray-400">actual time logged</p>
+            </div>
           </div>
-        </div>
-
-        {/* Summary stats */}
-        <div className="px-8 py-4 bg-[#f5f7f9] border-b border-gray-200 flex-shrink-0">
-          <div className="flex gap-4">
-            <div className="flex-1 bg-white rounded-xl border border-gray-200 px-5 py-3.5 flex items-center gap-3.5">
-              <div className="w-9 h-9 rounded-lg bg-[#00AECD]/10 flex items-center justify-center flex-shrink-0">
-                <MapPin className="w-4.5 h-4.5 text-[#00AECD]" style={{ width: 18, height: 18 }} />
-              </div>
-              <div>
-                <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Gardens Serviced</p>
-                <p className="text-xl font-bold text-gray-900 leading-tight">
-                  {isLoading ? "—" : stats.gardens.toLocaleString()}
-                </p>
-              </div>
+          {/* Total Area */}
+          <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4 flex items-start gap-3 min-w-0">
+            <div className="w-9 h-9 rounded-lg bg-[#00AECD]/10 flex items-center justify-center flex-shrink-0">
+              <Maximize2 className="w-4 h-4 text-[#00AECD]" />
             </div>
-            <div className="flex-1 bg-white rounded-xl border border-gray-200 px-5 py-3.5 flex items-center gap-3.5">
-              <div className="w-9 h-9 rounded-lg bg-[#00AECD]/10 flex items-center justify-center flex-shrink-0">
-                <Clock className="w-4.5 h-4.5 text-[#00AECD]" style={{ width: 18, height: 18 }} />
-              </div>
-              <div>
-                <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Total Service Hours</p>
-                <p className="text-xl font-bold text-gray-900 leading-tight">
-                  {isLoading ? "—" : `${stats.hours.toFixed(1)} hrs`}
-                </p>
-              </div>
+            <div className="min-w-0 flex-1">
+              <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-0.5">Total Area</p>
+              <p className="text-sm font-bold text-gray-900">{isLoading ? "—" : `${Number(stats.areaM2).toFixed(1)} m²`}</p>
+              <p className="text-[11px] text-gray-400">combined garden area</p>
             </div>
-            <div className="flex-1 bg-white rounded-xl border border-gray-200 px-5 py-3.5 flex items-center gap-3.5">
-              <div className="w-9 h-9 rounded-lg bg-[#00AECD]/10 flex items-center justify-center flex-shrink-0">
-                <Maximize2 className="w-4.5 h-4.5 text-[#00AECD]" style={{ width: 18, height: 18 }} />
-              </div>
-              <div>
-                <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Total Area</p>
-                <p className="text-xl font-bold text-gray-900 leading-tight">
-                  {isLoading ? "—" : `${Number(stats.areaM2).toFixed(1)} m²`}
-                </p>
-              </div>
+          </div>
+          {/* Time Variance */}
+          <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4 flex items-start gap-3 min-w-0">
+            <div className={`w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 ${
+              !isLoading && stats.varianceMins < 0 ? "bg-green-50" : !isLoading && stats.varianceMins > 0 ? "bg-red-50" : "bg-gray-100"
+            }`}>
+              {!isLoading && stats.varianceMins < 0
+                ? <ArrowDownRight className="w-4 h-4 text-green-600" />
+                : !isLoading && stats.varianceMins > 0
+                ? <ArrowUpRight className="w-4 h-4 text-red-500" />
+                : <Minus className="w-4 h-4 text-gray-400" />}
             </div>
-            <div className="flex-1 bg-white rounded-xl border border-gray-200 px-5 py-3.5 flex items-center gap-3.5">
-              <div className={`w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 ${
-                !isLoading && stats.varianceMins < 0 ? "bg-green-50" : !isLoading && stats.varianceMins > 0 ? "bg-red-50" : "bg-gray-100"
+            <div className="min-w-0 flex-1">
+              <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-0.5">Time Variance</p>
+              <p className={`text-sm font-bold ${
+                isLoading ? "text-gray-900" : stats.varianceMins < 0 ? "text-green-600" : stats.varianceMins > 0 ? "text-red-500" : "text-gray-500"
               }`}>
-                {!isLoading && stats.varianceMins < 0
-                  ? <ArrowDownRight style={{ width: 18, height: 18 }} className="text-green-600" />
-                  : !isLoading && stats.varianceMins > 0
-                  ? <ArrowUpRight style={{ width: 18, height: 18 }} className="text-red-500" />
-                  : <Minus style={{ width: 18, height: 18 }} className="text-gray-400" />}
-              </div>
-              <div>
-                <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Time Variance</p>
-                {isLoading ? (
-                  <p className="text-xl font-bold text-gray-900 leading-tight">—</p>
-                ) : (
-                  <>
-                    <p className={`text-xl font-bold leading-tight ${
-                      stats.varianceMins < 0 ? "text-green-600" : stats.varianceMins > 0 ? "text-red-500" : "text-gray-500"
-                    }`}>
-                      {stats.varianceMins === 0 ? "On time" : `${stats.varianceMins > 0 ? "+" : ""}${formatMins(Math.abs(stats.varianceMins))}`}
-                    </p>
-                    <p className="text-[10px] text-gray-400 mt-0.5">
-                      {stats.varianceMins < 0 ? "under scheduled" : stats.varianceMins > 0 ? "over scheduled" : ""}
-                    </p>
-                  </>
-                )}
-              </div>
+                {isLoading ? "—" : stats.varianceMins === 0 ? "On time" : `${stats.varianceMins > 0 ? "+" : ""}${formatMins(Math.abs(stats.varianceMins))}`}
+              </p>
+              <p className="text-[11px] text-gray-400">
+                {isLoading ? "" : stats.varianceMins < 0 ? "under scheduled" : stats.varianceMins > 0 ? "over scheduled" : "vs scheduled"}
+              </p>
             </div>
           </div>
         </div>
 
-        {/* Results count */}
-        <div className="px-8 py-2.5 bg-white border-b border-gray-100 flex-shrink-0">
-          <p className="text-xs text-gray-400">
-            {isLoading ? "Loading…" : `${rows.length.toLocaleString()} result${rows.length !== 1 ? "s" : ""}`}
-          </p>
+        {/* ── Filter bar ────────────────────────────────────────────────────── */}
+        <div className="px-8 py-3 mt-4 border-b bg-white flex flex-wrap gap-2 items-center flex-shrink-0">
+          <div className="relative flex-1 min-w-[200px] max-w-xs">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 pointer-events-none" />
+            <Input
+              placeholder="Search site, suburb, notes…"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              className="pl-8 h-9 text-sm"
+            />
+          </div>
+          <Select value={teamId} onValueChange={setTeamId}>
+            <SelectTrigger className="h-9 text-sm w-[160px]">
+              <SelectValue placeholder="All teams" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All teams</SelectItem>
+              {teams.map(t => (
+                <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Select value={ward} onValueChange={setWard}>
+            <SelectTrigger className="h-9 text-sm w-[140px]">
+              <SelectValue placeholder="All wards" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All wards</SelectItem>
+              <SelectItem value="eastern">Eastern</SelectItem>
+              <SelectItem value="northern">Northern</SelectItem>
+              <SelectItem value="western">Western</SelectItem>
+            </SelectContent>
+          </Select>
+          <Select value={gardenType} onValueChange={setGardenType}>
+            <SelectTrigger className="h-9 text-sm w-[180px]">
+              <SelectValue placeholder="All specifications" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All specifications</SelectItem>
+              {Object.entries(GARDEN_TYPE_LABELS).map(([k, v]) => (
+                <SelectItem key={k} value={k}>{v}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <input
+            type="date"
+            value={from}
+            onChange={e => setFrom(e.target.value)}
+            className="h-9 rounded-md border border-input bg-background px-3 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#00AECD] focus:ring-offset-0"
+          />
+          <span className="text-xs text-gray-400">to</span>
+          <input
+            type="date"
+            value={to}
+            onChange={e => setTo(e.target.value)}
+            className="h-9 rounded-md border border-input bg-background px-3 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#00AECD] focus:ring-offset-0"
+          />
         </div>
 
-        {/* Table */}
-        <div className="flex-1 overflow-auto">
+        {/* ── Table ─────────────────────────────────────────────────────────── */}
+        <div className="flex-1 overflow-auto p-8">
           {isLoading ? (
             <div className="flex items-center justify-center h-40 text-gray-400 text-sm">Loading…</div>
           ) : rows.length === 0 ? (
@@ -598,102 +575,96 @@ export default function CompletedWorks() {
               {hasFilters && <p className="text-xs">Try adjusting your filters</p>}
             </div>
           ) : (
-            <table className="w-full text-sm border-collapse">
-              <thead className="sticky top-0 z-10">
-                <tr className="bg-gray-50 border-b border-gray-200">
-                  {[
-                    { key: "scheduledDate", label: "Date", align: "left", nowrap: true },
-                    { key: "assetName", label: "Site", align: "left", nowrap: false },
-                    { key: "gardenType", label: "Specification", align: "left", nowrap: true },
-                    { key: "ward", label: "Ward", align: "left", nowrap: false },
-                    { key: "teamName", label: "Team", align: "left", nowrap: false },
-                    { key: "estimatedTimeMins", label: "Scheduled", align: "right", nowrap: true },
-                    { key: "actualTimeMins", label: "Actual", align: "right", nowrap: true },
-                    { key: "variance", label: "+/−", align: "right", nowrap: true },
-                  ].map(col => {
-                    const active = sortKey === col.key;
-                    const Icon = active ? (sortDir === "asc" ? ChevronUp : ChevronDown) : ChevronsUpDown;
+            <Card className="rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50 border-b border-gray-200">
+                  <tr className="text-xs font-bold text-gray-500 uppercase tracking-wide">
+                    {[
+                      { key: "scheduledDate", label: "Date", align: "left", nowrap: true },
+                      { key: "assetName", label: "Site", align: "left", nowrap: false },
+                      { key: "gardenType", label: "Specification", align: "left", nowrap: true },
+                      { key: "ward", label: "Ward", align: "left", nowrap: false },
+                      { key: "teamName", label: "Team", align: "left", nowrap: false },
+                      { key: "estimatedTimeMins", label: "Scheduled", align: "right", nowrap: true },
+                      { key: "actualTimeMins", label: "Actual", align: "right", nowrap: true },
+                      { key: "variance", label: "+/−", align: "right", nowrap: true },
+                    ].map(col => {
+                      const active = sortKey === col.key;
+                      const Icon = active ? (sortDir === "asc" ? ChevronUp : ChevronDown) : ChevronsUpDown;
+                      return (
+                        <th
+                          key={col.key}
+                          onClick={() => toggleSort(col.key)}
+                          className={`px-5 py-3 cursor-pointer select-none hover:text-gray-800 hover:bg-gray-100 transition-colors ${col.nowrap ? "whitespace-nowrap" : ""} ${col.align === "right" ? "text-right" : "text-left"}`}
+                        >
+                          <span className={`inline-flex items-center gap-1 ${col.align === "right" ? "flex-row-reverse" : ""}`}>
+                            {col.label}
+                            <Icon className={`w-3 h-3 flex-shrink-0 ${active ? "text-[#00AECD]" : "text-gray-300"}`} />
+                          </span>
+                        </th>
+                      );
+                    })}
+                    <th className="px-5 py-3 w-10"></th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {rows.map(row => {
+                    const v = varianceMins(row.actualTimeMins, row.estimatedTimeMins);
+                    const isSelected = selectedJob?.id === row.id;
                     return (
-                      <th
-                        key={col.key}
-                        onClick={() => toggleSort(col.key)}
-                        className={`px-4 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wide cursor-pointer select-none hover:text-gray-800 hover:bg-gray-100 transition-colors ${col.nowrap ? "whitespace-nowrap" : ""} ${col.align === "right" ? "text-right" : "text-left"}`}
+                      <tr
+                        key={row.id}
+                        onClick={() => setSelectedJob(isSelected ? null : row)}
+                        className={`cursor-pointer transition-colors ${
+                          isSelected ? "bg-[#00AECD]/10 hover:bg-[#00AECD]/15" : "hover:bg-gray-50"
+                        }`}
                       >
-                        <span className={`inline-flex items-center gap-1 ${col.align === "right" ? "flex-row-reverse" : ""}`}>
-                          {col.label}
-                          <Icon className={`w-3 h-3 flex-shrink-0 ${active ? "text-[#00AECD]" : "text-gray-300"}`} />
-                        </span>
-                      </th>
+                        <td className="px-5 py-3 text-gray-600 whitespace-nowrap text-xs">
+                          {formatDate(row.scheduledDate)}
+                        </td>
+                        <td className="px-5 py-3">
+                          <div className="font-medium text-gray-900 truncate max-w-[220px]">{row.assetName ?? "—"}</div>
+                          {row.assetDescription && (
+                            <div className="text-[10px] text-gray-400 mt-0.5 truncate max-w-[220px]">{row.assetDescription}</div>
+                          )}
+                        </td>
+                        <td className="px-5 py-3 whitespace-nowrap text-xs text-gray-600">
+                          {GARDEN_TYPE_LABELS[row.gardenType ?? ""] ?? row.gardenType ?? "—"}
+                        </td>
+                        <td className="px-5 py-3 whitespace-nowrap text-xs text-gray-600">
+                          {row.ward ? WARD_LABELS[row.ward] : "—"}
+                        </td>
+                        <td className="px-5 py-3 whitespace-nowrap text-xs text-gray-600">
+                          {row.isAllTeams ? "All Teams" : (row.teamName ?? "—")}
+                        </td>
+                        <td className="px-5 py-3 text-right text-xs text-gray-500 whitespace-nowrap">
+                          {formatMins(row.estimatedTimeMins)}
+                        </td>
+                        <td className="px-5 py-3 text-right text-xs font-medium text-gray-900 whitespace-nowrap">
+                          {formatMins(row.actualTimeMins)}
+                        </td>
+                        <td className="px-5 py-3 text-right whitespace-nowrap">
+                          {v == null ? (
+                            <span className="text-xs text-gray-300">—</span>
+                          ) : v === 0 ? (
+                            <span className="text-xs text-gray-400">0</span>
+                          ) : v > 0 ? (
+                            <span className="text-xs font-medium text-red-600">+{formatMins(v)}</span>
+                          ) : (
+                            <span className="text-xs font-medium text-green-600">−{formatMins(Math.abs(v))}</span>
+                          )}
+                        </td>
+                        <td className="px-5 py-3">
+                          <div className="flex items-center gap-1 justify-end">
+                            {row.notes && <FileText className="w-3 h-3 text-amber-500" title="Has notes" />}
+                          </div>
+                        </td>
+                      </tr>
                     );
                   })}
-                  <th className="px-4 py-2.5 w-10"></th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {rows.map(row => {
-                  const v = varianceMins(row.actualTimeMins, row.estimatedTimeMins);
-                  const isSelected = selectedJob?.id === row.id;
-                  return (
-                    <tr
-                      key={row.id}
-                      onClick={() => setSelectedJob(isSelected ? null : row)}
-                      className={`cursor-pointer transition-colors ${
-                        isSelected
-                          ? "bg-[#00AECD]/10 hover:bg-[#00AECD]/15"
-                          : "hover:bg-gray-50"
-                      }`}
-                    >
-                      <td className="px-4 py-2.5 text-gray-600 whitespace-nowrap text-xs">
-                        {formatDate(row.scheduledDate)}
-                      </td>
-                      <td className="px-4 py-2.5">
-                        <div className="font-medium text-gray-900 truncate max-w-[220px]">{row.assetName ?? "—"}</div>
-                        {row.assetDescription && (
-                          <div className="text-[10px] text-gray-400 mt-0.5 truncate max-w-[220px]">{row.assetDescription}</div>
-                        )}
-                      </td>
-                      <td className="px-4 py-2.5 whitespace-nowrap">
-                        <span className="text-xs text-gray-600">
-                          {GARDEN_TYPE_LABELS[row.gardenType ?? ""] ?? row.gardenType ?? "—"}
-                        </span>
-                      </td>
-                      <td className="px-4 py-2.5 whitespace-nowrap">
-                        <span className="text-xs text-gray-600">
-                          {row.ward ? WARD_LABELS[row.ward] : "—"}
-                        </span>
-                      </td>
-                      <td className="px-4 py-2.5 whitespace-nowrap">
-                        <span className="text-xs text-gray-600">
-                          {row.isAllTeams ? "All Teams" : (row.teamName ?? "—")}
-                        </span>
-                      </td>
-                      <td className="px-4 py-2.5 text-right text-xs text-gray-500 whitespace-nowrap">
-                        {formatMins(row.estimatedTimeMins)}
-                      </td>
-                      <td className="px-4 py-2.5 text-right text-xs font-medium text-gray-900 whitespace-nowrap">
-                        {formatMins(row.actualTimeMins)}
-                      </td>
-                      <td className="px-4 py-2.5 text-right whitespace-nowrap">
-                        {v == null ? (
-                          <span className="text-xs text-gray-300">—</span>
-                        ) : v === 0 ? (
-                          <span className="text-xs text-gray-400">0</span>
-                        ) : v > 0 ? (
-                          <span className="text-xs font-medium text-red-600">+{formatMins(v)}</span>
-                        ) : (
-                          <span className="text-xs font-medium text-green-600">−{formatMins(Math.abs(v))}</span>
-                        )}
-                      </td>
-                      <td className="px-2 py-2.5">
-                        <div className="flex items-center gap-1 justify-end">
-                          {row.notes && <FileText className="w-3 h-3 text-amber-500" title="Has notes" />}
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+                </tbody>
+              </table>
+            </Card>
           )}
         </div>
       </div>
