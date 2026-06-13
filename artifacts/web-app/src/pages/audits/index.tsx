@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Progress } from "@/components/ui/progress";
 import { format } from "date-fns";
-import { ClipboardCheck, Plus, Eye, Download, Search, Trophy, TrendingDown, XCircle, BookOpen, Trash2, Pencil, CalendarCheck, ChevronDown, ChevronUp, RotateCcw } from "lucide-react";
+import { ClipboardCheck, Plus, Download, Search, Trophy, TrendingDown, XCircle, BookOpen, Trash2, Pencil, CalendarCheck, ChevronDown, ChevronUp, RotateCcw } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { KPI_SECTIONS, ALL_KPIS } from "./kpi-config";
 import { useAuth } from "@/lib/auth";
@@ -574,15 +574,6 @@ export default function Audits() {
                         </td>
                         <td className="px-5 py-3.5 w-px whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
                           <div className="flex items-center justify-end gap-2">
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="h-8 w-8 p-0 text-[#00AECD] hover:text-[#00AECD] hover:bg-[#e6f8fb]"
-                              onClick={() => navigate(`/audits/${audit.id}`)}
-                              title="View audit"
-                            >
-                              <Eye className="w-4 h-4" />
-                            </Button>
                             <Button
                               variant="ghost"
                               size="sm"
