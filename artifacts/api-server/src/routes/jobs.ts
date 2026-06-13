@@ -1,4 +1,6 @@
 import { Router } from "express";
+import path from "path";
+import { fileURLToPath } from "url";
 import { db, jobsTable, reactiveJobsTable, insertJobSchema, insertReactiveJobSchema, assetsTable, teamsTable, usersTable, jobTeamCompletionsTable, jobTaskSkipReasonsTable, mulchingRecordsTable, jobPhotosTable } from "@workspace/db";
 import { eq, and, inArray, or, gte, lte, ilike, desc } from "drizzle-orm";
 import { z } from "zod";
@@ -8,6 +10,9 @@ import { auditLog } from "../lib/audit";
 import { FREQ_DAYS } from "../lib/crew-utils";
 import { notifyTeam } from "../lib/push-notifications";
 import { objectStorageClient } from "../lib/objectStorage";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const LOGO_PATH = path.resolve(__dirname, "../assets/porirua-city-logo.png");
 
 const router = Router();
 
@@ -225,9 +230,15 @@ router.get("/jobs/:id/pdf", requireAuth, async (req, res) => {
   }
 
   // ── Header ────────────────────────────────────────────────────────────────
+  // Logo top-right (120pt wide, aspect ~1.92:1 → ~62pt tall, centred in 50–100 band)
+  try {
+    doc.image(LOGO_PATH, 415, 38, { width: 130 });
+  } catch {
+    // skip if logo file missing
+  }
   doc.fontSize(20).font("Helvetica-Bold").fillColor(NAVY).text("Completed Works Record", 50, 50);
   doc.fontSize(10).font("Helvetica").fillColor(GREY).text("Porirua City Council — Gardens Manager", 50, 75);
-  doc.moveTo(50, 100).lineTo(545, 100).strokeColor("#e5e7eb").stroke();
+  doc.moveTo(50, 105).lineTo(545, 105).strokeColor("#e5e7eb").stroke();
 
   // ── Site name ─────────────────────────────────────────────────────────────
   doc.fontSize(16).font("Helvetica-Bold").fillColor(NAVY).text(siteName, 50, 112);
