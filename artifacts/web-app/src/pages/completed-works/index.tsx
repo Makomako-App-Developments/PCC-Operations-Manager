@@ -267,7 +267,6 @@ export default function CompletedWorks() {
 
   const [search, setSearch] = useState("");
   const [teamId, setTeamId] = useState("all");
-  const [ward, setWard] = useState("all");
   const [gardenType, setGardenType] = useState("all");
   const [dateRange, setDateRange] = useState<"all" | "this-week" | "this-month" | "custom">("all");
   const [customFrom, setCustomFrom] = useState("");
@@ -295,13 +294,12 @@ export default function CompletedWorks() {
   // Build query string from filters (debounce search client-side)
   const params = new URLSearchParams({ limit: "500" });
   if (teamId !== "all")     params.set("teamId", teamId);
-  if (ward !== "all")       params.set("ward", ward);
   if (gardenType !== "all") params.set("gardenType", gardenType);
   if (computedFrom)         params.set("from", computedFrom);
   if (computedTo)           params.set("to", computedTo);
 
   const { data, isLoading } = useQuery<{ data: CompletedWork[] }>({
-    queryKey: ["completed-works", teamId, ward, gardenType, computedFrom, computedTo],
+    queryKey: ["completed-works", teamId, gardenType, computedFrom, computedTo],
     queryFn: async () => {
       const res = await fetch(`/api/completed-works?${params}`, { credentials: "include" });
       if (!res.ok) throw new Error("Failed");
@@ -401,14 +399,13 @@ export default function CompletedWorks() {
   function clearFilters() {
     setSearch("");
     setTeamId("all");
-    setWard("all");
     setGardenType("all");
     setDateRange("all");
     setCustomFrom("");
     setCustomTo("");
   }
 
-  const hasFilters = search || teamId !== "all" || ward !== "all" || gardenType !== "all" || dateRange !== "all";
+  const hasFilters = search || teamId !== "all" || gardenType !== "all" || dateRange !== "all";
 
   function handleExportCSV() {
     const headers = ["Date", "Site", "Description", "Specification", "Ward", "Suburb", "Team", "Estimated (min)", "Actual (min)", "Variance (min)", "Status", "Notes"];
@@ -543,17 +540,6 @@ export default function CompletedWorks() {
               {teams.map(t => (
                 <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>
               ))}
-            </SelectContent>
-          </Select>
-          <Select value={ward} onValueChange={setWard}>
-            <SelectTrigger className="h-9 text-sm w-[140px]">
-              <SelectValue placeholder="All wards" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All wards</SelectItem>
-              <SelectItem value="eastern">Eastern</SelectItem>
-              <SelectItem value="northern">Northern</SelectItem>
-              <SelectItem value="western">Western</SelectItem>
             </SelectContent>
           </Select>
           <Select value={gardenType} onValueChange={setGardenType}>
