@@ -134,4 +134,33 @@ router.post("/patch-areas", requireAuth, async (req, res) => {
   }
 });
 
+/**
+ * POST /api/admin/realloc-full-team
+ * One-time patch: reassigns all assets from "Full Team" to "Mobile 2".
+ * Idempotent — safe to call multiple times (no-ops if already done).
+ * Requires manager role.
+ */
+router.post("/realloc-full-team", requireAuth, async (req, res) => {
+  if ((req as any).user?.role !== "manager" && (req as any).user?.role !== "administrator") {
+    res.status(403).json({ error: "Manager role required" });
+    return;
+  }
+
+  const FULL_TEAM_ID = "5165dd26-95c0-45c9-a89a-82822c381427";
+  const MOBILE2_ID   = "5456bd91-2512-47f9-9e77-82e44d0b06f6";
+
+  try {
+    const result = await db.execute(sql`
+      UPDATE assets
+      SET team_id = ${MOBILE2_ID}
+      WHERE team_id = ${FULL_TEAM_ID}
+    `);
+    const rowsUpdated = (result as any).rowCount ?? (result as any).count ?? 0;
+    res.json({ ok: true, rowsUpdated, message: `Reallocated ${rowsUpdated} assets from Full Team → Mobile 2` });
+  } catch (err: any) {
+    console.error("[admin/realloc-full-team]", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 export default router;
