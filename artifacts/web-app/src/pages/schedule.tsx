@@ -1526,6 +1526,22 @@ export default function Schedule() {
     generateSchedule.mutate({ data: { fromDate: genFrom, toDate: genTo } });
   };
 
+  const [viewPeriod, setViewPeriod] = useState<"daily" | "weekly" | "monthly">("daily");
+
+  const handleSetViewPeriod = (p: "daily" | "weekly" | "monthly") => {
+    setViewPeriod(p);
+    if (p === "daily") {
+      setGanttDayStart(startOfWeek(new Date(), { weekStartsOn: 1 }));
+      setView("gantt-day");
+    } else if (p === "weekly") {
+      setGanttStart(startOfWeek(new Date(), { weekStartsOn: 1 }));
+      setView("gantt");
+    } else {
+      setGanttStart(startOfMonth(new Date()));
+      setView("gantt");
+    }
+  };
+
   const handleSetView = (v: ViewType) => {
     if (v === "gantt")     setGanttStart(startOfWeek(currentDate, { weekStartsOn: 1 }));
     if (v === "gantt-day") setGanttDayStart(startOfWeek(currentDate, { weekStartsOn: 1 }));
@@ -1535,13 +1551,19 @@ export default function Schedule() {
   const prevPeriod = () => {
     if (view === "day")       setCurrentDate(d => addDays(d, -1));
     if (view === "week")      setCurrentDate(d => subWeeks(d, 1));
-    if (view === "gantt")     setGanttStart(d => addWeeks(d, -GANTT_WEEK_COUNT));
+    if (view === "gantt")     {
+      if (viewPeriod === "monthly") setGanttStart(d => startOfMonth(addMonths(d, -1)));
+      else setGanttStart(d => addWeeks(d, -GANTT_WEEK_COUNT));
+    }
     if (view === "gantt-day") setGanttDayStart(d => addWeeks(d, -1));
   };
   const nextPeriod = () => {
     if (view === "day")       setCurrentDate(d => addDays(d, 1));
     if (view === "week")      setCurrentDate(d => addWeeks(d, 1));
-    if (view === "gantt")     setGanttStart(d => addWeeks(d, GANTT_WEEK_COUNT));
+    if (view === "gantt")     {
+      if (viewPeriod === "monthly") setGanttStart(d => startOfMonth(addMonths(d, 1)));
+      else setGanttStart(d => addWeeks(d, GANTT_WEEK_COUNT));
+    }
     if (view === "gantt-day") setGanttDayStart(d => addWeeks(d, 1));
   };
 
@@ -1555,6 +1577,7 @@ export default function Schedule() {
       const end = addDays(ganttDayStart, GANTT_DAY_COUNT - 1);
       return `${format(ganttDayStart, "d MMM")} – ${format(end, "d MMM yyyy")}`;
     }
+    if (viewPeriod === "monthly") return format(ganttStart, "MMMM yyyy");
     const ganttEnd = addWeeks(ganttStart, GANTT_WEEK_COUNT - 1);
     return `${format(ganttStart, "d MMM")} – ${format(ganttEnd, "d MMM yyyy")}`;
   };
@@ -1779,6 +1802,18 @@ export default function Schedule() {
               })}
             </PopoverContent>
           </Popover>
+
+          {/* View period filter */}
+          <Select value={viewPeriod} onValueChange={(v) => handleSetViewPeriod(v as typeof viewPeriod)}>
+            <SelectTrigger className="h-9 text-sm w-[140px]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="daily">Daily</SelectItem>
+              <SelectItem value="weekly">Weekly</SelectItem>
+              <SelectItem value="monthly">Monthly</SelectItem>
+            </SelectContent>
+          </Select>
 
           {/* Date nav — pushed to the right */}
           <div className="ml-auto flex items-center gap-2">
