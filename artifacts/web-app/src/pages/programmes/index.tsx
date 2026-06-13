@@ -2086,8 +2086,8 @@ function MulchingTab({
           )}
           <button
             onClick={() => { setDepthPickerAssetId(""); setDepthPickerOpen(true); }}
-            className="flex items-center gap-1.5 text-sm font-semibold px-3 py-2 rounded-lg border transition-colors"
-            style={{ borderColor: BRAND, color: BRAND, background: "white" }}
+            className="flex items-center gap-1.5 text-sm font-semibold px-3 py-2 rounded-lg transition-colors text-white"
+            style={{ background: BRAND }}
           >
             <Ruler className="w-4 h-4" /> Record Depth
           </button>
