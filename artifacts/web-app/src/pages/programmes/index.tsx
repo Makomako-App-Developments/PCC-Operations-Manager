@@ -3222,7 +3222,7 @@ export default function Programmes() {
                                       className="h-8 w-8 p-0 text-gray-400 hover:text-red-600 hover:bg-red-50"
                                       title="Cancel job"
                                       onClick={() => updateJob.mutate({ id: job.id, data: { status: "cancelled" } })}>
-                                      <X className="w-4 h-4" />
+                                      <Trash2 className="w-4 h-4" />
                                     </Button>
                                   )}
                                 </div>
