@@ -269,22 +269,39 @@ export default function CompletedWorks() {
   const [teamId, setTeamId] = useState("all");
   const [ward, setWard] = useState("all");
   const [gardenType, setGardenType] = useState("all");
-  const [from, setFrom] = useState("");
-  const [to, setTo] = useState("");
+  const [dateRange, setDateRange] = useState<"all" | "this-week" | "this-month" | "custom">("all");
+  const [customFrom, setCustomFrom] = useState("");
+  const [customTo, setCustomTo] = useState("");
   const [selectedJob, setSelectedJob] = useState<CompletedWork | null>(null);
   const [sortKey, setSortKey] = useState<string>("scheduledDate");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
+
+  // Compute from/to from dateRange preset
+  const computedFrom = (() => {
+    if (dateRange === "this-week") {
+      const d = new Date();
+      d.setDate(d.getDate() - ((d.getDay() + 6) % 7));
+      return d.toISOString().slice(0, 10);
+    }
+    if (dateRange === "this-month") {
+      const d = new Date();
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-01`;
+    }
+    if (dateRange === "custom") return customFrom;
+    return "";
+  })();
+  const computedTo = dateRange === "custom" ? customTo : "";
 
   // Build query string from filters (debounce search client-side)
   const params = new URLSearchParams({ limit: "500" });
   if (teamId !== "all")     params.set("teamId", teamId);
   if (ward !== "all")       params.set("ward", ward);
   if (gardenType !== "all") params.set("gardenType", gardenType);
-  if (from)                 params.set("from", from);
-  if (to)                   params.set("to", to);
+  if (computedFrom)         params.set("from", computedFrom);
+  if (computedTo)           params.set("to", computedTo);
 
   const { data, isLoading } = useQuery<{ data: CompletedWork[] }>({
-    queryKey: ["completed-works", teamId, ward, gardenType, from, to],
+    queryKey: ["completed-works", teamId, ward, gardenType, computedFrom, computedTo],
     queryFn: async () => {
       const res = await fetch(`/api/completed-works?${params}`, { credentials: "include" });
       if (!res.ok) throw new Error("Failed");
@@ -386,11 +403,12 @@ export default function CompletedWorks() {
     setTeamId("all");
     setWard("all");
     setGardenType("all");
-    setFrom("");
-    setTo("");
+    setDateRange("all");
+    setCustomFrom("");
+    setCustomTo("");
   }
 
-  const hasFilters = search || teamId !== "all" || ward !== "all" || gardenType !== "all" || from || to;
+  const hasFilters = search || teamId !== "all" || ward !== "all" || gardenType !== "all" || dateRange !== "all";
 
   function handleExportCSV() {
     const headers = ["Date", "Site", "Description", "Specification", "Ward", "Suburb", "Team", "Estimated (min)", "Actual (min)", "Variance (min)", "Status", "Notes"];
@@ -549,19 +567,34 @@ export default function CompletedWorks() {
               ))}
             </SelectContent>
           </Select>
-          <input
-            type="date"
-            value={from}
-            onChange={e => setFrom(e.target.value)}
-            className="h-9 rounded-md border border-input bg-background px-3 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#00AECD] focus:ring-offset-0"
-          />
-          <span className="text-xs text-gray-400">to</span>
-          <input
-            type="date"
-            value={to}
-            onChange={e => setTo(e.target.value)}
-            className="h-9 rounded-md border border-input bg-background px-3 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#00AECD] focus:ring-offset-0"
-          />
+          <Select value={dateRange} onValueChange={(v) => setDateRange(v as typeof dateRange)}>
+            <SelectTrigger className="h-9 text-sm w-[160px]">
+              <SelectValue placeholder="All dates" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All dates</SelectItem>
+              <SelectItem value="this-week">This week</SelectItem>
+              <SelectItem value="this-month">This month</SelectItem>
+              <SelectItem value="custom">Custom</SelectItem>
+            </SelectContent>
+          </Select>
+          {dateRange === "custom" && (
+            <>
+              <input
+                type="date"
+                value={customFrom}
+                onChange={e => setCustomFrom(e.target.value)}
+                className="h-9 rounded-md border border-input bg-background px-3 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#00AECD] focus:ring-offset-0"
+              />
+              <span className="text-xs text-gray-400">to</span>
+              <input
+                type="date"
+                value={customTo}
+                onChange={e => setCustomTo(e.target.value)}
+                className="h-9 rounded-md border border-input bg-background px-3 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#00AECD] focus:ring-offset-0"
+              />
+            </>
+          )}
         </div>
 
         {/* ── Table ─────────────────────────────────────────────────────────── */}
