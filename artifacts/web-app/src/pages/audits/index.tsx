@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Progress } from "@/components/ui/progress";
 import { format } from "date-fns";
-import { ClipboardCheck, Plus, Download, Search, Trophy, TrendingDown, XCircle, BookOpen, Trash2, Pencil, CalendarCheck, ChevronDown, ChevronUp, RotateCcw } from "lucide-react";
+import { ClipboardCheck, Plus, Download, Search, Trophy, TrendingDown, XCircle, BookOpen, Trash2, Pencil, CalendarCheck, ChevronDown, ChevronUp, ChevronsUpDown, RotateCcw } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { KPI_SECTIONS, ALL_KPIS } from "./kpi-config";
 import { useAuth } from "@/lib/auth";
@@ -315,6 +315,8 @@ export default function Audits() {
   const [dateRange, setDateRange] = useState<"all" | "this-week" | "this-month" | "custom">("all");
   const [customFrom, setCustomFrom] = useState("");
   const [customTo, setCustomTo] = useState("");
+  const [sortKey, setSortKey] = useState<string>("date");
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<"results" | "this-week">("results");
   const { toast } = useToast();
@@ -403,6 +405,36 @@ export default function Audits() {
       : null;
     return { highTeam, lowTeam, topKpi, topSpec };
   }, [stats]);
+
+  function toggleSort(key: string) {
+    if (sortKey === key) setSortDir(d => d === "asc" ? "desc" : "asc");
+    else { setSortKey(key); setSortDir("asc"); }
+  }
+
+  const sorted = [...filtered].sort((a, b) => {
+    let av: string | number | null = null;
+    let bv: string | number | null = null;
+    if (sortKey === "date") {
+      av = new Date(a.conductedAt ?? a.createdAt).getTime();
+      bv = new Date(b.conductedAt ?? b.createdAt).getTime();
+    } else if (sortKey === "auditor") {
+      av = a.auditorName ?? ""; bv = b.auditorName ?? "";
+    } else if (sortKey === "site") {
+      av = getAssetName(a.assetId); bv = getAssetName(b.assetId);
+    } else if (sortKey === "team") {
+      av = getTeamName(a.teamId); bv = getTeamName(b.teamId);
+    } else if (sortKey === "score") {
+      av = a.overallScore != null ? Number(a.overallScore) : null;
+      bv = b.overallScore != null ? Number(b.overallScore) : null;
+    }
+    if (av == null && bv == null) return 0;
+    if (av == null) return 1;
+    if (bv == null) return -1;
+    const cmp = typeof av === "number" && typeof bv === "number"
+      ? av - bv
+      : String(av).localeCompare(String(bv));
+    return sortDir === "asc" ? cmp : -cmp;
+  });
 
   const handleExportCsv = () => {
     const rows = [
@@ -600,16 +632,33 @@ export default function Audits() {
                 <table className="w-full text-sm" data-testid="table-audits">
                   <thead className="bg-gray-50 border-b border-gray-200">
                     <tr className="text-xs font-bold text-gray-500 uppercase tracking-wide">
-                      <th className="text-left px-5 py-3">Date</th>
-                      <th className="text-left px-5 py-3">Auditor</th>
-                      <th className="text-left px-5 py-3">Site</th>
-                      <th className="text-left px-5 py-3">Team</th>
-                      <th className="text-left px-5 py-3">Score</th>
+                      {([
+                        { key: "date",    label: "Date" },
+                        { key: "auditor", label: "Auditor" },
+                        { key: "site",    label: "Site" },
+                        { key: "team",    label: "Team" },
+                        { key: "score",   label: "Score" },
+                      ] as const).map(col => {
+                        const active = sortKey === col.key;
+                        const Icon = active ? (sortDir === "asc" ? ChevronUp : ChevronDown) : ChevronsUpDown;
+                        return (
+                          <th
+                            key={col.key}
+                            onClick={() => toggleSort(col.key)}
+                            className="text-left px-5 py-3 cursor-pointer select-none hover:text-gray-800 hover:bg-gray-100 transition-colors"
+                          >
+                            <span className="inline-flex items-center gap-1">
+                              {col.label}
+                              <Icon className={`w-3 h-3 flex-shrink-0 ${active ? "text-[#00AECD]" : "text-gray-300"}`} />
+                            </span>
+                          </th>
+                        );
+                      })}
                       <th className="text-left px-5 py-3 w-px whitespace-nowrap">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
-                    {filtered.map((audit) => (
+                    {sorted.map((audit) => (
                       <tr key={audit.id} className="hover:bg-gray-50/50 transition-colors cursor-pointer" onClick={() => navigate(`/audits/${audit.id}`)}>
                         <td className="px-5 py-3.5 text-gray-600 text-sm">
                           {format(new Date(audit.conductedAt ?? audit.createdAt), "d MMM yyyy")}
