@@ -1982,61 +1982,6 @@ function MulchingTab({
     [mulchDetailDayJobs],
   );
 
-  const mulchBaseFiltered = useMemo(() => {
-    let records = sortedMulchRecords as any[];
-    if (mulchSearch.trim()) {
-      const q = mulchSearch.toLowerCase();
-      records = records.filter(r =>
-        (r.assetName ?? "").toLowerCase().includes(q) ||
-        (r.mulchType ?? "").toLowerCase().includes(q)
-      );
-    }
-    if (mulchDateFilter !== "all") {
-      const today = new Date(); today.setHours(0, 0, 0, 0);
-      if (mulchDateFilter === "this_week") {
-        const dow = today.getDay() === 0 ? 6 : today.getDay() - 1;
-        const mon = new Date(today); mon.setDate(today.getDate() - dow);
-        const sun = new Date(mon); sun.setDate(mon.getDate() + 6);
-        records = records.filter(r => {
-          if (!r.scheduledDate) return false;
-          const d = new Date(r.scheduledDate);
-          return d >= mon && d <= sun;
-        });
-      } else if (mulchDateFilter === "this_month") {
-        records = records.filter(r => {
-          if (!r.scheduledDate) return false;
-          const d = new Date(r.scheduledDate);
-          return d.getFullYear() === today.getFullYear() && d.getMonth() === today.getMonth();
-        });
-      } else if (mulchDateFilter === "custom") {
-        const from = mulchDateFrom ? new Date(mulchDateFrom) : null;
-        const to   = mulchDateTo   ? new Date(mulchDateTo)   : null;
-        records = records.filter(r => {
-          if (!r.scheduledDate) return false;
-          const d = new Date(r.scheduledDate);
-          return (!from || d >= from) && (!to || d <= to);
-        });
-      }
-    }
-    if (mulchTeamFilter !== "all") {
-      records = records.filter(r => r.assignedTeamId === mulchTeamFilter);
-    }
-    return records;
-  }, [sortedMulchRecords, mulchSearch, mulchDateFilter, mulchDateFrom, mulchDateTo, mulchTeamFilter]);
-
-  const draftCount      = mulchBaseFiltered.filter((r: any) => r.status === "draft").length;
-  const scheduledCount  = mulchBaseFiltered.filter((r: any) => r.status === "scheduled").length;
-  const inProgressCount = mulchBaseFiltered.filter((r: any) => r.status === "in_progress").length;
-  const completedCount  = mulchBaseFiltered.filter((r: any) => r.status === "completed").length;
-
-  const sumVol = (pred: (r: any) => boolean) =>
-    mulchBaseFiltered.filter(pred).reduce((acc: number, r: any) => acc + (parseFloat(r.volumeM3) || 0), 0);
-
-  const totalRequired = sumVol(r => r.status === "scheduled" || r.status === "in_progress");
-  const totalApplied  = sumVol(r => r.status === "completed");
-
-  const fmtVol = (v: number) => v % 1 === 0 ? `${v}` : v.toFixed(2).replace(/\.?0+$/, "");
-
   const sortedMulchRecords = useMemo(() => {
     const arr = [...mulchRecords];
     const { key, dir } = mulchSort;
@@ -2100,6 +2045,61 @@ function MulchingTab({
 
     return records;
   }, [sortedMulchRecords, mulchStatusFilter, mulchSearch, mulchDateFilter, mulchDateFrom, mulchDateTo, mulchTeamFilter]);
+
+  const mulchBaseFiltered = useMemo(() => {
+    let records = sortedMulchRecords as any[];
+    if (mulchSearch.trim()) {
+      const q = mulchSearch.toLowerCase();
+      records = records.filter(r =>
+        (r.assetName ?? "").toLowerCase().includes(q) ||
+        (r.mulchType ?? "").toLowerCase().includes(q)
+      );
+    }
+    if (mulchDateFilter !== "all") {
+      const today = new Date(); today.setHours(0, 0, 0, 0);
+      if (mulchDateFilter === "this_week") {
+        const dow = today.getDay() === 0 ? 6 : today.getDay() - 1;
+        const mon = new Date(today); mon.setDate(today.getDate() - dow);
+        const sun = new Date(mon); sun.setDate(mon.getDate() + 6);
+        records = records.filter(r => {
+          if (!r.scheduledDate) return false;
+          const d = new Date(r.scheduledDate);
+          return d >= mon && d <= sun;
+        });
+      } else if (mulchDateFilter === "this_month") {
+        records = records.filter(r => {
+          if (!r.scheduledDate) return false;
+          const d = new Date(r.scheduledDate);
+          return d.getFullYear() === today.getFullYear() && d.getMonth() === today.getMonth();
+        });
+      } else if (mulchDateFilter === "custom") {
+        const from = mulchDateFrom ? new Date(mulchDateFrom) : null;
+        const to   = mulchDateTo   ? new Date(mulchDateTo)   : null;
+        records = records.filter(r => {
+          if (!r.scheduledDate) return false;
+          const d = new Date(r.scheduledDate);
+          return (!from || d >= from) && (!to || d <= to);
+        });
+      }
+    }
+    if (mulchTeamFilter !== "all") {
+      records = records.filter(r => r.assignedTeamId === mulchTeamFilter);
+    }
+    return records;
+  }, [sortedMulchRecords, mulchSearch, mulchDateFilter, mulchDateFrom, mulchDateTo, mulchTeamFilter]);
+
+  const draftCount      = mulchBaseFiltered.filter((r: any) => r.status === "draft").length;
+  const scheduledCount  = mulchBaseFiltered.filter((r: any) => r.status === "scheduled").length;
+  const inProgressCount = mulchBaseFiltered.filter((r: any) => r.status === "in_progress").length;
+  const completedCount  = mulchBaseFiltered.filter((r: any) => r.status === "completed").length;
+
+  const sumVol = (pred: (r: any) => boolean) =>
+    mulchBaseFiltered.filter(pred).reduce((acc: number, r: any) => acc + (parseFloat(r.volumeM3) || 0), 0);
+
+  const totalRequired = sumVol(r => r.status === "scheduled" || r.status === "in_progress");
+  const totalApplied  = sumVol(r => r.status === "completed");
+
+  const fmtVol = (v: number) => v % 1 === 0 ? `${v}` : v.toFixed(2).replace(/\.?0+$/, "");
 
   const hasFilters = !!mulchSearch || mulchTeamFilter !== "all" || mulchDateFilter !== "all";
 

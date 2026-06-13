@@ -1495,7 +1495,7 @@ export default function Schedule() {
           <Button
             size="sm"
             variant="outline"
-            className="gap-2 border-orange-200 text-orange-700 hover:bg-orange-50"
+            className="gap-2 bg-white border-[#00AECD] text-[#00AECD] hover:bg-[#00AECD]/5"
             onClick={() => setWizardOpen(true)}
           >
             <Zap className="w-4 h-4" />
@@ -1515,120 +1515,9 @@ export default function Schedule() {
         </div>
       </header>
 
-      {/* Sub-toolbar — Variant B two-row hierarchy */}
+      {/* Sub-toolbar */}
       <div className="bg-white border-b flex-shrink-0 sticky top-[69px] z-10">
-        {/* Row 1: Controls — search · team · [nav right] */}
-        <div className="px-8 py-2.5 flex items-center gap-4 border-b border-gray-100">
-          {/* Search */}
-          <div className="relative w-56">
-            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 pointer-events-none" />
-            <input
-              type="text"
-              placeholder="Search site name or ref…"
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-              className="w-full pl-8 pr-7 py-1.5 text-sm border border-gray-200 rounded-lg bg-gray-50 focus:outline-none focus:ring-2 focus:ring-[#00AECD]/30 focus:border-[#00AECD] placeholder:text-gray-400"
-            />
-            {search && (
-              <button
-                onClick={() => setSearch("")}
-                className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-              >
-                <X className="w-3.5 h-3.5" />
-              </button>
-            )}
-          </div>
-
-          {/* Multi-select team picker */}
-          <Popover open={teamPickerOpen} onOpenChange={setTeamPickerOpen}>
-            <PopoverTrigger asChild>
-              <button
-                data-testid="select-team"
-                className="flex items-center gap-2 h-9 px-3 py-1.5 rounded-lg border border-gray-200 bg-white text-sm text-gray-700 hover:bg-gray-50 transition-colors min-w-[11rem] max-w-[14rem]"
-              >
-                <Users className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />
-                <span className="truncate flex-1 text-left">
-                  {selectedTeamIds.length === 0
-                    ? "All Teams"
-                    : selectedTeamIds.length === 1
-                    ? (teamsData?.find(t => t.id === selectedTeamIds[0])?.name ?? "1 team")
-                    : `${selectedTeamIds.length} teams`}
-                </span>
-                <ChevronDown className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />
-              </button>
-            </PopoverTrigger>
-            <PopoverContent align="start" className="p-1.5 w-52">
-              <button
-                onClick={() => setSelectedTeamIds([])}
-                className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-md text-sm transition-colors ${
-                  selectedTeamIds.length === 0
-                    ? "bg-[#00AECD]/10 text-[#00AECD] font-semibold"
-                    : "text-gray-700 hover:bg-gray-50"
-                }`}
-              >
-                <span className={`w-4 h-4 rounded border flex items-center justify-center flex-shrink-0 ${selectedTeamIds.length === 0 ? "bg-[#00AECD] border-[#00AECD]" : "border-gray-300"}`}>
-                  {selectedTeamIds.length === 0 && <svg className="w-2.5 h-2.5 text-white" viewBox="0 0 10 8" fill="none"><path d="M1 4l3 3 5-6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>}
-                </span>
-                All Teams
-              </button>
-              <div className="my-1 border-t border-gray-100" />
-              {teamsData?.map(t => {
-                const checked = selectedTeamIds.includes(t.id);
-                return (
-                  <button
-                    key={t.id}
-                    onClick={() => setSelectedTeamIds(prev =>
-                      checked ? prev.filter(id => id !== t.id) : [...prev, t.id]
-                    )}
-                    className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-md text-sm transition-colors ${
-                      checked ? "bg-[#00AECD]/10 text-[#00AECD] font-semibold" : "text-gray-700 hover:bg-gray-50"
-                    }`}
-                  >
-                    <span className={`w-4 h-4 rounded border flex items-center justify-center flex-shrink-0 ${checked ? "bg-[#00AECD] border-[#00AECD]" : "border-gray-300"}`}>
-                      {checked && <svg className="w-2.5 h-2.5 text-white" viewBox="0 0 10 8" fill="none"><path d="M1 4l3 3 5-6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>}
-                    </span>
-                    {t.name}
-                  </button>
-                );
-              })}
-            </PopoverContent>
-          </Popover>
-
-          {/* Date preset dropdown */}
-          <Select
-            value={computedDatePreset}
-            onValueChange={(v) => {
-              const today = new Date();
-              if (v === "last-week") setCurrentDate(addWeeks(today, -1));
-              if (v === "this-week") setCurrentDate(today);
-              if (v === "next-week") setCurrentDate(addWeeks(today,  1));
-            }}
-          >
-            <SelectTrigger className="w-[145px] h-9 text-sm bg-white">
-              <SelectValue placeholder="All dates" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="last-week">Last week</SelectItem>
-              <SelectItem value="this-week">This week</SelectItem>
-              <SelectItem value="next-week">Next week</SelectItem>
-            </SelectContent>
-          </Select>
-
-          {/* Date nav — pushed to the right */}
-          <div className="ml-auto flex items-center gap-2">
-            <button onClick={prevPeriod} className="p-1.5 rounded-lg bg-gray-50 border border-gray-200 text-gray-500 hover:text-gray-800 hover:bg-gray-100 transition-colors">
-              <ChevronLeft className="w-4 h-4" />
-            </button>
-            <span className="text-sm text-gray-600 font-medium px-2 min-w-[200px] text-center">
-              {periodLabel()}
-            </span>
-            <button onClick={nextPeriod} className="p-1.5 rounded-lg bg-gray-50 border border-gray-200 text-gray-500 hover:text-gray-800 hover:bg-gray-100 transition-colors" data-testid="btn-next-week">
-              <ChevronRight className="w-4 h-4" />
-            </button>
-          </div>
-        </div>
-
-        {/* Row 2: Stats strip */}
+        {/* Row 1: Stats strip */}
         <div className="px-8 py-2 bg-gray-50 flex items-center gap-3 text-xs">
           {view === "gantt-day" ? (
             <>
@@ -1708,6 +1597,97 @@ export default function Schedule() {
           ) : (
             <span className="text-gray-400 text-xs">Loading…</span>
           )}
+        </div>
+
+        {/* Row 2: Controls — search · team · date nav */}
+        <div className="px-8 py-2.5 flex items-center gap-4">
+          {/* Search */}
+          <div className="relative w-56">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 pointer-events-none" />
+            <input
+              type="text"
+              placeholder="Search site name or ref…"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              className="w-full pl-8 pr-7 py-1.5 text-sm border border-gray-200 rounded-lg bg-gray-50 focus:outline-none focus:ring-2 focus:ring-[#00AECD]/30 focus:border-[#00AECD] placeholder:text-gray-400"
+            />
+            {search && (
+              <button
+                onClick={() => setSearch("")}
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
+
+          {/* Multi-select team picker */}
+          <Popover open={teamPickerOpen} onOpenChange={setTeamPickerOpen}>
+            <PopoverTrigger asChild>
+              <button
+                data-testid="select-team"
+                className="flex items-center gap-2 h-9 px-3 py-1.5 rounded-lg border border-gray-200 bg-white text-sm text-gray-700 hover:bg-gray-50 transition-colors min-w-[11rem] max-w-[14rem]"
+              >
+                <Users className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />
+                <span className="truncate flex-1 text-left">
+                  {selectedTeamIds.length === 0
+                    ? "All Teams"
+                    : selectedTeamIds.length === 1
+                    ? (teamsData?.find(t => t.id === selectedTeamIds[0])?.name ?? "1 team")
+                    : `${selectedTeamIds.length} teams`}
+                </span>
+                <ChevronDown className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />
+              </button>
+            </PopoverTrigger>
+            <PopoverContent align="start" className="p-1.5 w-52">
+              <button
+                onClick={() => setSelectedTeamIds([])}
+                className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-md text-sm transition-colors ${
+                  selectedTeamIds.length === 0
+                    ? "bg-[#00AECD]/10 text-[#00AECD] font-semibold"
+                    : "text-gray-700 hover:bg-gray-50"
+                }`}
+              >
+                <span className={`w-4 h-4 rounded border flex items-center justify-center flex-shrink-0 ${selectedTeamIds.length === 0 ? "bg-[#00AECD] border-[#00AECD]" : "border-gray-300"}`}>
+                  {selectedTeamIds.length === 0 && <svg className="w-2.5 h-2.5 text-white" viewBox="0 0 10 8" fill="none"><path d="M1 4l3 3 5-6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>}
+                </span>
+                All Teams
+              </button>
+              <div className="my-1 border-t border-gray-100" />
+              {teamsData?.map(t => {
+                const checked = selectedTeamIds.includes(t.id);
+                return (
+                  <button
+                    key={t.id}
+                    onClick={() => setSelectedTeamIds(prev =>
+                      checked ? prev.filter(id => id !== t.id) : [...prev, t.id]
+                    )}
+                    className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-md text-sm transition-colors ${
+                      checked ? "bg-[#00AECD]/10 text-[#00AECD] font-semibold" : "text-gray-700 hover:bg-gray-50"
+                    }`}
+                  >
+                    <span className={`w-4 h-4 rounded border flex items-center justify-center flex-shrink-0 ${checked ? "bg-[#00AECD] border-[#00AECD]" : "border-gray-300"}`}>
+                      {checked && <svg className="w-2.5 h-2.5 text-white" viewBox="0 0 10 8" fill="none"><path d="M1 4l3 3 5-6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>}
+                    </span>
+                    {t.name}
+                  </button>
+                );
+              })}
+            </PopoverContent>
+          </Popover>
+
+          {/* Date nav — pushed to the right */}
+          <div className="ml-auto flex items-center gap-2">
+            <button onClick={prevPeriod} className="p-1.5 rounded-lg bg-gray-50 border border-gray-200 text-gray-500 hover:text-gray-800 hover:bg-gray-100 transition-colors">
+              <ChevronLeft className="w-4 h-4" />
+            </button>
+            <span className="text-sm text-gray-600 font-medium px-2 min-w-[200px] text-center">
+              {periodLabel()}
+            </span>
+            <button onClick={nextPeriod} className="p-1.5 rounded-lg bg-gray-50 border border-gray-200 text-gray-500 hover:text-gray-800 hover:bg-gray-100 transition-colors" data-testid="btn-next-week">
+              <ChevronRight className="w-4 h-4" />
+            </button>
+          </div>
         </div>
       </div>
 
