@@ -2126,31 +2126,36 @@ function MulchingTab({
 
       {/* Summary stats */}
       {!mulchLoading && mulchRecords.length > 0 && (
-        <div className="px-8 pt-5 pb-1 grid grid-cols-6 gap-3 flex-shrink-0">
+        <div className="px-8 pt-5 pb-5 grid grid-cols-3 lg:grid-cols-6 gap-3 flex-shrink-0">
           {([
-            { key: "draft",       label: "Draft",        value: draftCount,            unit: "jobs", color: MULCH_STATUS.draft.color,     bg: MULCH_STATUS.draft.bg },
-            { key: "scheduled",   label: "Scheduled",    value: scheduledCount,        unit: "jobs", color: MULCH_STATUS.scheduled.color, bg: MULCH_STATUS.scheduled.bg },
-            { key: "in_progress", label: "In Progress",  value: inProgressCount,       unit: "jobs", color: "#d97706",                    bg: "#fef3c7" },
-            { key: "completed",   label: "Completed",    value: completedCount,        unit: "jobs", color: MULCH_STATUS.completed.color, bg: MULCH_STATUS.completed.bg },
-            { key: null,          label: "m³ Required",  value: fmtVol(totalRequired), unit: "m³",   color: "#6366f1",                    bg: "#eef2ff" },
-            { key: null,          label: "m³ Applied",   value: fmtVol(totalApplied),  unit: "m³",   color: "#0f2a36",                    bg: "#f1f5f9" },
-          ] as { key: string | null; label: string; value: string | number; unit: string; color: string; bg: string }[]).map(s => {
+            { key: "draft",       label: "Draft",       value: draftCount,            icon: ClipboardList, iconBg: MULCH_STATUS.draft.bg,     iconColor: MULCH_STATUS.draft.color },
+            { key: "scheduled",   label: "Scheduled",   value: scheduledCount,        icon: CalendarCheck, iconBg: MULCH_STATUS.scheduled.bg,  iconColor: MULCH_STATUS.scheduled.color },
+            { key: "in_progress", label: "In Progress", value: inProgressCount,       icon: Clock,         iconBg: "#fef3c7",                   iconColor: "#d97706" },
+            { key: "completed",   label: "Completed",   value: completedCount,        icon: CheckCircle2,  iconBg: MULCH_STATUS.completed.bg,  iconColor: MULCH_STATUS.completed.color },
+            { key: null,          label: "m³ Required", value: fmtVol(totalRequired), icon: Layers,        iconBg: "#eef2ff",                   iconColor: "#6366f1" },
+            { key: null,          label: "m³ Applied",  value: fmtVol(totalApplied),  icon: Leaf,          iconBg: "#f1f5f9",                   iconColor: "#0f2a36" },
+          ] as { key: string | null; label: string; value: string | number; icon: React.ElementType; iconBg: string; iconColor: string }[]).map(s => {
             const active = s.key !== null && mulchStatusFilter === s.key;
+            const Icon = s.icon;
             return (
-              <button
+              <div
                 key={s.label}
                 onClick={s.key ? () => setMulchStatusFilter(f => f === s.key ? "all" : s.key!) : undefined}
-                className="rounded-xl border p-3 text-left transition-all"
+                className="bg-white rounded-xl border border-gray-100 shadow-sm p-4 flex items-start gap-3 transition-all"
                 style={{
-                  borderColor: active ? s.color : "#e5e7eb",
-                  background:  active ? s.bg   : "white",
                   cursor:      s.key ? "pointer" : "default",
+                  borderColor: active ? s.iconColor : undefined,
+                  boxShadow:   active ? `0 0 0 1px ${s.iconColor}` : undefined,
                 }}
               >
-                <p className="text-xl font-bold" style={{ color: s.color }}>{s.value}</p>
-                <p className="text-[11px] text-gray-500 mt-0.5">{s.label}</p>
-                <p className="text-[10px] mt-0.5" style={{ color: s.color, opacity: 0.7 }}>{s.unit}</p>
-              </button>
+                <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0" style={{ background: s.iconBg }}>
+                  <Icon className="w-4 h-4" style={{ color: s.iconColor }} />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-[11px] font-medium text-gray-400 uppercase tracking-wide leading-tight">{s.label}</p>
+                  <p className="text-xl font-black mt-0.5" style={{ color: NAVY }}>{s.value}</p>
+                </div>
+              </div>
             );
           })}
         </div>
