@@ -2228,23 +2228,26 @@ function MulchingTab({
                         style={{ color: st.color, background: st.bg }}>{st.label}</span>
                     </td>
                     <td className="px-4 py-3 text-right" onClick={e => e.stopPropagation()}>
-                      <div className="flex items-center justify-end gap-2">
+                      <div className="flex items-center justify-end gap-0.5">
                         {isDraft && (
-                          <button
+                          <Button
+                            variant="ghost" size="sm"
+                            className="h-8 w-8 p-0 text-violet-500 hover:text-violet-700 hover:bg-violet-50"
+                            title="Review & schedule"
                             onClick={() => setReviewTarget(r)}
-                            className="flex items-center gap-1 text-[11px] font-bold px-2 py-1 rounded-lg transition-colors"
-                            style={{ background: "#7c3aed", color: "white" }}
                           >
-                            <Zap className="w-3 h-3" /> Review
-                          </button>
+                            <Zap className="w-4 h-4" />
+                          </Button>
                         )}
                         {r.status !== "completed" && !isDraft && (
-                          <button
+                          <Button
+                            variant="ghost" size="sm"
+                            className="h-8 w-8 p-0 text-gray-400 hover:text-green-600 hover:bg-green-50"
+                            title="Mark as done"
                             onClick={() => (updateMulch.mutateAsync as any)({ id: r.id, data: { status: "completed", completedDate: new Date().toISOString().slice(0, 10) } }).then(handleRefresh)}
-                            className="text-[11px] text-green-600 hover:text-green-800 font-semibold"
                           >
-                            Done
-                          </button>
+                            <CheckCircle2 className="w-4 h-4" />
+                          </Button>
                         )}
                       </div>
                     </td>
