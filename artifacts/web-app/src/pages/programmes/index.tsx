@@ -1927,6 +1927,7 @@ function MulchingTab({
   const [mulchDateFilter, setMulchDateFilter] = useState<"all" | "this_week" | "this_month" | "custom">("all");
   const [mulchDateFrom, setMulchDateFrom] = useState("");
   const [mulchDateTo, setMulchDateTo] = useState("");
+  const [mulchTeamFilter, setMulchTeamFilter] = useState("all");
 
   const handleRefresh = () => {
     qc.invalidateQueries({ queryKey: getListMulchingRecordsQueryKey() });
@@ -2051,25 +2052,38 @@ function MulchingTab({
       }
     }
 
+    if (mulchTeamFilter !== "all") {
+      records = records.filter((r: any) => r.assignedTeamId === mulchTeamFilter);
+    }
+
     return records;
-  }, [sortedMulchRecords, mulchStatusFilter, mulchSearch, mulchDateFilter, mulchDateFrom, mulchDateTo]);
+  }, [sortedMulchRecords, mulchStatusFilter, mulchSearch, mulchDateFilter, mulchDateFrom, mulchDateTo, mulchTeamFilter]);
+
+  const hasFilters = !!mulchSearch || mulchTeamFilter !== "all" || mulchDateFilter !== "all";
+
+  function clearMulchFilters() {
+    setMulchSearch("");
+    setMulchTeamFilter("all");
+    setMulchDateFilter("all");
+    setMulchDateFrom("");
+    setMulchDateTo("");
+  }
 
   return (
-    <div className="space-y-4">
-      {/* Header */}
-      <div className="flex items-center justify-between">
+    <div className="flex-1 flex flex-col min-h-0 bg-[#f5f7f9]">
+
+      {/* Sticky white header */}
+      <header className="bg-white border-b px-8 py-4 flex items-center justify-between sticky top-0 z-10 flex-shrink-0">
         <div>
-          <h2 className="text-base font-semibold text-gray-800">Mulching Programme</h2>
-          <p className="text-sm text-gray-400">
-            {mulchRecords.length} records
-            {draftCount > 0 && (
-              <span className="ml-2 text-[11px] font-bold px-2 py-0.5 rounded-full" style={{ color: MULCH_STATUS.draft.color, background: MULCH_STATUS.draft.bg }}>
-                {draftCount} draft{draftCount !== 1 ? "s" : ""} awaiting review
-              </span>
-            )}
-          </p>
+          <h1 className="text-lg font-semibold text-gray-900">Mulching</h1>
+          <p className="text-xs text-gray-400">Mulch applications scheduled and completed</p>
         </div>
         <div className="flex items-center gap-2">
+          {hasFilters && (
+            <Button variant="ghost" size="sm" onClick={clearMulchFilters} className="text-gray-500 gap-1.5">
+              <X className="w-3.5 h-3.5" /> Clear filters
+            </Button>
+          )}
           <button
             onClick={() => { setDepthPickerAssetId(""); setDepthPickerOpen(true); }}
             className="flex items-center gap-1.5 text-sm font-semibold px-3 py-2 rounded-lg border transition-colors"
@@ -2078,11 +2092,11 @@ function MulchingTab({
             <Ruler className="w-4 h-4" /> Record Depth
           </button>
         </div>
-      </div>
+      </header>
 
       {/* Summary stats */}
       {!mulchLoading && mulchRecords.length > 0 && (
-        <div className="grid grid-cols-6 gap-3">
+        <div className="px-8 pt-5 pb-1 grid grid-cols-6 gap-3 flex-shrink-0">
           {([
             { key: "draft",       label: "Draft",        value: draftCount,            unit: "jobs", color: MULCH_STATUS.draft.color,     bg: MULCH_STATUS.draft.bg },
             { key: "scheduled",   label: "Scheduled",    value: scheduledCount,        unit: "jobs", color: MULCH_STATUS.scheduled.color, bg: MULCH_STATUS.scheduled.bg },
@@ -2194,46 +2208,60 @@ function MulchingTab({
         />
       )}
 
-      {/* Search + date filter toolbar */}
-      {!mulchLoading && mulchRecords.length > 0 && (
-        <div className="flex flex-wrap items-center gap-2">
-          <div className="relative flex-1 min-w-[180px]">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 pointer-events-none" />
-            <input
-              type="text"
-              placeholder="Search site or mulch type…"
-              value={mulchSearch}
-              onChange={e => setMulchSearch(e.target.value)}
-              className="w-full pl-8 pr-3 py-1.5 text-sm border border-gray-200 rounded-lg bg-white focus:outline-none focus:border-[#00AECD] transition-colors"
-            />
-          </div>
-          <div className="flex items-center gap-1">
-            {(["all", "this_week", "this_month", "custom"] as const).map(opt => (
-              <button
-                key={opt}
-                onClick={() => setMulchDateFilter(opt)}
-                className="text-xs px-2.5 py-1.5 rounded-lg font-medium transition-colors whitespace-nowrap"
-                style={mulchDateFilter === opt
-                  ? { background: "#00AECD", color: "white" }
-                  : { background: "#f3f4f6", color: "#6b7280" }}
-              >
-                {{ all: "All dates", this_week: "This week", this_month: "This month", custom: "Custom" }[opt]}
-              </button>
-            ))}
-          </div>
-          {mulchDateFilter === "custom" && (
-            <div className="flex items-center gap-1.5">
-              <input type="date" value={mulchDateFrom} onChange={e => setMulchDateFrom(e.target.value)}
-                className="text-xs px-2 py-1.5 border border-gray-200 rounded-lg bg-white focus:outline-none focus:border-[#00AECD]" />
-              <span className="text-xs text-gray-400">–</span>
-              <input type="date" value={mulchDateTo} onChange={e => setMulchDateTo(e.target.value)}
-                className="text-xs px-2 py-1.5 border border-gray-200 rounded-lg bg-white focus:outline-none focus:border-[#00AECD]" />
-            </div>
-          )}
+      {/* Filter bar */}
+      <div className="px-8 py-3 mt-4 border-b bg-white flex flex-wrap gap-2 items-center flex-shrink-0">
+        <div className="relative flex-1 min-w-[200px] max-w-xs">
+          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 pointer-events-none" />
+          <Input
+            placeholder="Search site or mulch type…"
+            value={mulchSearch}
+            onChange={e => setMulchSearch(e.target.value)}
+            className="pl-8 h-9 text-sm"
+          />
         </div>
-      )}
+        <Select value={mulchTeamFilter} onValueChange={setMulchTeamFilter}>
+          <SelectTrigger className="h-9 text-sm w-[160px]">
+            <SelectValue placeholder="All teams" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All teams</SelectItem>
+            {teams.map(t => (
+              <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Select value={mulchDateFilter} onValueChange={(v) => setMulchDateFilter(v as typeof mulchDateFilter)}>
+          <SelectTrigger className="h-9 text-sm w-[160px]">
+            <SelectValue placeholder="All dates" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All dates</SelectItem>
+            <SelectItem value="this_week">This week</SelectItem>
+            <SelectItem value="this_month">This month</SelectItem>
+            <SelectItem value="custom">Custom</SelectItem>
+          </SelectContent>
+        </Select>
+        {mulchDateFilter === "custom" && (
+          <>
+            <input
+              type="date"
+              value={mulchDateFrom}
+              onChange={e => setMulchDateFrom(e.target.value)}
+              className="h-9 rounded-md border border-input bg-background px-3 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#00AECD] focus:ring-offset-0"
+            />
+            <span className="text-xs text-gray-400">to</span>
+            <input
+              type="date"
+              value={mulchDateTo}
+              onChange={e => setMulchDateTo(e.target.value)}
+              className="h-9 rounded-md border border-input bg-background px-3 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#00AECD] focus:ring-offset-0"
+            />
+          </>
+        )}
+      </div>
 
-      {/* Records table */}
+      {/* Records table — scrollable */}
+      <div className="flex-1 overflow-auto px-8 py-5">
       {mulchLoading ? (
         <div className="space-y-2">{[...Array(4)].map((_, i) => <Skeleton key={i} className="h-10 w-full rounded-xl" />)}</div>
       ) : mulchRecords.length === 0 ? (
@@ -2581,6 +2609,7 @@ function MulchingTab({
         );
       })()}
 
+      </div>{/* end scrollable */}
     </div>
   );
 }
@@ -3082,13 +3111,14 @@ export default function Programmes() {
   };
 
   return (
-    <div className="p-6 w-full">
-      {/* ── Page header ── */}
+    <div className={isInfill ? "p-6 w-full" : "h-full flex flex-col overflow-hidden"}>
+      {/* ── Page header (Infill only) ── */}
+      {isInfill && (
       <div className="mb-0">
         <div className="flex items-center justify-between mb-1">
           <div>
             <h1 className="text-xl font-bold" style={{ color: NAVY }}>
-              {isInfill ? "Infill Planting" : "Mulching"}
+              Infill Planting
             </h1>
             {isInfill && (
               <div className="flex items-center gap-3 mt-1.5 flex-wrap">
@@ -3129,14 +3159,13 @@ export default function Programmes() {
               </div>
             )}
           </div>
-          {isInfill && (
-            <Button onClick={() => setDrawerOpen(true)} className="flex-shrink-0" style={{ background: BRAND }}>
-              <Plus className="w-4 h-4 mr-1" /> New Assessment
-            </Button>
-          )}
+          <Button onClick={() => setDrawerOpen(true)} className="flex-shrink-0" style={{ background: BRAND }}>
+            <Plus className="w-4 h-4 mr-1" /> New Assessment
+          </Button>
         </div>
 
       </div>
+      )}{/* end isInfill header */}
 
       {/* ── Infill Planting ── */}
       {isInfill && (
@@ -3413,9 +3442,7 @@ export default function Programmes() {
 
       {/* ── Mulching ── */}
       {!isInfill && (
-        <div className="mt-5">
-          <MulchingTab assets={assets} teams={teams} initialReviewId={initialReviewId} />
-        </div>
+        <MulchingTab assets={assets} teams={teams} initialReviewId={initialReviewId} />
       )}
 
       {/* Modals */}
