@@ -3386,13 +3386,6 @@ export default function Programmes() {
             {/* Tab: Planting Jobs */}
             <TabsContent value="planting-jobs">
               <div className="space-y-4">
-                {/* Toolbar */}
-                <div className="flex items-center justify-end">
-                  <p className="text-sm text-gray-500">
-                    {filteredJobs.length} assessment{filteredJobs.length !== 1 ? "s" : ""}
-                  </p>
-                </div>
-
                 {jobsLoading ? (
                   <div className="space-y-2">{[...Array(4)].map((_, i) => <Skeleton key={i} className="h-10 w-full rounded-lg" />)}</div>
                 ) : sortedJobs.length === 0 ? (
