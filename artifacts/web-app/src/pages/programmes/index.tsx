@@ -2292,12 +2292,6 @@ function MulchingTab({
                       {r.assetDescription && (
                         <p className="text-[10px] text-gray-400 mt-0.5">{r.assetDescription}</p>
                       )}
-                      {isDraft && !r.alignedJobDate && <p className="text-[10px] text-gray-400 mt-0.5">Draft — awaiting review</p>}
-                      {isDraft && r.alignedJobDate && (
-                        <p className="text-[10px] mt-0.5 font-semibold" style={{ color: BRAND }}>
-                          📅 Aligned to maintenance visit · {fmt(r.alignedJobDate)}
-                        </p>
-                      )}
                     </td>
                     <td className="px-4 py-3 text-gray-600 whitespace-nowrap">
                       {r.scheduledDate ? fmt(r.scheduledDate) : <span className="text-gray-400">—</span>}
