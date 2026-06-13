@@ -460,8 +460,8 @@ export default function CompletedWorks() {
           </div>
           {/* Total Service Hours */}
           <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4 flex items-start gap-3 min-w-0">
-            <div className="w-9 h-9 rounded-lg bg-[#00AECD]/10 flex items-center justify-center flex-shrink-0">
-              <Clock className="w-4 h-4 text-[#00AECD]" />
+            <div className="w-9 h-9 rounded-lg bg-purple-50 flex items-center justify-center flex-shrink-0">
+              <Clock className="w-4 h-4 text-purple-600" />
             </div>
             <div className="min-w-0 flex-1">
               <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-0.5">Total Service Hours</p>
@@ -471,8 +471,8 @@ export default function CompletedWorks() {
           </div>
           {/* Total Area */}
           <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4 flex items-start gap-3 min-w-0">
-            <div className="w-9 h-9 rounded-lg bg-[#00AECD]/10 flex items-center justify-center flex-shrink-0">
-              <Maximize2 className="w-4 h-4 text-[#00AECD]" />
+            <div className="w-9 h-9 rounded-lg bg-green-50 flex items-center justify-center flex-shrink-0">
+              <Maximize2 className="w-4 h-4 text-green-600" />
             </div>
             <div className="min-w-0 flex-1">
               <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-0.5">Total Area</p>
