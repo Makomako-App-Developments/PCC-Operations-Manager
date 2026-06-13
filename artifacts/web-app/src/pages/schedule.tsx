@@ -32,7 +32,7 @@ import {
   Zap, RotateCcw, PlayCircle, Search, X, Users, MapPin, FileText, Paperclip,
   Layers, Sprout, Printer,
 } from "lucide-react";
-import { ReactiveJobWizard } from "@/components/reactive-job-wizard";
+import { ReactiveJobWizard, STATUS_CONFIG as RJ_STATUS_CONFIG, PRIORITY_CONFIG as RJ_PRIORITY_CONFIG_WIZ } from "@/components/reactive-job-wizard";
 import type { AssetStub, TeamStub } from "@/components/reactive-job-wizard";
 import { useToast } from "@/hooks/use-toast";
 
@@ -1220,12 +1220,13 @@ export default function Schedule() {
     enabled: isUnscheduledSelected && !!selectedJob?.id,
   });
 
-  const { data: reactivePhotos } = useQuery<any[]>({
+  const { data: reactivePhotos } = useQuery<{ id: string; blobUrl: string; caption: string | null }[]>({
     queryKey: ["/api/reactive-jobs", selectedJob?.id, "photos"],
     queryFn: async () => {
       const r = await fetch(`/api/reactive-jobs/${selectedJob!.id}/photos`, { credentials: "include" });
       if (!r.ok) return [];
-      return r.json();
+      const json = await r.json();
+      return json.data ?? [];
     },
     enabled: isUnscheduledSelected && !!selectedJob?.id,
   });
@@ -2003,94 +2004,118 @@ export default function Schedule() {
                 </div>
               ) : reactiveJobDetail ? (
                 <>
-                  {/* Orange callout */}
-                  <div className="rounded-lg px-4 py-3 border flex items-center gap-2 text-sm font-medium" style={{ background: "#fff7ed", borderColor: "#fed7aa", color: "#c2410c" }}>
-                    <Zap className="w-4 h-4 flex-shrink-0" />
-                    Unscheduled work — requires crew attendance &amp; photo evidence
-                  </div>
-
-                  {/* Priority + issue type */}
+                  {/* Badges row */}
                   <div className="flex items-center gap-2 flex-wrap">
-                    {reactiveJobDetail.priority && (() => {
-                      const p = RJ_PRIORITY_CONFIG[reactiveJobDetail.priority] ?? { label: reactiveJobDetail.priority, bg: "#f3f4f6", text: "#374151" };
+                    {(() => {
+                      const sc = RJ_STATUS_CONFIG[rjStatus] ?? RJ_STATUS_CONFIG.raised;
+                      const SIcon = sc.icon;
                       return (
-                        <span className="text-xs font-semibold px-2.5 py-1 rounded-full" style={{ background: p.bg, color: p.text }}>
+                        <span className="text-[10px] font-bold px-2.5 py-1 rounded-full uppercase tracking-wider flex items-center gap-1"
+                          style={{ background: sc.bg, color: sc.color }}>
+                          <SIcon className="w-3 h-3" />{sc.label}
+                        </span>
+                      );
+                    })()}
+                    {reactiveJobDetail.priority && (() => {
+                      const p = RJ_PRIORITY_CONFIG_WIZ[reactiveJobDetail.priority] ?? { label: reactiveJobDetail.priority, bg: "#f3f4f6", color: "#374151" };
+                      return (
+                        <span className="text-[10px] font-bold px-2.5 py-1 rounded-full uppercase tracking-wider"
+                          style={{ background: p.bg, color: p.color }}>
                           {p.label}
                         </span>
                       );
                     })()}
-                    {reactiveJobDetail.issueType && (
-                      <span className="text-xs px-2.5 py-1 rounded-full bg-gray-100 text-gray-700 font-medium capitalize">
-                        {reactiveJobDetail.issueType.replace(/_/g, " ")}
+                    {reactiveJobDetail.origin && (() => {
+                      const originMap: Record<string, { label: string; color: string; bg: string }> = {
+                        manager:      { label: "via Manager",      color: "#0f2a36", bg: "#e0f4f8" },
+                        supervisor:   { label: "via Supervisor",   color: "#7c3aed", bg: "#ede9fe" },
+                        field_worker: { label: "via Field Worker", color: "#b45309", bg: "#fef3c7" },
+                      };
+                      const oc = originMap[reactiveJobDetail.origin] ?? { label: reactiveJobDetail.origin, color: "#6b7280", bg: "#f3f4f6" };
+                      return (
+                        <span className="text-[10px] font-bold px-2.5 py-1 rounded-full"
+                          style={{ color: oc.color, background: oc.bg }}>
+                          {oc.label}
+                        </span>
+                      );
+                    })()}
+                    {reactiveJobDetail.raisedAt && (
+                      <span className="text-[10px] text-gray-400 bg-gray-50 px-2.5 py-1 rounded-full ml-auto whitespace-nowrap">
+                        Raised {format(new Date(reactiveJobDetail.raisedAt), "d MMM yyyy")}
                       </span>
                     )}
                   </div>
 
-                  {/* Key info */}
-                  <dl className="space-y-2.5 text-sm">
-                    {reactiveJobDetail.location && (
-                      <div className="flex items-start gap-2">
-                        <MapPin className="w-3.5 h-3.5 text-gray-400 mt-0.5 flex-shrink-0" />
-                        <span className="text-gray-700">{reactiveJobDetail.location}</span>
-                      </div>
-                    )}
-                    <div className="flex items-center justify-between gap-3">
-                      <dt className="text-gray-500 font-medium shrink-0">Scheduled date</dt>
-                      <dd className="flex-1 flex justify-end">
-                        <input
-                          type="date"
-                          value={rjScheduledDate}
-                          onChange={e => setRjScheduledDate(e.target.value)}
-                          className="text-sm text-gray-900 font-semibold border border-gray-200 rounded-lg px-2.5 py-1 bg-white focus:outline-none focus:ring-2 focus:ring-[#00AECD]/30 focus:border-[#00AECD] cursor-pointer"
-                        />
-                      </dd>
-                    </div>
-                    <div className="flex justify-between">
-                      <dt className="text-gray-500 font-medium">Team</dt>
-                      <dd className="text-gray-900 font-semibold">{getTeamName(selectedJob.teamId)}</dd>
-                    </div>
-                    {reactiveJobDetail.raisedByName && (
-                      <div className="flex justify-between">
-                        <dt className="text-gray-500 font-medium">Raised by</dt>
-                        <dd className="text-gray-900 font-semibold">{reactiveJobDetail.raisedByName}</dd>
-                      </div>
-                    )}
-                    {reactiveJobDetail.raisedAt && (
-                      <div className="flex justify-between">
-                        <dt className="text-gray-500 font-medium">Raised</dt>
-                        <dd className="text-gray-900 font-semibold">
-                          {format(new Date(reactiveJobDetail.raisedAt), "d MMM yyyy, h:mm a")}
-                        </dd>
-                      </div>
-                    )}
-                    {selectedJob.estimatedTimeMins && (
-                      <div className="flex justify-between">
-                        <dt className="text-gray-500 font-medium">Est. time</dt>
-                        <dd className="text-gray-900 font-semibold flex items-center gap-1">
-                          <Clock className="w-3.5 h-3.5 text-gray-400" />
-                          {selectedJob.estimatedTimeMins}m
-                        </dd>
-                      </div>
-                    )}
-                  </dl>
-
                   {/* Description */}
                   {reactiveJobDetail.description && (
-                    <div className="space-y-1.5">
-                      <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide flex items-center gap-1.5">
-                        <FileText className="w-3.5 h-3.5" />Description
-                      </p>
-                      <p className="text-sm text-gray-700 bg-gray-50 rounded-lg px-3 py-2.5 leading-relaxed">
-                        {reactiveJobDetail.description}
-                      </p>
+                    <div>
+                      <p className="text-[10px] text-gray-400 uppercase tracking-wider mb-1.5 font-semibold">Description</p>
+                      <p className="text-sm text-gray-700 leading-relaxed">{reactiveJobDetail.description}</p>
                     </div>
                   )}
 
+                  {/* 2×2 info cards */}
+                  <div className="grid grid-cols-2 gap-3">
+                    {/* Site */}
+                    <div className="bg-gray-50 rounded-xl p-3.5">
+                      <div className="flex items-center gap-1.5 mb-1">
+                        <MapPin className="w-3.5 h-3.5 text-gray-400" />
+                        <p className="text-[10px] text-gray-400 uppercase tracking-wider font-semibold">Site</p>
+                      </div>
+                      <p className="text-sm font-semibold text-gray-800 leading-snug">
+                        {selectedJob.assetName ?? reactiveJobDetail.location ?? "—"}
+                      </p>
+                      {(() => {
+                        const asset = (allAssets?.data as any[] | undefined)?.find((a: any) => a.id === reactiveJobDetail.assetId);
+                        const desc = asset?.description ?? reactiveJobDetail.location;
+                        return desc ? <p className="text-[11px] text-gray-400 mt-0.5 leading-snug">{desc}</p> : null;
+                      })()}
+                    </div>
+
+                    {/* Team */}
+                    <div className="bg-gray-50 rounded-xl p-3.5">
+                      <div className="flex items-center gap-1.5 mb-1">
+                        <Users className="w-3.5 h-3.5 text-gray-400" />
+                        <p className="text-[10px] text-gray-400 uppercase tracking-wider font-semibold">Team</p>
+                      </div>
+                      <p className="text-sm font-semibold text-gray-800">{getTeamName(selectedJob.teamId)}</p>
+                    </div>
+
+                    {/* Scheduled date */}
+                    <div className="bg-gray-50 rounded-xl p-3.5">
+                      <div className="flex items-center gap-1.5 mb-1">
+                        <Calendar className="w-3.5 h-3.5 text-gray-400" />
+                        <p className="text-[10px] text-gray-400 uppercase tracking-wider font-semibold">Scheduled</p>
+                      </div>
+                      <input
+                        type="date"
+                        value={rjScheduledDate}
+                        onChange={e => setRjScheduledDate(e.target.value)}
+                        className="text-sm font-semibold text-gray-800 bg-transparent border-0 outline-none p-0 w-full cursor-pointer"
+                      />
+                    </div>
+
+                    {/* Est. time */}
+                    <div className="bg-gray-50 rounded-xl p-3.5">
+                      <div className="flex items-center gap-1.5 mb-1">
+                        <Clock className="w-3.5 h-3.5 text-gray-400" />
+                        <p className="text-[10px] text-gray-400 uppercase tracking-wider font-semibold">Est. Time</p>
+                      </div>
+                      <p className="text-sm font-semibold text-gray-800">
+                        {reactiveJobDetail.estimatedTimeMins
+                          ? `${reactiveJobDetail.estimatedTimeMins} min`
+                          : selectedJob.estimatedTimeMins
+                            ? `${selectedJob.estimatedTimeMins} min`
+                            : "—"}
+                      </p>
+                    </div>
+                  </div>
+
                   {/* Notes */}
                   {reactiveJobDetail.notes && (
-                    <div className="space-y-1.5">
-                      <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Notes</p>
-                      <p className="text-sm text-gray-700 bg-gray-50 rounded-lg px-3 py-2.5 leading-relaxed">
+                    <div>
+                      <p className="text-[10px] text-gray-400 uppercase tracking-wider mb-1.5 font-semibold">Notes</p>
+                      <p className="text-sm text-gray-600 leading-relaxed bg-gray-50 rounded-xl p-3.5">
                         {reactiveJobDetail.notes}
                       </p>
                     </div>
@@ -2098,21 +2123,28 @@ export default function Schedule() {
 
                   {/* Attachments */}
                   {reactivePhotos && reactivePhotos.length > 0 && (
-                    <div className="space-y-2">
-                      <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide flex items-center gap-1.5">
-                        <Paperclip className="w-3.5 h-3.5" />Attachments ({reactivePhotos.length})
+                    <div>
+                      <p className="text-[10px] text-gray-400 uppercase tracking-wider mb-2 font-semibold">
+                        Attachments ({reactivePhotos.length})
                       </p>
-                      <div className="flex gap-2 flex-wrap">
-                        {reactivePhotos.map((ph: any) => {
-                          const isImage = ph.mimeType?.startsWith("image/");
+                      <div className="grid grid-cols-3 gap-2">
+                        {reactivePhotos.map(ph => {
+                          const isImage = /\.(jpe?g|png|webp|gif|heic)$/i.test(ph.blobUrl ?? "");
                           return isImage ? (
-                            <a key={ph.id} href={ph.url} target="_blank" rel="noreferrer" className="block w-16 h-16 rounded-lg overflow-hidden border border-gray-200 hover:opacity-80 transition-opacity flex-shrink-0">
-                              <img src={ph.url} alt={ph.filename} className="w-full h-full object-cover" />
+                            <a key={ph.id} href={ph.blobUrl} target="_blank" rel="noopener noreferrer">
+                              <img
+                                src={ph.blobUrl}
+                                alt={ph.caption ?? "attachment"}
+                                className="w-full h-24 object-cover rounded-xl border border-gray-100 hover:opacity-90 transition-opacity"
+                              />
                             </a>
                           ) : (
-                            <a key={ph.id} href={ph.url} target="_blank" rel="noreferrer" className="flex items-center gap-1.5 px-2.5 py-2 rounded-lg border border-gray-200 bg-gray-50 hover:bg-gray-100 transition-colors text-xs text-gray-700 flex-shrink-0">
-                              <FileText className="w-3.5 h-3.5 text-gray-400" />
-                              <span className="max-w-[100px] truncate">{ph.filename}</span>
+                            <a key={ph.id} href={ph.blobUrl} target="_blank" rel="noopener noreferrer"
+                              className="flex flex-col items-center justify-center h-24 rounded-xl border border-gray-200 bg-gray-50 hover:bg-gray-100 transition-colors gap-1 px-2">
+                              <FileText className="w-6 h-6 text-gray-400" />
+                              <span className="text-[10px] text-gray-500 text-center truncate w-full">
+                                {ph.caption ?? "Document"}
+                              </span>
                             </a>
                           );
                         })}
@@ -2120,32 +2152,28 @@ export default function Schedule() {
                     </div>
                   )}
 
-                  {/* Status update */}
+                  {/* Status update — teal when active, no pill */}
                   <div className="space-y-2 pt-1">
-                    <div className="flex items-center justify-between">
-                      <p className="text-xs font-semibold text-gray-700 uppercase tracking-wide">Update status</p>
-                      {(() => {
-                        const current = RJ_STATUS_OPTIONS.find(o => o.value === reactiveJobDetail.status);
-                        return current ? (
-                          <span className="text-[11px] font-semibold px-2.5 py-0.5 rounded-full" style={{ background: current.color + "1a", color: current.color }}>
-                            Current: {current.label}
-                          </span>
-                        ) : null;
-                      })()}
-                    </div>
+                    <p className="text-[10px] text-gray-400 uppercase tracking-wider font-semibold">Update Status</p>
                     <div className="grid grid-cols-2 gap-2">
-                      {RJ_STATUS_OPTIONS.map(opt => (
-                        <button
-                          key={opt.value}
-                          onClick={() => setRjStatus(opt.value)}
-                          className="px-3 py-2 rounded-lg border text-xs font-semibold transition-all"
-                          style={rjStatus === opt.value
-                            ? { background: opt.color, borderColor: opt.color, color: "#fff" }
-                            : { background: "white", borderColor: "#e5e7eb", color: "#4b5563" }}
-                        >
-                          {opt.label}
-                        </button>
-                      ))}
+                      {RJ_STATUS_OPTIONS.map(opt => {
+                        const sc = RJ_STATUS_CONFIG[opt.value] ?? { icon: () => null };
+                        const SIcon = sc.icon;
+                        const isActive = rjStatus === opt.value;
+                        return (
+                          <button
+                            key={opt.value}
+                            onClick={() => setRjStatus(opt.value)}
+                            className={`flex items-center gap-2 px-3 py-2.5 rounded-xl text-sm font-semibold border-2 transition-all ${
+                              isActive ? "text-white border-transparent" : "border-gray-200 text-gray-600 hover:border-gray-300 bg-white"
+                            }`}
+                            style={isActive ? { background: BRAND } : {}}
+                          >
+                            <SIcon className="w-4 h-4" />
+                            {opt.label}
+                          </button>
+                        );
+                      })}
                     </div>
                   </div>
                 </>
@@ -2252,7 +2280,7 @@ export default function Schedule() {
             </Button>
             {selectedJob?.jobType === "unscheduled" ? (
               <Button
-                style={{ background: "#c2410c" }}
+                style={{ background: BRAND }}
                 className="text-white hover:opacity-90 flex-1"
                 onClick={() => updateReactiveJob.mutate({ id: selectedJob.id, status: rjStatus, scheduledDate: rjScheduledDate || null })}
                 disabled={updateReactiveJob.isPending || !reactiveJobDetail}
