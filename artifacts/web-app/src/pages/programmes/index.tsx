@@ -25,7 +25,6 @@ import {
   Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList,
 } from "@/components/ui/command";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { format, parseISO } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
 import {
@@ -3162,6 +3161,7 @@ export default function Programmes() {
   const [speciesScope, setSpeciesScope]         = useState<SpeciesScope>("all");
   const [speciesSortKey, setSpeciesSortKey]     = useState<SpeciesSortKey>("totalQty");
   const [speciesSortDir, setSpeciesSortDir]     = useState<"asc" | "desc">("desc");
+  const [infillTab, setInfillTab]               = useState<"planting-jobs" | "species-summary">("planting-jobs");
 
   const handleSpeciesSort = (key: SpeciesSortKey) => {
     if (speciesSortKey === key) setSpeciesSortDir(d => d === "asc" ? "desc" : "asc");
@@ -3377,14 +3377,33 @@ export default function Programmes() {
       {/* ── Infill Planting ── */}
       {isInfill && (
         <div className="flex-1 overflow-auto p-6">
-          <Tabs defaultValue="planting-jobs">
-            <TabsList className="mb-4">
-              <TabsTrigger value="planting-jobs">Planting Jobs</TabsTrigger>
-              <TabsTrigger value="species-summary">Species Order Summary</TabsTrigger>
-            </TabsList>
+          <div>
+            {/* Pill tab toggle — matches Team page style */}
+            <div className="flex items-center bg-gray-100 rounded-lg p-1 gap-1 mb-4 w-fit">
+              <button
+                onClick={() => setInfillTab("planting-jobs")}
+                className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-all ${
+                  infillTab === "planting-jobs"
+                    ? "bg-white shadow-sm text-gray-800"
+                    : "text-gray-500 hover:text-gray-700"
+                }`}
+              >
+                Planting Jobs
+              </button>
+              <button
+                onClick={() => setInfillTab("species-summary")}
+                className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-all ${
+                  infillTab === "species-summary"
+                    ? "bg-white shadow-sm text-gray-800"
+                    : "text-gray-500 hover:text-gray-700"
+                }`}
+              >
+                Species Order Summary
+              </button>
+            </div>
 
             {/* Tab: Planting Jobs */}
-            <TabsContent value="planting-jobs">
+            {infillTab === "planting-jobs" && (
               <div className="space-y-4">
                 {jobsLoading ? (
                   <div className="space-y-2">{[...Array(4)].map((_, i) => <Skeleton key={i} className="h-10 w-full rounded-lg" />)}</div>
@@ -3503,10 +3522,10 @@ export default function Programmes() {
                   </div>
                 )}
               </div>
-            </TabsContent>
+            )}
 
             {/* Tab: Species Order Summary */}
-            <TabsContent value="species-summary">
+            {infillTab === "species-summary" && (
               <div className="rounded-xl border border-gray-200 bg-white overflow-hidden mt-1">
                 <div className="px-4 py-3 flex items-center justify-between border-b border-gray-100 bg-gray-50">
                   <div className="flex items-center gap-2">
@@ -3617,8 +3636,8 @@ export default function Programmes() {
                     </table>
                   )}
               </div>
-            </TabsContent>
-          </Tabs>
+            )}
+          </div>
         </div>
       )}
 
