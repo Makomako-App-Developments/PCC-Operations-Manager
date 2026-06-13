@@ -253,8 +253,8 @@ function DailyGanttView({
                 })}
               </tr>
               {/* Day header row */}
-              <tr className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">
-                <th className="text-center py-2 px-1 border-b border-gray-200 sticky bg-white z-30" style={{ left: 0, minWidth: 40, width: 40 }}>
+              <tr className="text-xs font-bold text-gray-400 uppercase tracking-wider">
+                <th className="text-center py-1.5 px-1 border-b border-gray-200 sticky bg-white z-30" style={{ left: 0, minWidth: 40, width: 40 }}>
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <span className="cursor-help">GS #</span>
@@ -262,19 +262,19 @@ function DailyGanttView({
                     <TooltipContent side="right">Geosequence number</TooltipContent>
                   </Tooltip>
                 </th>
-                <th className="text-left py-2 px-3 border-b border-gray-200 sticky bg-white z-30" style={{ left: 40,  minWidth: 190, width: 190 }}>Site</th>
-                <th className="text-left py-2 px-3 border-b border-gray-200 sticky bg-white z-30" style={{ left: 230, minWidth: 80,  width: 80  }}>Specification</th>
-                <th className="text-left py-2 px-3 border-b border-gray-200 sticky bg-white z-30" style={{ left: 310, minWidth: 70,  width: 70  }}>Freq</th>
-                <th className="text-left py-2 px-3 border-b border-gray-200 sticky bg-white z-30" style={{ left: 380, minWidth: 55,  width: 55  }}>Mins</th>
-                <th className="text-left py-2 px-3 border-b border-gray-200 sticky bg-white z-30 border-r border-gray-200" style={{ left: 435, minWidth: 115, width: 115 }}>Team</th>
+                <th className="text-left py-1.5 px-3 border-b border-gray-200 sticky bg-white z-30" style={{ left: 40,  minWidth: 190, width: 190 }}>Site</th>
+                <th className="text-left py-1.5 px-3 border-b border-gray-200 sticky bg-white z-30" style={{ left: 230, minWidth: 80,  width: 80  }}>Specification</th>
+                <th className="text-left py-1.5 px-3 border-b border-gray-200 sticky bg-white z-30" style={{ left: 310, minWidth: 70,  width: 70  }}>Freq</th>
+                <th className="text-left py-1.5 px-3 border-b border-gray-200 sticky bg-white z-30" style={{ left: 380, minWidth: 55,  width: 55  }}>Mins</th>
+                <th className="text-left py-1.5 px-3 border-b border-gray-200 sticky bg-white z-30 border-r border-gray-200" style={{ left: 435, minWidth: 115, width: 115 }}>Team</th>
                 {days.map(d => (
                   <th
                     key={d.key}
-                    className={`py-2 px-1 border-b border-l border-gray-200 text-center leading-tight ${d.isWeekend ? "bg-gray-50 text-gray-300" : ""} ${d.isToday ? "bg-teal-50 text-teal-600" : ""}`}
+                    className={`py-1.5 px-1 border-b border-l border-gray-200 text-center leading-tight ${d.isWeekend ? "bg-gray-50 text-gray-300" : ""} ${d.isToday ? "bg-teal-50 text-teal-600" : ""}`}
                     style={{ minWidth: COL_W, width: COL_W }}
                   >
                     <div className="font-semibold">{d.dayLabel}</div>
-                    <div className={`text-[11px] font-bold ${d.isToday ? "text-teal-600" : "text-gray-700"}`}>{d.dateLabel}</div>
+                    <div className={`font-bold ${d.isToday ? "text-teal-600" : "text-gray-700"}`}>{d.dateLabel}</div>
                   </th>
                 ))}
               </tr>
@@ -484,8 +484,8 @@ function GanttView({
         <div className="flex-1 overflow-auto">
           <table className="text-xs border-collapse" style={{ minWidth: 550 + GANTT_WEEK_COUNT * 85 }}>
             <thead className="sticky top-0 z-30 bg-white shadow-sm">
-              <tr className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">
-                <th className="text-center py-2.5 px-1 border-b border-gray-200 sticky bg-white z-30" style={{ left: 0, minWidth: 40, width: 40 }}>
+              <tr className="text-xs font-bold text-gray-400 uppercase tracking-wider">
+                <th className="text-center py-1.5 px-1 border-b border-gray-200 sticky bg-white z-30" style={{ left: 0, minWidth: 40, width: 40 }}>
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <span className="cursor-help">GS #</span>
@@ -493,13 +493,13 @@ function GanttView({
                     <TooltipContent side="right">Geosequence number</TooltipContent>
                   </Tooltip>
                 </th>
-                <th className="text-left py-2.5 px-3 border-b border-gray-200 sticky bg-white z-30" style={{ left: 40,  minWidth: 190, width: 190 }}>Site</th>
-                <th className="text-left py-2.5 px-3 border-b border-gray-200 sticky bg-white z-30" style={{ left: 230, minWidth: 80,  width: 80 }}>Specification</th>
-                <th className="text-left py-2.5 px-3 border-b border-gray-200 sticky bg-white z-30" style={{ left: 310, minWidth: 70,  width: 70 }}>Freq</th>
-                <th className="text-left py-2.5 px-3 border-b border-gray-200 sticky bg-white z-30" style={{ left: 380, minWidth: 55,  width: 55 }}>Time</th>
-                <th className="text-left py-2.5 px-3 border-b border-gray-200 sticky bg-white z-30 border-r border-gray-200" style={{ left: 435, minWidth: 115, width: 115 }}>Team</th>
+                <th className="text-left py-1.5 px-3 border-b border-gray-200 sticky bg-white z-30" style={{ left: 40,  minWidth: 190, width: 190 }}>Site</th>
+                <th className="text-left py-1.5 px-3 border-b border-gray-200 sticky bg-white z-30" style={{ left: 230, minWidth: 80,  width: 80 }}>Specification</th>
+                <th className="text-left py-1.5 px-3 border-b border-gray-200 sticky bg-white z-30" style={{ left: 310, minWidth: 70,  width: 70 }}>Freq</th>
+                <th className="text-left py-1.5 px-3 border-b border-gray-200 sticky bg-white z-30" style={{ left: 380, minWidth: 55,  width: 55 }}>Time</th>
+                <th className="text-left py-1.5 px-3 border-b border-gray-200 sticky bg-white z-30 border-r border-gray-200" style={{ left: 435, minWidth: 115, width: 115 }}>Team</th>
                 {weeks.map(w => (
-                  <th key={w.key} className="text-left py-2.5 px-3 border-b border-gray-200 border-l border-l-gray-100" style={{ minWidth: 85 }}>
+                  <th key={w.key} className="text-left py-1.5 px-3 border-b border-gray-200 border-l border-l-gray-100" style={{ minWidth: 85 }}>
                     {w.label}
                   </th>
                 ))}
