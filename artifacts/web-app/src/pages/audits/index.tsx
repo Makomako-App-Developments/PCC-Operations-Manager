@@ -530,19 +530,19 @@ export default function Audits() {
         />
       </div>
 
-      {/* ── Tabs ───────────────────────────────────────────────────────────── */}
-      <div className="px-8 mt-4 border-b bg-white flex items-center gap-0 sticky top-[73px] z-10 shadow-sm flex-shrink-0">
-        <button
-          onClick={() => setActiveTab("results")}
-          className={`px-4 py-3 text-sm font-semibold border-b-2 transition-colors ${
-            activeTab === "results"
-              ? "border-[#00AECD] text-[#00AECD]"
-              : "border-transparent text-gray-500 hover:text-gray-700"
-          }`}
-        >
-          All Results
-        </button>
-        {isSupervisor && (
+      {/* ── Tabs (supervisors only — shows "This Week" queue) ─────────────── */}
+      {isSupervisor && (
+        <div className="px-8 mt-4 border-b bg-white flex items-center gap-0 sticky top-[73px] z-10 shadow-sm flex-shrink-0">
+          <button
+            onClick={() => setActiveTab("results")}
+            className={`px-4 py-3 text-sm font-semibold border-b-2 transition-colors ${
+              activeTab === "results"
+                ? "border-[#00AECD] text-[#00AECD]"
+                : "border-transparent text-gray-500 hover:text-gray-700"
+            }`}
+          >
+            All Results
+          </button>
           <button
             onClick={() => setActiveTab("this-week")}
             className={`px-4 py-3 text-sm font-semibold border-b-2 transition-colors flex items-center gap-1.5 ${
@@ -554,8 +554,8 @@ export default function Audits() {
             <CalendarCheck className="w-4 h-4" />
             This Week
           </button>
-        )}
-      </div>
+        </div>
+      )}
 
       {activeTab === "this-week" && isSupervisor ? (
         <div className="flex-1 overflow-auto">
