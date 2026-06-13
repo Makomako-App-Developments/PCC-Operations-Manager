@@ -204,8 +204,12 @@ router.get("/jobs/:id/pdf", requireAuth, async (req, res) => {
   const PDFDocument = (await import("pdfkit")).default;
   const doc = new PDFDocument({ margin: 50, size: "A4" });
   const siteName = row.assetName ?? "Unknown Site";
+  // Build a safe filename: "<Site Name> - YYYY-MM-DD.pdf"
+  const safeSiteName = siteName.replace(/[\\/:*?"<>|]/g, "").trim();
+  const dateLabel = row.scheduledDate ?? row.completedAt?.toISOString().slice(0, 10) ?? "unknown-date";
+  const pdfFilename = `${safeSiteName} - ${dateLabel}.pdf`;
   res.setHeader("Content-Type", "application/pdf");
-  res.setHeader("Content-Disposition", `attachment; filename="completed-job-${row.id}.pdf"`);
+  res.setHeader("Content-Disposition", `attachment; filename="${pdfFilename}"`);
   doc.pipe(res);
 
   const TEAL = "#00AECD";
