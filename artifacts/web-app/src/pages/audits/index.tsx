@@ -552,26 +552,17 @@ export default function Audits() {
                 ))}
               </SelectContent>
             </Select>
-            {/* Date range chips */}
-            <div className="flex gap-1.5">
-              {(["all", "this-week", "this-month", "custom"] as const).map((opt) => {
-                const label = opt === "all" ? "All dates" : opt === "this-week" ? "This week" : opt === "this-month" ? "This month" : "Custom";
-                const active = dateRange === opt;
-                return (
-                  <button
-                    key={opt}
-                    onClick={() => setDateRange(opt)}
-                    className={`h-9 px-3 rounded-md text-sm font-medium border transition-colors ${
-                      active
-                        ? "bg-[#00AECD] text-white border-[#00AECD]"
-                        : "bg-white text-gray-600 border-gray-200 hover:bg-gray-50"
-                    }`}
-                  >
-                    {label}
-                  </button>
-                );
-              })}
-            </div>
+            <Select value={dateRange} onValueChange={(v) => setDateRange(v as typeof dateRange)}>
+              <SelectTrigger className="w-[160px] h-9 text-sm bg-white">
+                <SelectValue placeholder="All dates" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All dates</SelectItem>
+                <SelectItem value="this-week">This week</SelectItem>
+                <SelectItem value="this-month">This month</SelectItem>
+                <SelectItem value="custom">Custom</SelectItem>
+              </SelectContent>
+            </Select>
             {dateRange === "custom" && (
               <>
                 <input
