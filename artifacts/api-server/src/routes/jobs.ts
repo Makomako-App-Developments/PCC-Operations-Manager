@@ -876,8 +876,14 @@ router.get("/reactive-jobs", requireAuth, async (req, res) => {
     }
   }
   const rows = await db
-    .select()
+    .select({
+      ...reactiveJobsTable,
+      raisedByName: usersTable.name,
+      assetDescription: assetsTable.description,
+    })
     .from(reactiveJobsTable)
+    .leftJoin(usersTable, eq(reactiveJobsTable.raisedById, usersTable.id))
+    .leftJoin(assetsTable, eq(reactiveJobsTable.assetId, assetsTable.id))
     .where(conditions.length > 0 ? and(...conditions) : undefined)
     .limit(5000);
   res.json({ data: rows });

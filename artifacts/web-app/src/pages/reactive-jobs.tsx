@@ -677,9 +677,14 @@ export default function ReactiveJobs() {
                   <Zap className="w-4 h-4 text-amber-500 flex-shrink-0 mt-0.5" />
                   <div className="min-w-0">
                     <h2 className="font-bold text-gray-900 truncate leading-tight">{site || "Unknown site"}</h2>
-                    {(selectedJob.assetDescription as string | null) && (
-                      <p className="text-[11px] text-gray-400 truncate mt-0.5">{selectedJob.assetDescription as string}</p>
-                    )}
+                    {(() => {
+                      const desc = (selectedJob.assetDescription as string | null)
+                        ?? assets.find(a => a.id === (selectedJob.assetId as string))?.description
+                        ?? null;
+                      return desc
+                        ? <p className="text-[11px] text-gray-400 truncate mt-0.5">{desc}</p>
+                        : null;
+                    })()}
                   </div>
                 </div>
                 <div className="flex items-center gap-2 flex-shrink-0 ml-2">
@@ -773,24 +778,11 @@ export default function ReactiveJobs() {
                   >
                     {pConf.label}
                   </span>
-                  {(() => {
-                    const o = selectedJob.origin as string | null;
-                    const originLabels: Record<string, string> = {
-                      manager: "Manager", supervisor: "Supervisor", field_worker: "Field Worker",
-                    };
-                    const raisedByName = selectedJob.raisedByName as string | null;
-                    const raisedAt = selectedJob.raisedAt as string | null;
-                    const parts: string[] = [];
-                    if (raisedByName) parts.push(raisedByName);
-                    if (o) parts.push(`via ${originLabels[o] ?? o}`);
-                    if (raisedAt) parts.push(format(new Date(raisedAt), "d MMM yyyy, h:mm a"));
-                    if (!parts.length) return null;
-                    return (
-                      <span className="text-[10px] text-gray-400 ml-auto">
-                        {parts.join(" · ")}
-                      </span>
-                    );
-                  })()}
+                  {(selectedJob.raisedByName as string | null) && (
+                    <span className="text-[10px] text-gray-400 ml-auto">
+                      Raised by: {selectedJob.raisedByName as string}
+                    </span>
+                  )}
                 </div>
 
                 {/* Description */}
