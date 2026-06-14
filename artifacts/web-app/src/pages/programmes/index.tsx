@@ -2742,7 +2742,7 @@ function MulchingTab({
                 const assetObj = assets.find(a => a.id === r.assetId);
                 return (
                   <tr key={r.id}
-                    onClick={() => setSelectedMulch(r)}
+                    onClick={() => isDraft ? setReviewTarget(r) : setSelectedMulch(r)}
                     className="hover:bg-gray-50 cursor-pointer transition-colors"
                   >
                     <td className="px-4 py-3">
