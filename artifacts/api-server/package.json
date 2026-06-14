@@ -43,7 +43,7 @@
     "@types/node": "catalog:",
     "@types/supertest": "^7.2.0",
     "@vitest/coverage-v8": "^4.1.5",
-    "esbuild": "^0.27.3",
+    "esbuild": "^0.28.1",
     "supertest": "^7.2.2",
     "tsx": "catalog:",
     "vitest": "^4.1.5"
