@@ -372,7 +372,12 @@ export function ReactiveJobWizard({ teamsData, assetsData, onClose, onPublished 
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ teamId: selectedTeamId, fromDate: selectedDate, minutesToFree: serviceMin }),
+        body: JSON.stringify({
+          teamId: selectedTeamId,
+          fromDate: selectedDate,
+          minutesToFree: Math.max(1, resolvedTotal - PRODUCTIVE),
+          insertionAssetId: selectedAssetId ?? undefined,
+        }),
       });
       if (!res.ok) throw new Error(await res.text());
       const data = await res.json();

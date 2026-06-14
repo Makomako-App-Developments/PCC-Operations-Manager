@@ -1314,11 +1314,12 @@ router.get(
 const PUSH_UNDO_WINDOW_MS = 15 * 60 * 1000; // 15 minutes
 
 const pushForwardBodySchema = z.object({
-  teamId:        z.string().uuid(),
-  fromDate:      z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-  deltaDays:     z.number().int().min(-30).max(30).default(1),
-  minutesToFree: z.number().int().positive().optional(),
-  pushedAt:      z.string().datetime().optional(),
+  teamId:           z.string().uuid(),
+  fromDate:         z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  deltaDays:        z.number().int().min(-30).max(30).default(1),
+  minutesToFree:    z.number().int().positive().optional(),
+  insertionAssetId: z.string().uuid().optional(),
+  pushedAt:         z.string().datetime().optional(),
 });
 
 router.post(
@@ -1327,7 +1328,7 @@ router.post(
   requireRole("manager", "supervisor"),
   validateBody(pushForwardBodySchema),
   async (req, res) => {
-    const { teamId, fromDate, deltaDays, pushedAt } = res.locals.body as z.infer<typeof pushForwardBodySchema>;
+    const { teamId, fromDate, deltaDays, minutesToFree, insertionAssetId, pushedAt } = res.locals.body as z.infer<typeof pushForwardBodySchema>;
 
     // For undo calls (deltaDays < 0), validate the pushedAt echo-back is within the allowed window.
     if (deltaDays < 0 && pushedAt) {
@@ -1341,62 +1342,126 @@ router.post(
       }
     }
 
-    // ── Selective push: move only enough jobs on fromDate to free minutesToFree ──
+    // ── Geosequence-aware selective push with cascade ─────────────────────────
+    // Jobs are ALWAYS selected in geosequence (routeOrder) order — never by
+    // duration or any other field. The tail of the route (highest routeOrder)
+    // is pushed first. The cascade continues to subsequent days until each day
+    // is within productive capacity.
     if (minutesToFree && minutesToFree > 0) {
-      const dateJobs = await db
-        .select({
-          id:               jobsTable.id,
-          estimatedTimeMins: jobsTable.estimatedTimeMins,
-          serviceTimeMins:  assetsTable.serviceTimeMins,
-        })
-        .from(jobsTable)
-        .leftJoin(assetsTable, eq(jobsTable.assetId, assetsTable.id))
-        .where(
-          and(
-            eq(jobsTable.teamId, teamId),
-            sql`to_char(${jobsTable.scheduledDate}, 'YYYY-MM-DD') = ${fromDate}`,
-            eq(jobsTable.status, "pending"),
-            eq(jobsTable.jobType, "scheduled"),
-          ),
-        );
+      const { productiveTimeMins } = await loadSystemSettings();
 
-      if (dateJobs.length === 0) {
-        res.json({ affectedCount: 0, fromDate, toDate: fromDate, pushedAt: new Date().toISOString() });
-        return;
+      // Resolve insertion routeOrder from the asset being inserted (first day only)
+      let insertionRouteOrder: number | null = null;
+      if (insertionAssetId) {
+        const [asset] = await db
+          .select({ routeOrder: assetsTable.routeOrder })
+          .from(assetsTable)
+          .where(eq(assetsTable.id, insertionAssetId))
+          .limit(1);
+        insertionRouteOrder = asset?.routeOrder ?? null;
       }
 
-      // Sort biggest jobs first — greedily push fewest jobs while freeing required capacity
-      const sorted = dateJobs
-        .map(j => ({ id: j.id, mins: j.estimatedTimeMins ?? j.serviceTimeMins ?? 0 }))
-        .sort((a, b) => b.mins - a.mins);
+      // Pre-compute non-working days for a 60-day forward window (covers cascade)
+      const nonWorkingDays = await buildTeamNonWorkingDays(teamId, fromDate, addDays(fromDate, 60));
 
-      const toMove: string[] = [];
-      let freed = 0;
-      for (const j of sorted) {
-        if (freed >= minutesToFree) break;
-        toMove.push(j.id);
-        freed += j.mins;
-      }
+      const pushedAtTs = new Date().toISOString();
+      let totalAffected = 0;
+      let latestToDate = fromDate;
 
-      if (toMove.length > 0) {
-        const nonWorkingDays = await buildTeamNonWorkingDays(teamId, fromDate, addDays(fromDate, 30));
-        const nextDate = addWorkingDays(fromDate, 1, nonWorkingDays);
+      // Cascade loop: process the target date, then any receiving days that overflow
+      const CASCADE_LIMIT = 14;
+      let currentDate = fromDate;
+      let currentMinutesToFree = minutesToFree;
+      let currentInsertionRO = insertionRouteOrder; // only used on the first iteration
+
+      for (let iter = 0; iter < CASCADE_LIMIT; iter++) {
+        // Query pending scheduled jobs on currentDate in geosequence order
+        const dateJobs = await db
+          .select({
+            id:               jobsTable.id,
+            routeOrder:       assetsTable.routeOrder,
+            estimatedTimeMins: jobsTable.estimatedTimeMins,
+            serviceTimeMins:  assetsTable.serviceTimeMins,
+          })
+          .from(jobsTable)
+          .leftJoin(assetsTable, eq(jobsTable.assetId, assetsTable.id))
+          .where(
+            and(
+              eq(jobsTable.teamId, teamId),
+              sql`to_char(${jobsTable.scheduledDate}, 'YYYY-MM-DD') = ${currentDate}`,
+              eq(jobsTable.status, "pending"),
+              eq(jobsTable.jobType, "scheduled"),
+            ),
+          )
+          .orderBy(sql`${assetsTable.routeOrder} NULLS LAST`, assetsTable.name);
+
+        if (dateJobs.length === 0) break;
+
+        // On the first iteration, only candidates AFTER the insertion point are eligible.
+        // On cascade days there is no insertion filter — the whole day is in scope.
+        const candidates = currentInsertionRO !== null
+          ? dateJobs.filter(j => j.routeOrder !== null && j.routeOrder > currentInsertionRO!)
+          : [...dateJobs];
+
+        if (candidates.length === 0) break;
+
+        // Push from the END of the route (highest routeOrder last in array) until freed
+        const toMove: string[] = [];
+        let freed = 0;
+        for (let i = candidates.length - 1; i >= 0; i--) {
+          if (freed >= currentMinutesToFree) break;
+          const j = candidates[i];
+          toMove.push(j.id);
+          freed += j.estimatedTimeMins ?? j.serviceTimeMins ?? 0;
+        }
+
+        if (toMove.length === 0) break;
+
+        const nextDate = addWorkingDays(currentDate, 1, nonWorkingDays);
         await db
           .update(jobsTable)
           .set({ scheduledDate: nextDate, updatedAt: new Date() })
           .where(inArray(jobsTable.id, toMove));
 
-        const pushedAtTs = new Date().toISOString();
-        await auditLog({
-          tableName: "schedule", recordId: null, action: "push_forward",
-          changedById: req.auth?.userId ?? null,
-          newData: { teamId, fromDate, minutesToFree, affectedCount: toMove.length },
-          ipAddress: req.ip ?? null,
-        });
-        res.json({ affectedCount: toMove.length, fromDate, toDate: nextDate, pushedAt: pushedAtTs });
-      } else {
-        res.json({ affectedCount: 0, fromDate, toDate: fromDate, pushedAt: new Date().toISOString() });
+        totalAffected += toMove.length;
+        latestToDate = nextDate;
+
+        // Check if the receiving day is now over capacity (cascade condition)
+        const nextDayRows = await db
+          .select({
+            estimatedTimeMins: jobsTable.estimatedTimeMins,
+            serviceTimeMins:   assetsTable.serviceTimeMins,
+          })
+          .from(jobsTable)
+          .leftJoin(assetsTable, eq(jobsTable.assetId, assetsTable.id))
+          .where(
+            and(
+              eq(jobsTable.teamId, teamId),
+              sql`to_char(${jobsTable.scheduledDate}, 'YYYY-MM-DD') = ${nextDate}`,
+              eq(jobsTable.status, "pending"),
+            ),
+          );
+
+        const nextDayTotal = nextDayRows.reduce(
+          (s, j) => s + (j.estimatedTimeMins ?? j.serviceTimeMins ?? 0), 0,
+        );
+
+        if (nextDayTotal <= productiveTimeMins) break; // stable — stop cascade
+
+        // Cascade to next day; no insertion filter, overage drives minutesToFree
+        currentDate = nextDate;
+        currentMinutesToFree = nextDayTotal - productiveTimeMins;
+        currentInsertionRO = null;
       }
+
+      await auditLog({
+        tableName: "schedule", recordId: null, action: "push_forward",
+        changedById: req.auth?.userId ?? null,
+        newData: { teamId, fromDate, minutesToFree, insertionAssetId, affectedCount: totalAffected },
+        ipAddress: req.ip ?? null,
+      });
+
+      res.json({ affectedCount: totalAffected, fromDate, toDate: latestToDate, pushedAt: pushedAtTs });
       return;
     }
 

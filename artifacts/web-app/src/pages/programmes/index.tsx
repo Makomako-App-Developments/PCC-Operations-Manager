@@ -510,7 +510,12 @@ function MulchingReviewDrawer({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ teamId, fromDate: scheduledDate, minutesToFree: mulchMins }),
+        body: JSON.stringify({
+          teamId,
+          fromDate: scheduledDate,
+          minutesToFree: Math.max(1, resolvedTotal - PRODUCTIVE),
+          insertionAssetId: record.assetId,
+        }),
       });
       if (!res.ok) throw new Error(await res.text());
       setScheduleWasPushed(true);
@@ -1628,6 +1633,9 @@ function JobDetailPanel({
   const [teamId, setTeamId] = useState(defaultTeam);
   const autoAssigned = !job.assignedTeamId && !!assetTeamId && teamId === assetTeamId;
   const [plannedDate, setPlannedDate] = useState(job.plannedDate ?? "");
+  const [scheduleWasPushed, setScheduleWasPushed] = useState(false);
+  const [pushingSchedule, setPushingSchedule] = useState(false);
+  const [overtimeAccepted, setOvertimeAccepted] = useState(false);
 
   // Fetch saved planting rates from settings (falls back to hardcoded defaults)
   const { data: appSettings } = useQuery<{ infillPlantingRates?: Record<string, number> | null }>({
@@ -1671,6 +1679,36 @@ function JobDetailPanel({
       setInfillDateAutoFilled(true);
     }
   }, [nextInfillVisitDate]);
+
+  // Reset conflict resolution state when scheduling inputs change
+  useEffect(() => {
+    setScheduleWasPushed(false);
+    setOvertimeAccepted(false);
+  }, [teamId, plannedDate]);
+
+  const handlePushSchedule = async () => {
+    if (!teamId || !plannedDate) return;
+    setPushingSchedule(true);
+    try {
+      const res = await fetch("/api/schedule/push-forward", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          teamId,
+          fromDate: plannedDate,
+          minutesToFree: Math.max(1, totalWithInfill - PRODUCTIVE),
+          insertionAssetId: job.assetId,
+        }),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      setScheduleWasPushed(true);
+      await qcPanel.invalidateQueries({ queryKey: ["/api/schedule/week"] });
+    } catch (err) {
+      toastPanel({ title: "Push failed", description: err instanceof Error ? err.message : "Unknown error", variant: "destructive" });
+    } finally { setPushingSchedule(false); }
+  };
+
   const totalPlants = job.species.reduce((s, sp) => s + sp.quantity, 0);
 
   // Assessment edit state
@@ -1921,17 +1959,43 @@ function JobDetailPanel({
                         </div>
                       </div>
 
-                      {totalWithInfill > PRODUCTIVE ? (
-                        <div className="p-3 rounded-xl bg-red-50 border border-red-200 flex gap-2.5">
-                          <AlertTriangle className="w-4 h-4 text-red-500 flex-shrink-0 mt-0.5" />
-                          <div>
+                      {totalWithInfill > PRODUCTIVE && !scheduleWasPushed ? (
+                        <div className="space-y-2">
+                          <div className="p-3 rounded-xl bg-red-50 border border-red-200 flex gap-2.5">
+                            <AlertTriangle className="w-4 h-4 text-red-500 flex-shrink-0 mt-0.5" />
                             <p className="text-xs font-bold text-red-700">
                               {teamName} will be {fmtMins(totalWithInfill - PRODUCTIVE)} over the daily target
                             </p>
-                            <p className="text-[11px] text-red-600 mt-0.5">
-                              Consider adjusting the date or redistributing scheduled work.
-                            </p>
                           </div>
+                          <p className="text-[10px] text-gray-400 font-semibold uppercase tracking-wider">Resolve capacity conflict</p>
+                          <div className="grid grid-cols-2 gap-2">
+                            <button
+                              type="button"
+                              onClick={() => setOvertimeAccepted(v => !v)}
+                              className="py-2 rounded-xl border-2 font-bold text-xs flex items-center justify-center gap-1.5 transition-all"
+                              style={overtimeAccepted
+                                ? { borderColor: "#dc2626", background: "#fef2f2", color: "#dc2626" }
+                                : { borderColor: "#fca5a5", background: "white", color: "#ef4444" }}>
+                              {overtimeAccepted
+                                ? <><CheckCircle2 className="w-3.5 h-3.5" /> Overtime authorised</>
+                                : <><AlertTriangle className="w-3.5 h-3.5" /> 1 — Accept overtime</>}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={handlePushSchedule}
+                              disabled={pushingSchedule}
+                              className="py-2 rounded-xl border-2 font-bold text-xs flex items-center justify-center gap-1.5 transition-all"
+                              style={{ borderColor: "#2563eb", background: "white", color: "#2563eb" }}>
+                              {pushingSchedule
+                                ? <><RotateCcw className="w-3.5 h-3.5 animate-spin" /> Pushing…</>
+                                : <><ChevronsRight className="w-3.5 h-3.5" /> 2 — Push to make room ({fmtMins(infillMins)})</>}
+                            </button>
+                          </div>
+                        </div>
+                      ) : scheduleWasPushed ? (
+                        <div className="flex items-center gap-2 py-2.5 px-3 rounded-xl bg-blue-50 border border-blue-200">
+                          <CheckCircle2 className="w-4 h-4 text-blue-600 flex-shrink-0" />
+                          <p className="text-xs font-semibold text-blue-700">Schedule pushed — publish unlocked</p>
                         </div>
                       ) : (
                         <div className="p-3 rounded-xl bg-green-50 border border-green-200 flex items-center gap-2">
@@ -1948,7 +2012,7 @@ function JobDetailPanel({
 
               <button
                 onClick={() => onSchedule(job.id, teamId, plannedDate, parseInt(estMins) || 0)}
-                disabled={!teamId || !plannedDate}
+                disabled={!teamId || !plannedDate || (totalWithInfill > PRODUCTIVE && !overtimeAccepted && !scheduleWasPushed)}
                 className="w-full py-2 rounded-xl text-sm font-semibold text-white disabled:opacity-40"
                 style={{ background: BRAND }}>
                 Schedule Job
