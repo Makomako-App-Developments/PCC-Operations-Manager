@@ -3050,14 +3050,6 @@ function MulchingTab({
                   </>
                 ) : (
                   <>
-                    {!isCompleted && !isDraft && assetObj && (
-                      <button
-                        onClick={() => { setDepthTarget({ id: r.assetId, name: r.assetName ?? assetObj.name }); setSelectedMulch(null); }}
-                        className="flex items-center gap-1.5 text-sm font-semibold px-3 py-2 rounded-lg border transition-colors"
-                        style={{ borderColor: BRAND, color: BRAND }}>
-                        <Ruler className="w-4 h-4" /> Record Depth
-                      </button>
-                    )}
                     <button
                       onClick={() => setSelectedMulch(null)}
                       className="ml-auto px-4 py-2 rounded-xl text-sm font-semibold text-gray-600 hover:bg-gray-100 transition-colors">
