@@ -4,7 +4,7 @@ import {
   systemSettingsTable, jobTeamCompletionsTable, infillJobsTable, mulchingRecordsTable,
   reactiveJobsTable,
 } from "@workspace/db";
-import { eq, and, gte, lte, inArray, sql, notInArray, or, isNull } from "drizzle-orm";
+import { eq, and, gte, lte, lt, inArray, sql, notInArray, or, isNull } from "drizzle-orm";
 import { z } from "zod";
 import { requireAuth, requireRole } from "../middlewares/auth";
 import { validateBody, validateQuery } from "../middlewares/validate";
@@ -152,13 +152,13 @@ async function buildAbsenceMap(
 //   contiguous while allowing minor date shifts to maintain flow. When a day
 //   fills up, remaining eligible assets spill to the next working day.
 //
-// Forward-flex window rule:
+// Eligibility window (±flex):
 //   An asset is "eligible" for a given day if:
-//     naturalDueDate ≤ candidateDay ≤ naturalDueDate + 3
+//     naturalDueDate - 3 ≤ candidateDay ≤ naturalDueDate + 3
 //   AND it has not already been placed this cycle.
-//   Sites are NEVER placed before their due date (no backward flex).
-//   This ensures a site always lands on the same day regardless of which
-//   date range you generate — carry-queue overflow only goes forward.
+//   Backward flex (placing up to 3 days early) spreads work across days
+//   rather than clustering all sites onto the same epoch-aligned due date.
+//   The epoch anchor (not fromDate) ensures stable due dates across runs.
 // ─────────────────────────────────────────────────────────────────────────────
 const DUE_DATE_FLEX_DAYS = 3;
 
@@ -192,9 +192,23 @@ router.post(
           lte(jobsTable.scheduledDate, toDate),
           eq(jobsTable.jobType, "scheduled"),
           inArray(jobsTable.status, ["pending", "in_progress"]),
-          ...(teamId
-            ? [eq(jobsTable.teamId, teamId)]
-            : []),
+          ...(teamId ? [eq(jobsTable.teamId, teamId)] : []),
+        ),
+      );
+
+    // ── Carry forward pending jobs from the flex window before fromDate ────────
+    // If a job was scheduled before fromDate and is still pending (not started),
+    // delete it so the scheduler places it fresh in the new range.
+    // in_progress jobs (crew has started) are left untouched.
+    await db
+      .delete(jobsTable)
+      .where(
+        and(
+          gte(jobsTable.scheduledDate, addDays(fromDate, -DUE_DATE_FLEX_DAYS)),
+          lt(jobsTable.scheduledDate, fromDate),
+          eq(jobsTable.jobType, "scheduled"),
+          eq(jobsTable.status, "pending"),
+          ...(teamId ? [eq(jobsTable.teamId, teamId)] : []),
         ),
       );
 

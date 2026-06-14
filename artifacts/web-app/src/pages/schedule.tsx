@@ -1794,16 +1794,6 @@ export default function Schedule() {
           <Button
             size="sm"
             variant="outline"
-            className="gap-2 bg-white border-green-500 text-green-700 hover:bg-green-50"
-            onClick={openInsertJob}
-          >
-            <Plus className="w-4 h-4" />
-            Insert Infill / Mulch
-          </Button>
-
-          <Button
-            size="sm"
-            variant="outline"
             className="gap-2 bg-white border-[#00AECD] text-[#00AECD] hover:bg-[#00AECD]/5"
             onClick={() => setWizardOpen(true)}
           >
