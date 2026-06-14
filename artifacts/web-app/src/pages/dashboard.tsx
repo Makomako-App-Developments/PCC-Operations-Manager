@@ -329,13 +329,13 @@ export default function Dashboard() {
         <div className="grid grid-cols-2 gap-6">
 
           {/* Left column */}
-          <div className="flex flex-col gap-5 h-full">
+          <div className="flex flex-col gap-5">
 
             {/* Schedule State */}
             <ScheduleStateChart completionPct={completionRate} />
 
             {/* Draft Jobs Awaiting Scheduling */}
-            <div className="flex-1 min-h-0 bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden flex flex-col">
+            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden flex flex-col max-h-[380px]">
               <div className="px-5 py-4 border-b flex items-center gap-2 flex-shrink-0">
                 <ClipboardList className="w-4 h-4" style={{ color: BRAND }} />
                 <div>
