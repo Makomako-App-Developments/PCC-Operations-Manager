@@ -765,11 +765,18 @@ export default function ReactiveJobs() {
                   >
                     {pConf.label}
                   </span>
-                  {(selectedJob.raisedByName as string | null) && (
-                    <span className="text-[10px] text-gray-400 ml-auto">
-                      Raised by: {selectedJob.raisedByName as string}
-                    </span>
-                  )}
+                  <div className="ml-auto text-right">
+                    {(selectedJob.raisedByName as string | null) && (
+                      <p className="text-[10px] text-gray-400">
+                        Raised by: {selectedJob.raisedByName as string}
+                      </p>
+                    )}
+                    {(selectedJob.raisedAt as string | null) && (
+                      <p className="text-[10px] text-gray-400">
+                        {format(new Date(selectedJob.raisedAt as string), "EEEE d MMM yyyy")}
+                      </p>
+                    )}
+                  </div>
                 </div>
 
                 {/* Description */}
