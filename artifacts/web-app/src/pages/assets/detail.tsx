@@ -948,7 +948,9 @@ function RecordDepthPanel({
         }),
       });
       if (!r.ok) throw new Error(await r.text());
-      toast({ title: "Depth recorded", description: projectedDate ? `Draft job projected for ${fmtMulch(projectedDate)}` : "Reading saved" });
+      const saved = await r.json();
+      const draftDate: string | null = saved?.draft?.scheduledDate ?? null;
+      toast({ title: "Depth recorded", description: draftDate ? `Draft mulching job scheduled for ${fmtMulch(draftDate)}` : "Reading saved" });
       onSaved();
       onClose();
     } catch (e: unknown) {

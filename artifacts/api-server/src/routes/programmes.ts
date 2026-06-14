@@ -456,11 +456,29 @@ router.post(
     const effectiveDepth = body.isFreshApplication ? STANDARD_DEPTH_MM : body.depthMm;
     const projectedJobDate = projectNextJobDate(effectiveDepth, body.mulchType, body.recordedAt);
 
-    // ── Schedule alignment: look for an existing maintenance visit within ±14 days ──
-    const ALIGN_FLEX_DAYS = 14;
-    const projMs = new Date(projectedJobDate + "T00:00:00Z").getTime();
-    const rangeStart = new Date(projMs - ALIGN_FLEX_DAYS * 86400000).toISOString().slice(0, 10);
-    const rangeEnd   = new Date(projMs + ALIGN_FLEX_DAYS * 86400000).toISOString().slice(0, 10);
+    // ── Schedule alignment ────────────────────────────────────────────────────
+    // Strategy: look for pending/in-progress visits in TWO windows and pick
+    // the best candidate.
+    //
+    // Window A (±14 days centred on projectedJobDate) — catches normal cases
+    //   where the schedule has already been generated.
+    // Window B (forward 0–45 days from reading date) — catches immediate-action
+    //   cases where the coming week's schedule hasn't been generated yet but a
+    //   visit already exists a few days away.
+    //
+    // From all candidates we prefer the EARLIEST date that is >= reading date;
+    // this aligns the draft to the soonest upcoming visit rather than a past one.
+    const ALIGN_FLEX_DAYS    = 14;
+    const FORWARD_LOOK_DAYS  = 45;
+    const projMs   = new Date(projectedJobDate + "T00:00:00Z").getTime();
+    const windowAStart = new Date(projMs - ALIGN_FLEX_DAYS * 86400000).toISOString().slice(0, 10);
+    const windowAEnd   = new Date(projMs + ALIGN_FLEX_DAYS * 86400000).toISOString().slice(0, 10);
+    const windowBStart = body.recordedAt;
+    const windowBEnd   = new Date(new Date(body.recordedAt + "T00:00:00Z").getTime() + FORWARD_LOOK_DAYS * 86400000).toISOString().slice(0, 10);
+
+    // Merge the two windows into a single query range
+    const mergedStart = windowAStart < windowBStart ? windowAStart : windowBStart;
+    const mergedEnd   = windowAEnd   > windowBEnd   ? windowAEnd   : windowBEnd;
 
     const nearbyJobs = await db
       .select({ id: jobsTable.id, scheduledDate: jobsTable.scheduledDate })
@@ -468,16 +486,18 @@ router.post(
       .where(and(
         eq(jobsTable.assetId, body.assetId),
         inArray(jobsTable.status, ["pending", "in_progress"]),
-        gte(jobsTable.scheduledDate, rangeStart),
-        lte(jobsTable.scheduledDate, rangeEnd),
+        gte(jobsTable.scheduledDate, mergedStart),
+        lte(jobsTable.scheduledDate, mergedEnd),
       ));
 
-    // Pick the nearest job by absolute date difference
-    const nearestJob = nearbyJobs.reduce<{ id: string; scheduledDate: string } | null>((best, job) => {
-      const diff    = Math.abs(new Date(job.scheduledDate + "T00:00:00Z").getTime() - projMs);
-      const bestDiff = best ? Math.abs(new Date(best.scheduledDate + "T00:00:00Z").getTime() - projMs) : Infinity;
-      return diff < bestDiff ? job : best;
-    }, null);
+    // Among all candidates, pick the earliest one that is >= reading date.
+    // This ensures we align to the next upcoming visit, not a past one.
+    const upcomingJobs = nearbyJobs.filter(j => j.scheduledDate >= body.recordedAt);
+    const nearestJob = upcomingJobs.length > 0
+      ? upcomingJobs.reduce<{ id: string; scheduledDate: string }>((best, job) =>
+          job.scheduledDate < best.scheduledDate ? job : best
+        , upcomingJobs[0])
+      : null;
 
     // Use aligned date if a nearby job exists, otherwise use the projected date
     const finalJobDate  = nearestJob ? nearestJob.scheduledDate : projectedJobDate;
