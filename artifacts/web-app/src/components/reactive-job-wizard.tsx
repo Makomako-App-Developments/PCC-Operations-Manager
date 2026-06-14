@@ -1594,6 +1594,7 @@ export interface ReactiveJobReviewDrawerProps {
 export function ReactiveJobReviewDrawer({
   job,
   teamsData,
+  assetsData,
   onClose,
   onSaved,
 }: ReactiveJobReviewDrawerProps) {
