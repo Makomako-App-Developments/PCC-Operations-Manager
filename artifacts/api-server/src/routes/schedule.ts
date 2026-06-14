@@ -10,6 +10,7 @@ import { requireAuth, requireRole } from "../middlewares/auth";
 import { validateBody, validateQuery } from "../middlewares/validate";
 import { FREQ_DAYS, calcCrewAdjustment, loadSystemSettings, buildAbsenceDataForTeamDate, type CrewStatus } from "../lib/crew-utils";
 import { checkDayCapacity } from "../lib/day-capacity";
+import { auditLog } from "../lib/audit";
 
 const router = Router();
 
@@ -1404,11 +1405,30 @@ router.post(
     }
 
     const newDates = updates.map(u => u.newDate).sort();
+    const affectedCount = updates.length;
+    const pushedAtTs = new Date().toISOString();
+
+    const scheduleAction = deltaDays >= 0 ? "push_forward" : "undo_push";
+    const auditLogged = await auditLog({
+      tableName:   "schedule",
+      recordId:    null,
+      action:      scheduleAction,
+      changedById: req.auth?.userId ?? null,
+      newData: {
+        teamId,
+        fromDate,
+        deltaDays,
+        affectedCount,
+      },
+      ipAddress: req.ip ?? null,
+    });
+
     res.json({
-      affectedCount: updates.length,
+      affectedCount,
       fromDate,
       toDate: newDates[newDates.length - 1] ?? fromDate,
-      pushedAt: new Date().toISOString(),
+      pushedAt: pushedAtTs,
+      auditLogged,
     });
   },
 );

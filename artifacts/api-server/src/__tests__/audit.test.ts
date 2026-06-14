@@ -47,6 +47,102 @@ describe("auditLog()", () => {
 
     await expect(
       auditLog({ tableName: "assets", recordId: null, action: "DELETE", changedById: null }),
-    ).resolves.toBeUndefined();
+    ).resolves.toBe(false);
+  });
+
+  it("returns true when insert succeeds", async () => {
+    const { db } = await import("@workspace/db");
+    vi.mocked(db.insert).mockReturnValue({
+      values: vi.fn().mockResolvedValue(undefined),
+    } as never);
+
+    const result = await auditLog({
+      tableName:   "schedule",
+      recordId:    null,
+      action:      "push_forward",
+      changedById: "00000000-0000-0000-0000-000000000003",
+      newData:     { teamId: "00000000-0000-0000-0000-000000000004", fromDate: "2026-06-14", deltaDays: 1, affectedCount: 5 },
+    });
+
+    expect(result).toBe(true);
+  });
+
+  it("returns false when insert fails", async () => {
+    const { db } = await import("@workspace/db");
+    vi.mocked(db.insert).mockReturnValue({
+      values: vi.fn().mockRejectedValueOnce(new Error("db error")),
+    } as never);
+
+    const result = await auditLog({
+      tableName:   "schedule",
+      recordId:    null,
+      action:      "undo_push",
+      changedById: "00000000-0000-0000-0000-000000000003",
+      newData:     { teamId: "00000000-0000-0000-0000-000000000004", fromDate: "2026-06-14", deltaDays: -1, affectedCount: 5 },
+    });
+
+    expect(result).toBe(false);
+  });
+
+  it("persists push_forward action with schedule metadata", async () => {
+    const { db } = await import("@workspace/db");
+    const valuesMock = vi.fn().mockResolvedValue(undefined);
+    vi.mocked(db.insert).mockReturnValue({ values: valuesMock } as never);
+
+    await auditLog({
+      tableName:   "schedule",
+      recordId:    null,
+      action:      "push_forward",
+      changedById: "00000000-0000-0000-0000-000000000003",
+      newData: {
+        teamId:        "00000000-0000-0000-0000-000000000004",
+        fromDate:      "2026-06-14",
+        deltaDays:     2,
+        affectedCount: 12,
+      },
+      ipAddress: "10.0.0.1",
+    });
+
+    expect(valuesMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        tableName:   "schedule",
+        action:      "push_forward",
+        changedById: "00000000-0000-0000-0000-000000000003",
+        newData: expect.objectContaining({
+          teamId:        "00000000-0000-0000-0000-000000000004",
+          fromDate:      "2026-06-14",
+          deltaDays:     2,
+          affectedCount: 12,
+        }),
+      }),
+    );
+  });
+
+  it("persists undo_push action with schedule metadata", async () => {
+    const { db } = await import("@workspace/db");
+    const valuesMock = vi.fn().mockResolvedValue(undefined);
+    vi.mocked(db.insert).mockReturnValue({ values: valuesMock } as never);
+
+    await auditLog({
+      tableName:   "schedule",
+      recordId:    null,
+      action:      "undo_push",
+      changedById: "00000000-0000-0000-0000-000000000003",
+      newData: {
+        teamId:        "00000000-0000-0000-0000-000000000004",
+        fromDate:      "2026-06-14",
+        deltaDays:     -2,
+        affectedCount: 12,
+      },
+      ipAddress: "10.0.0.1",
+    });
+
+    expect(valuesMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        tableName: "schedule",
+        action:    "undo_push",
+        newData:   expect.objectContaining({ deltaDays: -2 }),
+      }),
+    );
   });
 });

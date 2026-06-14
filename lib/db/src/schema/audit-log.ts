@@ -9,7 +9,7 @@ export const auditLogTable = pgTable("audit_log", {
   id:          uuid("id").primaryKey().defaultRandom(),
   tableName:   varchar("table_name",  { length: 100 }).notNull(),
   recordId:    uuid("record_id"),
-  action:      varchar("action",      { length: 10 }).notNull(), // INSERT | UPDATE | DELETE
+  action:      varchar("action",      { length: 50 }).notNull(), // INSERT | UPDATE | DELETE | push_forward | undo_push
   changedById: uuid("changed_by_id").references(() => usersTable.id),
   changedAt:   timestamp("changed_at", { withTimezone: true }).notNull().defaultNow(),
   oldData:     jsonb("old_data"),
@@ -24,7 +24,7 @@ export const auditLogTable = pgTable("audit_log", {
 
 export const selectAuditLogSchema = createSelectSchema(auditLogTable);
 export type AuditLogEntry = typeof auditLogTable.$inferSelect;
-export type AuditLogAction = "INSERT" | "UPDATE" | "DELETE";
+export type AuditLogAction = "INSERT" | "UPDATE" | "DELETE" | "push_forward" | "undo_push";
 export interface AuditLogParams {
   table?: string;
   recordId?: string;

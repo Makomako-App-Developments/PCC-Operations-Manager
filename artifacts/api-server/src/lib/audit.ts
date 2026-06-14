@@ -1,7 +1,11 @@
 import { db, auditLogTable } from "@workspace/db";
 import type { WriteAuditLog } from "@workspace/db/schema";
 
-export async function auditLog(entry: WriteAuditLog): Promise<void> {
+/**
+ * Writes an entry to the audit_log table.
+ * Returns true if the write succeeded, false if it failed (error is logged but not rethrown).
+ */
+export async function auditLog(entry: WriteAuditLog): Promise<boolean> {
   try {
     await db.insert(auditLogTable).values({
       tableName:   entry.tableName,
@@ -12,7 +16,9 @@ export async function auditLog(entry: WriteAuditLog): Promise<void> {
       newData:     entry.newData ?? undefined,
       ipAddress:   entry.ipAddress ?? undefined,
     });
+    return true;
   } catch (err) {
     console.error("[audit] Failed to write audit log entry:", err);
+    return false;
   }
 }
