@@ -2375,7 +2375,9 @@ export default function Schedule() {
                 ? (reactiveJobDetail?.issueType
                     ? reactiveJobDetail.issueType.replace(/_/g, " ").replace(/\b\w/g, (c: string) => c.toUpperCase())
                     : "Unscheduled Work")
-                : (selectedJob?.assetName ?? "Job")}
+                : (selectedJob?.assetId
+                    ? <a href={`/assets/${selectedJob.assetId}`} target="_blank" rel="noreferrer" className="hover:underline hover:text-teal-600 transition-colors">{selectedJob?.assetName ?? "Job"}</a>
+                    : (selectedJob?.assetName ?? "Job"))}
             </SheetTitle>
             <SheetDescription className="text-xs text-gray-400 font-mono">
               {selectedJob?.jobType === "unscheduled"
@@ -2543,7 +2545,9 @@ export default function Schedule() {
                         <p className="text-[10px] text-gray-400 uppercase tracking-wider font-semibold">Site</p>
                       </div>
                       <p className="text-sm font-semibold text-gray-800 leading-snug">
-                        {selectedJob.assetName ?? reactiveJobDetail.location ?? "—"}
+                        {reactiveJobDetail.assetId
+                          ? <a href={`/assets/${reactiveJobDetail.assetId}`} target="_blank" rel="noreferrer" className="hover:underline hover:text-teal-600 transition-colors">{selectedJob.assetName ?? reactiveJobDetail.location ?? "—"}</a>
+                          : (selectedJob.assetName ?? reactiveJobDetail.location ?? "—")}
                       </p>
                       {(() => {
                         const asset = (allAssets?.data as any[] | undefined)?.find((a: any) => a.id === reactiveJobDetail.assetId);
