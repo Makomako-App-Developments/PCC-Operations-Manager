@@ -329,63 +329,74 @@ export default function Dashboard() {
         <div className="grid grid-cols-2 gap-6">
 
           {/* Left column */}
-          <div className="space-y-5">
+          <div className="flex flex-col gap-5">
 
             {/* Schedule State */}
             <ScheduleStateChart completionPct={completionRate} />
 
             {/* Draft Jobs Awaiting Scheduling */}
-            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-              <div className="px-5 py-4 border-b flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <ClipboardList className="w-4 h-4" style={{ color: BRAND }} />
-                  <div>
-                    <h3 className="text-sm font-bold" style={{ color: NAVY }}>Draft Jobs Awaiting Scheduling</h3>
-                    <p className="text-[11px] text-gray-400">Unscheduled, infill & mulching drafts</p>
-                  </div>
+            <div className="flex-1 bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden flex flex-col">
+              <div className="px-5 py-4 border-b flex items-center gap-2 flex-shrink-0">
+                <ClipboardList className="w-4 h-4" style={{ color: BRAND }} />
+                <div>
+                  <h3 className="text-sm font-bold" style={{ color: NAVY }}>Draft Jobs Awaiting Scheduling</h3>
+                  <p className="text-[11px] text-gray-400">Unscheduled, infill & mulching drafts</p>
                 </div>
-                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${draftJobs.length > 0 ? "bg-amber-50 text-amber-600" : "bg-gray-100 text-gray-400"}`}>
-                  {draftJobs.length} pending
-                </span>
               </div>
               {draftJobs.length === 0 ? (
-                <div className="flex flex-col items-center justify-center py-10 text-gray-400">
+                <div className="flex-1 flex flex-col items-center justify-center py-10 text-gray-400">
                   <CheckCircle2 className="w-7 h-7 mb-2 opacity-40" />
                   <p className="text-sm font-medium">No draft jobs awaiting scheduling</p>
                 </div>
               ) : (
-                <div className="divide-y divide-gray-50 max-h-72 overflow-y-auto">
-                  {draftJobs.map(j => {
-                    const kindMeta = j.kind === "mulching"
-                      ? { icon: Layers,  bg: "bg-violet-50", text: "text-violet-700", border: "border-violet-100" }
-                      : j.kind === "infill"
-                      ? { icon: Sprout,  bg: "bg-green-50",  text: "text-green-700",  border: "border-green-100" }
-                      : { icon: Zap,     bg: "bg-orange-50", text: "text-orange-700", border: "border-orange-100" };
-                    const KindIcon = kindMeta.icon;
-                    return (
-                      <div
-                        key={j.id}
-                        onClick={() => navigate(j.navigateTo)}
-                        className="px-5 py-3 flex items-center gap-3 cursor-pointer hover:bg-gray-50 transition-colors"
-                      >
-                        <div className={`w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 ${kindMeta.bg} border ${kindMeta.border}`}>
-                          <KindIcon className={`w-3.5 h-3.5 ${kindMeta.text}`} />
+                <div className="flex-1 flex flex-col">
+                  <div className="divide-y divide-gray-50">
+                    {draftJobs.slice(0, 5).map(j => {
+                      const kindMeta = j.kind === "mulching"
+                        ? { icon: Layers,  bg: "bg-violet-50", text: "text-violet-700", border: "border-violet-100" }
+                        : j.kind === "infill"
+                        ? { icon: Sprout,  bg: "bg-green-50",  text: "text-green-700",  border: "border-green-100" }
+                        : { icon: Zap,     bg: "bg-orange-50", text: "text-orange-700", border: "border-orange-100" };
+                      const KindIcon = kindMeta.icon;
+                      return (
+                        <div
+                          key={j.id}
+                          onClick={() => navigate(j.navigateTo)}
+                          className="px-5 py-3 flex items-center gap-3 cursor-pointer hover:bg-gray-50 transition-colors"
+                        >
+                          <div className={`w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 ${kindMeta.bg} border ${kindMeta.border}`}>
+                            <KindIcon className={`w-3.5 h-3.5 ${kindMeta.text}`} />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-[12px] font-semibold text-gray-800 truncate">{j.displayName}</p>
+                            <p className={`text-[10px] font-medium ${kindMeta.text} truncate`}>{j.typeLabel}</p>
+                          </div>
+                          <div className="text-right flex-shrink-0">
+                            <p className="text-[11px] font-semibold text-gray-700">
+                              {j.date ? format(parseISO(j.date), "d MMM") : "—"}
+                            </p>
+                            <p className="text-[9px] text-gray-400 uppercase tracking-wide">
+                              {j.kind === "unscheduled" ? "raised" : "due"}
+                            </p>
+                          </div>
                         </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-[12px] font-semibold text-gray-800 truncate">{j.displayName}</p>
-                          <p className={`text-[10px] font-medium ${kindMeta.text} truncate`}>{j.typeLabel}</p>
-                        </div>
-                        <div className="text-right flex-shrink-0">
-                          <p className="text-[11px] font-semibold text-gray-700">
-                            {j.date ? format(parseISO(j.date), "d MMM") : "—"}
-                          </p>
-                          <p className="text-[9px] text-gray-400 uppercase tracking-wide">
-                            {j.kind === "unscheduled" ? "raised" : "due"}
-                          </p>
-                        </div>
+                      );
+                    })}
+                  </div>
+                  {draftJobs.length > 5 ? (
+                    <div
+                      onClick={() => navigate("/unscheduled-work")}
+                      className="mx-4 mb-4 mt-auto pt-3 cursor-pointer"
+                    >
+                      <div className="border-2 border-dashed border-amber-200 rounded-xl py-3 text-center hover:bg-amber-50/50 transition-colors">
+                        <p className="text-[12px] font-semibold text-amber-600">
+                          + {draftJobs.length - 5} more pending
+                        </p>
                       </div>
-                    );
-                  })}
+                    </div>
+                  ) : (
+                    <div className="flex-1" />
+                  )}
                 </div>
               )}
             </div>
