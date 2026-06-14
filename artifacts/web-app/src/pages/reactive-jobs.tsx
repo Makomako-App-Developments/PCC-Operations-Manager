@@ -677,8 +677,8 @@ export default function ReactiveJobs() {
                   <Zap className="w-4 h-4 text-amber-500 flex-shrink-0 mt-0.5" />
                   <div className="min-w-0">
                     <h2 className="font-bold text-gray-900 truncate leading-tight">{site || "Unknown site"}</h2>
-                    {(selectedJob.description as string) && (
-                      <p className="text-xs text-gray-500 truncate mt-0.5">{selectedJob.description as string}</p>
+                    {(selectedJob.assetDescription as string | null) && (
+                      <p className="text-[11px] text-gray-400 truncate mt-0.5">{selectedJob.assetDescription as string}</p>
                     )}
                   </div>
                 </div>
@@ -775,25 +775,22 @@ export default function ReactiveJobs() {
                   </span>
                   {(() => {
                     const o = selectedJob.origin as string | null;
-                    if (!o) return null;
-                    const originCfg: Record<string, { label: string; color: string; bg: string }> = {
-                      manager:      { label: "Manager",      color: "#0f2a36", bg: "#e0f4f8" },
-                      supervisor:   { label: "Supervisor",   color: "#7c3aed", bg: "#ede9fe" },
-                      field_worker: { label: "Field Worker", color: "#b45309", bg: "#fef3c7" },
+                    const originLabels: Record<string, string> = {
+                      manager: "Manager", supervisor: "Supervisor", field_worker: "Field Worker",
                     };
-                    const oc = originCfg[o] ?? { label: o, color: "#6b7280", bg: "#f3f4f6" };
+                    const raisedByName = selectedJob.raisedByName as string | null;
+                    const raisedAt = selectedJob.raisedAt as string | null;
+                    const parts: string[] = [];
+                    if (raisedByName) parts.push(raisedByName);
+                    if (o) parts.push(`via ${originLabels[o] ?? o}`);
+                    if (raisedAt) parts.push(format(new Date(raisedAt), "d MMM yyyy, h:mm a"));
+                    if (!parts.length) return null;
                     return (
-                      <span className="text-[10px] font-bold px-2.5 py-1 rounded-full"
-                        style={{ color: oc.color, background: oc.bg }}>
-                        via {oc.label}
+                      <span className="text-[10px] text-gray-400 ml-auto">
+                        {parts.join(" · ")}
                       </span>
                     );
                   })()}
-                  {(selectedJob.raisedAt as string) && (
-                    <span className="text-[10px] text-gray-400 bg-gray-50 px-2.5 py-1 rounded-full ml-auto">
-                      Raised {format(new Date(selectedJob.raisedAt as string), "d MMM yyyy, h:mm a")}
-                    </span>
-                  )}
                 </div>
 
                 {/* Description */}
