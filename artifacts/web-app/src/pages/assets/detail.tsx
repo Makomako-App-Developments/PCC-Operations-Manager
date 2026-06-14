@@ -1145,7 +1145,7 @@ function MulchingTab({ assetId, assetName }: { assetId: string; assetName: strin
                 return (
                   <div
                     key={rec.id}
-                    onClick={isDraft ? () => navigate(`/programmes?tab=mulching&review=${rec.id}`) : undefined}
+                    onClick={isDraft ? () => navigate(`/programmes/mulching?review=${rec.id}`) : undefined}
                     className={`bg-white border rounded-xl px-4 py-3 flex items-center gap-3 shadow-sm transition-colors ${isDraft ? "border-gray-200 cursor-pointer hover:bg-gray-50" : "border-gray-100"}`}
                   >
                     <div className="flex-1 min-w-0">
