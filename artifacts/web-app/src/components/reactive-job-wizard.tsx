@@ -12,7 +12,7 @@ import {
   AlertTriangle, CheckCircle2, Clock, MapPin, Plus, ArrowRight,
   Trash2, Users, Bell, Calendar, X, AlertCircle, Zap,
   SkipForward, Shield, Info, Search, RotateCcw,
-  Paperclip, FileText, Image as ImageIcon,
+  Paperclip, FileText, Image as ImageIcon, Loader2,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
@@ -250,6 +250,8 @@ export function ReactiveJobWizard({ teamsData, assetsData, onClose, onPublished 
   const [reassignTo, setReassignTo] = useState<Record<string, string>>({});
   const [isPublishing, setIsPublishing] = useState(false);
   const [acceptOvertime, setAcceptOvertime] = useState(false);
+  const [pushingScheduleForward, setPushingScheduleForward] = useState(false);
+  const [scheduleWasPushed, setScheduleWasPushed] = useState(false);
 
   const { data: settingsData } = useQuery<{ reactivePriorities?: ReactivePriority[] }>({
     queryKey: ["system-settings"],
@@ -343,12 +345,33 @@ export function ReactiveJobWizard({ teamsData, assetsData, onClose, onPublished 
 
   const overTarget = resolvedTotal > PRODUCTIVE;
   const isGreen = resolvedTotal <= PRODUCTIVE;
-  const canPublish = !overTarget || acceptOvertime;
+  const canPublish = !overTarget || acceptOvertime || scheduleWasPushed;
 
   const resolvedJobsList = dayJobs.filter(j => actions[j.id] && actions[j.id] !== "none");
 
   const updateJob = useUpdateJob();
   const createRJ = useCreateReactiveJob();
+
+  const handlePushSchedule = async () => {
+    if (!selectedTeamId || !selectedDate) return;
+    setPushingScheduleForward(true);
+    try {
+      const res = await fetch("/api/schedule/push-forward", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ teamId: selectedTeamId, fromDate: selectedDate, deltaDays: 1 }),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      setScheduleWasPushed(true);
+      queryClient.invalidateQueries({ queryKey: getGetScheduleWeekQueryKey({ teamId: selectedTeamId }) });
+      setStep(4);
+    } catch (err) {
+      toast({ title: "Push failed", description: String(err), variant: "destructive" });
+    } finally {
+      setPushingScheduleForward(false);
+    }
+  };
 
   const handlePublish = async () => {
     if (!canPublish) return;
@@ -1083,18 +1106,30 @@ export function ReactiveJobWizard({ teamsData, assetsData, onClose, onPublished 
                   teamName={teamName}
                   dateLabel={dateLabel}
                 />
-                {overTarget && !acceptOvertime && (
+                {overTarget && !acceptOvertime && !scheduleWasPushed && (
                   <div className="mt-3 p-3 rounded-xl bg-red-50 border border-red-200">
-                    <div className="flex items-center gap-2">
-                      <AlertTriangle className="w-4 h-4 text-red-500 flex-shrink-0" />
+                    <div className="flex items-start gap-2 mb-3">
+                      <AlertTriangle className="w-4 h-4 text-red-500 flex-shrink-0 mt-0.5" />
                       <p className="text-xs font-semibold text-red-700 flex-1">
-                        Still {fmtMins(resolvedTotal - PRODUCTIVE)} over target — move or remove work, or accept the overtime.
+                        Still {fmtMins(resolvedTotal - PRODUCTIVE)} over target — choose an option below or amend individual jobs.
                       </p>
+                    </div>
+                    <div className="flex gap-2 flex-wrap">
                       <button
                         onClick={() => { setAcceptOvertime(true); setStep(4); }}
                         className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-white border border-red-300 text-red-700 hover:bg-red-100 transition-colors flex-shrink-0"
                       >
-                        Accept overtime
+                        1 — Accept overtime
+                      </button>
+                      <button
+                        onClick={handlePushSchedule}
+                        disabled={pushingScheduleForward}
+                        className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg bg-white border border-blue-300 text-blue-700 hover:bg-blue-50 transition-colors flex-shrink-0 disabled:opacity-60 disabled:cursor-not-allowed"
+                      >
+                        {pushingScheduleForward
+                          ? <Loader2 className="w-3 h-3 animate-spin" />
+                          : <SkipForward className="w-3 h-3" />}
+                        2 — Push whole schedule +1 day
                       </button>
                     </div>
                   </div>
@@ -1113,6 +1148,14 @@ export function ReactiveJobWizard({ teamsData, assetsData, onClose, onPublished 
                     </button>
                   </div>
                 )}
+                {scheduleWasPushed && (
+                  <div className="mt-3 p-3 rounded-xl bg-blue-50 border border-blue-200 flex items-center gap-2">
+                    <SkipForward className="w-4 h-4 text-blue-500 flex-shrink-0" />
+                    <p className="text-xs font-semibold text-blue-700 flex-1">
+                      Schedule pushed +1 working day — all jobs on {dateLabel} moved to the next working day.
+                    </p>
+                  </div>
+                )}
                 {isGreen && (
                   <div className="mt-3 p-3 rounded-xl bg-green-50 border border-green-200 flex items-center gap-2">
                     <CheckCircle2 className="w-4 h-4 text-green-600" />
@@ -1121,6 +1164,15 @@ export function ReactiveJobWizard({ teamsData, assetsData, onClose, onPublished 
                     </p>
                   </div>
                 )}
+              </div>
+
+              {/* Option 3 divider */}
+              <div className="flex items-center gap-3">
+                <div className="flex-1 h-px bg-gray-200" />
+                <span className="text-[11px] font-semibold text-gray-400 whitespace-nowrap">
+                  3 — or amend individual jobs below
+                </span>
+                <div className="flex-1 h-px bg-gray-200" />
               </div>
 
               {/* Jobs list */}
@@ -1342,13 +1394,26 @@ export function ReactiveJobWizard({ teamsData, assetsData, onClose, onPublished 
               </div>
 
               {/* Schedule changes */}
-              {resolvedJobsList.length > 0 && (
+              {(scheduleWasPushed || resolvedJobsList.length > 0) && (
                 <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
                   <h3 className="text-sm font-bold text-gray-900 mb-4">
-                    Schedule changes ({resolvedJobsList.length} job
-                    {resolvedJobsList.length !== 1 ? "s" : ""})
+                    Schedule changes
+                    {resolvedJobsList.length > 0 && ` (${resolvedJobsList.length} job${resolvedJobsList.length !== 1 ? "s" : ""})`}
                   </h3>
                   <div className="space-y-2">
+                    {scheduleWasPushed && (
+                      <div className="flex items-center gap-3 py-2.5 px-4 rounded-xl bg-blue-50 border border-blue-100">
+                        <SkipForward className="w-4 h-4 text-blue-500 flex-shrink-0" />
+                        <div>
+                          <p className="text-[13px] font-semibold text-gray-800">
+                            Whole schedule pushed forward
+                          </p>
+                          <p className="text-[11px] font-medium mt-0.5 text-blue-600">
+                            All scheduled jobs shifted +1 working day from {dateLabel}
+                          </p>
+                        </div>
+                      </div>
+                    )}
                     {resolvedJobsList.map(job => {
                       const a = actions[job.id];
                       const desc =
