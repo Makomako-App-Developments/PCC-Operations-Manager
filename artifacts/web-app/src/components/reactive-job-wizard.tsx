@@ -1615,7 +1615,10 @@ export function ReactiveJobReviewDrawer({
   const [description, setDescription]   = useState((job.description as string) ?? "");
   const [priority, setPriority]         = useState((job.priority as string) ?? "medium");
   const [notes, setNotes]               = useState((job.notes as string) ?? "");
-  const [teamId, setTeamId]             = useState((job.assignedTeamId as string) ?? "");
+  const linkedAsset = assetsData.find(a => a.id === (job.assetId as string | null));
+  const [teamId, setTeamId]             = useState(
+    (job.assignedTeamId as string | null) || linkedAsset?.teamId || ""
+  );
   const [date, setDate]                 = useState((job.scheduledDate as string) ?? "");
   const [estMins, setEstMins]           = useState(
     job.estimatedTimeMins != null ? String(job.estimatedTimeMins) : "90"
@@ -1684,8 +1687,8 @@ export function ReactiveJobReviewDrawer({
     }
   };
 
-  const site = (job.assetName as string | null) ?? (job.location as string | null) ?? "Unscheduled Work";
-  const siteDesc = (job.assetDescription as string | null) ?? null;
+  const site = linkedAsset?.name ?? (job.location as string | null) ?? "Unscheduled Work";
+  const siteDesc = linkedAsset?.description ?? (job.assetDescription as string | null) ?? null;
   const pConf = priorities.find(p => p.id === priority) ?? PRIORITY_CONFIG[priority];
 
   const canAssign = !!teamId && !!date;
