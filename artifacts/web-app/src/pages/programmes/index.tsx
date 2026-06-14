@@ -421,14 +421,16 @@ function MulchingReviewDrawer({
     scheduledDate ? nextWorkingDays(scheduledDate, 2) : ["", ""],
   );
 
-  // Fetch next scheduled (pending) visit for this asset to pre-fill the date
+  // Fetch next scheduled (pending) visit for this asset to pre-fill the date.
+  // Always fetch (no guard on record.scheduledDate) so we can prefer the real
+  // visit date over the decay-projected date stored on the record.
   const today = new Date().toISOString().slice(0, 10);
   const { data: assetJobsForMulch } = useQuery<{ data: any[] }>({
     queryKey: ["/api/jobs/next-visit", record.assetId],
     queryFn: () =>
       fetch(`/api/jobs?assetId=${record.assetId}&status=pending&limit=100`, { credentials: "include" }).then(r => r.json()),
     staleTime: 60_000,
-    enabled: !record.scheduledDate && !!record.assetId,
+    enabled: !!record.assetId,
   });
   const nextMulchVisitDate = useMemo(() => {
     return (assetJobsForMulch?.data ?? [])
@@ -438,7 +440,11 @@ function MulchingReviewDrawer({
   }, [assetJobsForMulch, today]);
   const [mulchDateAutoFilled, setMulchDateAutoFilled] = useState(false);
   useEffect(() => {
-    if (!scheduledDate && nextMulchVisitDate) {
+    // Apply the next visit date as default if:
+    //  - we haven't manually overridden the date yet, OR
+    //  - the current value is still the decay-projected date from the record
+    //    (meaning the user hasn't touched it)
+    if (nextMulchVisitDate && (!scheduledDate || scheduledDate === (record.scheduledDate ?? ""))) {
       setScheduledDate(nextMulchVisitDate);
       setMulchDateAutoFilled(true);
     }
@@ -665,8 +671,8 @@ function MulchingReviewDrawer({
             </div>
             {record.scheduledDate && (
               <p className="mt-2.5 text-[10px] text-gray-400 flex items-center gap-1.5">
-                <span className="w-1.5 h-1.5 rounded-full bg-blue-300 inline-block flex-shrink-0" />
-                Projected visit date: {fmt(record.scheduledDate)}
+                <span className="w-1.5 h-1.5 rounded-full bg-amber-300 inline-block flex-shrink-0" />
+                Mulch needed by: {fmt(record.scheduledDate)}
               </p>
             )}
           </MulchSectionCard>
@@ -1674,14 +1680,15 @@ function JobDetailPanel({
   }, [autoMins]);
   const isAutoEstimate = !job.estimatedMins && estMins === String(autoMins) && autoMins > 0;
 
-  // Fetch next scheduled (pending) visit for this asset to pre-fill the planned date
+  // Fetch next scheduled (pending) visit for this asset to pre-fill the planned date.
+  // Always fetch so re-drafted jobs (plannedDate cleared) also get the auto-fill.
   const todayStr = new Date().toISOString().slice(0, 10);
   const { data: assetJobsForInfill } = useQuery<{ data: any[] }>({
     queryKey: ["/api/jobs/next-visit", job.assetId],
     queryFn: () =>
       fetch(`/api/jobs?assetId=${job.assetId}&status=pending&limit=100`, { credentials: "include" }).then(r => r.json()),
     staleTime: 60_000,
-    enabled: !job.plannedDate && !!job.assetId,
+    enabled: !!job.assetId,
   });
   const nextInfillVisitDate = useMemo(() => {
     return (assetJobsForInfill?.data ?? [])
