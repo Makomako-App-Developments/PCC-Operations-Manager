@@ -78,6 +78,7 @@ interface GanttAssetRow {
     id: string;
     scheduledDate: string;
     status: string;
+    reactiveStatus?: string | null;
     jobType?: string;
     estimatedTimeMins?: number | null;
     crewStatus?: string | null;
@@ -399,12 +400,14 @@ function GanttView({
   searchTerm,
   getTeamColor,
   getTeamName,
+  onJobClick,
 }: {
   ganttStart: Date;
   selectedTeamIds: string[];
   searchTerm: string;
   getTeamColor: (id?: string | null) => string;
   getTeamName: (id?: string | null) => string;
+  onJobClick?: (job: any) => void;
 }) {
   const ganttFrom = format(ganttStart, "yyyy-MM-dd");
   const ganttTo   = format(addWeeks(ganttStart, GANTT_WEEK_COUNT), "yyyy-MM-dd");
@@ -542,7 +545,22 @@ function GanttView({
                       <td key={w.key} className="py-2 px-2 border-l border-l-gray-100 align-top" style={{ background: rowBg }}>
                         <div className="flex flex-col gap-0.5">
                           {(jobsByWeek.get(w.key) ?? []).map(job => (
-                            <JobPill key={job.id} job={job} />
+                            onJobClick ? (
+                              <button
+                                key={job.id}
+                                onClick={() => onJobClick({
+                                  ...job,
+                                  assetName: row.assetName,
+                                  teamId: job.teamId ?? row.teamId,
+                                  serviceTimeMins: row.serviceTimeMins,
+                                })}
+                                className="text-left focus:outline-none"
+                              >
+                                <JobPill job={job} />
+                              </button>
+                            ) : (
+                              <JobPill key={job.id} job={job} />
+                            )
                           ))}
                         </div>
                       </td>
@@ -2047,6 +2065,7 @@ export default function Schedule() {
             searchTerm={search}
             getTeamColor={getTeamColor}
             getTeamName={getTeamName}
+            onJobClick={handleJobClick}
           />
         )}
       </div>
