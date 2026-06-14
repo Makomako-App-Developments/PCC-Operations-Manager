@@ -1877,9 +1877,15 @@ export function ReactiveJobReviewDrawer({
             </div>
           </WizardSectionCard>
 
-          {/* ── 3 — Schedule Impact (shown once team + date are set) ── */}
-          {teamId && date && (
-            <WizardSectionCard num={3} title={`Schedule Impact — ${teamName}, ${dateLabel}`}>
+          {/* ── 3 — Schedule Impact ── */}
+          <WizardSectionCard num={3} title={teamId && date ? `Schedule Impact — ${teamName}, ${dateLabel}` : "Schedule Impact"}>
+            {!teamId || !date ? (
+              <div className="flex items-center gap-2 py-3 text-gray-400">
+                <Calendar className="w-4 h-4 flex-shrink-0" />
+                <p className="text-[12px]">Set a team and date above to see schedule impact and resolve any conflicts.</p>
+              </div>
+            ) : (
+            <div className="space-y-3">
               <div className="space-y-3">
 
                 {/* Capacity bar */}
@@ -2008,8 +2014,9 @@ export function ReactiveJobReviewDrawer({
                   <p className="text-[11px] text-gray-400 italic">No other jobs scheduled for this day.</p>
                 )}
               </div>
-            </WizardSectionCard>
-          )}
+            </div>
+            )}
+          </WizardSectionCard>
 
         </div>
 
