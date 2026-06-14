@@ -349,9 +349,9 @@ export default function Dashboard() {
                   <p className="text-sm font-medium">No draft jobs awaiting scheduling</p>
                 </div>
               ) : (
-                <div className="flex-1 flex flex-col">
-                  <div className="divide-y divide-gray-50">
-                    {draftJobs.slice(0, 5).map(j => {
+                <div className="flex-1 flex flex-col overflow-hidden">
+                  <div className="divide-y divide-gray-50 overflow-y-auto flex-1">
+                    {draftJobs.map(j => {
                       const kindMeta = j.kind === "mulching"
                         ? { icon: Layers,  bg: "bg-violet-50", text: "text-violet-700", border: "border-violet-100" }
                         : j.kind === "infill"
@@ -383,19 +383,14 @@ export default function Dashboard() {
                       );
                     })}
                   </div>
-                  {draftJobs.length > 5 ? (
-                    <div
-                      onClick={() => navigate("/unscheduled-work")}
-                      className="mx-4 mb-4 mt-auto pt-3 cursor-pointer"
-                    >
-                      <div className="border-2 border-dashed border-amber-200 rounded-xl py-3 text-center hover:bg-amber-50/50 transition-colors">
+                  {draftJobs.length > 5 && (
+                    <div className="mx-4 mb-4 mt-2 flex-shrink-0">
+                      <div className="border-2 border-dashed border-amber-200 rounded-xl py-3 text-center">
                         <p className="text-[12px] font-semibold text-amber-600">
                           + {draftJobs.length - 5} more pending
                         </p>
                       </div>
                     </div>
-                  ) : (
-                    <div className="flex-1" />
                   )}
                 </div>
               )}
