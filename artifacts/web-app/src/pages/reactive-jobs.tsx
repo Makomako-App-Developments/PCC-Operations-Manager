@@ -35,6 +35,7 @@ const STATUS_ORDER: Record<string, number> = { raised: 0, assigned: 1, in_progre
 export default function ReactiveJobs() {
   const [wizardOpen, setWizardOpen] = useState(false);
   const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [overdueOnly, setOverdueOnly] = useState(false);
   const [search, setSearch] = useState("");
   const [teamFilter, setTeamFilter] = useState("all");
   const [dateFilter, setDateFilter] = useState<"all" | "this_week" | "this_month" | "custom">("all");
@@ -154,6 +155,13 @@ export default function ReactiveJobs() {
 
   const filteredSortedJobs = useMemo(() => {
     let jobs = allJobs;
+    if (overdueOnly) {
+      jobs = jobs.filter(j =>
+        j.scheduledDate != null &&
+        (j.scheduledDate as string) <= TODAY &&
+        !["completed", "cancelled"].includes(j.status as string),
+      );
+    }
     if (statusFilter !== "all") jobs = jobs.filter(j => j.status === statusFilter);
     if (search.trim()) {
       const q = search.trim().toLowerCase();
@@ -421,12 +429,22 @@ export default function ReactiveJobs() {
               These unscheduled jobs have a scheduled date in the past and haven't been completed or cancelled yet.
             </p>
           </div>
-          <button
-            onClick={() => { setStatusFilter("all"); setSearch(""); }}
-            className="flex-shrink-0 px-3 py-1.5 rounded-lg text-xs font-semibold text-white bg-amber-500 hover:bg-amber-600 transition-colors whitespace-nowrap"
-          >
-            Show overdue
-          </button>
+          {overdueOnly ? (
+            <button
+              onClick={() => setOverdueOnly(false)}
+              className="flex-shrink-0 px-3 py-1.5 rounded-lg text-xs font-semibold border border-amber-400 text-amber-700 bg-amber-100 hover:bg-amber-200 transition-colors whitespace-nowrap flex items-center gap-1.5"
+            >
+              <span>Overdue filter active</span>
+              <span className="font-bold">×</span>
+            </button>
+          ) : (
+            <button
+              onClick={() => setOverdueOnly(true)}
+              className="flex-shrink-0 px-3 py-1.5 rounded-lg text-xs font-semibold text-white bg-amber-500 hover:bg-amber-600 transition-colors whitespace-nowrap"
+            >
+              Show overdue
+            </button>
+          )}
         </div>
       )}
 
