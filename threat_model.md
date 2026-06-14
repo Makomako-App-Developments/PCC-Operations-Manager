@@ -4,7 +4,7 @@
 
 Porirua City Council’s garden asset management system is a TypeScript pnpm monorepo with a public Express API (`artifacts/api-server`), a React web application (`artifacts/web-app`), and an Expo mobile worker app (`artifacts/field-ops`). Production trust is concentrated in the API: it authenticates users with JWTs, stores business and staff data in PostgreSQL, serves uploaded work evidence, and exposes scheduling, asset, audit, reporting, and workforce-management endpoints.
 
-This scan assumes production traffic is protected by platform TLS, `NODE_ENV` is `production`, and only production-reachable surfaces matter. Local build scripts, Expo bundling helpers, and mock/dev-only tooling are out of scope unless there is evidence they are reachable from the deployed app.
+This scan assumes production traffic is protected by platform TLS, `NODE_ENV` is `production`, and only production-reachable surfaces matter. The deployed application is publicly reachable, so unauthenticated routes must be treated as internet-exposed by default. Local build scripts, Expo bundling helpers, and mock/dev-only tooling are out of scope unless there is evidence they are reachable from the deployed app.
 
 ## Assets
 
@@ -20,15 +20,16 @@ This scan assumes production traffic is protected by platform TLS, `NODE_ENV` is
 - **API to PostgreSQL** — the API has broad write access to operational data; injection or authorization flaws at the API layer translate directly into database compromise.
 - **Public internet to deployed app** — the deployment is public, so any route not explicitly protected should be treated as internet reachable.
 - **Authenticated user to privileged roles** — managers, supervisors, administrators, team leaders, and field workers must be separated by server-side authorization rather than UI affordances.
-- **Authenticated metadata to uploaded files** — photo URLs cross from protected application state into a static file surface and must not lose authorization controls.
+- **Authenticated metadata to uploaded files** — photo and document URLs cross from protected application state into a file-serving surface and must not lose authorization controls.
+- **Desktop login to mobile/session handoff** — the web client can hand mobile users into the field-ops surface, so any token transfer or cross-surface session bootstrap must be evaluated as a trust boundary rather than trusted UX glue.
 - **Production vs dev/build tooling** — Expo build scripts, local file utilities, and development defaults are out of scope unless they affect production runtime behavior.
 
 ## Scan Anchors
 
-- Production entry points: `artifacts/api-server/src/app.ts`, `artifacts/api-server/src/routes/*.ts`, `artifacts/web-app/src/App.tsx`, `artifacts/field-ops/context/auth.tsx`.
-- Highest-risk code areas: auth middleware and token issuance (`middlewares/auth.ts`, `routes/auth.ts`), user/role management (`routes/users.ts`), work-object mutation routes (`routes/jobs.ts`, `routes/audits.ts`, `routes/photos.ts`), and static upload serving in `app.ts`.
+- Production entry points: `artifacts/api-server/src/app.ts`, `artifacts/api-server/src/routes/*.ts`, `artifacts/web-app/src/App.tsx`, and `artifacts/field-ops/context/auth.tsx`.
+- Highest-risk code areas: auth middleware and token issuance (`middlewares/auth.ts`, `routes/auth.ts`), work-object access control (`routes/jobs.ts`, `routes/audits.ts`, `routes/photos.ts`), user and workforce administration (`routes/users.ts`, `routes/team.ts`, `routes/settings.ts`), reporting and scheduling (`routes/reports.ts`, `routes/schedule.ts`, `routes/programmes.ts`), admin patching (`routes/admin-patches.ts`), and upload/file serving in `app.ts`.
 - Public surfaces: `/api/health*`, `/api/auth/login`, `/api/auth/logout`, `/api/auth/refresh`, and `/api/uploads/*` unless separately protected.
-- Authenticated surfaces: assets, jobs, reactive jobs, schedules, teams, audits, programmes, reports, and settings.
+- Authenticated surfaces: assets, jobs, reactive jobs, schedules, teams, audits, completed works, reports, users, settings, programmes, photos, and admin/support routes.
 - Usually dev-only and lower priority: `artifacts/field-ops/scripts/**`, `artifacts/field-ops/server/**`, local build helpers, and seed scripts.
 
 ## Threat Categories
