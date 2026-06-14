@@ -9,6 +9,7 @@ import { Readable } from "stream";
 import router from "./routes";
 import { initSentry, Sentry } from "./lib/sentry";
 import { objectStorageClient } from "./lib/objectStorage";
+import { requireAuth } from "./middlewares/auth";
 
 initSentry();
 
@@ -59,7 +60,7 @@ app.use("/api/auth", authLimiter);
 // ── Photo/upload serving — proxy from GCS object storage ─────────────────────
 // blobUrl format stored in DB: /api/uploads/uploads/<uuid>.<ext>
 // GCS object name: uploads/<uuid>.<ext>  (inside DEFAULT_OBJECT_STORAGE_BUCKET_ID)
-app.get("/api/uploads/*splat", async (req: Request, res: Response) => {
+app.get("/api/uploads/*splat", requireAuth, async (req: Request, res: Response) => {
   try {
     const bucketId = process.env["DEFAULT_OBJECT_STORAGE_BUCKET_ID"];
     if (!bucketId) { res.status(503).json({ error: "Object storage not configured" }); return; }
@@ -76,7 +77,12 @@ app.get("/api/uploads/*splat", async (req: Request, res: Response) => {
     if (!exists) {
       // Fallback: serve from local disk for photos uploaded before GCS migration
       const filename = splat.replace(/^uploads\//, "");
-      const localPath = path.resolve(process.cwd(), "uploads", filename);
+      const uploadsDir = path.resolve(process.cwd(), "uploads");
+      const localPath = path.resolve(uploadsDir, filename);
+      // Path traversal guard: reject any path that escapes the uploads directory
+      if (!localPath.startsWith(uploadsDir + path.sep) && localPath !== uploadsDir) {
+        res.status(400).json({ error: "Invalid path" }); return;
+      }
       if (fs.existsSync(localPath)) {
         res.setHeader("Cache-Control", "private, max-age=86400");
         fs.createReadStream(localPath).pipe(res);
