@@ -502,7 +502,7 @@ export default function ReactiveJobs() {
           <div className="rounded-xl border border-gray-200 bg-white">
           <table className="w-full border-collapse text-sm">
             <thead>
-              <tr className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide sticky top-0 z-10">
+              <tr className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide">
                 {([
                   { col: "site",          label: "Site" },
                   { col: "description",   label: "Job details" },
@@ -516,12 +516,12 @@ export default function ReactiveJobs() {
                   <th
                     key={col}
                     onClick={() => handleSort(col)}
-                    className="bg-gray-50 text-left px-4 py-3 border-b border-gray-100 cursor-pointer hover:bg-gray-100 select-none whitespace-nowrap"
+                    className="sticky top-0 z-10 bg-gray-50 text-left px-4 py-3 border-b border-gray-100 cursor-pointer hover:bg-gray-100 select-none whitespace-nowrap"
                   >
                     {label}<SortIcon col={col} />
                   </th>
                 ))}
-                <th className="bg-gray-50 px-4 py-3 border-b border-gray-100 text-right text-[11px] font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap">Actions</th>
+                <th className="sticky top-0 z-10 bg-gray-50 px-4 py-3 border-b border-gray-100 text-right text-[11px] font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap">Actions</th>
               </tr>
             </thead>
             <tbody>
