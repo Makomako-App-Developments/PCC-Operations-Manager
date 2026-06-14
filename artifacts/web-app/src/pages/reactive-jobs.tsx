@@ -499,9 +499,9 @@ export default function ReactiveJobs() {
             </p>
           </div>
         ) : (
-          <div className="rounded-xl border border-gray-200 overflow-hidden bg-white">
+          <div className="rounded-xl border border-gray-200 bg-white">
           <table className="w-full border-collapse text-sm">
-            <thead className="bg-gray-50">
+            <thead className="bg-gray-50 sticky top-0 z-10">
               <tr className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide">
                 {([
                   { col: "site",          label: "Site" },
