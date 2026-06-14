@@ -21,6 +21,7 @@ import { useSearch } from "wouter";
 import { useToast } from "@/hooks/use-toast";
 import {
   ReactiveJobWizard,
+  ReactiveJobReviewDrawer,
   BRAND, NAVY,
   DEFAULT_PRIORITIES, PRIORITY_CONFIG, STATUS_CONFIG,
   type ReactivePriority, type AssetStub, type TeamStub,
@@ -48,8 +49,6 @@ export default function ReactiveJobs() {
   const [sortCol, setSortCol] = useState<SortCol>("scheduledDate");
   const [sortDir, setSortDir] = useState<SortDir>("asc");
   const [editDrawerJob, setEditDrawerJob] = useState<Record<string, unknown> | null>(null);
-  const [editFields, setEditFields] = useState<Record<string, unknown>>({});
-  const [editSaving, setEditSaving] = useState(false);
 
   const { toast } = useToast();
   const qc = useQueryClient();
@@ -97,46 +96,6 @@ export default function ReactiveJobs() {
   const teams: TeamStub[] = (teamsData ?? []) as TeamStub[];
   const assets: AssetStub[] = (assetsData?.data ?? []) as AssetStub[];
 
-  // Populate edit fields when a job is opened for editing
-  useEffect(() => {
-    if (editDrawerJob) {
-      setEditFields({
-        issueType:         (editDrawerJob.issueType as string) ?? "",
-        description:       (editDrawerJob.description as string) ?? "",
-        priority:          (editDrawerJob.priority as string) ?? "",
-        assignedTeamId:    (editDrawerJob.assignedTeamId as string) ?? "",
-        scheduledDate:     (editDrawerJob.scheduledDate as string) ?? "",
-        estimatedTimeMins: editDrawerJob.estimatedTimeMins != null ? String(editDrawerJob.estimatedTimeMins) : "",
-        notes:             (editDrawerJob.notes as string) ?? "",
-      });
-    }
-  }, [(editDrawerJob as any)?.id]);
-
-  const handleEditSave = async (andAssign?: boolean) => {
-    if (!editDrawerJob) return;
-    setEditSaving(true);
-    try {
-      const f = editFields;
-      const patch: Record<string, unknown> = {
-        issueType:         (f.issueType as string) || null,
-        description:       (f.description as string) || null,
-        priority:          (f.priority as string) || null,
-        assignedTeamId:    (f.assignedTeamId as string) || null,
-        scheduledDate:     (f.scheduledDate as string) || null,
-        estimatedTimeMins: (f.estimatedTimeMins as string) ? parseInt(f.estimatedTimeMins as string) : null,
-        notes:             (f.notes as string) || null,
-        ...(andAssign ? { status: "assigned" } : {}),
-      };
-      await (updateMutation.mutateAsync as any)({ id: editDrawerJob.id, data: patch });
-      qc.invalidateQueries({ queryKey: getListReactiveJobsQueryKey() });
-      setEditDrawerJob(null);
-      toast({ title: andAssign ? "Job assigned" : "Draft saved" });
-    } catch {
-      toast({ title: "Failed to save", variant: "destructive" });
-    } finally {
-      setEditSaving(false);
-    }
-  };
 
   const getTeamName = (id?: string | null) => {
     if (!id) return "Unassigned";
@@ -893,130 +852,19 @@ export default function ReactiveJobs() {
         );
       })()}
 
-      {/* ── Review & Schedule Drawer (draft jobs + Edit from modal) ───────── */}
-      {editDrawerJob && (() => {
-        const job = editDrawerJob;
-        const site = getSiteName(job);
-        const desc = (job.assetDescription as string | null)
-          ?? assets.find(a => a.id === (job.assetId as string))?.description ?? null;
-        return (
-          <div className="fixed inset-0 z-50 flex">
-            <div className="flex-1 bg-black/30 backdrop-blur-sm" onClick={() => setEditDrawerJob(null)} />
-            <div className="w-full max-w-[480px] bg-white flex flex-col h-full shadow-2xl">
-
-              {/* Header */}
-              <div className="px-6 py-4 border-b flex items-center justify-between flex-shrink-0">
-                <div className="flex items-start gap-2 min-w-0">
-                  <Zap className="w-4 h-4 text-amber-500 flex-shrink-0 mt-1" />
-                  <div className="min-w-0">
-                    <h2 className="font-bold text-gray-900 truncate">{site || "Unscheduled Work"}</h2>
-                    {desc && <p className="text-[11px] text-gray-400 mt-0.5 truncate">{desc}</p>}
-                    <p className="text-xs font-semibold mt-1" style={{ color: BRAND }}>Review &amp; Schedule</p>
-                  </div>
-                </div>
-                <button onClick={() => setEditDrawerJob(null)} className="text-gray-300 hover:text-gray-500 flex-shrink-0 ml-2">
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
-
-              {/* Body */}
-              <div className="flex-1 overflow-y-auto p-6 space-y-4">
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="col-span-2">
-                    <label className="text-[10px] text-gray-500 uppercase tracking-wider font-semibold block mb-1">Issue Type</label>
-                    <input
-                      value={editFields.issueType as string}
-                      onChange={e => setEditFields(p => ({ ...p, issueType: e.target.value }))}
-                      className="w-full px-3 py-2 text-sm border border-gray-200 rounded-xl outline-none focus:border-[#00AECD] bg-white"
-                    />
-                  </div>
-                  <div className="col-span-2">
-                    <label className="text-[10px] text-gray-500 uppercase tracking-wider font-semibold block mb-1">Description</label>
-                    <textarea
-                      value={editFields.description as string}
-                      onChange={e => setEditFields(p => ({ ...p, description: e.target.value }))}
-                      className="w-full px-3 py-2 text-sm border border-gray-200 rounded-xl outline-none focus:border-[#00AECD] bg-white resize-none"
-                      rows={3}
-                    />
-                  </div>
-                  <div>
-                    <label className="text-[10px] text-gray-500 uppercase tracking-wider font-semibold block mb-1">Priority</label>
-                    <select
-                      value={editFields.priority as string}
-                      onChange={e => setEditFields(p => ({ ...p, priority: e.target.value }))}
-                      className="w-full px-3 py-2 text-sm border border-gray-200 rounded-xl outline-none focus:border-[#00AECD] bg-white">
-                      {listPriorities.map(p => <option key={p.id} value={p.id}>{p.label}</option>)}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="text-[10px] text-gray-500 uppercase tracking-wider font-semibold block mb-1">Assign to Team</label>
-                    <select
-                      value={editFields.assignedTeamId as string}
-                      onChange={e => setEditFields(p => ({ ...p, assignedTeamId: e.target.value }))}
-                      className="w-full px-3 py-2 text-sm border border-gray-200 rounded-xl outline-none focus:border-[#00AECD] bg-white">
-                      <option value="">— Unassigned —</option>
-                      {teams.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="text-[10px] text-gray-500 uppercase tracking-wider font-semibold block mb-1">Scheduled Date</label>
-                    <input
-                      type="date"
-                      value={editFields.scheduledDate as string}
-                      onChange={e => setEditFields(p => ({ ...p, scheduledDate: e.target.value }))}
-                      className="w-full px-3 py-2 text-sm border border-gray-200 rounded-xl outline-none focus:border-[#00AECD] bg-white"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-[10px] text-gray-500 uppercase tracking-wider font-semibold block mb-1">Est. Time (mins)</label>
-                    <input
-                      type="number"
-                      value={editFields.estimatedTimeMins as string}
-                      onChange={e => setEditFields(p => ({ ...p, estimatedTimeMins: e.target.value }))}
-                      min="0"
-                      className="w-full px-3 py-2 text-sm border border-gray-200 rounded-xl outline-none focus:border-[#00AECD] bg-white"
-                    />
-                  </div>
-                  <div className="col-span-2">
-                    <label className="text-[10px] text-gray-500 uppercase tracking-wider font-semibold block mb-1">Notes</label>
-                    <textarea
-                      value={editFields.notes as string}
-                      onChange={e => setEditFields(p => ({ ...p, notes: e.target.value }))}
-                      className="w-full px-3 py-2 text-sm border border-gray-200 rounded-xl outline-none focus:border-[#00AECD] bg-white resize-none"
-                      rows={3}
-                    />
-                  </div>
-                </div>
-              </div>
-
-              {/* Footer */}
-              <div className="px-6 py-4 border-t bg-gray-50 flex items-center justify-between flex-shrink-0">
-                <button
-                  onClick={() => setEditDrawerJob(null)}
-                  className="px-4 py-2 rounded-xl text-sm font-semibold border border-gray-200 text-gray-600 hover:bg-gray-100 transition-colors">
-                  Cancel
-                </button>
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => handleEditSave(false)}
-                    disabled={editSaving}
-                    className="px-4 py-2 rounded-xl text-sm font-semibold border border-gray-200 text-gray-700 hover:bg-gray-100 disabled:opacity-40 transition-colors">
-                    Save Draft
-                  </button>
-                  <button
-                    onClick={() => handleEditSave(true)}
-                    disabled={editSaving || !(editFields.assignedTeamId as string) || !(editFields.scheduledDate as string)}
-                    title={!(editFields.assignedTeamId as string) || !(editFields.scheduledDate as string) ? "Set a team and date first" : undefined}
-                    className="px-4 py-2 rounded-xl text-sm font-bold text-white disabled:opacity-40 transition-colors"
-                    style={{ background: BRAND }}>
-                    {editSaving ? "Saving…" : "Save & Assign"}
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-        );
-      })()}
+      {/* ── Review & Schedule Drawer (draft/raised jobs + Edit from modal) ── */}
+      {editDrawerJob && (
+        <ReactiveJobReviewDrawer
+          job={editDrawerJob}
+          teamsData={teams}
+          assetsData={assets}
+          onClose={() => setEditDrawerJob(null)}
+          onSaved={() => {
+            setEditDrawerJob(null);
+            void qc.invalidateQueries({ queryKey: getListReactiveJobsQueryKey() });
+          }}
+        />
+      )}
     </div>
   );
 }

@@ -4,6 +4,7 @@ import {
   useCreateReactiveJob,
   useGetScheduleWeek, getGetScheduleWeekQueryKey,
   useUpdateJob,
+  useUpdateReactiveJob,
   getListReactiveJobsQueryKey,
 } from "@workspace/api-client-react";
 import type { JobWithAsset } from "@workspace/api-client-react";
@@ -1575,6 +1576,327 @@ export function ReactiveJobWizard({ teamsData, assetsData, onClose, onPublished 
             </>
           )}
         </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Reactive Job Review & Schedule Drawer ────────────────────────────────────
+
+export interface ReactiveJobReviewDrawerProps {
+  job: Record<string, unknown>;
+  teamsData: TeamStub[];
+  assetsData: AssetStub[];
+  onClose: () => void;
+  onSaved: () => void;
+}
+
+export function ReactiveJobReviewDrawer({
+  job,
+  teamsData,
+  onClose,
+  onSaved,
+}: ReactiveJobReviewDrawerProps) {
+  const { toast } = useToast();
+  const qc = useQueryClient();
+
+  const { data: settingsData } = useQuery<{ reactivePriorities?: ReactivePriority[] }>({
+    queryKey: ["system-settings"],
+    queryFn: async () => {
+      const r = await fetch("/api/settings", { credentials: "include" });
+      return r.json();
+    },
+    staleTime: 5 * 60 * 1000,
+  });
+  const priorities: ReactivePriority[] =
+    settingsData?.reactivePriorities?.length ? settingsData.reactivePriorities : DEFAULT_PRIORITIES;
+
+  const [issueType, setIssueType]       = useState((job.issueType as string) ?? "");
+  const [description, setDescription]   = useState((job.description as string) ?? "");
+  const [priority, setPriority]         = useState((job.priority as string) ?? "medium");
+  const [notes, setNotes]               = useState((job.notes as string) ?? "");
+  const [teamId, setTeamId]             = useState((job.assignedTeamId as string) ?? "");
+  const [date, setDate]                 = useState((job.scheduledDate as string) ?? "");
+  const [estMins, setEstMins]           = useState(
+    job.estimatedTimeMins != null ? String(job.estimatedTimeMins) : "90"
+  );
+  const [saving, setSaving]             = useState(false);
+
+  const weekStr = date ? mondayOf(date) : "";
+  const dateLabel = date ? format(new Date(date + "T00:00:00"), "EEE d MMM") : "";
+  const serviceMin = Math.max(0, parseInt(estMins) || 0);
+
+  const { data: weekData } = useGetScheduleWeek(
+    { week: weekStr, teamId: teamId || undefined },
+    {
+      query: {
+        queryKey: getGetScheduleWeekQueryKey({ week: weekStr, teamId: teamId || undefined }),
+        enabled: !!weekStr && !!teamId,
+      },
+    },
+  );
+
+  const dayJobs: JobWithAsset[] = useMemo(
+    () => weekData?.days?.find(d => d.date === date)?.jobs ?? [],
+    [weekData, date],
+  );
+
+  const totalScheduled = dayJobs.reduce((s, j) => s + (j.serviceTimeMins ?? 0), 0);
+  const totalWithJob   = totalScheduled + serviceMin;
+  const overTarget     = totalWithJob > PRODUCTIVE;
+  const teamName       = teamsData.find(t => t.id === teamId)?.name ?? "Team";
+
+  const updateRJ = useUpdateReactiveJob();
+
+  const handleSave = async (assign: boolean) => {
+    setSaving(true);
+    try {
+      const patch: Record<string, unknown> = {
+        issueType:         issueType || undefined,
+        description:       description || undefined,
+        priority,
+        notes:             notes || undefined,
+        assignedTeamId:    teamId || undefined,
+        scheduledDate:     date || undefined,
+        estimatedTimeMins: serviceMin > 0 ? serviceMin : undefined,
+      };
+      if (assign && teamId && date) patch.status = "assigned";
+      await (updateRJ as { mutateAsync: (d: unknown) => Promise<unknown> }).mutateAsync({
+        id: job.id as string,
+        data: patch,
+      });
+      await Promise.all([
+        qc.invalidateQueries({ queryKey: getListReactiveJobsQueryKey() }),
+        qc.invalidateQueries({ queryKey: ["/api/schedule/week"] }),
+        qc.invalidateQueries({ queryKey: ["/api/dashboard/summary"] }),
+      ]);
+      toast({
+        title: assign ? "Job assigned" : "Draft saved",
+        description: assign
+          ? `Assigned to ${teamName} for ${dateLabel}`
+          : "Job details updated",
+      });
+      onSaved();
+    } catch (e) {
+      toast({ title: "Save failed", description: String(e), variant: "destructive" });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const site = (job.assetName as string | null) ?? (job.location as string | null) ?? "Unscheduled Work";
+  const siteDesc = (job.assetDescription as string | null) ?? null;
+  const pConf = priorities.find(p => p.id === priority) ?? PRIORITY_CONFIG[priority];
+
+  const canAssign = !!teamId && !!date;
+
+  return (
+    <div className="fixed inset-0 z-50 flex">
+      <div className="flex-1 bg-black/30 backdrop-blur-sm" onClick={onClose} />
+      <div className="w-[480px] bg-gray-50 flex flex-col h-full shadow-2xl overflow-hidden">
+
+        {/* Hero header */}
+        <div className="px-6 pt-5 pb-4 flex-shrink-0" style={{ background: NAVY }}>
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <p className="text-[10px] font-bold uppercase tracking-widest mb-1" style={{ color: BRAND }}>
+                Review &amp; Schedule
+              </p>
+              <h2 className="text-lg font-black text-white leading-tight flex items-center gap-2">
+                <Zap className="w-4 h-4 text-amber-400 flex-shrink-0" />
+                {site}
+              </h2>
+              {siteDesc && <p className="text-[12px] text-gray-400 mt-0.5">{siteDesc}</p>}
+            </div>
+            <div className="flex items-center gap-2 flex-shrink-0 mt-0.5">
+              {pConf && (
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold"
+                  style={{ background: "rgba(255,255,255,0.12)", color: "rgba(255,255,255,0.8)" }}>
+                  {(pConf as { label: string }).label?.split(" / ")[0] ?? priority}
+                </span>
+              )}
+              <span className="px-2.5 py-1 rounded-full text-[10px] font-bold"
+                style={{ background: "rgba(0,174,205,0.2)", color: "#5dd8ef" }}>
+                Reactive
+              </span>
+              <button onClick={onClose} className="text-white/40 hover:text-white transition-colors">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* Body */}
+        <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3">
+
+          {/* ── 1 — Job Details ── */}
+          <WizardSectionCard num={1} title="Job Details">
+            <div className="space-y-3">
+              <div>
+                <label className="text-[10px] text-gray-500 uppercase tracking-wider font-semibold block mb-1">
+                  Issue Type
+                </label>
+                <input
+                  value={issueType}
+                  onChange={e => setIssueType(e.target.value)}
+                  placeholder="e.g. Storm damage, Vandalism…"
+                  className="w-full px-3 py-2 text-sm border border-gray-200 rounded-xl outline-none focus:border-[#00AECD] bg-white"
+                />
+              </div>
+              <div>
+                <label className="text-[10px] text-gray-500 uppercase tracking-wider font-semibold block mb-1">
+                  Description
+                </label>
+                <textarea
+                  value={description}
+                  onChange={e => setDescription(e.target.value)}
+                  rows={3}
+                  className="w-full px-3 py-2 text-sm border border-gray-200 rounded-xl outline-none focus:border-[#00AECD] bg-white resize-none"
+                />
+              </div>
+              <div>
+                <label className="text-[10px] text-gray-500 uppercase tracking-wider font-semibold block mb-1">
+                  Priority
+                </label>
+                <select
+                  value={priority}
+                  onChange={e => setPriority(e.target.value)}
+                  className="w-full px-3 py-2 text-sm border border-gray-200 rounded-xl outline-none focus:border-[#00AECD] bg-white"
+                >
+                  {priorities.map(p => (
+                    <option key={p.id} value={p.id}>{p.label}</option>
+                  ))}
+                  {!priorities.some(p => p.id === priority) && (
+                    <option value={priority}>{PRIORITY_CONFIG[priority]?.label ?? priority}</option>
+                  )}
+                </select>
+              </div>
+              <div>
+                <label className="text-[10px] text-gray-500 uppercase tracking-wider font-semibold block mb-1">
+                  Notes
+                </label>
+                <textarea
+                  value={notes}
+                  onChange={e => setNotes(e.target.value)}
+                  rows={2}
+                  placeholder="Any additional notes…"
+                  className="w-full px-3 py-2 text-sm border border-gray-200 rounded-xl outline-none focus:border-[#00AECD] bg-white resize-none"
+                />
+              </div>
+            </div>
+          </WizardSectionCard>
+
+          {/* ── 2 — Schedule to Team ── */}
+          <WizardSectionCard num={2} title="Schedule to Team">
+            <div className="space-y-3">
+              <div>
+                <label className="text-[10px] text-gray-500 uppercase tracking-wider font-semibold block mb-1">
+                  Assign Team
+                </label>
+                <select
+                  value={teamId}
+                  onChange={e => setTeamId(e.target.value)}
+                  className="w-full px-3 py-2 text-sm border border-gray-200 rounded-xl outline-none focus:border-[#00AECD] bg-white font-semibold text-gray-700"
+                >
+                  <option value="">— Unassigned —</option>
+                  {teamsData.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                </select>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-[10px] text-gray-500 uppercase tracking-wider font-semibold block mb-1">
+                    Planned Date
+                  </label>
+                  <input
+                    type="date"
+                    value={date}
+                    onChange={e => setDate(e.target.value)}
+                    className="w-full px-3 py-2 text-sm border border-gray-200 rounded-xl outline-none focus:border-[#00AECD] bg-white"
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] text-gray-500 uppercase tracking-wider font-semibold block mb-1">
+                    Est. time (mins)
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    value={estMins}
+                    onChange={e => setEstMins(e.target.value)}
+                    className="w-full px-3 py-2 text-sm border border-gray-200 rounded-xl outline-none focus:border-[#00AECD] bg-white"
+                  />
+                </div>
+              </div>
+
+              {/* Schedule impact */}
+              {teamId && date && (
+                <div className="mt-2 p-3 rounded-xl bg-gray-50 border border-gray-100 space-y-2">
+                  <p className="text-[11px] font-bold text-gray-500 uppercase tracking-wide">
+                    Schedule impact — {dateLabel}
+                  </p>
+                  <CapBar
+                    total={totalWithJob}
+                    reactive={serviceMin}
+                    teamName={teamName}
+                    dateLabel={dateLabel}
+                  />
+                  <div className="flex items-center gap-3 text-[10px] font-semibold text-gray-500">
+                    <span className="flex items-center gap-1">
+                      <span className="w-2 h-2 rounded-full bg-green-500 inline-block" />
+                      Within target
+                    </span>
+                    <span className="flex items-center gap-1">
+                      <span className="w-2 h-2 rounded-full bg-red-500 inline-block" />
+                      Over target
+                    </span>
+                  </div>
+                  {overTarget && (
+                    <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-red-50 border border-red-100">
+                      <AlertTriangle className="w-3.5 h-3.5 text-red-500 flex-shrink-0" />
+                      <p className="text-[11px] font-semibold text-red-700">
+                        {teamName} will be {fmtMins(totalWithJob - PRODUCTIVE)} over the daily target
+                      </p>
+                    </div>
+                  )}
+                  <p className="text-[10px] text-gray-400 leading-snug">
+                    Includes this reactive job ({fmtMins(serviceMin)}) plus all other scheduled work on that day.
+                  </p>
+                </div>
+              )}
+            </div>
+          </WizardSectionCard>
+
+        </div>
+
+        {/* Footer */}
+        <div className="px-6 py-4 border-t bg-white flex items-center justify-between flex-shrink-0">
+          <button
+            onClick={onClose}
+            className="px-4 py-2 rounded-xl text-sm font-semibold border border-gray-200 text-gray-600 hover:bg-gray-100 transition-colors"
+          >
+            Cancel
+          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => handleSave(false)}
+              disabled={saving}
+              className="px-4 py-2 rounded-xl text-sm font-semibold border border-gray-200 text-gray-700 hover:bg-gray-100 disabled:opacity-40 transition-colors"
+            >
+              Save Draft
+            </button>
+            <button
+              onClick={() => handleSave(true)}
+              disabled={saving || !canAssign}
+              title={!canAssign ? "Set a team and date first" : undefined}
+              className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-bold text-white disabled:opacity-40 transition-colors"
+              style={{ background: BRAND }}
+            >
+              <CheckCircle2 className="w-4 h-4" />
+              Save &amp; Assign
+            </button>
+          </div>
+        </div>
+
       </div>
     </div>
   );
