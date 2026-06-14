@@ -364,7 +364,7 @@ export function ReactiveJobWizard({ teamsData, assetsData, onClose, onPublished 
       });
       if (!res.ok) throw new Error(await res.text());
       setScheduleWasPushed(true);
-      queryClient.invalidateQueries({ queryKey: getGetScheduleWeekQueryKey({ teamId: selectedTeamId }) });
+      qc.invalidateQueries({ queryKey: getGetScheduleWeekQueryKey({ teamId: selectedTeamId }) });
       setStep(4);
     } catch (err) {
       toast({ title: "Push failed", description: String(err), variant: "destructive" });
