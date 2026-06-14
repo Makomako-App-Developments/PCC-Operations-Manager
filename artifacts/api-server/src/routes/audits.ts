@@ -215,6 +215,8 @@ router.post("/audits", requireAuth, requireRole("manager", "supervisor"), async 
 // ── PATCH /api/audits/:id ─────────────────────────────────────────────────────
 router.patch("/audits/:id", requireAuth, requireRole("manager", "supervisor"), async (req, res) => {
   const id = String(req.params.id);
+  const access = await assertAuditTeamAccess(id, req.auth!.role, req.auth!.teamId, req.auth!.userId);
+  if ("error" in access) { res.status(access.status).json({ error: access.error }); return; }
   const [before] = await db.select().from(auditsTable).where(eq(auditsTable.id, id)).limit(1);
   if (!before) { res.status(404).json({ error: "Audit not found" }); return; }
   const { teamId, conductedAt, overallScore, status, notes, auditType } = req.body as Record<string, any>;
@@ -233,6 +235,8 @@ router.patch("/audits/:id", requireAuth, requireRole("manager", "supervisor"), a
 // ── DELETE /api/audits/:id ────────────────────────────────────────────────────
 router.delete("/audits/:id", requireAuth, requireRole("manager", "supervisor"), async (req, res) => {
   const id = String(req.params.id);
+  const access = await assertAuditTeamAccess(id, req.auth!.role, req.auth!.teamId, req.auth!.userId);
+  if ("error" in access) { res.status(access.status).json({ error: access.error }); return; }
   await db.delete(auditItemsTable).where(eq(auditItemsTable.auditId, id)); // cascade
   await db.delete(auditsTable).where(eq(auditsTable.id, id));
   res.status(204).end();
@@ -241,6 +245,8 @@ router.delete("/audits/:id", requireAuth, requireRole("manager", "supervisor"), 
 // ── PUT /api/audits/:id/responses (bulk upsert) ───────────────────────────────
 router.put("/audits/:id/responses", requireAuth, requireRole("manager", "supervisor"), async (req, res) => {
   const auditId = String(req.params.id);
+  const access = await assertAuditTeamAccess(auditId, req.auth!.role, req.auth!.teamId, req.auth!.userId);
+  if ("error" in access) { res.status(access.status).json({ error: access.error }); return; }
   const [audit] = await db.select().from(auditsTable).where(eq(auditsTable.id, auditId)).limit(1);
   if (!audit) { res.status(404).json({ error: "Audit not found" }); return; }
 
