@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   useListAssets, getListAssetsQueryKey,
@@ -1983,12 +1983,13 @@ function MulchingTab({
     }
   }, [selectedMulch?.id]);
 
-  // Auto-open review drawer when arriving via ?review=<id> deep-link
+  // Auto-open review drawer when arriving via ?review=<id> deep-link (fires once only)
+  const autoOpenedRef = useRef(false);
   useEffect(() => {
-    if (!initialReviewId || mulchLoading || reviewTarget) return;
+    if (!initialReviewId || mulchLoading || autoOpenedRef.current) return;
     const target = mulchRecords.find((r: any) => r.id === initialReviewId && r.status === "draft");
-    if (target) setReviewTarget(target);
-  }, [initialReviewId, mulchLoading, mulchRecords, reviewTarget]);
+    if (target) { autoOpenedRef.current = true; setReviewTarget(target); }
+  }, [initialReviewId, mulchLoading, mulchRecords]);
   // Sort + filter state
   const [mulchSort, setMulchSort] = useState<{ key: string; dir: "asc" | "desc" }>({ key: "scheduledDate", dir: "asc" });
   const [mulchStatusFilter, setMulchStatusFilter] = useState<string>("all");
