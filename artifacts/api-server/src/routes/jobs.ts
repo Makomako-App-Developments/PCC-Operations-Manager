@@ -748,6 +748,17 @@ router.patch("/jobs/:id", requireAuth, async (req, res) => {
 // GET /api/jobs/:id/task-skip-reasons
 router.get("/jobs/:id/task-skip-reasons", requireAuth, async (req, res) => {
   const id = String(req.params.id);
+
+  // Authorization: verify the caller can read this job
+  const [job] = await db.select({ teamId: jobsTable.teamId, isAllTeams: jobsTable.isAllTeams }).from(jobsTable).where(eq(jobsTable.id, id)).limit(1);
+  if (!job) { res.status(404).json({ error: "Job not found" }); return; }
+  if (!isPrivilegedRole(req.auth!.role)) {
+    const callerTeamId = req.auth!.teamId;
+    if (!job.isAllTeams && job.teamId !== callerTeamId) {
+      res.status(403).json({ error: "Forbidden" }); return;
+    }
+  }
+
   const rows = await db
     .select()
     .from(jobTaskSkipReasonsTable)
@@ -943,6 +954,15 @@ router.get("/reactive-jobs/:id", requireAuth, async (req, res) => {
     .where(eq(reactiveJobsTable.id, id))
     .limit(1);
   if (!row) { res.status(404).json({ error: "Reactive job not found" }); return; }
+
+  // Authorization: non-privileged users may only read reactive jobs assigned to their team
+  if (!isPrivilegedRole(req.auth!.role)) {
+    const callerTeamId = req.auth!.teamId;
+    if (row.assignedTeamId !== callerTeamId) {
+      res.status(403).json({ error: "Forbidden" }); return;
+    }
+  }
+
   res.json(row);
 });
 
