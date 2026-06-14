@@ -2062,6 +2062,166 @@ function JobDetailPanel({
   );
 }
 
+// ─── Infill job summary modal (non-draft jobs) ────────────────────────────────
+
+function InfillJobSummaryModal({
+  job, teams, onClose, onEdit, onStatusChange,
+}: {
+  job: InfillJob;
+  teams: { id: string; name: string }[];
+  onClose: () => void;
+  onEdit: () => void;
+  onStatusChange: (status: JobStatus) => void;
+}) {
+  const totalPlants = job.species.reduce((s, sp) => s + sp.quantity, 0);
+  const teamName = teams.find(t => t.id === job.assignedTeamId)?.name ?? "Unassigned";
+  const statusConf = JOB_STATUS[job.status] ?? JOB_STATUS.draft;
+  const allowedTransitions = ALLOWED_TRANSITIONS[job.status] ?? [];
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-lg flex flex-col max-h-[90vh]">
+
+        {/* Header */}
+        <div className="px-6 pt-5 pb-4 border-b flex-shrink-0">
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex items-start gap-2 min-w-0">
+              <Sprout className="w-4 h-4 text-green-600 flex-shrink-0 mt-0.5" />
+              <div className="min-w-0">
+                <h2 className="font-bold text-gray-900 truncate leading-tight">{job.assetName ?? "—"}</h2>
+                {job.assetDescription && (
+                  <p className="text-[11px] text-gray-400 truncate mt-0.5">{job.assetDescription}</p>
+                )}
+              </div>
+            </div>
+            <div className="flex items-center gap-2 flex-shrink-0">
+              {job.status !== "completed" && job.status !== "cancelled" && (
+                <button
+                  onClick={onEdit}
+                  className="text-xs font-semibold px-2.5 py-1 rounded-lg border transition-colors"
+                  style={{ borderColor: "#e5e7eb", color: "#6b7280", background: "white" }}>
+                  Edit
+                </button>
+              )}
+              <button onClick={onClose} className="text-gray-300 hover:text-gray-500">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 mt-3 flex-wrap">
+            <span className="text-[10px] font-bold px-2.5 py-1 rounded-full uppercase tracking-wider"
+              style={{ color: statusConf.color, background: statusConf.bg }}>
+              {statusConf.label}
+            </span>
+            <div className="ml-auto text-right">
+              {job.assessmentDate && (
+                <p className="text-[10px] text-gray-400">
+                  Assessed {format(new Date(job.assessmentDate), "d MMM yyyy")}
+                </p>
+              )}
+              {job.assessorName && (
+                <p className="text-[10px] text-gray-400">{job.assessorName}</p>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Scrollable body */}
+        <div className="flex-1 overflow-y-auto p-6 space-y-5">
+
+          {job.assessmentNotes && (
+            <div>
+              <p className="text-[10px] text-gray-400 uppercase tracking-wider mb-1.5 font-semibold">Assessment Notes</p>
+              <p className="text-sm text-gray-700 leading-relaxed">{job.assessmentNotes}</p>
+            </div>
+          )}
+
+          <div className="grid grid-cols-2 gap-4">
+            <div className="bg-gray-50 rounded-xl p-3.5">
+              <div className="flex items-center gap-1.5 mb-1">
+                <Users className="w-3.5 h-3.5 text-gray-400" />
+                <p className="text-[10px] text-gray-400 uppercase tracking-wider font-semibold">Team</p>
+              </div>
+              <p className="text-sm font-semibold text-gray-800">{teamName}</p>
+            </div>
+            <div className="bg-gray-50 rounded-xl p-3.5">
+              <div className="flex items-center gap-1.5 mb-1">
+                <Calendar className="w-3.5 h-3.5 text-gray-400" />
+                <p className="text-[10px] text-gray-400 uppercase tracking-wider font-semibold">Planned Date</p>
+              </div>
+              <p className="text-sm font-semibold text-gray-800">
+                {job.plannedDate
+                  ? format(new Date(job.plannedDate + "T00:00:00"), "EEE d MMM yyyy")
+                  : "Not set"}
+              </p>
+            </div>
+            <div className="bg-gray-50 rounded-xl p-3.5">
+              <div className="flex items-center gap-1.5 mb-1">
+                <Clock className="w-3.5 h-3.5 text-gray-400" />
+                <p className="text-[10px] text-gray-400 uppercase tracking-wider font-semibold">Est. Time</p>
+              </div>
+              <p className="text-sm font-semibold text-gray-800">
+                {job.estimatedMins ? `${job.estimatedMins} min` : "—"}
+              </p>
+            </div>
+            <div className="bg-gray-50 rounded-xl p-3.5">
+              <div className="flex items-center gap-1.5 mb-1">
+                <Leaf className="w-3.5 h-3.5 text-gray-400" />
+                <p className="text-[10px] text-gray-400 uppercase tracking-wider font-semibold">Plants</p>
+              </div>
+              <p className="text-sm font-semibold text-gray-800">{totalPlants}</p>
+            </div>
+          </div>
+
+          {job.species.length > 0 && (
+            <div>
+              <p className="text-[10px] text-gray-400 uppercase tracking-wider mb-2 font-semibold">Species Plan</p>
+              <div className="space-y-1.5">
+                {job.species.map((sp, i) => (
+                  <div key={i} className="flex items-center justify-between py-1.5 px-3 bg-gray-50 rounded-lg">
+                    <span className="text-sm text-gray-700">{sp.speciesCategory}</span>
+                    <span className="text-sm font-bold" style={{ color: BRAND }}>{sp.quantity}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {allowedTransitions.length > 0 && (
+            <div>
+              <p className="text-[10px] text-gray-400 uppercase tracking-wider mb-2 font-semibold">Update Status</p>
+              <div className="flex flex-wrap gap-2">
+                {allowedTransitions.map(s => {
+                  const conf = JOB_STATUS[s];
+                  return (
+                    <button
+                      key={s}
+                      onClick={() => onStatusChange(s)}
+                      className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-semibold border-2 transition-all hover:opacity-80"
+                      style={{ borderColor: conf.color, color: conf.color, background: conf.bg }}>
+                      Mark {conf.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="px-6 py-4 border-t bg-gray-50 flex justify-end flex-shrink-0">
+          <button
+            onClick={onClose}
+            className="px-4 py-2 rounded-xl text-sm font-semibold text-gray-600 hover:bg-gray-100 transition-colors">
+            Close
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Mulching tab ─────────────────────────────────────────────────────────────
 
 function MulchingTab({
@@ -2647,19 +2807,28 @@ function MulchingTab({
         const r = selectedMulch;
         const st = MULCH_STATUS[r.status] ?? MULCH_STATUS.due;
         const isDraft = r.status === "draft";
+        const isCompleted = r.status === "completed";
         const assetObj = assets.find(a => a.id === r.assetId);
         const team = teams.find(t => t.id === r.assignedTeamId);
-        const canEdit = r.status !== "completed";
         return (
-          <Dialog open onOpenChange={open => { if (!open) { setSelectedMulch(null); setMulchEditMode(false); } }}>
-            <DialogContent className="max-w-lg rounded-2xl">
-              <DialogHeader>
-                <DialogTitle className="flex items-center justify-between gap-3 pr-6">
-                  <span className="truncate">{r.assetName ?? "Mulching Job"}</span>
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => { setSelectedMulch(null); setMulchEditMode(false); }} />
+            <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-lg flex flex-col max-h-[90vh]">
+
+              {/* Header */}
+              <div className="px-6 pt-5 pb-4 border-b flex-shrink-0">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex items-start gap-2 min-w-0">
+                    <Layers className="w-4 h-4 text-teal-600 flex-shrink-0 mt-0.5" />
+                    <div className="min-w-0">
+                      <h2 className="font-bold text-gray-900 truncate leading-tight">{r.assetName ?? assetObj?.name ?? "Mulching Job"}</h2>
+                      {(assetObj?.description ?? null) && (
+                        <p className="text-[11px] text-gray-400 truncate mt-0.5">{assetObj!.description}</p>
+                      )}
+                    </div>
+                  </div>
                   <div className="flex items-center gap-2 flex-shrink-0">
-                    <span className="text-[11px] font-bold px-2 py-0.5 rounded-full"
-                      style={{ color: st.color, background: st.bg }}>{st.label}</span>
-                    {canEdit && (
+                    {!isCompleted && (
                       <button
                         onClick={() => setMulchEditMode(v => !v)}
                         className="text-xs font-semibold px-2.5 py-1 rounded-lg border transition-colors"
@@ -2669,11 +2838,26 @@ function MulchingTab({
                         {mulchEditMode ? "Cancel" : "Edit"}
                       </button>
                     )}
+                    <button onClick={() => { setSelectedMulch(null); setMulchEditMode(false); }} className="text-gray-300 hover:text-gray-500">
+                      <X className="w-5 h-5" />
+                    </button>
                   </div>
-                </DialogTitle>
-              </DialogHeader>
+                </div>
+                <div className="flex items-center gap-2 mt-3 flex-wrap">
+                  <span className="text-[10px] font-bold px-2.5 py-1 rounded-full uppercase tracking-wider"
+                    style={{ color: st.color, background: st.bg }}>
+                    {st.label}
+                  </span>
+                  {r.alignedJobDate && !mulchEditMode && (
+                    <span className="text-[10px] font-semibold" style={{ color: BRAND }}>
+                      📅 Aligned to maintenance visit
+                    </span>
+                  )}
+                </div>
+              </div>
 
-              <div className="space-y-4 text-sm max-h-[60vh] overflow-y-auto pr-1">
+              {/* Scrollable body */}
+              <div className="flex-1 overflow-y-auto p-6 space-y-5">
                 {mulchEditMode ? (
                   <div className="grid grid-cols-2 gap-3">
                     <div>
@@ -2734,53 +2918,59 @@ function MulchingTab({
                   </div>
                 ) : (
                   <>
-                    <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
-                      <div>
-                        <p className="text-xs text-gray-400 mb-0.5">Scheduled Date</p>
-                        <p className="font-medium text-gray-800">{r.scheduledDate ? fmt(r.scheduledDate) : "—"}</p>
-                        {r.alignedJobDate && (
-                          <p className="text-[10px] font-semibold mt-0.5" style={{ color: BRAND }}>
-                            📅 Aligned to maintenance visit
-                          </p>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="bg-gray-50 rounded-xl p-3.5">
+                        <div className="flex items-center gap-1.5 mb-1">
+                          <Calendar className="w-3.5 h-3.5 text-gray-400" />
+                          <p className="text-[10px] text-gray-400 uppercase tracking-wider font-semibold">Scheduled</p>
+                        </div>
+                        <p className="text-sm font-semibold text-gray-800">{r.scheduledDate ? fmt(r.scheduledDate) : "Not set"}</p>
+                        {r.completedDate && (
+                          <p className="text-[10px] text-gray-400 mt-0.5">Done {fmt(r.completedDate)}</p>
                         )}
                       </div>
-                      {r.completedDate && (
-                        <div>
-                          <p className="text-xs text-gray-400 mb-0.5">Completed</p>
-                          <p className="font-medium text-gray-800">{fmt(r.completedDate)}</p>
+                      <div className="bg-gray-50 rounded-xl p-3.5">
+                        <div className="flex items-center gap-1.5 mb-1">
+                          <Users className="w-3.5 h-3.5 text-gray-400" />
+                          <p className="text-[10px] text-gray-400 uppercase tracking-wider font-semibold">Team</p>
                         </div>
-                      )}
-                      <div>
-                        <p className="text-xs text-gray-400 mb-0.5">Mulch Type</p>
-                        <p className="font-medium text-gray-800">{r.mulchType ?? "—"}</p>
+                        <p className="text-sm font-semibold text-gray-800">{team?.name ?? "Unassigned"}</p>
                       </div>
-                      <div>
-                        <p className="text-xs text-gray-400 mb-0.5">Volume</p>
-                        <p className="font-medium text-gray-800">{r.volumeM3 ? `${r.volumeM3} m³` : "—"}</p>
+                      <div className="bg-gray-50 rounded-xl p-3.5">
+                        <div className="flex items-center gap-1.5 mb-1">
+                          <Layers className="w-3.5 h-3.5 text-gray-400" />
+                          <p className="text-[10px] text-gray-400 uppercase tracking-wider font-semibold">Type</p>
+                        </div>
+                        <p className="text-sm font-semibold text-gray-800">{r.mulchType ?? "—"}</p>
                       </div>
-                      {team && (
-                        <div>
-                          <p className="text-xs text-gray-400 mb-0.5">Team</p>
-                          <p className="font-medium text-gray-800">{team.name}</p>
+                      <div className="bg-gray-50 rounded-xl p-3.5">
+                        <div className="flex items-center gap-1.5 mb-1">
+                          <Clock className="w-3.5 h-3.5 text-gray-400" />
+                          <p className="text-[10px] text-gray-400 uppercase tracking-wider font-semibold">Est. Time</p>
                         </div>
-                      )}
-                      {r.estimatedMins && (
-                        <div>
-                          <p className="text-xs text-gray-400 mb-0.5">Est. Time</p>
-                          <p className="font-medium text-gray-800">{fmtMins(r.estimatedMins)}</p>
-                        </div>
-                      )}
-                      {r.contractor && (
-                        <div>
-                          <p className="text-xs text-gray-400 mb-0.5">Contractor</p>
-                          <p className="font-medium text-gray-800">{r.contractor}</p>
-                        </div>
-                      )}
-                      {r.costNzd && (
-                        <div>
-                          <p className="text-xs text-gray-400 mb-0.5">Cost</p>
-                          <p className="font-medium text-gray-800">${r.costNzd} NZD</p>
-                        </div>
+                        <p className="text-sm font-semibold text-gray-800">{r.estimatedMins ? fmtMins(r.estimatedMins) : "—"}</p>
+                      </div>
+                      {(r.volumeM3 != null || r.contractor || r.costNzd != null) && (
+                        <>
+                          {r.volumeM3 != null && (
+                            <div className="bg-gray-50 rounded-xl p-3.5">
+                              <p className="text-[10px] text-gray-400 uppercase tracking-wider font-semibold mb-1">Volume</p>
+                              <p className="text-sm font-semibold text-gray-800">{r.volumeM3} m³</p>
+                            </div>
+                          )}
+                          {r.contractor && (
+                            <div className="bg-gray-50 rounded-xl p-3.5">
+                              <p className="text-[10px] text-gray-400 uppercase tracking-wider font-semibold mb-1">Contractor</p>
+                              <p className="text-sm font-semibold text-gray-800">{r.contractor}</p>
+                            </div>
+                          )}
+                          {r.costNzd != null && (
+                            <div className="bg-gray-50 rounded-xl p-3.5">
+                              <p className="text-[10px] text-gray-400 uppercase tracking-wider font-semibold mb-1">Cost</p>
+                              <p className="text-sm font-semibold text-gray-800">${r.costNzd} NZD</p>
+                            </div>
+                          )}
+                        </>
                       )}
                     </div>
 
@@ -2790,8 +2980,7 @@ function MulchingTab({
                       </div>
                     )}
 
-                    {/* Schedule capacity impact — only when team + date are set */}
-                    {r.assignedTeamId && r.scheduledDate && mulchDetailDayTotal > 0 && !mulchEditMode && (
+                    {r.assignedTeamId && r.scheduledDate && mulchDetailDayTotal > 0 && (
                       <div className="rounded-xl border border-gray-100 p-3">
                         <p className="text-[11px] font-semibold text-gray-500 mb-2 flex items-center gap-1.5">
                           <Calendar className="w-3.5 h-3.5" /> Schedule impact — {format(new Date(r.scheduledDate + "T00:00:00"), "EEE d MMM")}
@@ -2810,79 +2999,75 @@ function MulchingTab({
 
                     {r.notes && (
                       <div>
-                        <p className="text-xs text-gray-400 mb-1">Notes</p>
-                        <p className="text-gray-700 leading-relaxed">{r.notes}</p>
+                        <p className="text-[10px] text-gray-400 uppercase tracking-wider mb-1.5 font-semibold">Notes</p>
+                        <p className="text-sm text-gray-600 leading-relaxed bg-gray-50 rounded-xl p-3.5">{r.notes}</p>
                       </div>
                     )}
 
                     <div>
-                      <p className="text-xs font-semibold text-gray-500 mb-2 flex items-center gap-1.5">
+                      <p className="text-[10px] text-gray-400 uppercase tracking-wider mb-2 font-semibold flex items-center gap-1.5">
                         <History className="w-3.5 h-3.5" /> Depth Reading History
                       </p>
                       <ReadingHistoryPanel assetId={r.assetId} />
                     </div>
+
+                    {!isCompleted && !isDraft && (
+                      <div>
+                        <p className="text-[10px] text-gray-400 uppercase tracking-wider mb-2 font-semibold">Update Status</p>
+                        <div className="flex flex-wrap gap-2">
+                          <button
+                            onClick={() => {
+                              (updateMulch.mutateAsync as any)({ id: r.id, data: { status: "completed", completedDate: new Date().toISOString().slice(0, 10) } })
+                                .then(() => { handleRefresh(); setSelectedMulch(null); });
+                            }}
+                            className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-semibold border-2 transition-all hover:opacity-80"
+                            style={{ borderColor: "#16a34a", color: "#16a34a", background: "#dcfce7" }}>
+                            <CheckCircle2 className="w-4 h-4" /> Mark Completed
+                          </button>
+                        </div>
+                      </div>
+                    )}
                   </>
                 )}
               </div>
 
-              <DialogFooter className="flex gap-2 pt-2">
+              {/* Footer */}
+              <div className="px-6 py-4 border-t bg-gray-50 flex items-center justify-between flex-shrink-0">
                 {mulchEditMode ? (
                   <>
                     <button
                       onClick={() => setMulchEditMode(false)}
-                      className="px-4 py-2 rounded-xl text-sm font-semibold border border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors">
+                      className="px-4 py-2 rounded-xl text-sm font-semibold border border-gray-200 text-gray-600 hover:bg-gray-100 transition-colors">
                       Cancel
                     </button>
                     <button
                       onClick={handleMulchEditSave}
                       disabled={mulchEditSaving}
-                      className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-bold text-white disabled:opacity-40"
+                      className="px-4 py-2 rounded-xl text-sm font-bold text-white disabled:opacity-40 transition-colors"
                       style={{ background: BRAND }}>
                       {mulchEditSaving ? "Saving…" : "Save changes"}
                     </button>
                   </>
                 ) : (
                   <>
-                    {r.status !== "completed" && !isDraft && assetObj && (
+                    {!isCompleted && !isDraft && assetObj && (
                       <button
                         onClick={() => { setDepthTarget({ id: r.assetId, name: r.assetName ?? assetObj.name }); setSelectedMulch(null); }}
                         className="flex items-center gap-1.5 text-sm font-semibold px-3 py-2 rounded-lg border transition-colors"
-                        style={{ borderColor: BRAND, color: BRAND }}
-                      >
+                        style={{ borderColor: BRAND, color: BRAND }}>
                         <Ruler className="w-4 h-4" /> Record Depth
-                      </button>
-                    )}
-                    {isDraft && (
-                      <button
-                        onClick={() => { setReviewTarget(r); setSelectedMulch(null); }}
-                        className="flex items-center gap-1.5 text-sm font-bold px-3 py-2 rounded-lg transition-colors"
-                        style={{ background: "#7c3aed", color: "white" }}
-                      >
-                        <Zap className="w-4 h-4" /> Review &amp; Schedule
-                      </button>
-                    )}
-                    {r.status !== "completed" && !isDraft && (
-                      <button
-                        onClick={() => {
-                          (updateMulch.mutateAsync as any)({ id: r.id, data: { status: "completed", completedDate: new Date().toISOString().slice(0, 10) } })
-                            .then(() => { handleRefresh(); setSelectedMulch(null); });
-                        }}
-                        className="flex items-center gap-1.5 text-sm font-semibold px-3 py-2 rounded-lg bg-green-50 text-green-700 hover:bg-green-100 transition-colors"
-                      >
-                        <CheckCircle2 className="w-4 h-4" /> Mark Done
                       </button>
                     )}
                     <button
                       onClick={() => setSelectedMulch(null)}
-                      className="ml-auto text-sm text-gray-500 hover:text-gray-700 px-3 py-2 rounded-lg hover:bg-gray-50 transition-colors"
-                    >
+                      className="ml-auto px-4 py-2 rounded-xl text-sm font-semibold text-gray-600 hover:bg-gray-100 transition-colors">
                       Close
                     </button>
                   </>
                 )}
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
+              </div>
+            </div>
+          </div>
         );
       })()}
 
@@ -3222,6 +3407,7 @@ export default function Programmes() {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [prefilledAssetId, setPrefilledAssetId] = useState("");
   const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
+  const [detailInfillJobId, setDetailInfillJobId] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<JobStatus | "all">("all");
   const [infillSearch, setInfillSearch] = useState("");
   const [infillTeamFilter, setInfillTeamFilter] = useState("all");
@@ -3255,6 +3441,7 @@ export default function Programmes() {
   };
 
   const selectedJob = jobs.find(j => j.id === selectedJobId) ?? null;
+  const detailInfillJob = jobs.find(j => j.id === detailInfillJobId) ?? null;
 
   const filteredJobs = useMemo(() => {
     let result = statusFilter === "all" ? jobs : jobs.filter(j => j.status === statusFilter);
@@ -3651,7 +3838,7 @@ export default function Programmes() {
                           return (
                             <tr key={job.id}
                               className="hover:bg-[#f0fafb] cursor-pointer transition-colors group"
-                              onClick={() => setSelectedJobId(job.id)}>
+                              onClick={() => job.status === "draft" ? setSelectedJobId(job.id) : setDetailInfillJobId(job.id)}>
                               <td className="px-4 py-3">
                                 <span className="font-semibold text-gray-900 group-hover:text-[#00AECD] transition-colors">
                                   {job.assetName ?? "—"}
@@ -3701,7 +3888,7 @@ export default function Programmes() {
                                     variant="ghost" size="sm"
                                     className="h-8 w-8 p-0 text-gray-500 hover:text-gray-700"
                                     title="Edit job"
-                                    onClick={() => setSelectedJobId(job.id)}>
+                                    onClick={() => job.status === "draft" ? setSelectedJobId(job.id) : setDetailInfillJobId(job.id)}>
                                     <Pencil className="w-4 h-4" />
                                   </Button>
                                   {canCancel && (
@@ -3866,6 +4053,18 @@ export default function Programmes() {
           onClose={() => setSelectedJobId(null)}
           onSchedule={handleSchedule}
           onStatusChange={handleStatusChange}
+        />
+      )}
+      {detailInfillJob && (
+        <InfillJobSummaryModal
+          job={detailInfillJob}
+          teams={teams}
+          onClose={() => setDetailInfillJobId(null)}
+          onEdit={() => { setDetailInfillJobId(null); setSelectedJobId(detailInfillJob.id); }}
+          onStatusChange={(status) => {
+            handleStatusChange(detailInfillJob.id, status);
+            setDetailInfillJobId(null);
+          }}
         />
       )}
     </div>

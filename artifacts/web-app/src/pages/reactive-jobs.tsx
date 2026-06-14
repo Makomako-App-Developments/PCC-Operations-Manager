@@ -47,7 +47,7 @@ export default function ReactiveJobs() {
   const [selectedJob, setSelectedJob] = useState<Record<string, unknown> | null>(null);
   const [sortCol, setSortCol] = useState<SortCol>("scheduledDate");
   const [sortDir, setSortDir] = useState<SortDir>("asc");
-  const [editMode, setEditMode] = useState(false);
+  const [editDrawerJob, setEditDrawerJob] = useState<Record<string, unknown> | null>(null);
   const [editFields, setEditFields] = useState<Record<string, unknown>>({});
   const [editSaving, setEditSaving] = useState(false);
 
@@ -97,41 +97,40 @@ export default function ReactiveJobs() {
   const teams: TeamStub[] = (teamsData ?? []) as TeamStub[];
   const assets: AssetStub[] = (assetsData?.data ?? []) as AssetStub[];
 
-  // Reset edit state when a different job is opened
+  // Populate edit fields when a job is opened for editing
   useEffect(() => {
-    if (selectedJob) {
-      setEditMode(false);
+    if (editDrawerJob) {
       setEditFields({
-        issueType:        (selectedJob.issueType as string) ?? "",
-        description:      (selectedJob.description as string) ?? "",
-        priority:         (selectedJob.priority as string) ?? "",
-        assignedTeamId:   (selectedJob.assignedTeamId as string) ?? "",
-        scheduledDate:    (selectedJob.scheduledDate as string) ?? "",
-        estimatedTimeMins: selectedJob.estimatedTimeMins != null ? String(selectedJob.estimatedTimeMins) : "",
-        notes:            (selectedJob.notes as string) ?? "",
+        issueType:         (editDrawerJob.issueType as string) ?? "",
+        description:       (editDrawerJob.description as string) ?? "",
+        priority:          (editDrawerJob.priority as string) ?? "",
+        assignedTeamId:    (editDrawerJob.assignedTeamId as string) ?? "",
+        scheduledDate:     (editDrawerJob.scheduledDate as string) ?? "",
+        estimatedTimeMins: editDrawerJob.estimatedTimeMins != null ? String(editDrawerJob.estimatedTimeMins) : "",
+        notes:             (editDrawerJob.notes as string) ?? "",
       });
     }
-  }, [(selectedJob as any)?.id]);
+  }, [(editDrawerJob as any)?.id]);
 
-  const handleEditSave = async () => {
-    if (!selectedJob) return;
+  const handleEditSave = async (andAssign?: boolean) => {
+    if (!editDrawerJob) return;
     setEditSaving(true);
     try {
       const f = editFields;
       const patch: Record<string, unknown> = {
-        issueType:        (f.issueType as string) || null,
-        description:      (f.description as string) || null,
-        priority:         (f.priority as string) || null,
-        assignedTeamId:   (f.assignedTeamId as string) || null,
-        scheduledDate:    (f.scheduledDate as string) || null,
+        issueType:         (f.issueType as string) || null,
+        description:       (f.description as string) || null,
+        priority:          (f.priority as string) || null,
+        assignedTeamId:    (f.assignedTeamId as string) || null,
+        scheduledDate:     (f.scheduledDate as string) || null,
         estimatedTimeMins: (f.estimatedTimeMins as string) ? parseInt(f.estimatedTimeMins as string) : null,
-        notes:            (f.notes as string) || null,
+        notes:             (f.notes as string) || null,
+        ...(andAssign ? { status: "assigned" } : {}),
       };
-      await (updateMutation.mutateAsync as any)({ id: selectedJob.id, data: patch });
+      await (updateMutation.mutateAsync as any)({ id: editDrawerJob.id, data: patch });
       qc.invalidateQueries({ queryKey: getListReactiveJobsQueryKey() });
-      setSelectedJob(prev => prev ? { ...prev, ...patch } : null);
-      setEditMode(false);
-      toast({ title: "Changes saved" });
+      setEditDrawerJob(null);
+      toast({ title: andAssign ? "Job assigned" : "Draft saved" });
     } catch {
       toast({ title: "Failed to save", variant: "destructive" });
     } finally {
@@ -697,15 +696,13 @@ export default function ReactiveJobs() {
                 <div className="flex items-center gap-2 flex-shrink-0 ml-2">
                   {(selectedJob.status as string) !== "completed" && (selectedJob.status as string) !== "cancelled" && (
                     <button
-                      onClick={() => setEditMode(v => !v)}
+                      onClick={() => { setEditDrawerJob(selectedJob); setSelectedJob(null); }}
                       className="text-xs font-semibold px-2.5 py-1 rounded-lg border transition-colors"
-                      style={editMode
-                        ? { borderColor: "#dc2626", color: "#dc2626", background: "#fef2f2" }
-                        : { borderColor: "#e5e7eb", color: "#6b7280", background: "white" }}>
-                      {editMode ? "Cancel" : "Edit"}
+                      style={{ borderColor: "#e5e7eb", color: "#6b7280", background: "white" }}>
+                      Edit
                     </button>
                   )}
-                  <button onClick={() => { setSelectedJob(null); setEditMode(false); }} className="text-gray-300 hover:text-gray-500">
+                  <button onClick={() => setSelectedJob(null)} className="text-gray-300 hover:text-gray-500">
                     <X className="w-5 h-5" />
                   </button>
                 </div>
@@ -714,62 +711,6 @@ export default function ReactiveJobs() {
               {/* Scrollable body */}
               <div className="flex-1 overflow-y-auto p-6 space-y-5">
 
-                {editMode ? (
-                  <div className="space-y-4">
-                    <div className="grid grid-cols-2 gap-3">
-                      <div className="col-span-2">
-                        <label className="text-[10px] text-gray-500 uppercase tracking-wider font-semibold block mb-1">Issue Type</label>
-                        <input value={editFields.issueType as string}
-                          onChange={e => setEditFields(p => ({ ...p, issueType: e.target.value }))}
-                          className="w-full px-3 py-2 text-sm border border-gray-200 rounded-xl outline-none focus:border-[#00AECD] bg-white" />
-                      </div>
-                      <div className="col-span-2">
-                        <label className="text-[10px] text-gray-500 uppercase tracking-wider font-semibold block mb-1">Description</label>
-                        <textarea value={editFields.description as string}
-                          onChange={e => setEditFields(p => ({ ...p, description: e.target.value }))}
-                          className="w-full px-3 py-2 text-sm border border-gray-200 rounded-xl outline-none focus:border-[#00AECD] bg-white resize-none"
-                          rows={3} />
-                      </div>
-                      <div>
-                        <label className="text-[10px] text-gray-500 uppercase tracking-wider font-semibold block mb-1">Priority</label>
-                        <select value={editFields.priority as string}
-                          onChange={e => setEditFields(p => ({ ...p, priority: e.target.value }))}
-                          className="w-full px-3 py-2 text-sm border border-gray-200 rounded-xl outline-none focus:border-[#00AECD] bg-white">
-                          {listPriorities.map(p => <option key={p.id} value={p.id}>{p.label}</option>)}
-                        </select>
-                      </div>
-                      <div>
-                        <label className="text-[10px] text-gray-500 uppercase tracking-wider font-semibold block mb-1">Team</label>
-                        <select value={editFields.assignedTeamId as string}
-                          onChange={e => setEditFields(p => ({ ...p, assignedTeamId: e.target.value }))}
-                          className="w-full px-3 py-2 text-sm border border-gray-200 rounded-xl outline-none focus:border-[#00AECD] bg-white">
-                          <option value="">— Unassigned —</option>
-                          {teams.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
-                        </select>
-                      </div>
-                      <div>
-                        <label className="text-[10px] text-gray-500 uppercase tracking-wider font-semibold block mb-1">Scheduled Date</label>
-                        <input type="date" value={editFields.scheduledDate as string}
-                          onChange={e => setEditFields(p => ({ ...p, scheduledDate: e.target.value }))}
-                          className="w-full px-3 py-2 text-sm border border-gray-200 rounded-xl outline-none focus:border-[#00AECD] bg-white" />
-                      </div>
-                      <div>
-                        <label className="text-[10px] text-gray-500 uppercase tracking-wider font-semibold block mb-1">Est. Time (mins)</label>
-                        <input type="number" value={editFields.estimatedTimeMins as string}
-                          onChange={e => setEditFields(p => ({ ...p, estimatedTimeMins: e.target.value }))}
-                          min="0" className="w-full px-3 py-2 text-sm border border-gray-200 rounded-xl outline-none focus:border-[#00AECD] bg-white" />
-                      </div>
-                      <div className="col-span-2">
-                        <label className="text-[10px] text-gray-500 uppercase tracking-wider font-semibold block mb-1">Notes</label>
-                        <textarea value={editFields.notes as string}
-                          onChange={e => setEditFields(p => ({ ...p, notes: e.target.value }))}
-                          className="w-full px-3 py-2 text-sm border border-gray-200 rounded-xl outline-none focus:border-[#00AECD] bg-white resize-none"
-                          rows={3} />
-                      </div>
-                    </div>
-                  </div>
-                ) : (
-                  <>
                 {/* Badges */}
                 <div className="flex items-center gap-2 flex-wrap">
                   <span
@@ -900,8 +841,6 @@ export default function ReactiveJobs() {
                     </div>
                   </div>
                 )}
-                  </>
-                )}
 
                 {/* Status update */}
                 <div>
@@ -941,30 +880,138 @@ export default function ReactiveJobs() {
               </div>
 
               {/* Footer */}
-              <div className="px-6 py-4 border-t bg-gray-50 flex justify-end gap-2 flex-shrink-0">
-                {editMode ? (
-                  <>
-                    <button
-                      onClick={() => setEditMode(false)}
-                      className="px-4 py-2 rounded-xl text-sm font-semibold border border-gray-200 text-gray-600 hover:bg-gray-100 transition-colors">
-                      Cancel
-                    </button>
-                    <button
-                      onClick={handleEditSave}
-                      disabled={editSaving}
-                      className="px-4 py-2 rounded-xl text-sm font-bold text-white disabled:opacity-40 transition-colors"
-                      style={{ background: BRAND }}>
-                      {editSaving ? "Saving…" : "Save changes"}
-                    </button>
-                  </>
-                ) : (
+              <div className="px-6 py-4 border-t bg-gray-50 flex justify-end flex-shrink-0">
+                <button
+                  onClick={() => setSelectedJob(null)}
+                  className="px-4 py-2 rounded-xl text-sm font-semibold text-gray-600 hover:bg-gray-100 transition-colors"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* ── Review & Schedule Drawer (draft jobs + Edit from modal) ───────── */}
+      {editDrawerJob && (() => {
+        const job = editDrawerJob;
+        const site = getSiteName(job);
+        const desc = (job.assetDescription as string | null)
+          ?? assets.find(a => a.id === (job.assetId as string))?.description ?? null;
+        return (
+          <div className="fixed inset-0 z-50 flex">
+            <div className="flex-1 bg-black/30 backdrop-blur-sm" onClick={() => setEditDrawerJob(null)} />
+            <div className="w-full max-w-[480px] bg-white flex flex-col h-full shadow-2xl">
+
+              {/* Header */}
+              <div className="px-6 py-4 border-b flex items-center justify-between flex-shrink-0">
+                <div className="flex items-start gap-2 min-w-0">
+                  <Zap className="w-4 h-4 text-amber-500 flex-shrink-0 mt-1" />
+                  <div className="min-w-0">
+                    <h2 className="font-bold text-gray-900 truncate">{site || "Unscheduled Work"}</h2>
+                    {desc && <p className="text-[11px] text-gray-400 mt-0.5 truncate">{desc}</p>}
+                    <p className="text-xs font-semibold mt-1" style={{ color: BRAND }}>Review &amp; Schedule</p>
+                  </div>
+                </div>
+                <button onClick={() => setEditDrawerJob(null)} className="text-gray-300 hover:text-gray-500 flex-shrink-0 ml-2">
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* Body */}
+              <div className="flex-1 overflow-y-auto p-6 space-y-4">
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="col-span-2">
+                    <label className="text-[10px] text-gray-500 uppercase tracking-wider font-semibold block mb-1">Issue Type</label>
+                    <input
+                      value={editFields.issueType as string}
+                      onChange={e => setEditFields(p => ({ ...p, issueType: e.target.value }))}
+                      className="w-full px-3 py-2 text-sm border border-gray-200 rounded-xl outline-none focus:border-[#00AECD] bg-white"
+                    />
+                  </div>
+                  <div className="col-span-2">
+                    <label className="text-[10px] text-gray-500 uppercase tracking-wider font-semibold block mb-1">Description</label>
+                    <textarea
+                      value={editFields.description as string}
+                      onChange={e => setEditFields(p => ({ ...p, description: e.target.value }))}
+                      className="w-full px-3 py-2 text-sm border border-gray-200 rounded-xl outline-none focus:border-[#00AECD] bg-white resize-none"
+                      rows={3}
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] text-gray-500 uppercase tracking-wider font-semibold block mb-1">Priority</label>
+                    <select
+                      value={editFields.priority as string}
+                      onChange={e => setEditFields(p => ({ ...p, priority: e.target.value }))}
+                      className="w-full px-3 py-2 text-sm border border-gray-200 rounded-xl outline-none focus:border-[#00AECD] bg-white">
+                      {listPriorities.map(p => <option key={p.id} value={p.id}>{p.label}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-[10px] text-gray-500 uppercase tracking-wider font-semibold block mb-1">Assign to Team</label>
+                    <select
+                      value={editFields.assignedTeamId as string}
+                      onChange={e => setEditFields(p => ({ ...p, assignedTeamId: e.target.value }))}
+                      className="w-full px-3 py-2 text-sm border border-gray-200 rounded-xl outline-none focus:border-[#00AECD] bg-white">
+                      <option value="">— Unassigned —</option>
+                      {teams.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-[10px] text-gray-500 uppercase tracking-wider font-semibold block mb-1">Scheduled Date</label>
+                    <input
+                      type="date"
+                      value={editFields.scheduledDate as string}
+                      onChange={e => setEditFields(p => ({ ...p, scheduledDate: e.target.value }))}
+                      className="w-full px-3 py-2 text-sm border border-gray-200 rounded-xl outline-none focus:border-[#00AECD] bg-white"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] text-gray-500 uppercase tracking-wider font-semibold block mb-1">Est. Time (mins)</label>
+                    <input
+                      type="number"
+                      value={editFields.estimatedTimeMins as string}
+                      onChange={e => setEditFields(p => ({ ...p, estimatedTimeMins: e.target.value }))}
+                      min="0"
+                      className="w-full px-3 py-2 text-sm border border-gray-200 rounded-xl outline-none focus:border-[#00AECD] bg-white"
+                    />
+                  </div>
+                  <div className="col-span-2">
+                    <label className="text-[10px] text-gray-500 uppercase tracking-wider font-semibold block mb-1">Notes</label>
+                    <textarea
+                      value={editFields.notes as string}
+                      onChange={e => setEditFields(p => ({ ...p, notes: e.target.value }))}
+                      className="w-full px-3 py-2 text-sm border border-gray-200 rounded-xl outline-none focus:border-[#00AECD] bg-white resize-none"
+                      rows={3}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Footer */}
+              <div className="px-6 py-4 border-t bg-gray-50 flex items-center justify-between flex-shrink-0">
+                <button
+                  onClick={() => setEditDrawerJob(null)}
+                  className="px-4 py-2 rounded-xl text-sm font-semibold border border-gray-200 text-gray-600 hover:bg-gray-100 transition-colors">
+                  Cancel
+                </button>
+                <div className="flex items-center gap-2">
                   <button
-                    onClick={() => setSelectedJob(null)}
-                    className="px-4 py-2 rounded-xl text-sm font-semibold text-gray-600 hover:bg-gray-100 transition-colors"
-                  >
-                    Close
+                    onClick={() => handleEditSave(false)}
+                    disabled={editSaving}
+                    className="px-4 py-2 rounded-xl text-sm font-semibold border border-gray-200 text-gray-700 hover:bg-gray-100 disabled:opacity-40 transition-colors">
+                    Save Draft
                   </button>
-                )}
+                  <button
+                    onClick={() => handleEditSave(true)}
+                    disabled={editSaving || !(editFields.assignedTeamId as string) || !(editFields.scheduledDate as string)}
+                    title={!(editFields.assignedTeamId as string) || !(editFields.scheduledDate as string) ? "Set a team and date first" : undefined}
+                    className="px-4 py-2 rounded-xl text-sm font-bold text-white disabled:opacity-40 transition-colors"
+                    style={{ background: BRAND }}>
+                    {editSaving ? "Saving…" : "Save & Assign"}
+                  </button>
+                </div>
               </div>
             </div>
           </div>
