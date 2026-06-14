@@ -1624,8 +1624,10 @@ export function ReactiveJobReviewDrawer({
     job.estimatedTimeMins != null ? String(job.estimatedTimeMins) : "90"
   );
   const [saving, setSaving]             = useState(false);
+  const [actions, setActions]           = useState<Record<string, JobAction>>({});
+  const [reassignTo, setReassignTo]     = useState<Record<string, string>>({});
 
-  const weekStr = date ? mondayOf(date) : "";
+  const weekStr   = date ? mondayOf(date) : "";
   const dateLabel = date ? format(new Date(date + "T00:00:00"), "EEE d MMM") : "";
   const serviceMin = Math.max(0, parseInt(estMins) || 0);
 
@@ -1644,12 +1646,48 @@ export function ReactiveJobReviewDrawer({
     [weekData, date],
   );
 
+  // Initialise action slots when the day's job list arrives
+  useEffect(() => {
+    if (dayJobs.length > 0) {
+      setActions(prev => {
+        const next = { ...prev };
+        dayJobs.forEach(j => { if (!(j.id in next)) next[j.id] = "none"; });
+        return next;
+      });
+    }
+  }, [dayJobs]);
+
+  // Reset conflict decisions when the user picks a different team / date
+  useEffect(() => {
+    setActions({});
+    setReassignTo({});
+  }, [teamId, date]);
+
   const totalScheduled = dayJobs.reduce((s, j) => s + (j.serviceTimeMins ?? 0), 0);
   const totalWithJob   = totalScheduled + serviceMin;
-  const overTarget     = totalWithJob > PRODUCTIVE;
-  const teamName       = teamsData.find(t => t.id === teamId)?.name ?? "Team";
 
-  const updateRJ = useUpdateReactiveJob();
+  const freedMins = useMemo(() => dayJobs
+    .filter(j => {
+      const a = actions[j.id];
+      return a === "push" || a === "defer" || a === "delete" || (a === "reassign" && reassignTo[j.id]);
+    })
+    .reduce((s, j) => s + (j.serviceTimeMins ?? 0), 0),
+  [actions, reassignTo, dayJobs]);
+
+  const resolvedTotal = totalWithJob - freedMins;
+  const overTarget    = totalWithJob > PRODUCTIVE;
+  const isGreen       = resolvedTotal <= PRODUCTIVE;
+  const teamName      = teamsData.find(t => t.id === teamId)?.name ?? "Team";
+
+  const setAction = (id: string, a: JobAction) => {
+    setActions(prev => ({ ...prev, [id]: a }));
+    if (a !== "reassign") {
+      setReassignTo(prev => { const n = { ...prev }; delete n[id]; return n; });
+    }
+  };
+
+  const updateJob = useUpdateJob();
+  const updateRJ  = useUpdateReactiveJob();
 
   const handleSave = async (assign: boolean) => {
     setSaving(true);
@@ -1668,6 +1706,25 @@ export function ReactiveJobReviewDrawer({
         id: job.id as string,
         data: patch,
       });
+
+      // Apply any conflict resolution actions to existing scheduled jobs
+      await Promise.all(
+        dayJobs
+          .filter(j => actions[j.id] && actions[j.id] !== "none")
+          .map(j => {
+            const a = actions[j.id];
+            if (a === "push")
+              return updateJob.mutateAsync({ id: j.id, data: { scheduledDate: addDaysStr(j.scheduledDate, 1) } as never });
+            if (a === "defer")
+              return updateJob.mutateAsync({ id: j.id, data: { scheduledDate: addDaysStr(j.scheduledDate, 3) } as never });
+            if (a === "delete")
+              return updateJob.mutateAsync({ id: j.id, data: { status: "skipped" } as never });
+            if (a === "reassign" && reassignTo[j.id])
+              return updateJob.mutateAsync({ id: j.id, data: { teamId: reassignTo[j.id] } as never });
+            return Promise.resolve();
+          }),
+      );
+
       await Promise.all([
         qc.invalidateQueries({ queryKey: getListReactiveJobsQueryKey() }),
         qc.invalidateQueries({ queryKey: ["/api/schedule/week"] }),
@@ -1675,9 +1732,7 @@ export function ReactiveJobReviewDrawer({
       ]);
       toast({
         title: assign ? "Job assigned" : "Draft saved",
-        description: assign
-          ? `Assigned to ${teamName} for ${dateLabel}`
-          : "Job details updated",
+        description: assign ? `Assigned to ${teamName} for ${dateLabel}` : "Job details updated",
       });
       onSaved();
     } catch (e) {
@@ -1687,16 +1742,15 @@ export function ReactiveJobReviewDrawer({
     }
   };
 
-  const site = linkedAsset?.name ?? (job.location as string | null) ?? "Unscheduled Work";
+  const site     = linkedAsset?.name ?? (job.location as string | null) ?? "Unscheduled Work";
   const siteDesc = linkedAsset?.description ?? (job.assetDescription as string | null) ?? null;
-  const pConf = priorities.find(p => p.id === priority) ?? PRIORITY_CONFIG[priority];
-
+  const pConf    = priorities.find(p => p.id === priority) ?? PRIORITY_CONFIG[priority];
   const canAssign = !!teamId && !!date;
 
   return (
     <div className="fixed inset-0 z-50 flex">
       <div className="flex-1 bg-black/30 backdrop-blur-sm" onClick={onClose} />
-      <div className="w-[480px] bg-gray-50 flex flex-col h-full shadow-2xl overflow-hidden">
+      <div className="w-[520px] bg-gray-50 flex flex-col h-full shadow-2xl overflow-hidden">
 
         {/* Hero header */}
         <div className="px-6 pt-5 pb-4 flex-shrink-0" style={{ background: NAVY }}>
@@ -1736,9 +1790,7 @@ export function ReactiveJobReviewDrawer({
           <WizardSectionCard num={1} title="Job Details">
             <div className="space-y-3">
               <div>
-                <label className="text-[10px] text-gray-500 uppercase tracking-wider font-semibold block mb-1">
-                  Issue Type
-                </label>
+                <label className="text-[10px] text-gray-500 uppercase tracking-wider font-semibold block mb-1">Issue Type</label>
                 <input
                   value={issueType}
                   onChange={e => setIssueType(e.target.value)}
@@ -1747,9 +1799,7 @@ export function ReactiveJobReviewDrawer({
                 />
               </div>
               <div>
-                <label className="text-[10px] text-gray-500 uppercase tracking-wider font-semibold block mb-1">
-                  Description
-                </label>
+                <label className="text-[10px] text-gray-500 uppercase tracking-wider font-semibold block mb-1">Description</label>
                 <textarea
                   value={description}
                   onChange={e => setDescription(e.target.value)}
@@ -1758,26 +1808,20 @@ export function ReactiveJobReviewDrawer({
                 />
               </div>
               <div>
-                <label className="text-[10px] text-gray-500 uppercase tracking-wider font-semibold block mb-1">
-                  Priority
-                </label>
+                <label className="text-[10px] text-gray-500 uppercase tracking-wider font-semibold block mb-1">Priority</label>
                 <select
                   value={priority}
                   onChange={e => setPriority(e.target.value)}
                   className="w-full px-3 py-2 text-sm border border-gray-200 rounded-xl outline-none focus:border-[#00AECD] bg-white"
                 >
-                  {priorities.map(p => (
-                    <option key={p.id} value={p.id}>{p.label}</option>
-                  ))}
+                  {priorities.map(p => <option key={p.id} value={p.id}>{p.label}</option>)}
                   {!priorities.some(p => p.id === priority) && (
                     <option value={priority}>{PRIORITY_CONFIG[priority]?.label ?? priority}</option>
                   )}
                 </select>
               </div>
               <div>
-                <label className="text-[10px] text-gray-500 uppercase tracking-wider font-semibold block mb-1">
-                  Notes
-                </label>
+                <label className="text-[10px] text-gray-500 uppercase tracking-wider font-semibold block mb-1">Notes</label>
                 <textarea
                   value={notes}
                   onChange={e => setNotes(e.target.value)}
@@ -1793,9 +1837,7 @@ export function ReactiveJobReviewDrawer({
           <WizardSectionCard num={2} title="Schedule to Team">
             <div className="space-y-3">
               <div>
-                <label className="text-[10px] text-gray-500 uppercase tracking-wider font-semibold block mb-1">
-                  Assign Team
-                </label>
+                <label className="text-[10px] text-gray-500 uppercase tracking-wider font-semibold block mb-1">Assign Team</label>
                 <select
                   value={teamId}
                   onChange={e => setTeamId(e.target.value)}
@@ -1804,12 +1846,15 @@ export function ReactiveJobReviewDrawer({
                   <option value="">— Unassigned —</option>
                   {teamsData.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
                 </select>
+                {linkedAsset?.teamId && teamId && teamId !== linkedAsset.teamId && (
+                  <p className="text-[10px] text-amber-600 mt-1.5">
+                    ⚠ Normally serviced by {teamsData.find(t => t.id === linkedAsset.teamId)?.name ?? "another team"}
+                  </p>
+                )}
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="text-[10px] text-gray-500 uppercase tracking-wider font-semibold block mb-1">
-                    Planned Date
-                  </label>
+                  <label className="text-[10px] text-gray-500 uppercase tracking-wider font-semibold block mb-1">Planned Date</label>
                   <input
                     type="date"
                     value={date}
@@ -1818,9 +1863,7 @@ export function ReactiveJobReviewDrawer({
                   />
                 </div>
                 <div>
-                  <label className="text-[10px] text-gray-500 uppercase tracking-wider font-semibold block mb-1">
-                    Est. time (mins)
-                  </label>
+                  <label className="text-[10px] text-gray-500 uppercase tracking-wider font-semibold block mb-1">Est. time (mins)</label>
                   <input
                     type="number"
                     min="0"
@@ -1830,44 +1873,142 @@ export function ReactiveJobReviewDrawer({
                   />
                 </div>
               </div>
-
-              {/* Schedule impact */}
-              {teamId && date && (
-                <div className="mt-2 p-3 rounded-xl bg-gray-50 border border-gray-100 space-y-2">
-                  <p className="text-[11px] font-bold text-gray-500 uppercase tracking-wide">
-                    Schedule impact — {dateLabel}
-                  </p>
-                  <CapBar
-                    total={totalWithJob}
-                    reactive={serviceMin}
-                    teamName={teamName}
-                    dateLabel={dateLabel}
-                  />
-                  <div className="flex items-center gap-3 text-[10px] font-semibold text-gray-500">
-                    <span className="flex items-center gap-1">
-                      <span className="w-2 h-2 rounded-full bg-green-500 inline-block" />
-                      Within target
-                    </span>
-                    <span className="flex items-center gap-1">
-                      <span className="w-2 h-2 rounded-full bg-red-500 inline-block" />
-                      Over target
-                    </span>
-                  </div>
-                  {overTarget && (
-                    <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-red-50 border border-red-100">
-                      <AlertTriangle className="w-3.5 h-3.5 text-red-500 flex-shrink-0" />
-                      <p className="text-[11px] font-semibold text-red-700">
-                        {teamName} will be {fmtMins(totalWithJob - PRODUCTIVE)} over the daily target
-                      </p>
-                    </div>
-                  )}
-                  <p className="text-[10px] text-gray-400 leading-snug">
-                    Includes this reactive job ({fmtMins(serviceMin)}) plus all other scheduled work on that day.
-                  </p>
-                </div>
-              )}
             </div>
           </WizardSectionCard>
+
+          {/* ── 3 — Schedule Impact (shown once team + date are set) ── */}
+          {teamId && date && (
+            <WizardSectionCard num={3} title={`Schedule Impact — ${teamName}, ${dateLabel}`}>
+              <div className="space-y-3">
+
+                {/* Capacity bar */}
+                <CapBar
+                  total={resolvedTotal}
+                  reactive={serviceMin}
+                  teamName={teamName}
+                  dateLabel={dateLabel}
+                />
+
+                {/* Status line */}
+                {isGreen ? (
+                  <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-green-50 border border-green-100">
+                    <CheckCircle2 className="w-3.5 h-3.5 text-green-600 flex-shrink-0" />
+                    <p className="text-[11px] font-semibold text-green-700">Within daily target — ready to assign.</p>
+                  </div>
+                ) : overTarget ? (
+                  <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-red-50 border border-red-100">
+                    <AlertTriangle className="w-3.5 h-3.5 text-red-500 flex-shrink-0" />
+                    <p className="text-[11px] font-semibold text-red-700">
+                      {fmtMins(resolvedTotal - PRODUCTIVE)} over target — resolve conflicts below or accept overtime.
+                    </p>
+                  </div>
+                ) : null}
+
+                {/* Per-job conflict resolution */}
+                {dayJobs.length > 0 && (
+                  <div className="rounded-xl border border-gray-100 overflow-hidden">
+                    <div className="px-4 py-2 bg-gray-50 border-b border-gray-100">
+                      <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400">
+                        {dayJobs.length} job{dayJobs.length !== 1 ? "s" : ""} already scheduled · {fmtMins(totalScheduled)}
+                      </p>
+                    </div>
+                    <div className="divide-y divide-gray-50 bg-white">
+                      {dayJobs.map(j => {
+                        const action = actions[j.id] ?? "none";
+                        const resolved = action !== "none";
+                        const jobMins = j.serviceTimeMins ?? 0;
+                        return (
+                          <div key={j.id} className={`px-4 py-3 transition-colors ${resolved ? "bg-green-50/40" : ""}`}>
+                            <div className="flex items-start gap-3">
+                              <div className="flex-1 min-w-0">
+                                <p className="text-[13px] font-semibold text-gray-900 truncate">{j.assetName}</p>
+                                <div className="flex items-center gap-2 mt-0.5 text-[11px] text-gray-400">
+                                  <Clock className="w-3 h-3" />
+                                  <span>{fmtMins(jobMins)}</span>
+                                  {j.suburb && <><span>·</span><span>{j.suburb}</span></>}
+                                </div>
+                                {action === "push" && (
+                                  <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 mt-1 inline-block">
+                                    ✓ Pushed → {fmtDateStr(addDaysStr(j.scheduledDate, 1))}
+                                  </span>
+                                )}
+                                {action === "defer" && (
+                                  <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-purple-50 text-purple-700 mt-1 inline-block">
+                                    ✓ Deferred → {fmtDateStr(addDaysStr(j.scheduledDate, 3))}
+                                  </span>
+                                )}
+                                {action === "delete" && (
+                                  <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-red-50 text-red-600 mt-1 inline-block">
+                                    ✕ Removed from schedule
+                                  </span>
+                                )}
+                                {action === "reassign" && reassignTo[j.id] && (
+                                  <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-purple-50 text-purple-700 mt-1 inline-block">
+                                    → {teamsData.find(t => t.id === reassignTo[j.id])?.name ?? "team"}
+                                  </span>
+                                )}
+                              </div>
+                              {resolved && (
+                                <span className="text-[11px] font-bold text-green-600 flex-shrink-0 mt-0.5">
+                                  -{fmtMins(jobMins)}
+                                </span>
+                              )}
+                            </div>
+                            {/* Action buttons */}
+                            <div className="flex items-center gap-1.5 mt-2 flex-wrap">
+                              {(["push", "defer", "delete", "reassign"] as const).map(a => {
+                                const active = action === a;
+                                const iconMap: Record<string, React.ReactNode> = {
+                                  push:     <SkipForward className="w-3 h-3" />,
+                                  defer:    <Calendar className="w-3 h-3" />,
+                                  delete:   <Trash2 className="w-3 h-3" />,
+                                  reassign: <Users className="w-3 h-3" />,
+                                };
+                                const labelMap: Record<string, string> = {
+                                  push: "Push +1d", defer: "Defer +3d", delete: "Delete", reassign: "Reassign",
+                                };
+                                const colMap: Record<string, string> = {
+                                  push: "#2563eb", defer: "#7c3aed", delete: "#dc2626", reassign: "#9333ea",
+                                };
+                                return (
+                                  <button
+                                    key={a}
+                                    onClick={() => setAction(j.id, active ? "none" : a)}
+                                    className={`flex items-center gap-1 text-[11px] font-semibold px-2.5 py-1.5 rounded-lg border-2 transition-all ${active ? "text-white border-transparent" : "border-gray-200 text-gray-500 hover:border-gray-300 bg-white"}`}
+                                    style={active ? { background: colMap[a], borderColor: colMap[a] } : {}}
+                                  >
+                                    {iconMap[a]}
+                                    {labelMap[a]}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                            {/* Reassign team picker */}
+                            {action === "reassign" && (
+                              <select
+                                value={reassignTo[j.id] ?? ""}
+                                onChange={e => setReassignTo(prev => ({ ...prev, [j.id]: e.target.value }))}
+                                className="mt-2 w-full px-2 py-1.5 text-xs border border-purple-200 rounded-lg outline-none focus:border-purple-400 bg-white"
+                              >
+                                <option value="">— Pick a team —</option>
+                                {teamsData.filter(t => t.id !== teamId).map(t => (
+                                  <option key={t.id} value={t.id}>{t.name}</option>
+                                ))}
+                              </select>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {dayJobs.length === 0 && (
+                  <p className="text-[11px] text-gray-400 italic">No other jobs scheduled for this day.</p>
+                )}
+              </div>
+            </WizardSectionCard>
+          )}
 
         </div>
 
