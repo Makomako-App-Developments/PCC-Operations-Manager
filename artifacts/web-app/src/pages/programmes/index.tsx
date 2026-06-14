@@ -1786,13 +1786,17 @@ function JobDetailPanel({
   return (
     <div className="fixed inset-0 z-50 flex">
       <div className="flex-1 bg-black/30" onClick={onClose} />
-      <div className="w-[420px] bg-white shadow-2xl flex flex-col overflow-y-auto">
-        {/* Panel header */}
-        <div className="px-6 py-4 border-b flex items-start justify-between" style={{ background: NAVY }}>
-          <div>
-            <p className="text-white text-sm font-bold">{job.assetName ?? "Unknown asset"}</p>
-            <p className="text-white/50 text-[11px] mt-0.5">Assessed {fmt(job.assessmentDate)}</p>
-            <div className="mt-2 flex items-center gap-2">
+      <div className="w-[480px] bg-gray-50 shadow-2xl flex flex-col overflow-hidden">
+
+        {/* Hero header */}
+        <div className="px-6 pt-5 pb-4 flex-shrink-0" style={{ background: NAVY }}>
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <p className="text-[10px] font-bold uppercase tracking-widest mb-1" style={{ color: BRAND }}>Review & Schedule</p>
+              <h2 className="text-lg font-black text-white leading-tight">{job.assetName ?? "Unknown asset"}</h2>
+              <p className="text-[12px] text-gray-400 mt-0.5 leading-snug">Assessed {fmt(job.assessmentDate)}</p>
+            </div>
+            <div className="flex items-center gap-2 flex-shrink-0 mt-0.5">
               <StatusBadge status={job.status} />
               {assetLat != null && assetLng != null && (
                 <button
@@ -1802,23 +1806,25 @@ function JobDetailPanel({
                   title="View this site on the main map"
                 >
                   <MapIcon className="w-3 h-3" />
-                  View on map
+                  Map
                   <ExternalLink className="w-2.5 h-2.5 opacity-70" />
                 </button>
               )}
+              <span className="px-2.5 py-1 rounded-full text-[10px] font-bold"
+                style={{ background: "rgba(0,174,205,0.2)", color: "#5dd8ef" }}>Infill</span>
+              <button onClick={onClose} className="text-white/40 hover:text-white transition-colors">
+                <X className="w-5 h-5" />
+              </button>
             </div>
           </div>
-          <button onClick={onClose}><X className="w-5 h-5 text-white/40 hover:text-white" /></button>
         </div>
 
-        <div className="flex-1 p-6 space-y-6">
-          {/* Assessment notes + date — editable */}
-          <div className="p-3 rounded-xl bg-amber-50 border border-amber-200">
-            <div className="flex items-center justify-between mb-1">
-              <div className="flex items-center gap-1.5">
-                <FileText className="w-3.5 h-3.5 text-amber-600" />
-                <span className="text-[11px] font-semibold text-amber-700">Assessment</span>
-              </div>
+        <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3">
+
+          {/* ── 1 — Assessment ── */}
+          <MulchSectionCard num={1} title="Assessment">
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-[10px] text-amber-600 font-semibold">Assessed {job.assessmentDate}</p>
               {!editAssessment && (
                 <button
                   onClick={() => setEditAssessment(true)}
@@ -1856,19 +1862,15 @@ function JobDetailPanel({
               </div>
             ) : (
               <>
-                <p className="text-[10px] text-amber-600 mb-0.5">Assessed {job.assessmentDate}</p>
                 {job.assessmentNotes
-                  ? <p className="text-xs text-amber-700">{job.assessmentNotes}</p>
-                  : <p className="text-xs text-amber-500 italic">No notes recorded.</p>}
+                  ? <p className="text-xs text-gray-700">{job.assessmentNotes}</p>
+                  : <p className="text-xs text-gray-400 italic">No notes recorded.</p>}
               </>
             )}
-          </div>
+          </MulchSectionCard>
 
-          {/* Species lines */}
-          <div>
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
-              Species Plan · {totalPlants} plants
-            </p>
+          {/* ── 2 — Species Plan ── */}
+          <MulchSectionCard num={2} title={`Species Plan · ${totalPlants} plants`}>
             <div className="space-y-1.5">
               {job.species.map((sp, i) => (
                 <div key={i} className="flex items-center justify-between px-3 py-2 rounded-lg bg-gray-50">
@@ -1885,162 +1887,157 @@ function JobDetailPanel({
                 <p className="text-xs text-gray-400 italic">No species lines recorded.</p>
               )}
             </div>
-          </div>
+          </MulchSectionCard>
 
-          {/* Schedule section */}
+          {/* ── 3 — Schedule to Team ── */}
           {job.status !== "completed" && job.status !== "cancelled" && (
-            <div className="border rounded-xl p-4 space-y-3">
-              <p className="text-xs font-semibold text-gray-700 flex items-center gap-1.5">
-                <Calendar className="w-4 h-4" style={{ color: BRAND }} /> Schedule to Team
-              </p>
-              <div>
-                <div className="flex items-center justify-between mb-1">
-                  <Label className="text-[11px] text-gray-500">Assign Team</Label>
-                  {autoAssigned && (
-                    <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full"
-                      style={{ background: "#e0f7fb", color: BRAND }}>
-                      Area team
-                    </span>
-                  )}
-                </div>
-                <select value={teamId} onChange={e => setTeamId(e.target.value)}
-                  className="w-full px-3 py-2 text-sm border border-gray-200 rounded-xl outline-none focus:border-[#00AECD] bg-white">
-                  <option value="">— Select team —</option>
-                  {teams.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
-                </select>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
+            <MulchSectionCard num={3} title="Schedule to Team">
+              <div className="space-y-3">
                 <div>
-                  <div className="flex items-center justify-between mb-1">
-                    <Label className="text-[11px] text-gray-500">Planned Date</Label>
-                    {infillDateAutoFilled && nextInfillVisitDate && plannedDate === nextInfillVisitDate && (
-                      <button
-                        type="button"
-                        onClick={() => { setPlannedDate(""); setInfillDateAutoFilled(false); }}
-                        className="text-[10px] font-semibold hover:opacity-70"
-                        style={{ color: "#00AECD" }}
-                      >
-                        next scheduled visit ×
-                      </button>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <Label className="text-[10px] text-gray-400 font-semibold">Assign Team</Label>
+                    {autoAssigned && (
+                      <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full"
+                        style={{ background: "#e0f7fb", color: BRAND }}>
+                        Area team
+                      </span>
                     )}
                   </div>
-                  <Input type="date" value={plannedDate} onChange={e => { setPlannedDate(e.target.value); setInfillDateAutoFilled(false); }} className="rounded-xl text-sm" />
+                  <select value={teamId} onChange={e => setTeamId(e.target.value)}
+                    className="w-full px-3 py-2.5 text-sm border border-gray-200 rounded-xl outline-none focus:border-[#00AECD] bg-white font-semibold text-gray-700">
+                    <option value="">— Select team —</option>
+                    {teams.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                  </select>
                 </div>
-                <div>
-                  <div className="flex items-center justify-between mb-1">
-                    <Label className="text-[11px] text-gray-500">Est. time (mins)</Label>
-                    {isAutoEstimate && (
-                      <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full bg-teal-50 text-teal-600">auto</span>
-                    )}
-                  </div>
-                  <Input type="number" value={estMins} onChange={e => setEstMins(e.target.value)}
-                    placeholder="e.g. 120" className="rounded-xl text-sm" />
-                </div>
-              </div>
-
-              {/* Schedule impact — shown once team + date are both set */}
-              {showImpact && (
-                <div className="rounded-xl border border-gray-100 bg-gray-50 p-4 space-y-4">
-                  <p className="text-xs font-bold text-gray-700">
-                    Schedule impact — {teamName}, {dateLabel}
-                  </p>
-                  {weekLoading ? (
-                    <div className="h-10 flex items-center justify-center text-gray-400 text-xs">
-                      Loading schedule data…
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <Label className="text-[10px] text-gray-400 font-semibold">Planned Date</Label>
+                      {infillDateAutoFilled && nextInfillVisitDate && plannedDate === nextInfillVisitDate && (
+                        <button
+                          type="button"
+                          onClick={() => { setPlannedDate(""); setInfillDateAutoFilled(false); }}
+                          className="text-[9px] font-bold hover:opacity-70" style={{ color: BRAND }}>
+                          next visit ×
+                        </button>
+                      )}
                     </div>
-                  ) : (
-                    <>
-                      <CapBar
-                        total={totalWithInfill}
-                        reactive={infillMins}
-                        teamName={teamName}
-                        dateLabel={dateLabel}
-                      />
+                    <Input type="date" value={plannedDate} onChange={e => { setPlannedDate(e.target.value); setInfillDateAutoFilled(false); }} className="rounded-xl text-sm" />
+                  </div>
+                  <div>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <Label className="text-[10px] text-gray-400 font-semibold">Est. time (mins)</Label>
+                      {isAutoEstimate && (
+                        <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full bg-teal-50 text-teal-600">auto</span>
+                      )}
+                    </div>
+                    <Input type="number" value={estMins} onChange={e => setEstMins(e.target.value)}
+                      placeholder="e.g. 120" className="rounded-xl text-sm" />
+                  </div>
+                </div>
 
-                      <div className="flex items-center gap-2">
-                        <div className="flex-1 text-center p-3 rounded-xl bg-white border border-gray-100">
-                          <p className="text-[10px] text-gray-400 mb-1">Scheduled today</p>
-                          <p className="text-lg font-black text-gray-700">{fmtMins(totalScheduled)}</p>
-                        </div>
-                        <span className="text-lg font-bold text-gray-400 flex-shrink-0">+</span>
-                        <div className="flex-1 text-center p-3 rounded-xl bg-white border border-gray-100">
-                          <p className="text-[10px] text-gray-400 mb-1">Infill work</p>
-                          <p className="text-lg font-black text-gray-700">+{fmtMins(infillMins)}</p>
-                        </div>
-                        <span className="text-lg font-bold text-gray-400 flex-shrink-0">=</span>
-                        <div className="flex-1 text-center p-3 rounded-xl bg-white border border-gray-100">
-                          <p className="text-[10px] text-gray-400 mb-1">New total</p>
-                          <p className="text-lg font-black" style={{ color: totalWithInfill > PRODUCTIVE ? "#dc2626" : "#16a34a" }}>
-                            {fmtMins(totalWithInfill)}
-                          </p>
-                        </div>
+                {showImpact && (
+                  <div className="rounded-xl border border-gray-100 bg-gray-50 p-4 space-y-4">
+                    <p className="text-xs font-bold text-gray-700">
+                      Schedule impact — {teamName}, {dateLabel}
+                    </p>
+                    {weekLoading ? (
+                      <div className="h-10 flex items-center justify-center text-gray-400 text-xs">
+                        Loading schedule data…
                       </div>
+                    ) : (
+                      <>
+                        <CapBar
+                          total={totalWithInfill}
+                          reactive={infillMins}
+                          teamName={teamName}
+                          dateLabel={dateLabel}
+                        />
 
-                      {totalWithInfill > PRODUCTIVE && !scheduleWasPushed ? (
-                        <div className="space-y-2">
-                          <div className="p-3 rounded-xl bg-red-50 border border-red-200 flex gap-2.5">
-                            <AlertTriangle className="w-4 h-4 text-red-500 flex-shrink-0 mt-0.5" />
-                            <p className="text-xs font-bold text-red-700">
-                              {teamName} will be {fmtMins(totalWithInfill - PRODUCTIVE)} over the daily target
+                        <div className="flex items-center gap-2">
+                          <div className="flex-1 text-center p-3 rounded-xl bg-white border border-gray-100">
+                            <p className="text-[10px] text-gray-400 mb-1">Scheduled today</p>
+                            <p className="text-lg font-black text-gray-700">{fmtMins(totalScheduled)}</p>
+                          </div>
+                          <span className="text-lg font-bold text-gray-400 flex-shrink-0">+</span>
+                          <div className="flex-1 text-center p-3 rounded-xl bg-white border border-gray-100">
+                            <p className="text-[10px] text-gray-400 mb-1">Infill work</p>
+                            <p className="text-lg font-black text-gray-700">+{fmtMins(infillMins)}</p>
+                          </div>
+                          <span className="text-lg font-bold text-gray-400 flex-shrink-0">=</span>
+                          <div className="flex-1 text-center p-3 rounded-xl bg-white border border-gray-100">
+                            <p className="text-[10px] text-gray-400 mb-1">New total</p>
+                            <p className="text-lg font-black" style={{ color: totalWithInfill > PRODUCTIVE ? "#dc2626" : "#16a34a" }}>
+                              {fmtMins(totalWithInfill)}
                             </p>
                           </div>
-                          <p className="text-[10px] text-gray-400 font-semibold uppercase tracking-wider">Resolve capacity conflict</p>
-                          <div className="grid grid-cols-2 gap-2">
-                            <button
-                              type="button"
-                              onClick={() => setOvertimeAccepted(v => !v)}
-                              className="py-2 rounded-xl border-2 font-bold text-xs flex items-center justify-center gap-1.5 transition-all"
-                              style={overtimeAccepted
-                                ? { borderColor: "#dc2626", background: "#fef2f2", color: "#dc2626" }
-                                : { borderColor: "#fca5a5", background: "white", color: "#ef4444" }}>
-                              {overtimeAccepted
-                                ? <><CheckCircle2 className="w-3.5 h-3.5" /> Overtime authorised</>
-                                : <><AlertTriangle className="w-3.5 h-3.5" /> 1 — Accept overtime</>}
-                            </button>
-                            <button
-                              type="button"
-                              onClick={handlePushSchedule}
-                              disabled={pushingSchedule}
-                              className="py-2 rounded-xl border-2 font-bold text-xs flex items-center justify-center gap-1.5 transition-all"
-                              style={{ borderColor: "#2563eb", background: "white", color: "#2563eb" }}>
-                              {pushingSchedule
-                                ? <><RotateCcw className="w-3.5 h-3.5 animate-spin" /> Pushing…</>
-                                : <><ChevronsRight className="w-3.5 h-3.5" /> 2 — Push to make room ({fmtMins(infillMins)})</>}
-                            </button>
-                          </div>
                         </div>
-                      ) : scheduleWasPushed ? (
-                        <div className="flex items-center gap-2 py-2.5 px-3 rounded-xl bg-blue-50 border border-blue-200">
-                          <CheckCircle2 className="w-4 h-4 text-blue-600 flex-shrink-0" />
-                          <p className="text-xs font-semibold text-blue-700">Schedule pushed — publish unlocked</p>
-                        </div>
-                      ) : (
-                        <div className="p-3 rounded-xl bg-green-50 border border-green-200 flex items-center gap-2">
-                          <CheckCircle2 className="w-4 h-4 text-green-600 flex-shrink-0" />
-                          <p className="text-[11px] font-semibold text-green-700">
-                            Within productive target — no capacity issues.
-                          </p>
-                        </div>
-                      )}
-                    </>
-                  )}
-                </div>
-              )}
 
-              <button
-                onClick={() => onSchedule(job.id, teamId, plannedDate, parseInt(estMins) || 0)}
-                disabled={!teamId || !plannedDate || (totalWithInfill > PRODUCTIVE && !overtimeAccepted && !scheduleWasPushed)}
-                className="w-full py-2 rounded-xl text-sm font-semibold text-white disabled:opacity-40"
-                style={{ background: BRAND }}>
-                Schedule Job
-              </button>
-            </div>
+                        {totalWithInfill > PRODUCTIVE && !scheduleWasPushed ? (
+                          <div className="space-y-2">
+                            <div className="p-3 rounded-xl bg-red-50 border border-red-200 flex gap-2.5">
+                              <AlertTriangle className="w-4 h-4 text-red-500 flex-shrink-0 mt-0.5" />
+                              <p className="text-xs font-bold text-red-700">
+                                {teamName} will be {fmtMins(totalWithInfill - PRODUCTIVE)} over the daily target
+                              </p>
+                            </div>
+                            <p className="text-[10px] text-gray-400 font-semibold uppercase tracking-wider">Resolve capacity conflict</p>
+                            <div className="grid grid-cols-2 gap-2">
+                              <button
+                                type="button"
+                                onClick={() => setOvertimeAccepted(v => !v)}
+                                className="py-2 rounded-xl border-2 font-bold text-xs flex items-center justify-center gap-1.5 transition-all"
+                                style={overtimeAccepted
+                                  ? { borderColor: "#dc2626", background: "#fef2f2", color: "#dc2626" }
+                                  : { borderColor: "#fca5a5", background: "white", color: "#ef4444" }}>
+                                {overtimeAccepted
+                                  ? <><CheckCircle2 className="w-3.5 h-3.5" /> Overtime authorised</>
+                                  : <><AlertTriangle className="w-3.5 h-3.5" /> 1 — Accept overtime</>}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={handlePushSchedule}
+                                disabled={pushingSchedule}
+                                className="py-2 rounded-xl border-2 font-bold text-xs flex items-center justify-center gap-1.5 transition-all"
+                                style={{ borderColor: "#2563eb", background: "white", color: "#2563eb" }}>
+                                {pushingSchedule
+                                  ? <><RotateCcw className="w-3.5 h-3.5 animate-spin" /> Pushing…</>
+                                  : <><ChevronsRight className="w-3.5 h-3.5" /> 2 — Push to make room ({fmtMins(infillMins)})</>}
+                              </button>
+                            </div>
+                          </div>
+                        ) : scheduleWasPushed ? (
+                          <div className="flex items-center gap-2 py-2.5 px-3 rounded-xl bg-blue-50 border border-blue-200">
+                            <CheckCircle2 className="w-4 h-4 text-blue-600 flex-shrink-0" />
+                            <p className="text-xs font-semibold text-blue-700">Schedule pushed — publish unlocked</p>
+                          </div>
+                        ) : (
+                          <div className="p-3 rounded-xl bg-green-50 border border-green-200 flex items-center gap-2">
+                            <CheckCircle2 className="w-4 h-4 text-green-600 flex-shrink-0" />
+                            <p className="text-[11px] font-semibold text-green-700">
+                              Within productive target — no capacity issues.
+                            </p>
+                          </div>
+                        )}
+                      </>
+                    )}
+                  </div>
+                )}
+
+                <button
+                  onClick={() => onSchedule(job.id, teamId, plannedDate, parseInt(estMins) || 0)}
+                  disabled={!teamId || !plannedDate || (totalWithInfill > PRODUCTIVE && !overtimeAccepted && !scheduleWasPushed)}
+                  className="w-full py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-40"
+                  style={{ background: BRAND }}>
+                  Schedule Job
+                </button>
+              </div>
+            </MulchSectionCard>
           )}
 
-          {/* Status update buttons — state machine constrained */}
+          {/* ── 4 — Update Status ── */}
           {ALLOWED_TRANSITIONS[job.status].length > 0 && (
-            <div>
-              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Update Status</p>
+            <MulchSectionCard num={job.status !== "completed" && job.status !== "cancelled" ? 4 : 3} title="Update Status">
               <div className="flex flex-wrap gap-2">
                 {ALLOWED_TRANSITIONS[job.status].map(s => (
                   <button key={s} onClick={() => onStatusChange(job.id, s)}
@@ -2050,7 +2047,7 @@ function JobDetailPanel({
                   </button>
                 ))}
               </div>
-            </div>
+            </MulchSectionCard>
           )}
         </div>
       </div>

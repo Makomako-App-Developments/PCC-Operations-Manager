@@ -224,6 +224,21 @@ export interface WizardProps {
   onPublished: () => void;
 }
 
+function WizardSectionCard({ num, title, children }: { num: number; title: string; children: React.ReactNode }) {
+  return (
+    <div className="rounded-2xl border border-gray-100 bg-white shadow-sm overflow-hidden">
+      <div className="flex items-center gap-3 px-4 py-2.5 border-b border-gray-100">
+        <div
+          className="w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-black text-white flex-shrink-0"
+          style={{ background: BRAND }}
+        >{num}</div>
+        <span className="text-[11px] font-bold text-gray-500 uppercase tracking-wider">{title}</span>
+      </div>
+      <div className="p-4">{children}</div>
+    </div>
+  );
+}
+
 export function ReactiveJobWizard({ teamsData, assetsData, onClose, onPublished }: WizardProps) {
   const { toast } = useToast();
   const qc = useQueryClient();
@@ -535,27 +550,22 @@ export function ReactiveJobWizard({ teamsData, assetsData, onClose, onPublished 
     reactiveMin > 0;
 
   return (
-    <div className="fixed inset-0 left-56 z-50 bg-[#f5f7f9] flex flex-col overflow-hidden">
-      {/* Header */}
-      <header
-        className="bg-white border-b px-8 py-4 flex items-center justify-between flex-shrink-0"
-        style={{ boxShadow: "0 1px 4px rgba(0,0,0,0.04)" }}
-      >
-        <div>
-          <h1 className="text-lg font-semibold flex items-center gap-2" style={{ color: NAVY }}>
-            <Zap className="w-5 h-5 text-amber-500" />
-            New Unscheduled Work
-          </h1>
-          <p className="text-xs text-gray-400">
-            Ad-hoc work insertion with schedule impact management
-          </p>
+    <div className="fixed inset-0 left-56 z-50 bg-gray-50 flex flex-col overflow-hidden">
+      {/* Hero header */}
+      <header className="px-8 pt-5 pb-4 flex-shrink-0" style={{ background: NAVY }}>
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-[10px] font-bold uppercase tracking-widest mb-1" style={{ color: BRAND }}>Unscheduled Work</p>
+            <h1 className="text-lg font-black text-white flex items-center gap-2">
+              <Zap className="w-5 h-5 text-amber-400" />
+              New Reactive Job
+            </h1>
+            <p className="text-[11px] text-gray-400 mt-0.5">Ad-hoc work insertion with schedule impact management</p>
+          </div>
+          <button onClick={onClose} className="text-white/40 hover:text-white transition-colors mt-0.5 p-1">
+            <X className="w-5 h-5" />
+          </button>
         </div>
-        <button
-          onClick={onClose}
-          className="text-gray-300 hover:text-gray-500 p-1.5 rounded-lg hover:bg-gray-50 transition-colors"
-        >
-          <X className="w-5 h-5" />
-        </button>
       </header>
 
       {/* Step progress */}
@@ -599,11 +609,7 @@ export function ReactiveJobWizard({ teamsData, assetsData, onClose, onPublished 
           {/* ── STEP 1 ──────────────────────────────────────────────── */}
           {step === 1 && (
             <>
-              <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
-                <h2 className="text-sm font-bold text-gray-900 mb-4 flex items-center gap-2">
-                  <MapPin className="w-4 h-4" style={{ color: BRAND }} />
-                  Location
-                </h2>
+              <WizardSectionCard num={1} title="Location">
                 <div className="flex gap-2 mb-4">
                   {(["asset", "other"] as const).map(t => (
                     <button
@@ -745,13 +751,9 @@ export function ReactiveJobWizard({ teamsData, assetsData, onClose, onPublished 
                     </p>
                   </div>
                 )}
-              </div>
+              </WizardSectionCard>
 
-              <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
-                <h2 className="text-sm font-bold text-gray-900 mb-4 flex items-center gap-2">
-                  <Zap className="w-4 h-4" style={{ color: BRAND }} />
-                  Job Details
-                </h2>
+              <WizardSectionCard num={2} title="Job Details">
                 <div className="grid grid-cols-2 gap-5">
                   <div>
                     <label className="text-xs text-gray-500 font-medium block mb-1.5">
@@ -866,16 +868,10 @@ export function ReactiveJobWizard({ teamsData, assetsData, onClose, onPublished 
                     />
                   </div>
                 </div>
-              </div>
+              </WizardSectionCard>
 
               {/* ── Attachments ──────────────────────────────────────────── */}
-              <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
-                <h2 className="text-sm font-bold text-gray-900 mb-4 flex items-center gap-2">
-                  <Paperclip className="w-4 h-4" style={{ color: BRAND }} />
-                  Attachments
-                  <span className="text-xs font-normal text-gray-400 ml-1">optional</span>
-                </h2>
-
+              <WizardSectionCard num={3} title="Attachments (optional)">
                 {/* Drop / click zone */}
                 <label
                   className="flex flex-col items-center justify-center gap-2 w-full border-2 border-dashed border-gray-200 rounded-xl py-6 px-4 cursor-pointer hover:border-[#00AECD] hover:bg-[#00AECD]/5 transition-colors"
@@ -952,7 +948,7 @@ export function ReactiveJobWizard({ teamsData, assetsData, onClose, onPublished 
                     })}
                   </div>
                 )}
-              </div>
+              </WizardSectionCard>
 
               <div className="flex justify-end">
                 <button
@@ -1002,10 +998,7 @@ export function ReactiveJobWizard({ teamsData, assetsData, onClose, onPublished 
               </div>
 
               {/* Capacity impact card */}
-              <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
-                <h3 className="text-sm font-bold text-gray-900 mb-4">
-                  Schedule impact — {teamName}, {dateLabel}
-                </h3>
+              <WizardSectionCard num={1} title={`Schedule Impact — ${teamName}, ${dateLabel}`}>
                 {weekLoading ? (
                   <div className="h-24 flex items-center justify-center text-gray-400 text-sm">
                     Loading schedule data…
@@ -1130,7 +1123,7 @@ export function ReactiveJobWizard({ teamsData, assetsData, onClose, onPublished 
                     )}
                   </>
                 )}
-              </div>
+              </WizardSectionCard>
 
               <div className="flex items-center justify-between">
                 <button
@@ -1156,7 +1149,7 @@ export function ReactiveJobWizard({ teamsData, assetsData, onClose, onPublished 
           {step === 3 && (
             <>
               {/* Live capacity bar */}
-              <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
+              <WizardSectionCard num={1} title="Capacity">
                 <CapBar
                   total={resolvedTotal}
                   reactive={serviceMin}
@@ -1221,28 +1214,11 @@ export function ReactiveJobWizard({ teamsData, assetsData, onClose, onPublished 
                     </p>
                   </div>
                 )}
-              </div>
+              </WizardSectionCard>
 
-              {/* Option 3 divider */}
-              <div className="flex items-center gap-3">
-                <div className="flex-1 h-px bg-gray-200" />
-                <span className="text-[11px] font-semibold text-gray-400 whitespace-nowrap">
-                  3 — or amend individual jobs below
-                </span>
-                <div className="flex-1 h-px bg-gray-200" />
-              </div>
-
-              {/* Jobs list */}
-              <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-                <div className="px-5 py-3 border-b bg-gray-50 flex items-center justify-between">
-                  <p className="text-xs font-bold text-gray-700 uppercase tracking-wider">
-                    {teamName} — {dateLabel} jobs
-                  </p>
-                  <p className="text-[11px] text-gray-400">
-                    {dayJobs.length} job{dayJobs.length !== 1 ? "s" : ""} ·{" "}
-                    {fmtMins(totalScheduled)}
-                  </p>
-                </div>
+              {/* Jobs list — section 2 of step 3, labelled as option 3 per the step flow */}
+              <WizardSectionCard num={2} title={`Amend Individual Jobs — ${teamName}, ${dateLabel} · ${dayJobs.length} job${dayJobs.length !== 1 ? "s" : ""} · ${fmtMins(totalScheduled)}`}>
+                <div className="text-[10px] text-gray-400 font-semibold uppercase tracking-wider mb-2">3 — or amend individual jobs below</div>
                 {dayJobs.length === 0 ? (
                   <div className="px-5 py-10 text-center text-sm text-gray-400">
                     {weekLoading
@@ -1388,7 +1364,7 @@ export function ReactiveJobWizard({ teamsData, assetsData, onClose, onPublished 
                     })}
                   </div>
                 )}
-              </div>
+              </WizardSectionCard>
 
               <div className="flex items-center justify-between">
                 <button
@@ -1413,11 +1389,7 @@ export function ReactiveJobWizard({ teamsData, assetsData, onClose, onPublished 
           {step === 4 && (
             <>
               {/* Reactive job summary */}
-              <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
-                <h3 className="text-sm font-bold text-gray-900 mb-4 flex items-center gap-2">
-                  <Zap className="w-4 h-4 text-amber-500" />
-                  Unscheduled work to be added
-                </h3>
+              <WizardSectionCard num={1} title="Unscheduled Work to be Added">
                 <div className="p-4 rounded-xl bg-amber-50 border border-amber-200 flex items-start gap-4">
                   <div className="flex-1">
                     <p className="text-sm font-bold text-gray-900">{location}</p>
@@ -1448,15 +1420,11 @@ export function ReactiveJobWizard({ teamsData, assetsData, onClose, onPublished 
                     {priorities.find(p => p.id === priority)?.label.split(" / ")[0] ?? priority}
                   </span>
                 </div>
-              </div>
+              </WizardSectionCard>
 
               {/* Schedule changes */}
               {(scheduleWasPushed || resolvedJobsList.length > 0) && (
-                <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
-                  <h3 className="text-sm font-bold text-gray-900 mb-4">
-                    Schedule changes
-                    {resolvedJobsList.length > 0 && ` (${resolvedJobsList.length} job${resolvedJobsList.length !== 1 ? "s" : ""})`}
-                  </h3>
+                <WizardSectionCard num={2} title={`Schedule Changes${resolvedJobsList.length > 0 ? ` (${resolvedJobsList.length} job${resolvedJobsList.length !== 1 ? "s" : ""})` : ""}`}>
                   <div className="space-y-2">
                     {scheduleWasPushed && (
                       <div className="flex items-center gap-3 py-2.5 px-4 rounded-xl bg-blue-50 border border-blue-100">
@@ -1523,28 +1491,21 @@ export function ReactiveJobWizard({ teamsData, assetsData, onClose, onPublished 
                       );
                     })}
                   </div>
-                </div>
+                </WizardSectionCard>
               )}
 
               {/* Final capacity */}
-              <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
-                <h3 className="text-sm font-bold text-gray-900 mb-4">
-                  Final capacity — {teamName}, {dateLabel}
-                </h3>
+              <WizardSectionCard num={3} title={`Final Capacity — ${teamName}, ${dateLabel}`}>
                 <CapBar
                   total={resolvedTotal}
                   reactive={serviceMin}
                   teamName={teamName}
                   dateLabel={dateLabel}
                 />
-              </div>
+              </WizardSectionCard>
 
               {/* Notification preview */}
-              <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
-                <h3 className="text-sm font-bold text-gray-900 mb-3 flex items-center gap-2">
-                  <Bell className="w-4 h-4" style={{ color: BRAND }} />
-                  Worker notifications on publish
-                </h3>
+              <WizardSectionCard num={4} title="Worker Notifications on Publish">
                 <div className="space-y-2">
                   {[
                     {
@@ -1583,7 +1544,7 @@ export function ReactiveJobWizard({ teamsData, assetsData, onClose, onPublished 
                     </div>
                   ))}
                 </div>
-              </div>
+              </WizardSectionCard>
 
               <div className="flex items-center justify-between pb-8">
                 <button
