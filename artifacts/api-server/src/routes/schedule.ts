@@ -1314,10 +1314,11 @@ router.get(
 const PUSH_UNDO_WINDOW_MS = 15 * 60 * 1000; // 15 minutes
 
 const pushForwardBodySchema = z.object({
-  teamId:    z.string().uuid(),
-  fromDate:  z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-  deltaDays: z.number().int().min(-30).max(30).default(1),
-  pushedAt:  z.string().datetime().optional(),
+  teamId:        z.string().uuid(),
+  fromDate:      z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  deltaDays:     z.number().int().min(-30).max(30).default(1),
+  minutesToFree: z.number().int().positive().optional(),
+  pushedAt:      z.string().datetime().optional(),
 });
 
 router.post(
@@ -1338,6 +1339,65 @@ router.post(
         });
         return;
       }
+    }
+
+    // ── Selective push: move only enough jobs on fromDate to free minutesToFree ──
+    if (minutesToFree && minutesToFree > 0) {
+      const dateJobs = await db
+        .select({
+          id:               jobsTable.id,
+          estimatedTimeMins: jobsTable.estimatedTimeMins,
+          serviceTimeMins:  assetsTable.serviceTimeMins,
+        })
+        .from(jobsTable)
+        .leftJoin(assetsTable, eq(jobsTable.assetId, assetsTable.id))
+        .where(
+          and(
+            eq(jobsTable.teamId, teamId),
+            sql`to_char(${jobsTable.scheduledDate}, 'YYYY-MM-DD') = ${fromDate}`,
+            eq(jobsTable.status, "pending"),
+            eq(jobsTable.jobType, "scheduled"),
+          ),
+        );
+
+      if (dateJobs.length === 0) {
+        res.json({ affectedCount: 0, fromDate, toDate: fromDate, pushedAt: new Date().toISOString() });
+        return;
+      }
+
+      // Sort biggest jobs first — greedily push fewest jobs while freeing required capacity
+      const sorted = dateJobs
+        .map(j => ({ id: j.id, mins: j.estimatedTimeMins ?? j.serviceTimeMins ?? 0 }))
+        .sort((a, b) => b.mins - a.mins);
+
+      const toMove: string[] = [];
+      let freed = 0;
+      for (const j of sorted) {
+        if (freed >= minutesToFree) break;
+        toMove.push(j.id);
+        freed += j.mins;
+      }
+
+      if (toMove.length > 0) {
+        const nonWorkingDays = await buildTeamNonWorkingDays(teamId, fromDate, addDays(fromDate, 30));
+        const nextDate = addWorkingDays(fromDate, 1, nonWorkingDays);
+        await db
+          .update(jobsTable)
+          .set({ scheduledDate: nextDate, updatedAt: new Date() })
+          .where(inArray(jobsTable.id, toMove));
+
+        const pushedAtTs = new Date().toISOString();
+        await auditLog({
+          tableName: "schedule", recordId: null, action: "push_forward",
+          changedById: req.auth?.userId ?? null,
+          newData: { teamId, fromDate, minutesToFree, affectedCount: toMove.length },
+          ipAddress: req.ip ?? null,
+        });
+        res.json({ affectedCount: toMove.length, fromDate, toDate: nextDate, pushedAt: pushedAtTs });
+      } else {
+        res.json({ affectedCount: 0, fromDate, toDate: fromDate, pushedAt: new Date().toISOString() });
+      }
+      return;
     }
 
     // Only shift pending scheduled (regular maintenance) jobs for this team on or after fromDate.

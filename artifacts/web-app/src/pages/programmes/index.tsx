@@ -510,7 +510,7 @@ function MulchingReviewDrawer({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ teamId, fromDate: scheduledDate, deltaDays: 1 }),
+        body: JSON.stringify({ teamId, fromDate: scheduledDate, minutesToFree: mulchMins }),
       });
       if (!res.ok) throw new Error(await res.text());
       setScheduleWasPushed(true);
@@ -928,7 +928,7 @@ function MulchingReviewDrawer({
                   style={{ borderColor: "#2563eb", background: "white", color: "#2563eb" }}>
                   {pushingSchedule
                     ? <><RotateCcw className="w-3.5 h-3.5 animate-spin" /> Pushing…</>
-                    : <><ChevronsRight className="w-3.5 h-3.5" /> 2 — Push schedule +1 day</>}
+                    : <><ChevronsRight className="w-3.5 h-3.5" /> 2 — Push to make room ({fmtMins(mulchMins)})</>}
                 </button>
               </div>
             </div>

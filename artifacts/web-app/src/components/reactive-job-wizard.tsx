@@ -372,7 +372,7 @@ export function ReactiveJobWizard({ teamsData, assetsData, onClose, onPublished 
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ teamId: selectedTeamId, fromDate: selectedDate, deltaDays: 1 }),
+        body: JSON.stringify({ teamId: selectedTeamId, fromDate: selectedDate, minutesToFree: serviceMin }),
       });
       if (!res.ok) throw new Error(await res.text());
       const data = await res.json();
@@ -1181,7 +1181,7 @@ export function ReactiveJobWizard({ teamsData, assetsData, onClose, onPublished 
                         {pushingScheduleForward
                           ? <Loader2 className="w-3 h-3 animate-spin" />
                           : <SkipForward className="w-3 h-3" />}
-                        2 — Push whole schedule +1 day
+                        2 — Push to make room ({fmtMins(serviceMin)})
                       </button>
                     </div>
                   </div>
