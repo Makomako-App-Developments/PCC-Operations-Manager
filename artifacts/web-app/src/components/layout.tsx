@@ -126,7 +126,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
           </button>
         </div>
       </aside>
-      <main className="flex-1 overflow-auto flex flex-col">
+      <main className="flex-1 overflow-hidden flex flex-col">
         {children}
       </main>
     </div>
