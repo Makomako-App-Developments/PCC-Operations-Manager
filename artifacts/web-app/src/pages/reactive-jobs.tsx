@@ -554,7 +554,7 @@ export default function ReactiveJobs() {
                 return (
                   <tr
                     key={job.id as string}
-                    onClick={() => setSelectedJob(job)}
+                    onClick={() => job.status === "draft" ? setEditDrawerJob(job) : setSelectedJob(job)}
                     className={`${rowBg} cursor-pointer hover:bg-[#00AECD]/5 transition-colors`}
                   >
                     {/* Site */}
@@ -638,7 +638,7 @@ export default function ReactiveJobs() {
                             className="h-8 w-8 p-0 hover:bg-[#e0f7fb]"
                             style={{ color: "#2563eb" }}
                             title="Open to schedule"
-                            onClick={() => setSelectedJob(job)}>
+                            onClick={() => job.status === "draft" ? setEditDrawerJob(job) : setSelectedJob(job)}>
                             <CalendarCheck className="w-4 h-4" />
                           </Button>
                           <Button
