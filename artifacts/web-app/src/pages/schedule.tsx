@@ -2379,7 +2379,7 @@ export default function Schedule() {
             </SheetTitle>
             <SheetDescription className="text-xs text-gray-400 font-mono">
               {selectedJob?.jobType === "unscheduled"
-                ? (selectedJob?.assetName ?? "")
+                ? (reactiveJobDetail?.assetDescription ?? "")
                 : (selectedJob?.scheduledDate ? format(new Date(selectedJob.scheduledDate + "T00:00:00"), "EEEE d MMM yyyy") : "")}
             </SheetDescription>
           </SheetHeader>
@@ -2518,7 +2518,10 @@ export default function Schedule() {
                     })()}
                     {reactiveJobDetail.raisedAt && (
                       <span className="text-[10px] text-gray-400 bg-gray-50 px-2.5 py-1 rounded-full ml-auto whitespace-nowrap">
-                        Raised {format(new Date(reactiveJobDetail.raisedAt), "d MMM yyyy")}
+                        Raised {format(new Date(reactiveJobDetail.raisedAt), "d MMM yyyy, h:mm a")}
+                        {reactiveJobDetail.raisedByName && (
+                          <> · <span className="font-semibold">{reactiveJobDetail.raisedByName}</span></>
+                        )}
                       </span>
                     )}
                   </div>

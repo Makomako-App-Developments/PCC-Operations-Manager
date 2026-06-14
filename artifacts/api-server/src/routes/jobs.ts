@@ -929,9 +929,11 @@ router.get("/reactive-jobs/:id", requireAuth, async (req, res) => {
     .select({
       ...reactiveJobsTable,
       raisedByName: usersTable.name,
+      assetDescription: assetsTable.description,
     })
     .from(reactiveJobsTable)
     .leftJoin(usersTable, eq(reactiveJobsTable.raisedById, usersTable.id))
+    .leftJoin(assetsTable, eq(reactiveJobsTable.assetId, assetsTable.id))
     .where(eq(reactiveJobsTable.id, id))
     .limit(1);
   if (!row) { res.status(404).json({ error: "Reactive job not found" }); return; }
