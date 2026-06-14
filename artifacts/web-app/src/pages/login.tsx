@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { Leaf, Eye, EyeOff, Loader2 } from "lucide-react";
+import { useState, useEffect } from "react";
+import { Leaf, Eye, EyeOff, Loader2, Clock } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
 
@@ -8,6 +8,16 @@ export default function Login() {
   const [password, setPassword] = useState("Porirua2024!");
   const [showPw, setShowPw] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [inactivityBanner, setInactivityBanner] = useState(false);
+
+  useEffect(() => {
+    if (sessionStorage.getItem("loggedOutReason") === "inactivity") {
+      sessionStorage.removeItem("loggedOutReason");
+      setInactivityBanner(true);
+      const t = setTimeout(() => setInactivityBanner(false), 8000);
+      return () => clearTimeout(t);
+    }
+  }, []);
   
   const { login } = useAuth();
   const { toast } = useToast();
@@ -72,6 +82,16 @@ export default function Login() {
 
           <h2 className="text-2xl font-black mb-1 text-[#0f2a36]">Welcome back</h2>
           <p className="text-gray-400 text-sm mb-8">Sign in to your account to continue</p>
+
+          {inactivityBanner && (
+            <div className="flex items-start gap-3 mb-6 px-4 py-3 rounded-xl bg-amber-50 border border-amber-200">
+              <Clock className="w-4 h-4 text-amber-500 mt-0.5 flex-shrink-0" />
+              <div>
+                <p className="text-sm font-semibold text-amber-800">Session expired</p>
+                <p className="text-xs text-amber-700 mt-0.5">You were logged out due to 30 minutes of inactivity.</p>
+              </div>
+            </div>
+          )}
 
           <form onSubmit={handleSubmit} className="space-y-4 mb-6">
             <div>

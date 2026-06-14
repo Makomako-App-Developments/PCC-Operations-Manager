@@ -4,6 +4,8 @@ import { useGetMe, useLogin, useLogout, LoginRequest, User } from "@workspace/ap
 import { useLocation } from "wouter";
 import { useQueryClient } from "@tanstack/react-query";
 
+const IDLE_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes
+
 const FIELD_OPS_ROLES = ["field_worker", "manager", "supervisor", "administrator"];
 
 function isMobileDevice() {
@@ -61,6 +63,39 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     }
   });
+
+  // ── Idle timeout ──────────────────────────────────────────────────────────
+  const idleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Keep a stable ref to the logout fn so the timer callback never goes stale
+  const logoutRef = useRef<() => void>(() => {});
+  useEffect(() => {
+    logoutRef.current = () => {
+      sessionStorage.setItem("loggedOutReason", "inactivity");
+      logoutMutation.mutateAsync().catch(() => {
+        queryClient.clear();
+        setLocation("/login");
+      });
+    };
+  });
+
+  useEffect(() => {
+    if (!user) return;
+
+    const reset = () => {
+      if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
+      idleTimerRef.current = setTimeout(() => logoutRef.current(), IDLE_TIMEOUT_MS);
+    };
+
+    const events = ["mousemove", "keydown", "mousedown", "touchstart", "scroll"] as const;
+    events.forEach(e => window.addEventListener(e, reset, { passive: true }));
+    reset(); // start the clock
+
+    return () => {
+      events.forEach(e => window.removeEventListener(e, reset));
+      if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
+    };
+  }, [user]);
+  // ─────────────────────────────────────────────────────────────────────────
 
   useEffect(() => {
     if (isLoading) return;
