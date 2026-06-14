@@ -500,7 +500,7 @@ export default function ReactiveJobs() {
           </div>
         ) : (
           <div className="rounded-xl border border-gray-200 bg-white">
-          <table className="w-full border-collapse text-sm">
+          <table className="w-full border-separate border-spacing-0 text-sm">
             <thead>
               <tr className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide">
                 {([
@@ -536,10 +536,10 @@ export default function ReactiveJobs() {
                   <tr
                     key={job.id as string}
                     onClick={() => setSelectedJob(job)}
-                    className={`${rowBg} border-b border-gray-100 cursor-pointer hover:bg-[#00AECD]/5 transition-colors`}
+                    className={`${rowBg} cursor-pointer hover:bg-[#00AECD]/5 transition-colors`}
                   >
                     {/* Site */}
-                    <td className="px-4 py-3 max-w-[180px]">
+                    <td className="px-4 py-3 max-w-[180px] border-b border-gray-100">
                       <div className="flex items-center gap-1.5">
                         <MapPin className="w-3 h-3 text-gray-300 flex-shrink-0" />
                         <span className="font-semibold text-gray-800 truncate" title={site}>{site}</span>
@@ -555,13 +555,13 @@ export default function ReactiveJobs() {
                     </td>
 
                     {/* Description */}
-                    <td className="px-4 py-3 text-gray-600 max-w-[220px]">
+                    <td className="px-4 py-3 text-gray-600 max-w-[220px] border-b border-gray-100">
                       <p className="font-medium text-gray-800 truncate">{job.issueType as string}</p>
                       <p className="text-[11px] text-gray-400 truncate">{job.description as string}</p>
                     </td>
 
                     {/* Priority */}
-                    <td className="px-4 py-3">
+                    <td className="px-4 py-3 border-b border-gray-100">
                       <span
                         className="text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider whitespace-nowrap"
                         style={{ color: pConf.color, background: pConf.bg }}
@@ -571,7 +571,7 @@ export default function ReactiveJobs() {
                     </td>
 
                     {/* Status */}
-                    <td className="px-4 py-3">
+                    <td className="px-4 py-3 border-b border-gray-100">
                       {(() => {
                         const StatusIcon = sConf.icon;
                         return (
@@ -587,24 +587,24 @@ export default function ReactiveJobs() {
                     </td>
 
                     {/* Scheduled */}
-                    <td className="px-4 py-3 text-gray-600 whitespace-nowrap text-[12px]">
+                    <td className="px-4 py-3 text-gray-600 whitespace-nowrap text-[12px] border-b border-gray-100">
                       {(job.scheduledDate as string | null)
                         ? format(new Date((job.scheduledDate as string) + "T00:00:00"), "d MMM yyyy")
                         : <span className="text-gray-300">—</span>}
                     </td>
 
                     {/* Team */}
-                    <td className="px-4 py-3 text-gray-600 text-[12px] whitespace-nowrap">
+                    <td className="px-4 py-3 text-gray-600 text-[12px] whitespace-nowrap border-b border-gray-100">
                       {getTeamName(job.assignedTeamId as string | null)}
                     </td>
 
                     {/* Time */}
-                    <td className="px-4 py-3 text-gray-600 text-[12px] tabular-nums">
+                    <td className="px-4 py-3 text-gray-600 text-[12px] tabular-nums border-b border-gray-100">
                       {(job.estimatedTimeMins as number | null) ?? <span className="text-gray-300">—</span>}
                     </td>
 
                     {/* Origin */}
-                    <td className="px-4 py-3">
+                    <td className="px-4 py-3 border-b border-gray-100">
                       {(() => {
                         const o = job.origin as string | null;
                         if (!o) return <span className="text-gray-300 text-[12px]">—</span>;
@@ -624,7 +624,7 @@ export default function ReactiveJobs() {
                     </td>
 
                     {/* Actions */}
-                    <td className="px-4 py-3" onClick={e => e.stopPropagation()}>
+                    <td className="px-4 py-3 border-b border-gray-100" onClick={e => e.stopPropagation()}>
                       {job.status !== "completed" && job.status !== "cancelled" && (
                         <div className="flex items-center justify-end gap-0.5">
                           <Button
