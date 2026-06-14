@@ -356,7 +356,6 @@ export default function ReactiveJobs() {
       >
         <div>
           <h1 className="text-lg font-semibold flex items-center gap-2" style={{ color: NAVY }}>
-            <Zap className="w-5 h-5 text-amber-500" />
             Unscheduled Work
           </h1>
           <p className="text-xs text-gray-400">Ad-hoc requests, emergency work</p>
@@ -532,7 +531,7 @@ export default function ReactiveJobs() {
                   { col: "scheduledDate", label: "Scheduled" },
                   { col: "team",          label: "Team" },
                   { col: "time",          label: "Time (min)" },
-                  { col: "origin",        label: "Origin" },
+                  { col: "origin",        label: "Raised by" },
                 ] as { col: SortCol; label: string }[]).map(({ col, label }) => (
                   <th
                     key={col}
