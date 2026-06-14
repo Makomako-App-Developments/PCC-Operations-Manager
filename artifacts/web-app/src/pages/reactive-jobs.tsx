@@ -502,7 +502,7 @@ export default function ReactiveJobs() {
       </div>
 
       {/* Table */}
-      <div className="flex-1 overflow-auto p-6">
+      <div className="flex-1 overflow-hidden flex flex-col min-h-0 p-6">
         {isLoading ? (
           <div className="space-y-2">
             {[...Array(6)].map((_, i) => (
@@ -518,7 +518,7 @@ export default function ReactiveJobs() {
             </p>
           </div>
         ) : (
-          <div className="rounded-xl border border-gray-200 bg-white">
+          <div className="rounded-xl border border-gray-200 bg-white overflow-auto flex-1 min-h-0">
           <table className="w-full border-separate border-spacing-0 text-sm">
             <thead>
               <tr className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide">
