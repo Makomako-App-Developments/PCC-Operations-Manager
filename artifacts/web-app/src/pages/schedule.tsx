@@ -1292,7 +1292,7 @@ export default function Schedule() {
   const handleJobClick = (job: any) => {
     setSelectedJob(job);
     if (job.jobType === "unscheduled") {
-      setRjStatus(job.status ?? "raised");
+      setRjStatus(job.reactiveStatus ?? job.status ?? "raised");
       setRjScheduledDate(job.scheduledDate ?? "");
     } else {
       setJobStatus(job.status);
