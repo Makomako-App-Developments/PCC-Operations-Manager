@@ -299,6 +299,10 @@ export function ReactiveJobWizard({ teamsData, assetsData, onClose, onPublished 
     }
   }, [dayJobs]);
 
+  useEffect(() => {
+    setScheduleWasPushed(false);
+  }, [selectedDate, selectedTeamId]);
+
   const assetDayJob = useMemo(() => {
     if (!selectedAssetId || !weekData) return null;
     for (const day of weekData.days) {
@@ -1335,7 +1339,7 @@ export function ReactiveJobWizard({ teamsData, assetsData, onClose, onPublished 
 
               <div className="flex items-center justify-between">
                 <button
-                  onClick={() => { setStep(2); setAcceptOvertime(false); }}
+                  onClick={() => { setStep(2); setAcceptOvertime(false); setScheduleWasPushed(false); }}
                   className="text-sm text-gray-400 hover:text-gray-600"
                 >
                   ← Back
