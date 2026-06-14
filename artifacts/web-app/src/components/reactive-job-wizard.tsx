@@ -252,6 +252,7 @@ export function ReactiveJobWizard({ teamsData, assetsData, onClose, onPublished 
   const [acceptOvertime, setAcceptOvertime] = useState(false);
   const [pushingScheduleForward, setPushingScheduleForward] = useState(false);
   const [scheduleWasPushed, setScheduleWasPushed] = useState(false);
+  const [undoingPush, setUndoingPush] = useState(false);
 
   const { data: settingsData } = useQuery<{ reactivePriorities?: ReactivePriority[] }>({
     queryKey: ["system-settings"],
@@ -374,6 +375,27 @@ export function ReactiveJobWizard({ teamsData, assetsData, onClose, onPublished 
       toast({ title: "Push failed", description: String(err), variant: "destructive" });
     } finally {
       setPushingScheduleForward(false);
+    }
+  };
+
+  const handleUndoPush = async () => {
+    if (!selectedTeamId || !selectedDate) return;
+    setUndoingPush(true);
+    try {
+      const res = await fetch("/api/schedule/push-forward", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ teamId: selectedTeamId, fromDate: selectedDate, deltaDays: -1 }),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      setScheduleWasPushed(false);
+      qc.invalidateQueries({ queryKey: getGetScheduleWeekQueryKey({ teamId: selectedTeamId }) });
+      setStep(3);
+    } catch (err) {
+      toast({ title: "Undo failed", description: String(err), variant: "destructive" });
+    } finally {
+      setUndoingPush(false);
     }
   };
 
@@ -1408,7 +1430,7 @@ export function ReactiveJobWizard({ teamsData, assetsData, onClose, onPublished 
                     {scheduleWasPushed && (
                       <div className="flex items-center gap-3 py-2.5 px-4 rounded-xl bg-blue-50 border border-blue-100">
                         <SkipForward className="w-4 h-4 text-blue-500 flex-shrink-0" />
-                        <div>
+                        <div className="flex-1">
                           <p className="text-[13px] font-semibold text-gray-800">
                             Whole schedule pushed forward
                           </p>
@@ -1416,6 +1438,13 @@ export function ReactiveJobWizard({ teamsData, assetsData, onClose, onPublished 
                             All scheduled jobs shifted +1 working day from {dateLabel}
                           </p>
                         </div>
+                        <button
+                          onClick={handleUndoPush}
+                          disabled={undoingPush}
+                          className="text-[11px] font-semibold text-blue-500 hover:text-blue-700 disabled:opacity-50 flex-shrink-0 underline underline-offset-2"
+                        >
+                          {undoingPush ? "Undoing…" : "Undo"}
+                        </button>
                       </div>
                     )}
                     {resolvedJobsList.map(job => {

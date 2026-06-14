@@ -38,13 +38,23 @@ function isWeekend(dateStr: string): boolean {
 /** Advance n calendar days, skipping weekends. */
 function addWorkingDays(dateStr: string, n: number, skipDates?: Set<string>): string {
   let d = dateStr;
-  let added = 0;
-  while (added < n) {
-    d = addDays(d, 1);
-    if (!isWeekend(d) && (!skipDates || !skipDates.has(d))) added++;
+  if (n > 0) {
+    let added = 0;
+    while (added < n) {
+      d = addDays(d, 1);
+      if (!isWeekend(d) && (!skipDates || !skipDates.has(d))) added++;
+    }
+    // Advance past any trailing weekend or team non-working days
+    while (isWeekend(d) || (skipDates && skipDates.has(d))) d = addDays(d, 1);
+  } else if (n < 0) {
+    let subtracted = 0;
+    while (subtracted > n) {
+      d = addDays(d, -1);
+      if (!isWeekend(d) && (!skipDates || !skipDates.has(d))) subtracted--;
+    }
+    // Retreat past any leading weekend or team non-working days
+    while (isWeekend(d) || (skipDates && skipDates.has(d))) d = addDays(d, -1);
   }
-  // Advance past any trailing weekend or team non-working days
-  while (isWeekend(d) || (skipDates && skipDates.has(d))) d = addDays(d, 1);
   return d;
 }
 
@@ -1303,7 +1313,7 @@ router.get(
 const pushForwardBodySchema = z.object({
   teamId:    z.string().uuid(),
   fromDate:  z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-  deltaDays: z.number().int().min(1).max(30).default(1),
+  deltaDays: z.number().int().min(-30).max(30).default(1),
 });
 
 router.post(
@@ -1341,9 +1351,20 @@ router.post(
       (max, j) => (j.scheduledDate > max ? j.scheduledDate : max),
       fromDate,
     );
-    // Upper bound: latest job date + deltaDays * 3 + 60 days (generous buffer)
-    const windowEnd = addDays(latestCurrentDate, deltaDays * 3 + 60);
-    const teamNonWorkingDays = await buildTeamNonWorkingDays(teamId, fromDate, windowEnd);
+    const earliestCurrentDate = pendingJobs.reduce(
+      (min, j) => (j.scheduledDate < min ? j.scheduledDate : min),
+      fromDate,
+    );
+    // For backward shifts the target dates precede fromDate; for forward shifts
+    // they follow the latest current date. Build a window that covers both cases.
+    const absDelta = Math.abs(deltaDays);
+    const windowStart = deltaDays < 0
+      ? addDays(earliestCurrentDate, -(absDelta * 3 + 60))
+      : fromDate;
+    const windowEnd = deltaDays < 0
+      ? latestCurrentDate
+      : addDays(latestCurrentDate, absDelta * 3 + 60);
+    const teamNonWorkingDays = await buildTeamNonWorkingDays(teamId, windowStart, windowEnd);
 
     // Compute new date for each job (shift by deltaDays working days).
     // The shift is computed from each job's current scheduledDate so the
