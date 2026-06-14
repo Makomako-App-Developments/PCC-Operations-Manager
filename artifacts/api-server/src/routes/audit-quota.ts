@@ -83,6 +83,15 @@ async function buildOrLoadQuota(supervisorId: string, weekStart: Date) {
     .limit(1);
 
   if (existing) {
+    // Auto-refresh on Wednesday: the Monday pool only contains Friday's jobs
+    // (3-day audit window). By Wednesday, Mon+Tue completions are available,
+    // giving a much richer sample. Refresh once — preserves completed items.
+    const wednesday = new Date(weekStart);
+    wednesday.setUTCDate(wednesday.getUTCDate() + 2); // Mon + 2 = Wed
+    const now = new Date();
+    if (now >= wednesday && new Date(existing.generatedAt) < wednesday) {
+      return generateQuota(supervisorId, weekStartStr);
+    }
     return loadQuotaDetail(existing.id);
   }
   return generateQuota(supervisorId, weekStartStr);
