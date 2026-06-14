@@ -1813,7 +1813,7 @@ export default function Schedule() {
             size="sm"
             variant="outline"
             className="gap-2 bg-white border-[#00AECD] text-[#00AECD] hover:bg-[#00AECD]/5"
-            onClick={() => setWizardOpen(true)}
+            onClick={() => window.open("/reactive-jobs", "_blank")}
           >
             <Zap className="w-4 h-4" />
             Add Unscheduled Work
