@@ -374,6 +374,19 @@ function nextWorkingDays(startDate: string, count: number): string[] {
   return dates;
 }
 
+function MulchSectionCard({ num, title, children }: { num: number; title: string; children: React.ReactNode }) {
+  return (
+    <div className="rounded-2xl border border-gray-100 bg-white shadow-sm overflow-hidden">
+      <div className="flex items-center gap-3 px-4 py-2.5 border-b border-gray-100">
+        <div className="w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-black text-white flex-shrink-0"
+          style={{ background: BRAND }}>{num}</div>
+        <span className="text-[11px] font-bold text-gray-500 uppercase tracking-wider">{title}</span>
+      </div>
+      <div className="p-4">{children}</div>
+    </div>
+  );
+}
+
 function MulchingReviewDrawer({
   record, teams, assetTeamId, onClose, onPublished,
 }: {
@@ -399,6 +412,7 @@ function MulchingReviewDrawer({
   const [saving, setSaving] = useState(false);
   const [scheduleWasPushed, setScheduleWasPushed] = useState(false);
   const [pushingSchedule, setPushingSchedule] = useState(false);
+  const [conflictPanel, setConflictPanel] = useState<"none" | "individual">("none");
 
   // Multi-day split state
   const [splitEnabled, setSplitEnabled] = useState(false);
@@ -436,6 +450,7 @@ function MulchingReviewDrawer({
     setReassignTo({});
     setOvertimeAccepted(false);
     setScheduleWasPushed(false);
+    setConflictPanel("none");
   }, [teamId, scheduledDate, estMins]);
 
   // Keep split dates aligned when first date, count, or split toggle changes
@@ -606,135 +621,149 @@ function MulchingReviewDrawer({
   return (
     <div className="fixed inset-0 z-50 flex">
       <div className="flex-1 bg-black/30" onClick={onClose} />
-      <div className="w-[480px] bg-white shadow-2xl flex flex-col overflow-y-auto">
-        {/* Header */}
-        <div className="px-6 py-4 border-b flex items-start justify-between" style={{ background: NAVY }}>
-          <div>
-            <p className="text-white text-sm font-bold flex items-center gap-2">
-              <ClipboardList className="w-4 h-4" /> Review & Schedule Mulching
-            </p>
-            <p className="text-white/50 text-[11px] mt-0.5">{record.assetName}</p>
-          </div>
-          <button onClick={onClose}><X className="w-5 h-5 text-white/40 hover:text-white" /></button>
-        </div>
+      <div className="w-[480px] bg-gray-50 shadow-2xl flex flex-col overflow-hidden">
 
-        <div className="flex-1 p-6 space-y-5 overflow-y-auto">
-          {/* Draft context */}
-          <div className="p-3 rounded-xl bg-violet-50 border border-violet-200 space-y-1">
-            <p className="text-xs font-bold text-violet-800">Draft job from depth reading</p>
-            {record.scheduledDate && (
-              <p className="text-[11px] text-violet-700">Projected date: <strong>{fmt(record.scheduledDate)}</strong></p>
-            )}
-            {record.projectedDepthAtDue != null && (
-              <p className="text-[10px] text-violet-500">
-                Depth at job date: ~{record.projectedDepthAtDue}mm (threshold {ACTION_THRESHOLD_MM}mm)
-              </p>
-            )}
-            {record.mulchType && <p className="text-[10px] text-violet-500">Type: {record.mulchType}</p>}
-          </div>
-
-          {/* Step 1 – Configure */}
-          <div className="space-y-3">
-            <p className="text-[11px] font-bold text-gray-500 uppercase tracking-wider">1 — Configure</p>
-            <div>
-              <Label className="text-[11px] text-gray-500 mb-1.5 block">Assign Team</Label>
-              <select value={teamId} onChange={e => setTeamId(e.target.value)}
-                className="w-full px-3 py-2 text-sm border border-gray-200 rounded-xl outline-none focus:border-[#00AECD] bg-white">
-                <option value="">— Select team —</option>
-                {teams.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
-              </select>
+        {/* Hero header — site name + description */}
+        <div className="px-6 pt-5 pb-4 flex-shrink-0" style={{ background: NAVY }}>
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <p className="text-[10px] font-bold uppercase tracking-widest mb-1" style={{ color: BRAND }}>Review & Schedule</p>
+              <h2 className="text-lg font-black text-white leading-tight">{record.assetName}</h2>
+              {record.assetDescription && (
+                <p className="text-[12px] text-gray-400 mt-0.5 leading-snug">{record.assetDescription}</p>
+              )}
             </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <div className="flex items-center justify-between mb-1.5">
-                  <Label className="text-[11px] text-gray-500">
-                    {splitEnabled ? "Start Date (Day 1)" : "Scheduled Date"}
-                  </Label>
-                  {mulchDateAutoFilled && nextMulchVisitDate && scheduledDate === nextMulchVisitDate && (
-                    <button
-                      type="button"
-                      onClick={() => { setScheduledDate(""); setMulchDateAutoFilled(false); }}
-                      className="text-[10px] font-semibold hover:opacity-70"
-                      style={{ color: "#00AECD" }}
-                    >
-                      next scheduled visit ×
-                    </button>
-                  )}
-                </div>
-                <Input type="date" value={scheduledDate} onChange={e => { setScheduledDate(e.target.value); setMulchDateAutoFilled(false); }} className="rounded-xl text-sm" />
-              </div>
-              <div>
-                <Label className="text-[11px] text-gray-500 mb-1.5 block">
-                  {splitEnabled ? "Total time (mins)" : "Est. time (mins)"}
-                </Label>
-                <Input type="number" value={estMins} onChange={e => setEstMins(e.target.value)}
-                  placeholder="e.g. 120" min="0" className="rounded-xl text-sm" />
-              </div>
-            </div>
-
-            {/* Split toggle */}
-            <div className="flex items-center justify-between py-1 border-t border-gray-100 pt-3">
-              <div className="flex items-center gap-1.5">
-                <Scissors className="w-3.5 h-3.5 text-gray-400" />
-                <span className="text-[12px] text-gray-600 font-medium">Split over multiple days</span>
-              </div>
-              <button
-                type="button"
-                onClick={() => setSplitEnabled(v => !v)}
-                className={`relative inline-flex h-5 w-9 flex-shrink-0 items-center rounded-full transition-colors ${splitEnabled ? "bg-[#00AECD]" : "bg-gray-200"}`}
-              >
-                <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform shadow-sm ${splitEnabled ? "translate-x-4" : "translate-x-0.5"}`} />
+            <div className="flex items-center gap-2 flex-shrink-0 mt-0.5">
+              <span className="px-2.5 py-1 rounded-full text-[10px] font-bold"
+                style={{ background: "rgba(0,174,205,0.2)", color: "#5dd8ef" }}>Mulching</span>
+              <button onClick={onClose} className="text-white/40 hover:text-white transition-colors">
+                <X className="w-5 h-5" />
               </button>
             </div>
+          </div>
+        </div>
 
-            {/* Day pickers (split mode) */}
-            {splitEnabled && (
-              <div className="space-y-2 border border-[#00AECD]/20 rounded-xl p-3 bg-[#00AECD]/5">
+        <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3">
+
+          {/* ── 1 — Mulch Details ── */}
+          <MulchSectionCard num={1} title="Mulch Details">
+            <div className="grid grid-cols-2 gap-3">
+              <div className="rounded-xl bg-amber-50 border border-amber-100 p-3">
+                <p className="text-[9px] font-bold text-amber-600 uppercase tracking-wider mb-1">Depth at Job Date</p>
+                <p className="text-xl font-black text-amber-700 leading-none">
+                  {record.projectedDepthAtDue != null ? `~${record.projectedDepthAtDue}mm` : "—"}
+                </p>
+                <p className="text-[9px] text-amber-500 mt-1">Threshold {ACTION_THRESHOLD_MM}mm</p>
+              </div>
+              <div className="rounded-xl bg-gray-50 border border-gray-100 p-3">
+                <p className="text-[9px] font-bold text-gray-400 uppercase tracking-wider mb-1">To Apply</p>
+                <p className="text-xl font-black text-gray-700 leading-none">
+                  {record.volumeM3 ? `${record.volumeM3} m³` : "—"}
+                </p>
+                <p className="text-[9px] text-gray-400 mt-1">{record.mulchType ?? "—"}</p>
+              </div>
+            </div>
+            {record.scheduledDate && (
+              <p className="mt-2.5 text-[10px] text-gray-400 flex items-center gap-1.5">
+                <span className="w-1.5 h-1.5 rounded-full bg-blue-300 inline-block flex-shrink-0" />
+                Projected visit date: {fmt(record.scheduledDate)}
+              </p>
+            )}
+          </MulchSectionCard>
+
+          {/* ── 2 — Configure ── */}
+          <MulchSectionCard num={2} title="Configure">
+            <div className="space-y-3">
+              <div>
+                <Label className="text-[10px] text-gray-400 mb-1.5 block font-semibold">Team</Label>
+                <select value={teamId} onChange={e => setTeamId(e.target.value)}
+                  className="w-full px-3 py-2.5 text-sm border border-gray-200 rounded-xl outline-none focus:border-[#00AECD] bg-white font-semibold text-gray-700">
+                  <option value="">— Select team —</option>
+                  {teams.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                </select>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <Label className="text-[11px] text-gray-500 mb-1.5 block">Number of days</Label>
-                  <div className="flex gap-1.5">
-                    {[2, 3, 4, 5, 6, 7].map(n => (
-                      <button key={n} type="button" onClick={() => setSplitCount(n)}
-                        className="w-8 h-8 rounded-lg text-sm font-bold border transition-colors"
-                        style={splitCount === n
-                          ? { background: BRAND, color: "white", borderColor: BRAND }
-                          : { background: "white", color: "#6b7280", borderColor: "#e5e7eb" }}>
-                        {n}
+                  <div className="flex items-center justify-between mb-1.5">
+                    <Label className="text-[10px] text-gray-400 font-semibold">
+                      {splitEnabled ? "Start Date (Day 1)" : "Scheduled Date"}
+                    </Label>
+                    {mulchDateAutoFilled && nextMulchVisitDate && scheduledDate === nextMulchVisitDate && (
+                      <button type="button"
+                        onClick={() => { setScheduledDate(""); setMulchDateAutoFilled(false); }}
+                        className="text-[9px] font-bold hover:opacity-70" style={{ color: BRAND }}>
+                        next visit ×
                       </button>
+                    )}
+                  </div>
+                  <Input type="date" value={scheduledDate}
+                    onChange={e => { setScheduledDate(e.target.value); setMulchDateAutoFilled(false); }}
+                    className="rounded-xl text-sm" />
+                </div>
+                <div>
+                  <Label className="text-[10px] text-gray-400 mb-1.5 block font-semibold">
+                    {splitEnabled ? "Total (mins)" : "Duration (mins)"}
+                  </Label>
+                  <Input type="number" value={estMins} onChange={e => setEstMins(e.target.value)}
+                    placeholder="e.g. 120" min="0" className="rounded-xl text-sm" />
+                </div>
+              </div>
+              {/* Split toggle */}
+              <div className="flex items-center justify-between pt-2 border-t border-gray-100">
+                <div className="flex items-center gap-1.5">
+                  <Scissors className="w-3.5 h-3.5 text-gray-400" />
+                  <span className="text-[12px] text-gray-600 font-medium">Split over multiple days</span>
+                </div>
+                <button type="button" onClick={() => setSplitEnabled(v => !v)}
+                  className={`relative inline-flex h-5 w-9 flex-shrink-0 items-center rounded-full transition-colors ${splitEnabled ? "bg-[#00AECD]" : "bg-gray-200"}`}>
+                  <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform shadow-sm ${splitEnabled ? "translate-x-4" : "translate-x-0.5"}`} />
+                </button>
+              </div>
+              {/* Day pickers (split mode) */}
+              {splitEnabled && (
+                <div className="space-y-2 border border-[#00AECD]/20 rounded-xl p-3 bg-[#00AECD]/5">
+                  <div>
+                    <Label className="text-[11px] text-gray-500 mb-1.5 block">Number of days</Label>
+                    <div className="flex gap-1.5">
+                      {[2, 3, 4, 5, 6, 7].map(n => (
+                        <button key={n} type="button" onClick={() => setSplitCount(n)}
+                          className="w-8 h-8 rounded-lg text-sm font-bold border transition-colors"
+                          style={splitCount === n
+                            ? { background: BRAND, color: "white", borderColor: BRAND }
+                            : { background: "white", color: "#6b7280", borderColor: "#e5e7eb" }}>
+                          {n}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-[11px] text-gray-500 block">Day dates</Label>
+                    {Array.from({ length: splitCount }, (_, i) => (
+                      <div key={i} className="flex items-center gap-2">
+                        <span className="text-[10px] font-bold w-10 flex-shrink-0" style={{ color: BRAND }}>Day {i + 1}</span>
+                        <Input type="date" value={splitDates[i] ?? ""}
+                          onChange={e => setSplitDates(prev => { const a = [...prev]; a[i] = e.target.value; return a; })}
+                          className="flex-1 rounded-xl text-sm h-8" />
+                        {mulchMins > 0 && (
+                          <span className="text-[10px] text-gray-400 flex-shrink-0 w-14 text-right">
+                            {i < splitCount - 1
+                              ? Math.floor(mulchMins / splitCount)
+                              : mulchMins - Math.floor(mulchMins / splitCount) * (splitCount - 1)
+                            } min
+                          </span>
+                        )}
+                      </div>
                     ))}
                   </div>
                 </div>
-                <div className="space-y-1.5">
-                  <Label className="text-[11px] text-gray-500 block">Day dates</Label>
-                  {Array.from({ length: splitCount }, (_, i) => (
-                    <div key={i} className="flex items-center gap-2">
-                      <span className="text-[10px] font-bold w-10 text-[#00AECD] flex-shrink-0">Day {i + 1}</span>
-                      <Input
-                        type="date"
-                        value={splitDates[i] ?? ""}
-                        onChange={e => setSplitDates(prev => { const a = [...prev]; a[i] = e.target.value; return a; })}
-                        className="flex-1 rounded-xl text-sm h-8"
-                      />
-                      {mulchMins > 0 && (
-                        <span className="text-[10px] text-gray-400 flex-shrink-0 w-14 text-right">
-                          {i < splitCount - 1
-                            ? Math.floor(mulchMins / splitCount)
-                            : mulchMins - Math.floor(mulchMins / splitCount) * (splitCount - 1)
-                          } min
-                        </span>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
+              )}
+            </div>
+          </MulchSectionCard>
 
-          {/* Step 2 – Split schedule summary */}
+          {/* ── 3 — Split Schedule Summary (split mode) ── */}
           {showImpact && splitEnabled && (
-            <div className="space-y-3">
-              <p className="text-[11px] font-bold text-gray-500 uppercase tracking-wider">2 — Split Schedule</p>
-              <div className="rounded-xl border border-gray-100 bg-gray-50 p-4 space-y-1.5">
+            <MulchSectionCard num={3} title="Split Schedule">
+              <div className="space-y-1.5">
                 <p className="text-[10px] font-semibold text-gray-500 mb-2">
                   ~{Math.round(mulchMins / splitCount)} min / day · {splitCount} days · {teamName}
                 </p>
@@ -757,209 +786,197 @@ function MulchingReviewDrawer({
                   Day-by-day capacity can be reviewed in the Scheduler after publishing.
                 </p>
               </div>
-            </div>
+            </MulchSectionCard>
           )}
 
-          {/* Step 2 – Capacity & Conflict Resolution */}
+          {/* ── 3 — Capacity (single-day mode) ── */}
           {showImpact && !splitEnabled && (
-            <div className="space-y-3">
-              <p className="text-[11px] font-bold text-gray-500 uppercase tracking-wider">2 — Capacity &amp; Conflicts</p>
-              <div className="rounded-xl border border-gray-100 bg-gray-50 p-4 space-y-4">
-                {weekLoading ? (
-                  <div className="h-10 flex items-center justify-center text-gray-400 text-xs">Loading…</div>
-                ) : (
-                  <>
-                    <CapBar total={resolvedTotal} reactive={mulchMins} teamName={teamName} dateLabel={dateLabel} />
-                    <div className="flex items-center gap-2">
-                      <div className="flex-1 text-center p-2.5 rounded-xl bg-white border text-center">
-                        <p className="text-[9px] text-gray-400 mb-0.5">Existing</p>
-                        <p className="text-base font-black text-gray-700">{fmtMins(totalScheduled - resolvedSaved)}</p>
+            <MulchSectionCard num={3} title={`Capacity — ${teamName}${dateLabel ? ` · ${dateLabel}` : ""}`}>
+              {weekLoading ? (
+                <div className="h-10 flex items-center justify-center text-gray-400 text-xs">Loading…</div>
+              ) : (
+                <div className="space-y-3">
+                  <CapBar total={resolvedTotal} reactive={mulchMins} teamName={teamName} dateLabel={dateLabel} />
+                  <div className="grid grid-cols-3 gap-2 text-center">
+                    {([
+                      ["Existing", fmtMins(totalScheduled - resolvedSaved), "text-gray-700"],
+                      ["+ Mulch",  `+${fmtMins(mulchMins)}`,                "text-blue-600"],
+                      ["Total",    fmtMins(resolvedTotal),                   isOverCapacity ? "text-red-600" : "text-green-600"],
+                    ] as [string, string, string][]).map(([label, value, color]) => (
+                      <div key={label} className="bg-gray-50 rounded-xl p-2.5 border border-gray-100">
+                        <p className="text-[9px] text-gray-400 mb-0.5">{label}</p>
+                        <p className={`text-sm font-black ${color}`}>{value}</p>
                       </div>
-                      <span className="text-gray-400 font-bold">+</span>
-                      <div className="flex-1 text-center p-2.5 rounded-xl bg-white border">
-                        <p className="text-[9px] text-gray-400 mb-0.5">Mulch</p>
-                        <p className="text-base font-black text-gray-700">+{fmtMins(mulchMins)}</p>
-                      </div>
-                      <span className="text-gray-400 font-bold">=</span>
-                      <div className="flex-1 text-center p-2.5 rounded-xl bg-white border">
-                        <p className="text-[9px] text-gray-400 mb-0.5">Total</p>
-                        <p className="text-base font-black" style={{ color: isOverCapacity ? "#dc2626" : "#16a34a" }}>
-                          {fmtMins(resolvedTotal)}
-                        </p>
-                      </div>
+                    ))}
+                  </div>
+                  {!isOverCapacity && (
+                    <div className="p-3 rounded-xl bg-green-50 border border-green-200 flex items-center gap-2">
+                      <CheckCircle2 className="w-4 h-4 text-green-600 flex-shrink-0" />
+                      <p className="text-[11px] font-semibold text-green-700">
+                        {resolvedSaved > 0
+                          ? `Conflicts resolved — freed ${fmtMins(resolvedSaved)}. Ready to publish.`
+                          : "Within productive target — ready to publish."}
+                      </p>
                     </div>
+                  )}
+                </div>
+              )}
+            </MulchSectionCard>
+          )}
 
-                    {/* Existing jobs with push/defer/delete/reassign actions */}
-                    {dayJobs.length > 0 && (
-                      <div className="rounded-xl border border-gray-100 overflow-hidden">
-                        <div className="px-4 py-2 bg-gray-100 text-[10px] font-bold text-gray-600 uppercase tracking-wider flex items-center justify-between">
-                          <span>{teamName} — {dateLabel} ({dayJobs.length} jobs)</span>
-                          <span>{fmtMins(totalScheduled)}</span>
-                        </div>
-                        <div className="divide-y divide-gray-50 bg-white">
-                          {dayJobs.map((job: any) => {
-                            const action = actions[job.id] ?? "none";
-                            const resolved = action !== "none";
-                            const jobMins = job.serviceTimeMins ?? 0;
-                            return (
-                              <div key={job.id} className={`px-4 py-3 transition-colors ${resolved ? "bg-green-50/60" : ""}`}>
-                                <div className="flex items-start gap-3">
-                                  <div className="flex-1 min-w-0">
-                                    <p className="text-xs font-semibold text-gray-800">{job.assetName ?? "Job"}</p>
-                                    <p className="text-[10px] text-gray-400 flex items-center gap-1">
-                                      <Clock className="w-2.5 h-2.5" />{fmtMins(jobMins)}
-                                      {job.suburb && <span>· {job.suburb}</span>}
-                                    </p>
-                                    {action === "push"   && <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-blue-50 text-blue-700 mt-1 inline-block">→ {addDaysStr(job.scheduledDate, 1)}</span>}
-                                    {action === "defer"  && <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-purple-50 text-purple-700 mt-1 inline-block">→ {addDaysStr(job.scheduledDate, 3)}</span>}
-                                    {action === "delete" && <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-red-50 text-red-600 mt-1 inline-block">✕ Removed from schedule</span>}
-                                    {action === "reassign" && reassignTo[job.id] && (
-                                      <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-purple-50 text-purple-700 mt-1 inline-block">
-                                        → {teams.find(t => t.id === reassignTo[job.id])?.name ?? "team"}
-                                      </span>
-                                    )}
-                                  </div>
-                                  {resolved && <p className="text-[10px] text-green-600 font-bold flex-shrink-0">-{fmtMins(jobMins)}</p>}
-                                  <div className="flex flex-col gap-1.5 flex-shrink-0">
-                                    <div className="flex items-center gap-1">
-                                      {(["push", "defer", "delete"] as ConflictAction[]).map(a => {
-                                        const active = action === a;
-                                        const iconMap = { push: <SkipForward className="w-2.5 h-2.5" />, defer: <Calendar className="w-2.5 h-2.5" />, delete: <Trash2 className="w-2.5 h-2.5" /> };
-                                        const lblMap = { push: "+1d", defer: "+3d", delete: "Del" };
-                                        return (
-                                          <button key={a} onClick={() => setAction(job.id, active ? "none" : a)}
-                                            className="flex items-center gap-0.5 px-2 py-1 rounded-lg text-[9px] font-bold border transition-all"
-                                            style={active
-                                              ? { background: actionColors[a], color: "white", borderColor: actionColors[a] }
-                                              : { background: "white", color: actionColors[a], borderColor: "#e5e7eb" }}>
-                                            {iconMap[a as keyof typeof iconMap]}{lblMap[a as keyof typeof lblMap]}
-                                          </button>
-                                        );
-                                      })}
-                                    </div>
-                                    <div className="flex items-center gap-1">
-                                      <button
-                                        onClick={() => setAction(job.id, action === "reassign" ? "none" : "reassign")}
+          {/* ── 4 — Resolve Conflict ── */}
+          {showImpact && !splitEnabled && !weekLoading && isOverCapacity && !scheduleWasPushed && (
+            <MulchSectionCard num={4} title="Resolve Conflict">
+              <div className="space-y-2">
+
+                {/* Option 1 — Accept Overtime */}
+                <button type="button" onClick={() => setOvertimeAccepted(v => !v)}
+                  className="w-full flex items-center gap-3 p-3 rounded-xl border-2 transition-all text-left"
+                  style={overtimeAccepted
+                    ? { borderColor: "#f97316", background: "#fff7ed" }
+                    : { borderColor: "#fed7aa", background: "white" }}>
+                  <div className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 text-sm font-black"
+                    style={{ background: overtimeAccepted ? "#f97316" : "#fff7ed", color: overtimeAccepted ? "white" : "#f97316" }}>1</div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-bold text-gray-700">Accept Overtime</p>
+                    <p className="text-[10px] text-gray-400">+{fmtMins(resolvedTotal - PRODUCTIVE)} over daily target</p>
+                  </div>
+                  {overtimeAccepted && <CheckCircle2 className="w-4 h-4 text-orange-500 flex-shrink-0" />}
+                </button>
+
+                {/* Option 2 — Push Whole Schedule */}
+                <button type="button" onClick={handlePushSchedule} disabled={pushingSchedule}
+                  className="w-full flex items-center gap-3 p-3 rounded-xl border-2 transition-all text-left disabled:opacity-60"
+                  style={{ borderColor: "#b3ebf5", background: "white" }}>
+                  <div className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 text-sm font-black"
+                    style={{ background: "#e6f9fd", color: BRAND }}>2</div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-bold text-gray-700">Push Whole Schedule</p>
+                    <p className="text-[10px] text-gray-400">Move tail of route to next working day</p>
+                  </div>
+                  {pushingSchedule
+                    ? <RotateCcw className="w-4 h-4 flex-shrink-0 animate-spin" style={{ color: BRAND }} />
+                    : <ChevronsRight className="w-4 h-4 flex-shrink-0 text-gray-300" />}
+                </button>
+
+                {/* Option 3 — Manage Individual Jobs */}
+                <button type="button"
+                  onClick={() => setConflictPanel(p => p === "individual" ? "none" : "individual")}
+                  className="w-full flex items-center gap-3 p-3 rounded-xl border-2 transition-all text-left"
+                  style={conflictPanel === "individual"
+                    ? { borderColor: "#7c3aed", background: "#f5f3ff" }
+                    : { borderColor: "#ddd6fe", background: "white" }}>
+                  <div className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 text-sm font-black"
+                    style={{ background: conflictPanel === "individual" ? "#7c3aed" : "#f5f3ff", color: conflictPanel === "individual" ? "white" : "#7c3aed" }}>3</div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-bold text-gray-700">Manage Individual Jobs</p>
+                    <p className="text-[10px] text-gray-400">Push, defer or delete specific jobs from this day</p>
+                  </div>
+                  <svg className="w-4 h-4 text-gray-300 flex-shrink-0 transition-transform"
+                    style={{ transform: conflictPanel === "individual" ? "rotate(180deg)" : "none" }}
+                    fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7"/>
+                  </svg>
+                </button>
+
+                {/* Individual jobs list — expanded when option 3 is open */}
+                {conflictPanel === "individual" && dayJobs.length > 0 && (
+                  <div className="rounded-xl border border-gray-100 overflow-hidden">
+                    <div className="px-4 py-2 bg-gray-100 text-[10px] font-bold text-gray-600 uppercase tracking-wider flex items-center justify-between">
+                      <span>{teamName} — {dateLabel} ({dayJobs.length} jobs)</span>
+                      <span>{fmtMins(totalScheduled)}</span>
+                    </div>
+                    <div className="divide-y divide-gray-50 bg-white">
+                      {dayJobs.map((job: any) => {
+                        const action = actions[job.id] ?? "none";
+                        const resolved = action !== "none";
+                        const jobMins = job.serviceTimeMins ?? 0;
+                        return (
+                          <div key={job.id} className={`px-4 py-3 transition-colors ${resolved ? "bg-green-50/60" : ""}`}>
+                            <div className="flex items-start gap-3">
+                              <div className="flex-1 min-w-0">
+                                <p className="text-xs font-semibold text-gray-800">{job.assetName ?? "Job"}</p>
+                                <p className="text-[10px] text-gray-400 flex items-center gap-1">
+                                  <Clock className="w-2.5 h-2.5" />{fmtMins(jobMins)}
+                                  {job.suburb && <span>· {job.suburb}</span>}
+                                </p>
+                                {action === "push"   && <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-blue-50 text-blue-700 mt-1 inline-block">→ {addDaysStr(job.scheduledDate, 1)}</span>}
+                                {action === "defer"  && <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-purple-50 text-purple-700 mt-1 inline-block">→ {addDaysStr(job.scheduledDate, 3)}</span>}
+                                {action === "delete" && <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-red-50 text-red-600 mt-1 inline-block">✕ Removed from schedule</span>}
+                                {action === "reassign" && reassignTo[job.id] && (
+                                  <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-purple-50 text-purple-700 mt-1 inline-block">
+                                    → {teams.find(t => t.id === reassignTo[job.id])?.name ?? "team"}
+                                  </span>
+                                )}
+                              </div>
+                              {resolved && <p className="text-[10px] text-green-600 font-bold flex-shrink-0">-{fmtMins(jobMins)}</p>}
+                              <div className="flex flex-col gap-1.5 flex-shrink-0">
+                                <div className="flex items-center gap-1">
+                                  {(["push", "defer", "delete"] as ConflictAction[]).map(a => {
+                                    const active = action === a;
+                                    const iconMap = { push: <SkipForward className="w-2.5 h-2.5" />, defer: <Calendar className="w-2.5 h-2.5" />, delete: <Trash2 className="w-2.5 h-2.5" /> };
+                                    const lblMap  = { push: "+1d", defer: "+3d", delete: "Del" };
+                                    return (
+                                      <button key={a} onClick={() => setAction(job.id, active ? "none" : a)}
                                         className="flex items-center gap-0.5 px-2 py-1 rounded-lg text-[9px] font-bold border transition-all"
-                                        style={action === "reassign"
-                                          ? { background: actionColors.reassign, color: "white", borderColor: actionColors.reassign }
-                                          : { background: "white", color: actionColors.reassign, borderColor: "#e5e7eb" }}>
-                                        <Users className="w-2.5 h-2.5" />Re
+                                        style={active
+                                          ? { background: actionColors[a], color: "white", borderColor: actionColors[a] }
+                                          : { background: "white", color: actionColors[a], borderColor: "#e5e7eb" }}>
+                                        {iconMap[a as keyof typeof iconMap]}{lblMap[a as keyof typeof lblMap]}
                                       </button>
-                                      {action === "reassign" && (
-                                        <select value={reassignTo[job.id] ?? ""} onChange={e => setReassignTo(p => ({ ...p, [job.id]: e.target.value }))}
-                                          className="text-[9px] px-1.5 py-1 border rounded-lg bg-white outline-none max-w-[80px]">
-                                          <option value="">Team…</option>
-                                          {teams.filter(t => t.id !== teamId).map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
-                                        </select>
-                                      )}
-                                    </div>
-                                  </div>
+                                    );
+                                  })}
+                                </div>
+                                <div className="flex items-center gap-1">
+                                  <button onClick={() => setAction(job.id, action === "reassign" ? "none" : "reassign")}
+                                    className="flex items-center gap-0.5 px-2 py-1 rounded-lg text-[9px] font-bold border transition-all"
+                                    style={action === "reassign"
+                                      ? { background: actionColors.reassign, color: "white", borderColor: actionColors.reassign }
+                                      : { background: "white", color: actionColors.reassign, borderColor: "#e5e7eb" }}>
+                                    <Users className="w-2.5 h-2.5" />Re
+                                  </button>
+                                  {action === "reassign" && (
+                                    <select value={reassignTo[job.id] ?? ""} onChange={e => setReassignTo(p => ({ ...p, [job.id]: e.target.value }))}
+                                      className="text-[9px] px-1.5 py-1 border rounded-lg bg-white outline-none max-w-[80px]">
+                                      <option value="">Team…</option>
+                                      {teams.filter(t => t.id !== teamId).map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                                    </select>
+                                  )}
                                 </div>
                               </div>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Over-capacity / resolved / overtime */}
-                    {isOverCapacity ? (
-                      <div className="space-y-2">
-                        <div className="p-3 rounded-xl bg-red-50 border border-red-200 flex gap-2">
-                          <AlertTriangle className="w-4 h-4 text-red-500 flex-shrink-0 mt-0.5" />
-                          <div>
-                            <p className="text-xs font-bold text-red-700">
-                              {fmtMins(resolvedTotal - PRODUCTIVE)} over daily target after conflict resolution
-                            </p>
-                            <p className="text-[10px] text-red-600 mt-0.5">
-                              Continue resolving jobs above, adjust the date, or accept overtime.
-                            </p>
+                            </div>
                           </div>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => setOvertimeAccepted(v => !v)}
-                          className="w-full py-2.5 rounded-xl border-2 font-bold text-sm flex items-center justify-center gap-2 transition-all"
-                          style={overtimeAccepted
-                            ? { borderColor: "#dc2626", background: "#fef2f2", color: "#dc2626" }
-                            : { borderColor: "#fca5a5", background: "white", color: "#ef4444" }}>
-                          {overtimeAccepted
-                            ? <><CheckCircle2 className="w-4 h-4" /> Overtime authorised — publish unlocked</>
-                            : <><AlertTriangle className="w-4 h-4" /> Accept overtime to unlock publish</>}
-                        </button>
-                      </div>
-                    ) : (
-                      <div className="p-3 rounded-xl bg-green-50 border border-green-200 flex items-center gap-2">
-                        <CheckCircle2 className="w-4 h-4 text-green-600 flex-shrink-0" />
-                        <p className="text-[11px] font-semibold text-green-700">
-                          {resolvedSaved > 0
-                            ? `Conflicts resolved — freed ${fmtMins(resolvedSaved)}. Ready to publish.`
-                            : "Within productive target — ready to publish."}
-                        </p>
-                      </div>
-                    )}
-                  </>
+                        );
+                      })}
+                    </div>
+                  </div>
                 )}
               </div>
+            </MulchSectionCard>
+          )}
+
+          {/* Schedule pushed confirmation */}
+          {scheduleWasPushed && (
+            <div className="flex items-center gap-2 py-2.5 px-3 rounded-xl bg-blue-50 border border-blue-200">
+              <CheckCircle2 className="w-4 h-4 text-blue-600 flex-shrink-0" />
+              <p className="text-xs font-semibold text-blue-700">Schedule pushed — publish unlocked</p>
             </div>
           )}
+
         </div>
 
-        <div className="border-t">
-          {/* Conflict resolution options — visible in footer when over capacity */}
-          {isOverCapacity && !scheduleWasPushed && (
-            <div className="px-6 pt-4 space-y-2">
-              <p className="text-[10px] text-gray-400 font-semibold uppercase tracking-wider">Resolve capacity conflict</p>
-              <div className="grid grid-cols-2 gap-2">
-                {/* Option 1 — Accept overtime */}
-                <button
-                  type="button"
-                  onClick={() => setOvertimeAccepted(v => !v)}
-                  className="py-2.5 rounded-xl border-2 font-bold text-xs flex items-center justify-center gap-1.5 transition-all"
-                  style={overtimeAccepted
-                    ? { borderColor: "#dc2626", background: "#fef2f2", color: "#dc2626" }
-                    : { borderColor: "#fca5a5", background: "white", color: "#ef4444" }}>
-                  {overtimeAccepted
-                    ? <><CheckCircle2 className="w-3.5 h-3.5" /> Overtime authorised</>
-                    : <><AlertTriangle className="w-3.5 h-3.5" /> 1 — Accept overtime</>}
-                </button>
-                {/* Option 2 — Push whole schedule +1 day */}
-                <button
-                  type="button"
-                  onClick={handlePushSchedule}
-                  disabled={pushingSchedule}
-                  className="py-2.5 rounded-xl border-2 font-bold text-xs flex items-center justify-center gap-1.5 transition-all"
-                  style={{ borderColor: "#2563eb", background: "white", color: "#2563eb" }}>
-                  {pushingSchedule
-                    ? <><RotateCcw className="w-3.5 h-3.5 animate-spin" /> Pushing…</>
-                    : <><ChevronsRight className="w-3.5 h-3.5" /> 2 — Push to make room ({fmtMins(mulchMins)})</>}
-                </button>
-              </div>
-            </div>
-          )}
-          {scheduleWasPushed && (
-            <div className="px-6 pt-4">
-              <div className="flex items-center gap-2 py-2.5 px-3 rounded-xl bg-blue-50 border border-blue-200">
-                <CheckCircle2 className="w-4 h-4 text-blue-600 flex-shrink-0" />
-                <p className="text-xs font-semibold text-blue-700">Schedule pushed +1 day — publish unlocked</p>
-              </div>
-            </div>
-          )}
-          <div className="px-6 py-4 flex items-center gap-3">
-            <button onClick={onClose} className="flex-1 py-2 rounded-xl text-sm font-semibold border border-gray-200 text-gray-600 hover:bg-gray-50">
-              Cancel
-            </button>
-            <button
-              onClick={handlePublish}
-              disabled={saving || !canPublish}
-              className="flex-1 py-2 rounded-xl text-sm font-semibold text-white disabled:opacity-40 flex items-center justify-center gap-2"
-              style={{ background: BRAND }}
-            >
-              <Zap className="w-4 h-4" />
-              {saving ? "Scheduling…" : "Publish to Schedule"}
-            </button>
-          </div>
+        {/* Footer */}
+        <div className="px-4 py-4 border-t border-gray-100 bg-white flex items-center gap-3 flex-shrink-0">
+          <button onClick={onClose}
+            className="flex-1 py-2.5 rounded-xl text-sm font-semibold border border-gray-200 text-gray-600 hover:bg-gray-50">
+            Cancel
+          </button>
+          <button onClick={handlePublish} disabled={saving || !canPublish}
+            className="flex-[2] py-2.5 rounded-xl text-sm font-bold text-white disabled:opacity-40 flex items-center justify-center gap-2"
+            style={{ background: BRAND }}>
+            <Zap className="w-4 h-4" />
+            {saving ? "Scheduling…" : "Publish to Schedule"}
+          </button>
         </div>
       </div>
     </div>
