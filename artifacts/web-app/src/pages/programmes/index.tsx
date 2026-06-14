@@ -404,6 +404,29 @@ function MulchingReviewDrawer({
     scheduledDate ? nextWorkingDays(scheduledDate, 2) : ["", ""],
   );
 
+  // Fetch next scheduled (pending) visit for this asset to pre-fill the date
+  const today = new Date().toISOString().slice(0, 10);
+  const { data: assetJobsForMulch } = useQuery<{ data: any[] }>({
+    queryKey: ["/api/jobs/next-visit", record.assetId],
+    queryFn: () =>
+      fetch(`/api/jobs?assetId=${record.assetId}&status=pending&limit=100`, { credentials: "include" }).then(r => r.json()),
+    staleTime: 60_000,
+    enabled: !record.scheduledDate && !!record.assetId,
+  });
+  const nextMulchVisitDate = useMemo(() => {
+    return (assetJobsForMulch?.data ?? [])
+      .filter((j: any) => j.scheduledDate && j.scheduledDate >= today && j.jobType === "scheduled")
+      .map((j: any) => j.scheduledDate as string)
+      .sort()[0] ?? null;
+  }, [assetJobsForMulch, today]);
+  const [mulchDateAutoFilled, setMulchDateAutoFilled] = useState(false);
+  useEffect(() => {
+    if (!scheduledDate && nextMulchVisitDate) {
+      setScheduledDate(nextMulchVisitDate);
+      setMulchDateAutoFilled(true);
+    }
+  }, [nextMulchVisitDate]);
+
   // Reset conflict state whenever scheduling inputs change — user must re-resolve
   useEffect(() => {
     setActions({});
@@ -596,10 +619,22 @@ function MulchingReviewDrawer({
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <Label className="text-[11px] text-gray-500 mb-1.5 block">
-                  {splitEnabled ? "Start Date (Day 1)" : "Scheduled Date"}
-                </Label>
-                <Input type="date" value={scheduledDate} onChange={e => setScheduledDate(e.target.value)} className="rounded-xl text-sm" />
+                <div className="flex items-center justify-between mb-1.5">
+                  <Label className="text-[11px] text-gray-500">
+                    {splitEnabled ? "Start Date (Day 1)" : "Scheduled Date"}
+                  </Label>
+                  {mulchDateAutoFilled && nextMulchVisitDate && scheduledDate === nextMulchVisitDate && (
+                    <button
+                      type="button"
+                      onClick={() => { setScheduledDate(""); setMulchDateAutoFilled(false); }}
+                      className="text-[10px] font-semibold hover:opacity-70"
+                      style={{ color: "#00AECD" }}
+                    >
+                      next scheduled visit ×
+                    </button>
+                  )}
+                </div>
+                <Input type="date" value={scheduledDate} onChange={e => { setScheduledDate(e.target.value); setMulchDateAutoFilled(false); }} className="rounded-xl text-sm" />
               </div>
               <div>
                 <Label className="text-[11px] text-gray-500 mb-1.5 block">
@@ -1568,6 +1603,29 @@ function JobDetailPanel({
     }
   }, [autoMins]);
   const isAutoEstimate = !job.estimatedMins && estMins === String(autoMins) && autoMins > 0;
+
+  // Fetch next scheduled (pending) visit for this asset to pre-fill the planned date
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const { data: assetJobsForInfill } = useQuery<{ data: any[] }>({
+    queryKey: ["/api/jobs/next-visit", job.assetId],
+    queryFn: () =>
+      fetch(`/api/jobs?assetId=${job.assetId}&status=pending&limit=100`, { credentials: "include" }).then(r => r.json()),
+    staleTime: 60_000,
+    enabled: !job.plannedDate && !!job.assetId,
+  });
+  const nextInfillVisitDate = useMemo(() => {
+    return (assetJobsForInfill?.data ?? [])
+      .filter((j: any) => j.scheduledDate && j.scheduledDate >= todayStr && j.jobType === "scheduled")
+      .map((j: any) => j.scheduledDate as string)
+      .sort()[0] ?? null;
+  }, [assetJobsForInfill, todayStr]);
+  const [infillDateAutoFilled, setInfillDateAutoFilled] = useState(false);
+  useEffect(() => {
+    if (!plannedDate && nextInfillVisitDate) {
+      setPlannedDate(nextInfillVisitDate);
+      setInfillDateAutoFilled(true);
+    }
+  }, [nextInfillVisitDate]);
   const totalPlants = job.species.reduce((s, sp) => s + sp.quantity, 0);
 
   // Assessment edit state
@@ -1753,8 +1811,20 @@ function JobDetailPanel({
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <Label className="text-[11px] text-gray-500 mb-1 block">Planned Date</Label>
-                  <Input type="date" value={plannedDate} onChange={e => setPlannedDate(e.target.value)} className="rounded-xl text-sm" />
+                  <div className="flex items-center justify-between mb-1">
+                    <Label className="text-[11px] text-gray-500">Planned Date</Label>
+                    {infillDateAutoFilled && nextInfillVisitDate && plannedDate === nextInfillVisitDate && (
+                      <button
+                        type="button"
+                        onClick={() => { setPlannedDate(""); setInfillDateAutoFilled(false); }}
+                        className="text-[10px] font-semibold hover:opacity-70"
+                        style={{ color: "#00AECD" }}
+                      >
+                        next scheduled visit ×
+                      </button>
+                    )}
+                  </div>
+                  <Input type="date" value={plannedDate} onChange={e => { setPlannedDate(e.target.value); setInfillDateAutoFilled(false); }} className="rounded-xl text-sm" />
                 </div>
                 <div>
                   <div className="flex items-center justify-between mb-1">
