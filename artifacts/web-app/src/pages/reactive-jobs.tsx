@@ -605,22 +605,9 @@ export default function ReactiveJobs() {
 
                     {/* Origin */}
                     <td className="px-4 py-3 border-b border-gray-100">
-                      {(() => {
-                        const o = job.origin as string | null;
-                        if (!o) return <span className="text-gray-300 text-[12px]">—</span>;
-                        const cfg: Record<string, { label: string; color: string; bg: string }> = {
-                          manager:      { label: "Manager",      color: "#0f2a36", bg: "#e0f4f8" },
-                          supervisor:   { label: "Supervisor",   color: "#7c3aed", bg: "#ede9fe" },
-                          field_worker: { label: "Field Worker", color: "#b45309", bg: "#fef3c7" },
-                        };
-                        const c = cfg[o] ?? { label: o, color: "#6b7280", bg: "#f3f4f6" };
-                        return (
-                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full whitespace-nowrap"
-                            style={{ color: c.color, background: c.bg }}>
-                            {c.label}
-                          </span>
-                        );
-                      })()}
+                      {(job.raisedByName as string | null)
+                        ? <span className="text-[12px] text-gray-600 whitespace-nowrap">{job.raisedByName as string}</span>
+                        : <span className="text-gray-300 text-[12px]">—</span>}
                     </td>
 
                     {/* Actions */}
