@@ -1310,10 +1310,13 @@ router.get(
 // scheduled jobs — never infill, mulching, reactive/contingency, completed, or
 // in-progress jobs.
 // ─────────────────────────────────────────────────────────────────────────────
+const PUSH_UNDO_WINDOW_MS = 15 * 60 * 1000; // 15 minutes
+
 const pushForwardBodySchema = z.object({
   teamId:    z.string().uuid(),
   fromDate:  z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   deltaDays: z.number().int().min(-30).max(30).default(1),
+  pushedAt:  z.string().datetime().optional(),
 });
 
 router.post(
@@ -1322,7 +1325,19 @@ router.post(
   requireRole("manager", "supervisor"),
   validateBody(pushForwardBodySchema),
   async (req, res) => {
-    const { teamId, fromDate, deltaDays } = res.locals.body as z.infer<typeof pushForwardBodySchema>;
+    const { teamId, fromDate, deltaDays, pushedAt } = res.locals.body as z.infer<typeof pushForwardBodySchema>;
+
+    // For undo calls (deltaDays < 0), validate the pushedAt echo-back is within the allowed window.
+    if (deltaDays < 0 && pushedAt) {
+      const age = Date.now() - new Date(pushedAt).getTime();
+      if (age > PUSH_UNDO_WINDOW_MS) {
+        res.status(409).json({
+          error: "undo_expired",
+          message: "The undo window has expired. The schedule cannot be reversed after 15 minutes.",
+        });
+        return;
+      }
+    }
 
     // Only shift pending scheduled (regular maintenance) jobs for this team on or after fromDate.
     const pendingJobs = await db
@@ -1393,6 +1408,7 @@ router.post(
       affectedCount: updates.length,
       fromDate,
       toDate: newDates[newDates.length - 1] ?? fromDate,
+      pushedAt: new Date().toISOString(),
     });
   },
 );

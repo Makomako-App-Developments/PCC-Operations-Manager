@@ -252,7 +252,13 @@ export function ReactiveJobWizard({ teamsData, assetsData, onClose, onPublished 
   const [acceptOvertime, setAcceptOvertime] = useState(false);
   const [pushingScheduleForward, setPushingScheduleForward] = useState(false);
   const [scheduleWasPushed, setScheduleWasPushed] = useState(false);
+  const [pushSessionToken, setPushSessionToken] = useState<string | null>(null);
   const [undoingPush, setUndoingPush] = useState(false);
+
+  const UNDO_WINDOW_MS = 15 * 60 * 1000;
+  const undoExpired = pushSessionToken
+    ? Date.now() - new Date(pushSessionToken).getTime() > UNDO_WINDOW_MS
+    : false;
 
   const { data: settingsData } = useQuery<{ reactivePriorities?: ReactivePriority[] }>({
     queryKey: ["system-settings"],
@@ -302,6 +308,7 @@ export function ReactiveJobWizard({ teamsData, assetsData, onClose, onPublished 
 
   useEffect(() => {
     setScheduleWasPushed(false);
+    setPushSessionToken(null);
   }, [selectedDate, selectedTeamId]);
 
   const assetDayJob = useMemo(() => {
@@ -368,7 +375,9 @@ export function ReactiveJobWizard({ teamsData, assetsData, onClose, onPublished 
         body: JSON.stringify({ teamId: selectedTeamId, fromDate: selectedDate, deltaDays: 1 }),
       });
       if (!res.ok) throw new Error(await res.text());
+      const data = await res.json();
       setScheduleWasPushed(true);
+      setPushSessionToken(data.pushedAt ?? new Date().toISOString());
       qc.invalidateQueries({ queryKey: getGetScheduleWeekQueryKey({ teamId: selectedTeamId }) });
       setStep(4);
     } catch (err) {
@@ -386,10 +395,27 @@ export function ReactiveJobWizard({ teamsData, assetsData, onClose, onPublished 
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ teamId: selectedTeamId, fromDate: selectedDate, deltaDays: -1 }),
+        body: JSON.stringify({
+          teamId: selectedTeamId,
+          fromDate: selectedDate,
+          deltaDays: -1,
+          pushedAt: pushSessionToken ?? undefined,
+        }),
       });
-      if (!res.ok) throw new Error(await res.text());
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        if (body?.error === "undo_expired") {
+          toast({
+            title: "Undo unavailable",
+            description: "The 15-minute undo window has passed. The schedule change cannot be reversed.",
+            variant: "destructive",
+          });
+          return;
+        }
+        throw new Error(body?.message ?? res.statusText);
+      }
       setScheduleWasPushed(false);
+      setPushSessionToken(null);
       qc.invalidateQueries({ queryKey: getGetScheduleWeekQueryKey({ teamId: selectedTeamId }) });
       setStep(3);
     } catch (err) {
@@ -1438,13 +1464,22 @@ export function ReactiveJobWizard({ teamsData, assetsData, onClose, onPublished 
                             All scheduled jobs shifted +1 working day from {dateLabel}
                           </p>
                         </div>
-                        <button
-                          onClick={handleUndoPush}
-                          disabled={undoingPush}
-                          className="text-[11px] font-semibold text-blue-500 hover:text-blue-700 disabled:opacity-50 flex-shrink-0 underline underline-offset-2"
-                        >
-                          {undoingPush ? "Undoing…" : "Undo"}
-                        </button>
+                        {undoExpired ? (
+                          <span
+                            className="text-[11px] font-semibold text-gray-400 flex-shrink-0 cursor-default"
+                            title="The 15-minute undo window has passed"
+                          >
+                            Undo expired
+                          </span>
+                        ) : (
+                          <button
+                            onClick={handleUndoPush}
+                            disabled={undoingPush}
+                            className="text-[11px] font-semibold text-blue-500 hover:text-blue-700 disabled:opacity-50 flex-shrink-0 underline underline-offset-2"
+                          >
+                            {undoingPush ? "Undoing…" : "Undo"}
+                          </button>
+                        )}
                       </div>
                     )}
                     {resolvedJobsList.map(job => {
