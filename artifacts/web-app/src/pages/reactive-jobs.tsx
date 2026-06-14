@@ -33,7 +33,10 @@ const PRIORITY_ORDER: Record<string, number> = { urgent: 0, high: 1, medium: 2, 
 const STATUS_ORDER: Record<string, number> = { raised: 0, assigned: 1, in_progress: 2, completed: 3, cancelled: 4 };
 
 export default function ReactiveJobs() {
-  const [wizardOpen, setWizardOpen] = useState(false);
+  const [wizardOpen, setWizardOpen] = useState(() => {
+    const params = new URLSearchParams(window.location.search);
+    return params.get("new") === "1";
+  });
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [overdueOnly, setOverdueOnly] = useState(false);
   const [search, setSearch] = useState("");
