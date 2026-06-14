@@ -329,13 +329,13 @@ export default function Dashboard() {
         <div className="grid grid-cols-2 gap-6">
 
           {/* Left column */}
-          <div className="flex flex-col gap-5">
+          <div className="flex flex-col gap-5 h-full">
 
             {/* Schedule State */}
             <ScheduleStateChart completionPct={completionRate} />
 
             {/* Draft Jobs Awaiting Scheduling */}
-            <div className="flex-1 bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden flex flex-col">
+            <div className="flex-1 min-h-0 bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden flex flex-col">
               <div className="px-5 py-4 border-b flex items-center gap-2 flex-shrink-0">
                 <ClipboardList className="w-4 h-4" style={{ color: BRAND }} />
                 <div>
@@ -349,8 +349,8 @@ export default function Dashboard() {
                   <p className="text-sm font-medium">No draft jobs awaiting scheduling</p>
                 </div>
               ) : (
-                <div className="flex-1 flex flex-col overflow-hidden">
-                  <div className="divide-y divide-gray-50 overflow-y-auto flex-1">
+                <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
+                  <div className="divide-y divide-gray-50 overflow-y-auto flex-1 min-h-0">
                     {draftJobs.map(j => {
                       const kindMeta = j.kind === "mulching"
                         ? { icon: Layers,  bg: "bg-violet-50", text: "text-violet-700", border: "border-violet-100" }
