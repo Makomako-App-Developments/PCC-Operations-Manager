@@ -32,6 +32,7 @@ import {
   Calendar, CalendarCheck, Users, Leaf, FileText, AlertTriangle, CheckCircle2,
   Download, ChevronDown, ChevronUp, Package, List, Map as MapIcon, ExternalLink,
   Ruler, History, ClipboardList, Zap, SkipForward, Trash2, Clock, Check, ChevronsUpDown, Scissors, Pencil,
+  RotateCcw, ChevronsRight,
 } from "lucide-react";
 import { useLocation, useSearch } from "wouter";
 import {
@@ -396,6 +397,8 @@ function MulchingReviewDrawer({
   const [reassignTo, setReassignTo] = useState<Record<string, string>>({});
   const [overtimeAccepted, setOvertimeAccepted] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [scheduleWasPushed, setScheduleWasPushed] = useState(false);
+  const [pushingSchedule, setPushingSchedule] = useState(false);
 
   // Multi-day split state
   const [splitEnabled, setSplitEnabled] = useState(false);
@@ -432,6 +435,7 @@ function MulchingReviewDrawer({
     setActions({});
     setReassignTo({});
     setOvertimeAccepted(false);
+    setScheduleWasPushed(false);
   }, [teamId, scheduledDate, estMins]);
 
   // Keep split dates aligned when first date, count, or split toggle changes
@@ -491,12 +495,30 @@ function MulchingReviewDrawer({
     if (a !== "reassign") setReassignTo(prev => { const n = { ...prev }; delete n[id]; return n; });
   };
 
-  // Publish enabled when: team + date(s) set, AND (resolved total ≤ PRODUCTIVE OR overtime accepted)
+  // Publish enabled when: team + date(s) set, AND (resolved total ≤ PRODUCTIVE OR overtime accepted OR schedule was pushed)
   const canPublish = !!teamId && (
     splitEnabled
       ? splitDates.slice(0, splitCount).every(Boolean) && mulchMins > 0
-      : !!scheduledDate && (!isOverCapacity || overtimeAccepted) && !weekLoading
+      : !!scheduledDate && (!isOverCapacity || overtimeAccepted || scheduleWasPushed) && !weekLoading
   );
+
+  const handlePushSchedule = async () => {
+    if (!teamId || !scheduledDate) return;
+    setPushingSchedule(true);
+    try {
+      const res = await fetch("/api/schedule/push-forward", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ teamId, fromDate: scheduledDate, deltaDays: 1 }),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      setScheduleWasPushed(true);
+      await qc.invalidateQueries({ queryKey: ["/api/schedule/week"] });
+    } catch (err) {
+      toast({ title: "Push failed", description: err instanceof Error ? err.message : "Unknown error", variant: "destructive" });
+    } finally { setPushingSchedule(false); }
+  };
 
   const handlePublish = async () => {
     // ── Split mode ────────────────────────────────────────────────────────────
@@ -880,20 +902,43 @@ function MulchingReviewDrawer({
         </div>
 
         <div className="border-t">
-          {/* Overtime acceptance — always visible in footer when over capacity */}
-          {isOverCapacity && (
+          {/* Conflict resolution options — visible in footer when over capacity */}
+          {isOverCapacity && !scheduleWasPushed && (
+            <div className="px-6 pt-4 space-y-2">
+              <p className="text-[10px] text-gray-400 font-semibold uppercase tracking-wider">Resolve capacity conflict</p>
+              <div className="grid grid-cols-2 gap-2">
+                {/* Option 1 — Accept overtime */}
+                <button
+                  type="button"
+                  onClick={() => setOvertimeAccepted(v => !v)}
+                  className="py-2.5 rounded-xl border-2 font-bold text-xs flex items-center justify-center gap-1.5 transition-all"
+                  style={overtimeAccepted
+                    ? { borderColor: "#dc2626", background: "#fef2f2", color: "#dc2626" }
+                    : { borderColor: "#fca5a5", background: "white", color: "#ef4444" }}>
+                  {overtimeAccepted
+                    ? <><CheckCircle2 className="w-3.5 h-3.5" /> Overtime authorised</>
+                    : <><AlertTriangle className="w-3.5 h-3.5" /> 1 — Accept overtime</>}
+                </button>
+                {/* Option 2 — Push whole schedule +1 day */}
+                <button
+                  type="button"
+                  onClick={handlePushSchedule}
+                  disabled={pushingSchedule}
+                  className="py-2.5 rounded-xl border-2 font-bold text-xs flex items-center justify-center gap-1.5 transition-all"
+                  style={{ borderColor: "#2563eb", background: "white", color: "#2563eb" }}>
+                  {pushingSchedule
+                    ? <><RotateCcw className="w-3.5 h-3.5 animate-spin" /> Pushing…</>
+                    : <><ChevronsRight className="w-3.5 h-3.5" /> 2 — Push schedule +1 day</>}
+                </button>
+              </div>
+            </div>
+          )}
+          {scheduleWasPushed && (
             <div className="px-6 pt-4">
-              <button
-                type="button"
-                onClick={() => setOvertimeAccepted(v => !v)}
-                className="w-full py-2.5 rounded-xl border-2 font-bold text-sm flex items-center justify-center gap-2 transition-all"
-                style={overtimeAccepted
-                  ? { borderColor: "#dc2626", background: "#fef2f2", color: "#dc2626" }
-                  : { borderColor: "#fca5a5", background: "white", color: "#ef4444" }}>
-                {overtimeAccepted
-                  ? <><CheckCircle2 className="w-4 h-4" /> Overtime authorised — publish unlocked</>
-                  : <><AlertTriangle className="w-4 h-4" /> Accept overtime to unlock publish</>}
-              </button>
+              <div className="flex items-center gap-2 py-2.5 px-3 rounded-xl bg-blue-50 border border-blue-200">
+                <CheckCircle2 className="w-4 h-4 text-blue-600 flex-shrink-0" />
+                <p className="text-xs font-semibold text-blue-700">Schedule pushed +1 day — publish unlocked</p>
+              </div>
             </div>
           )}
           <div className="px-6 py-4 flex items-center gap-3">
