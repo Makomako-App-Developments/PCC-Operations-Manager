@@ -314,7 +314,7 @@ export default function Assets() {
                       </Badge>
                     </td>
                     <td className="px-4 py-3 text-sm text-gray-700 tabular-nums">
-                      {asset.areaM2 ? `${Number(asset.areaM2).toLocaleString()} m²` : <span className="text-gray-300">—</span>}
+                      {asset.areaM2 ? Number(asset.areaM2).toLocaleString() : <span className="text-gray-300">—</span>}
                     </td>
                     <td className="px-4 py-3 text-sm text-gray-700">{asset.serviceTimeMins} min</td>
                     <td className="px-4 py-3">
