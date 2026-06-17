@@ -335,7 +335,7 @@ export default function Dashboard() {
             <ScheduleStateChart completionPct={completionRate} />
 
             {/* Draft Jobs Awaiting Scheduling */}
-            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden flex flex-col max-h-[380px]">
+            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden flex flex-col flex-1">
               <div className="px-5 py-4 border-b flex items-center gap-2 flex-shrink-0">
                 <ClipboardList className="w-4 h-4" style={{ color: BRAND }} />
                 <div>
