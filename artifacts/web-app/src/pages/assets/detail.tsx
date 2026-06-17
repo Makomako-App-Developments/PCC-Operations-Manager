@@ -88,7 +88,7 @@ function AssetMap({ asset }: { asset: any }) {
   };
 
   return (
-    <div className="relative flex-shrink-0" style={{ height: 200 }}>
+    <div className="relative flex-shrink-0" style={{ height: 300 }}>
       <MapContainer
         center={center}
         zoom={17}
@@ -1303,7 +1303,7 @@ export default function AssetDetail() {
       <div className="flex flex-1 min-h-0 overflow-hidden">
 
         {/* Left: asset info / edit panel */}
-        <div className="w-[368px] flex-shrink-0 flex flex-col bg-white overflow-hidden" style={{ borderRight: "1px solid #e5e7eb" }}>
+        <div className="w-[460px] flex-shrink-0 flex flex-col bg-white overflow-hidden" style={{ borderRight: "1px solid #e5e7eb" }}>
           {editing ? (
             <EditPanel
               asset={asset}
