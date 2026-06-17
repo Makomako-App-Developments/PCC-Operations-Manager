@@ -121,7 +121,7 @@ const STANDARD_COLORS: Record<string, string> = {
   low:    "bg-gray-100 text-gray-600",
 };
 
-type SortCol = "name" | "gardenType" | "serviceTimeMins" | "siteType" | "frequency" | "team";
+type SortCol = "name" | "gardenType" | "areaM2" | "serviceTimeMins" | "siteType" | "frequency" | "team";
 type SortDir = "asc" | "desc";
 
 function SortTh({ label, col, sortCol, sortDir, onSort, className }: {
@@ -180,6 +180,7 @@ export default function Assets() {
       let av: any, bv: any;
       if (sortCol === "name")            { av = a.name;            bv = b.name; }
       else if (sortCol === "gardenType"){ av = a.gardenType;      bv = b.gardenType; }
+      else if (sortCol === "areaM2")    { av = Number(a.areaM2) || 0; bv = Number(b.areaM2) || 0; }
       else if (sortCol === "serviceTimeMins") { av = a.serviceTimeMins ?? 0; bv = b.serviceTimeMins ?? 0; }
       else if (sortCol === "siteType")  { av = a.siteType || ""; bv = b.siteType || ""; }
       else if (sortCol === "frequency") { av = a.frequency;       bv = b.frequency; }
@@ -288,6 +289,7 @@ export default function Assets() {
                   <SortTh label="Site Name"     col="name"           sortCol={sortCol} sortDir={sortDir} onSort={handleSort} className="w-[25%]" />
                   <th className="px-4 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider w-[25%]">Description</th>
                   <SortTh label="Specification" col="gardenType"     sortCol={sortCol} sortDir={sortDir} onSort={handleSort} />
+                  <SortTh label="Area (m²)"    col="areaM2"          sortCol={sortCol} sortDir={sortDir} onSort={handleSort} />
                   <SortTh label="Service Time"  col="serviceTimeMins" sortCol={sortCol} sortDir={sortDir} onSort={handleSort} />
                   <SortTh label="Garden Type"   col="siteType"       sortCol={sortCol} sortDir={sortDir} onSort={handleSort} />
                   <SortTh label="Freq"          col="frequency"      sortCol={sortCol} sortDir={sortDir} onSort={handleSort} />
@@ -311,6 +313,9 @@ export default function Assets() {
                         {asset.gardenType.replace(/_/g, " ")}
                       </Badge>
                     </td>
+                    <td className="px-4 py-3 text-sm text-gray-700 tabular-nums">
+                      {asset.areaM2 ? `${Number(asset.areaM2).toLocaleString()} m²` : <span className="text-gray-300">—</span>}
+                    </td>
                     <td className="px-4 py-3 text-sm text-gray-700">{asset.serviceTimeMins} min</td>
                     <td className="px-4 py-3">
                       {asset.siteType ? (
@@ -325,7 +330,7 @@ export default function Assets() {
                 ))}
                 {assetsData?.data.length === 0 && (
                   <tr>
-                    <td colSpan={7} className="px-4 py-8 text-center text-gray-500">
+                    <td colSpan={8} className="px-4 py-8 text-center text-gray-500">
                       No assets found matching filters.
                     </td>
                   </tr>
