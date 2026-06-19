@@ -15,8 +15,8 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { WebView, WebViewMessageEvent } from "react-native-webview";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { AssetMap } from "@/components/AssetMap";
 
 import { EmptyState } from "@/components/EmptyState";
 import { useColors } from "@/hooks/useColors";
@@ -174,14 +174,8 @@ ${userMarker}
 </script></body></html>`;
   }, [userLocation, assets]);
 
-  // Handle messages from the Leaflet WebView
-  const handleWebViewMessage = useCallback((e: WebViewMessageEvent) => {
-    try {
-      const msg = JSON.parse(e.nativeEvent.data);
-      if (msg.type === "openAsset" && msg.id) {
-        router.push(`/asset/${msg.id}` as any);
-      }
-    } catch {}
+  const handleOpenAsset = useCallback((asset: { id: string; name: string }) => {
+    router.push(`/asset/${asset.id}` as any);
   }, [router]);
 
   const topPad = insets.top;
@@ -273,14 +267,7 @@ ${userMarker}
           {isLoading ? (
             <ActivityIndicator style={{ marginTop: 48 }} color="#00AECD" size="large" />
           ) : (
-            <WebView
-              source={{ html: mapHtml }}
-              style={styles.map}
-              onMessage={handleWebViewMessage}
-              originWhitelist={["*"]}
-              javaScriptEnabled
-              domStorageEnabled
-            />
+            <AssetMap html={mapHtml} onOpenAsset={handleOpenAsset} />
           )}
         </View>
       ) : (
