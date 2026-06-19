@@ -494,7 +494,7 @@ export default function CompletedWorks() {
   return (
     <div className="flex flex-1 min-h-0 overflow-hidden">
       {/* Main content */}
-      <div className="flex-1 flex flex-col min-h-0 bg-[#f5f7f9]">
+      <div className="flex-1 flex flex-col min-h-0 min-w-0 bg-[#f5f7f9]">
 
         {/* ── Page header ───────────────────────────────────────────────────── */}
         <header className="bg-white border-b px-8 py-4 flex items-center justify-between sticky top-0 z-10 flex-shrink-0">
