@@ -901,7 +901,7 @@ export default function ReportScreen() {
       </ScrollView>
 
       {/* Issue Type Modal */}
-      <Modal visible={showIssueModal} transparent animationType="slide">
+      <Modal visible={showIssueModal} transparent animationType="slide" onRequestClose={() => setShowIssueModal(false)}>
         <TouchableOpacity style={styles.modalBackdrop} onPress={() => setShowIssueModal(false)} activeOpacity={1} />
         <View style={[styles.modalSheet, { backgroundColor: colors.card, borderTopLeftRadius: colors.radius * 3, borderTopRightRadius: colors.radius * 3, paddingBottom: insets.bottom + 16 }]}>
           <View style={[styles.modalHandle, { backgroundColor: colors.border }]} />

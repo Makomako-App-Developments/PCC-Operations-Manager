@@ -15,6 +15,7 @@ import React, { useState, useEffect, useRef, useMemo } from "react";
 import {
   ActivityIndicator,
   Alert,
+  BackHandler,
   Image,
   Modal,
   Platform,
@@ -493,6 +494,16 @@ function TaskSkipReasonModal({ tasks, onConfirm, onCancel }: SkipReasonModalProp
   const reason = reasons[task.index] ?? "";
   const isLast = current === tasks.length - 1;
 
+  // On Android, hardware back steps to the previous task rather than closing the modal.
+  // When already on the first task, it cancels (closes the modal).
+  const handleRequestClose = () => {
+    if (current > 0) {
+      setCurrent(c => c - 1);
+    } else {
+      onCancel();
+    }
+  };
+
   const handleNext = () => {
     if (!reason.trim()) return;
     if (isLast) {
@@ -504,7 +515,7 @@ function TaskSkipReasonModal({ tasks, onConfirm, onCancel }: SkipReasonModalProp
   };
 
   return (
-    <Modal visible animationType="slide" presentationStyle="pageSheet" onRequestClose={onCancel}>
+    <Modal visible animationType="slide" presentationStyle="pageSheet" onRequestClose={handleRequestClose}>
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : "height"}>
         <View style={[styles.skipModalRoot, { backgroundColor: colors.background }]}>
           <View style={[styles.skipModalHeader, { borderBottomColor: colors.border, backgroundColor: colors.card }]}>
@@ -667,8 +678,18 @@ function OutOfSequenceModal({
     if (visible) { setStep("confirm"); setReason(""); }
   }, [visible]);
 
+  // On Android, hardware back steps from "reason" back to "confirm" rather than
+  // closing the modal entirely. On the "confirm" step, back closes the modal.
+  const handleRequestClose = () => {
+    if (step === "reason") {
+      setStep("confirm");
+    } else {
+      onCancel();
+    }
+  };
+
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onCancel}>
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={handleRequestClose}>
       <KeyboardAvoidingView
         style={styles.seqOverlay}
         behavior={Platform.OS === "ios" ? "padding" : undefined}
@@ -848,6 +869,17 @@ export default function JobDetailScreen() {
     if (pendingJobs.length === 0) return true;
     return pendingJobs[0].id === id;
   }, [todaySchedule, id]);
+
+  // Android back: dismiss inline confirmation bar rather than navigating away
+  useEffect(() => {
+    if (Platform.OS !== "android") return;
+    if (!pendingAction) return;
+    const sub = BackHandler.addEventListener("hardwareBackPress", () => {
+      setPendingAction(null);
+      return true;
+    });
+    return () => sub.remove();
+  }, [pendingAction]);
 
   const toggleTask = (index: number) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
