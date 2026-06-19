@@ -502,7 +502,8 @@ function MulchingReviewDrawer({
   );
 
   const mulchMins = parseInt(estMins) || 0;
-  const totalScheduled = dayJobs.reduce((s: number, j: any) => s + (j.serviceTimeMins ?? 0), 0);
+  const jobMinsOf = (j: any) => j.estimatedTimeMins ?? j.serviceTimeMins ?? 0;
+  const totalScheduled = dayJobs.reduce((s: number, j: any) => s + jobMinsOf(j), 0);
   const totalWithMulch = totalScheduled + mulchMins;
 
   // Minutes freed by resolved actions (push/defer/delete remove them from this day; reassign too)
@@ -511,7 +512,7 @@ function MulchingReviewDrawer({
       const a = actions[j.id] ?? "none";
       return a !== "none" && (a !== "reassign" || reassignTo[j.id]);
     })
-    .reduce((s: number, j: any) => s + (j.serviceTimeMins ?? 0), 0);
+    .reduce((s: number, j: any) => s + jobMinsOf(j), 0);
   const resolvedTotal = totalWithMulch - resolvedSaved;
 
   const showImpact = !!teamId && (splitEnabled ? mulchMins > 0 : !!scheduledDate);
