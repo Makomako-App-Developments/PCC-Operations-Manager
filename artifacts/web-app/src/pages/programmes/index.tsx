@@ -422,8 +422,10 @@ function MulchingReviewDrawer({
   );
 
   // Fetch next scheduled (pending) visit for this asset to pre-fill the date.
-  // Always fetch (no guard on record.scheduledDate) so we can prefer the real
-  // visit date over the decay-projected date stored on the record.
+  // We only want a visit that falls ON OR AFTER the projected decay due date
+  // (record.scheduledDate). Picking an earlier visit would schedule mulching
+  // before it is actually needed — e.g. selecting a routine service next week
+  // when the mulch won't hit the threshold until August.
   const today = new Date().toISOString().slice(0, 10);
   const { data: assetJobsForMulch } = useQuery<{ data: any[] }>({
     queryKey: ["/api/jobs/next-visit", record.assetId],
@@ -433,11 +435,15 @@ function MulchingReviewDrawer({
     enabled: !!record.assetId,
   });
   const nextMulchVisitDate = useMemo(() => {
+    // Lower bound: the projected due date from the record, or today if not set.
+    // This prevents a service visit that is earlier than the mulch need from
+    // being auto-selected.
+    const minDate = record.scheduledDate ?? today;
     return (assetJobsForMulch?.data ?? [])
-      .filter((j: any) => j.scheduledDate && j.scheduledDate >= today && j.jobType === "scheduled")
+      .filter((j: any) => j.scheduledDate && j.scheduledDate >= minDate && j.jobType === "scheduled")
       .map((j: any) => j.scheduledDate as string)
       .sort()[0] ?? null;
-  }, [assetJobsForMulch, today]);
+  }, [assetJobsForMulch, today, record.scheduledDate]);
   const [mulchDateAutoFilled, setMulchDateAutoFilled] = useState(false);
   useEffect(() => {
     // Apply the next visit date as default if:
