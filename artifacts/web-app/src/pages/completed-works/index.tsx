@@ -492,7 +492,7 @@ export default function CompletedWorks() {
   }
 
   return (
-    <div className="flex h-[calc(100vh-0px)] overflow-hidden">
+    <div className="flex h-full overflow-hidden">
       {/* Main content */}
       <div className="flex-1 flex flex-col min-h-0 bg-[#f5f7f9]">
 
