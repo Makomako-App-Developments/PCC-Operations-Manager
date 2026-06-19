@@ -34,13 +34,13 @@ export default function SettingsPage() {
   const TABS = BASE_TABS.filter(t => (!t.managerOnly || isManager) && (!t.adminOnly || isAdmin));
 
   return (
-    <div className="flex flex-col flex-1 min-h-0 overflow-y-auto bg-[#f5f7f9]">
-      <div className="bg-white border-b border-gray-200 px-8 py-5">
+    <div className="flex flex-col flex-1 min-h-0 overflow-hidden bg-[#f5f7f9]">
+      <div className="bg-white border-b border-gray-200 px-8 py-5 flex-shrink-0">
         <h1 className="text-2xl font-bold text-gray-900">Settings</h1>
         <p className="text-sm text-gray-500 mt-0.5">Manage users, teams and system configuration</p>
       </div>
 
-      <div className="bg-white border-b border-gray-100 px-8">
+      <div className="bg-white border-b border-gray-100 px-8 flex-shrink-0">
         <div className="flex gap-0 flex-wrap">
           {TABS.map(t => (
             <button
@@ -59,7 +59,7 @@ export default function SettingsPage() {
         </div>
       </div>
 
-      <div className="flex-1">
+      <div className="flex-1 overflow-y-auto">
         {tab === "users"              && <UsersPage embedded />}
         {tab === "roles"              && <RolesPermissionsPage />}
         {tab === "audit-log"          && <AuditLogPage embedded />}
