@@ -34,7 +34,7 @@ export default function SettingsPage() {
   const TABS = BASE_TABS.filter(t => (!t.managerOnly || isManager) && (!t.adminOnly || isAdmin));
 
   return (
-    <div className="flex flex-col min-h-full bg-[#f5f7f9]">
+    <div className="flex flex-col flex-1 min-h-0 overflow-y-auto bg-[#f5f7f9]">
       <div className="bg-white border-b border-gray-200 px-8 py-5">
         <h1 className="text-2xl font-bold text-gray-900">Settings</h1>
         <p className="text-sm text-gray-500 mt-0.5">Manage users, teams and system configuration</p>
