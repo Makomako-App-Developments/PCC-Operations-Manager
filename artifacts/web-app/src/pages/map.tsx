@@ -656,6 +656,14 @@ export default function MapPage() {
             maxNativeZoom={TILE_LAYERS[layerMode].maxNativeZoom}
             maxZoom={21}
           />
+          {layerMode === "aerial" && (
+            <TileLayer
+              url="https://services.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}"
+              maxNativeZoom={19}
+              maxZoom={21}
+              opacity={1}
+            />
+          )}
 
           {/* Fly to linked asset when arriving from Programmes */}
           {linkedAsset && (
