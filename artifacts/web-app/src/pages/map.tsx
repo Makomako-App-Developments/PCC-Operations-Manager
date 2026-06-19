@@ -658,10 +658,11 @@ export default function MapPage() {
           />
           {layerMode === "aerial" && (
             <TileLayer
-              url="https://services.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}"
+              url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager_only_labels/{z}/{x}/{y}{r}.png"
+              attribution='© <a href="https://carto.com/">CARTO</a>'
+              subdomains="abcd"
               maxNativeZoom={19}
               maxZoom={21}
-              opacity={1}
             />
           )}
 
