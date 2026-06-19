@@ -57,6 +57,7 @@ export async function notifyTeam(
     title: payload.title,
     body: payload.body,
     data: payload.data ?? {},
+    channelId: "job-alerts",
   }));
 
   await sendMessages(messages);
@@ -88,6 +89,7 @@ export async function notifySupervisors(payload: PushPayload): Promise<void> {
     title: payload.title,
     body: payload.body,
     data: payload.data ?? {},
+    channelId: "digest",
   }));
 
   await sendMessages(messages);
@@ -121,6 +123,7 @@ export async function notifyUsers(
     title: payload.title,
     body: payload.body,
     data: payload.data ?? {},
+    channelId: "job-alerts",
   }));
 
   await sendMessages(messages);

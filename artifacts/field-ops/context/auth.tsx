@@ -45,9 +45,27 @@ Notifications.setNotificationHandler({
   }),
 });
 
+async function ensureNotificationChannels(): Promise<void> {
+  if (Platform.OS !== "android") return;
+  await Notifications.setNotificationChannelAsync("job-alerts", {
+    name: "Job Alerts",
+    importance: Notifications.AndroidImportance.HIGH,
+    sound: "default",
+    vibrationPattern: [0, 250, 250, 250],
+    enableVibrate: true,
+  });
+  await Notifications.setNotificationChannelAsync("digest", {
+    name: "Daily Digest",
+    importance: Notifications.AndroidImportance.DEFAULT,
+    sound: "default",
+  });
+}
+
 async function registerPushToken(_authToken: string): Promise<void> {
   if (Platform.OS === "web") return;
   try {
+    await ensureNotificationChannels();
+
     type PermResult = { granted: boolean; canAskAgain?: boolean };
     let perms = (await Notifications.getPermissionsAsync()) as unknown as PermResult;
     if (!perms.granted && perms.canAskAgain !== false) {

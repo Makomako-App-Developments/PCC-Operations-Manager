@@ -16,7 +16,23 @@
     "ios": {
       "supportsTablet": false
     },
-    "android": {},
+    "android": {
+      "channels": [
+        {
+          "id": "job-alerts",
+          "name": "Job Alerts",
+          "importance": 4,
+          "sound": "default",
+          "vibrate": true
+        },
+        {
+          "id": "digest",
+          "name": "Daily Digest",
+          "importance": 3,
+          "sound": "default"
+        }
+      ]
+    },
     "web": {
       "favicon": "./assets/images/icon.png"
     },
