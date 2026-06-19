@@ -17,6 +17,10 @@
       "supportsTablet": false
     },
     "android": {
+      "permissions": [
+        "android.permission.READ_MEDIA_IMAGES",
+        "android.permission.READ_EXTERNAL_STORAGE"
+      ],
       "channels": [
         {
           "id": "job-alerts",
