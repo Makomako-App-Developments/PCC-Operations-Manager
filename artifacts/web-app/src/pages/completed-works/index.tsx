@@ -492,7 +492,7 @@ export default function CompletedWorks() {
   }
 
   return (
-    <div className="flex h-full overflow-hidden">
+    <div className="flex flex-1 min-h-0 overflow-hidden">
       {/* Main content */}
       <div className="flex-1 flex flex-col min-h-0 bg-[#f5f7f9]">
 
