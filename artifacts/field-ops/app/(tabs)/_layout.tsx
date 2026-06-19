@@ -112,7 +112,7 @@ function ClassicTabLayout({
           borderTopWidth: 1,
           borderTopColor: colors.border,
           elevation: 0,
-          ...(isWeb ? { height: 56 + insets.bottom, paddingBottom: insets.bottom } : {}),
+          ...(!isIOS ? { height: 56 + insets.bottom, paddingBottom: insets.bottom } : {}),
         },
         tabBarBackground: () =>
           isIOS ? (
@@ -121,11 +121,11 @@ function ClassicTabLayout({
               tint={isDark ? "dark" : "light"}
               style={StyleSheet.absoluteFill}
             />
-          ) : isWeb ? (
+          ) : (
             <View
               style={[StyleSheet.absoluteFill, { backgroundColor: colors.card }]}
             />
-          ) : null,
+          ),
       }}
     >
       <Tabs.Screen
