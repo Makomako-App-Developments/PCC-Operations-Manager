@@ -870,16 +870,41 @@ export default function JobDetailScreen() {
     return pendingJobs[0].id === id;
   }, [todaySchedule, id]);
 
-  // Android back: dismiss inline confirmation bar rather than navigating away
+  // Confirm before leaving when job is active or paused
+  const handleBack = () => {
+    if (isActive || isPaused) {
+      Alert.alert(
+        "Leave without pausing?",
+        "This job is still in progress. Tap Pause first to save your progress, or leave anyway.",
+        [
+          { text: "Stay", style: "cancel" },
+          { text: "Leave", style: "destructive", onPress: () => router.back() },
+        ],
+      );
+    } else {
+      router.back();
+    }
+  };
+
+  // Android back: dismiss inline confirmation bar rather than navigating away;
+  // also intercept hardware back when job is active or paused
   useEffect(() => {
     if (Platform.OS !== "android") return;
-    if (!pendingAction) return;
-    const sub = BackHandler.addEventListener("hardwareBackPress", () => {
-      setPendingAction(null);
-      return true;
-    });
-    return () => sub.remove();
-  }, [pendingAction]);
+    if (pendingAction) {
+      const sub = BackHandler.addEventListener("hardwareBackPress", () => {
+        setPendingAction(null);
+        return true;
+      });
+      return () => sub.remove();
+    }
+    if (isActive || isPaused) {
+      const sub = BackHandler.addEventListener("hardwareBackPress", () => {
+        handleBack();
+        return true;
+      });
+      return () => sub.remove();
+    }
+  }, [pendingAction, isActive, isPaused]);
 
   const toggleTask = (index: number) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -1093,7 +1118,7 @@ export default function JobDetailScreen() {
       <View style={[styles.navBar, { backgroundColor: colors.card, borderBottomColor: colors.border, paddingTop: topPad + 8 }]}>
         <TouchableOpacity
           style={[styles.backBtn, { backgroundColor: colors.background, borderRadius: colors.radius }]}
-          onPress={() => router.back()}
+          onPress={handleBack}
           activeOpacity={0.75}
         >
           <Feather name="arrow-left" size={20} color={colors.foreground} />
