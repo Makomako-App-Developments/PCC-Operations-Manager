@@ -1,6 +1,6 @@
 import { Feather } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
-import { requestMediaLibraryPermission } from "@/hooks/usePhotoLibraryPermission";
+import { requestCameraPermission, requestMediaLibraryPermission } from "@/hooks/usePhotoLibraryPermission";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import * as Haptics from "expo-haptics";
 import React, { useState } from "react";
@@ -173,11 +173,7 @@ function AttachmentsSection({ jobId, isDone }: { jobId: string; isDone: boolean 
       Alert.alert("Not supported", "Camera capture is not available on web. Use the library picker instead.");
       return;
     }
-    const { status } = await ImagePicker.requestCameraPermissionsAsync();
-    if (status !== "granted") {
-      Alert.alert("Permission needed", "Please allow camera access in Settings.");
-      return;
-    }
+    if (!(await requestCameraPermission())) return;
     const result = await ImagePicker.launchCameraAsync({ mediaTypes: ["images"], quality: 0.7 });
     if (!result.canceled && result.assets[0]) {
       const asset = result.assets[0];

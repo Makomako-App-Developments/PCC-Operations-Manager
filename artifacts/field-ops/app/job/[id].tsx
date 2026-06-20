@@ -10,7 +10,7 @@ import {
 } from "@workspace/api-client-react";
 import * as Haptics from "expo-haptics";
 import * as ImagePicker from "expo-image-picker";
-import { requestMediaLibraryPermission } from "@/hooks/usePhotoLibraryPermission";
+import { requestCameraPermission, requestMediaLibraryPermission } from "@/hooks/usePhotoLibraryPermission";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import {
@@ -332,11 +332,7 @@ function PhotoSection({ jobId, readOnly }: { jobId: string; readOnly: boolean })
       input.click();
       return;
     }
-    const { status } = await ImagePicker.requestCameraPermissionsAsync();
-    if (status !== "granted") {
-      Alert.alert("Permission needed", "Please allow camera access in Settings.");
-      return;
-    }
+    if (!(await requestCameraPermission())) return;
     const result = await ImagePicker.launchCameraAsync({ mediaTypes: ["images"], quality: 0.7 });
     if (!result.canceled && result.assets[0]) {
       uploadPhoto.mutate({ uri: result.assets[0].uri });

@@ -3,7 +3,7 @@ import { Feather } from "@expo/vector-icons";
 import { useCreateReactiveJob } from "@workspace/api-client-react";
 import * as Haptics from "expo-haptics";
 import * as ImagePicker from "expo-image-picker";
-import { requestMediaLibraryPermission } from "@/hooks/usePhotoLibraryPermission";
+import { requestCameraPermission, requestMediaLibraryPermission } from "@/hooks/usePhotoLibraryPermission";
 import * as Location from "expo-location";
 import { useFocusEffect, useNavigation } from "expo-router";
 import React, { useState, useMemo, useEffect, useRef, useCallback } from "react";
@@ -666,11 +666,7 @@ export default function ReportScreen() {
       Alert.alert("Not available", "Camera capture is not supported on web. Use the library picker instead.");
       return;
     }
-    const { status } = await ImagePicker.requestCameraPermissionsAsync();
-    if (status !== "granted") {
-      Alert.alert("Permission needed", "Please allow camera access in Settings.");
-      return;
-    }
+    if (!(await requestCameraPermission())) return;
     const result = await ImagePicker.launchCameraAsync({ mediaTypes: ["images"], quality: 0.8 });
     if (!result.canceled && result.assets[0]) {
       const a = result.assets[0];

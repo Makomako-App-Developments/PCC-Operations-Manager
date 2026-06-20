@@ -32,3 +32,35 @@ export async function requestMediaLibraryPermission(): Promise<boolean> {
 
   return false;
 }
+
+/**
+ * Requests camera permission and returns true if granted.
+ *
+ * On Android, when the permission is denied (including permanently blocked),
+ * shows a descriptive alert explaining why the app needs access and offers
+ * a direct link to device Settings so the crew member can fix it themselves.
+ *
+ * On iOS the system already displays its own permission dialogue; we only
+ * show a minimal fallback alert when the user has previously denied it
+ * (iOS behaviour is intentionally left unchanged from before).
+ */
+export async function requestCameraPermission(): Promise<boolean> {
+  const { status } = await ImagePicker.requestCameraPermissionsAsync();
+
+  if (status === "granted") return true;
+
+  if (Platform.OS === "android") {
+    Alert.alert(
+      "Camera access required",
+      "GardenOps needs access to your camera to take photos for jobs and reports.\n\nTap 'Open Settings', then enable 'Camera' permission for GardenOps.",
+      [
+        { text: "Cancel", style: "cancel" },
+        { text: "Open Settings", onPress: () => Linking.openSettings() },
+      ]
+    );
+  } else {
+    Alert.alert("Permission needed", "Please allow camera access in Settings.");
+  }
+
+  return false;
+}
