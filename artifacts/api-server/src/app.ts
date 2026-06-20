@@ -10,6 +10,17 @@ import router from "./routes";
 import { initSentry, Sentry } from "./lib/sentry";
 import { objectStorageClient } from "./lib/objectStorage";
 import { requireAuth } from "./middlewares/auth";
+import {
+  db,
+  jobPhotosTable,
+  jobsTable,
+  mulchingRecordsTable,
+  reactiveJobsTable,
+  auditPhotosTable,
+  auditItemsTable,
+  auditsTable,
+} from "@workspace/db";
+import { eq } from "drizzle-orm";
 
 initSentry();
 
@@ -70,6 +81,98 @@ app.get("/api/uploads/*splat", requireAuth, async (req: Request, res: Response) 
     const splat = Array.isArray(rawSplat) ? rawSplat.join("/") : String(rawSplat);
     const objectName = splat.startsWith("/") ? splat.slice(1) : splat;
     if (!objectName) { res.status(404).end(); return; }
+
+    // ── Ownership check ──────────────────────────────────────────────────────
+    // Reconstruct the blobUrl as stored in the DB and verify the caller is
+    // allowed to access the parent job, reactive job, mulching record, or audit.
+    const blobUrl = `/api/uploads/${objectName}`;
+    const callerRole    = req.auth!.role;
+    const callerTeamId  = req.auth!.teamId ?? null;
+    const callerId      = req.auth!.userId;
+    const isPrivileged  = ["administrator", "manager", "supervisor"].includes(callerRole);
+
+    // 1. Check job_photos (covers jobs, reactive jobs, mulching records)
+    const [jobPhoto] = await db
+      .select({
+        jobId:            jobPhotosTable.jobId,
+        reactiveJobId:    jobPhotosTable.reactiveJobId,
+        mulchingRecordId: jobPhotosTable.mulchingRecordId,
+      })
+      .from(jobPhotosTable)
+      .where(eq(jobPhotosTable.blobUrl, blobUrl))
+      .limit(1);
+
+    if (jobPhoto) {
+      if (!isPrivileged) {
+        if (jobPhoto.jobId) {
+          const [job] = await db
+            .select({ teamId: jobsTable.teamId, isAllTeams: jobsTable.isAllTeams })
+            .from(jobsTable)
+            .where(eq(jobsTable.id, jobPhoto.jobId))
+            .limit(1);
+          if (job && !job.isAllTeams && job.teamId !== callerTeamId) {
+            res.status(403).json({ error: "Forbidden" }); return;
+          }
+        } else if (jobPhoto.reactiveJobId) {
+          const [rj] = await db
+            .select({ assignedTeamId: reactiveJobsTable.assignedTeamId })
+            .from(reactiveJobsTable)
+            .where(eq(reactiveJobsTable.id, jobPhoto.reactiveJobId))
+            .limit(1);
+          if (rj && rj.assignedTeamId !== callerTeamId) {
+            res.status(403).json({ error: "Forbidden" }); return;
+          }
+        } else if (jobPhoto.mulchingRecordId) {
+          const [mr] = await db
+            .select({ assignedTeamId: mulchingRecordsTable.assignedTeamId })
+            .from(mulchingRecordsTable)
+            .where(eq(mulchingRecordsTable.id, jobPhoto.mulchingRecordId))
+            .limit(1);
+          if (mr && mr.assignedTeamId !== callerTeamId) {
+            res.status(403).json({ error: "Forbidden" }); return;
+          }
+        }
+      }
+      // Access granted — fall through to serve the file
+    } else {
+      // 2. Check audit_photos (linked via audit_items → audits)
+      const [auditPhoto] = await db
+        .select({ auditItemId: auditPhotosTable.auditItemId })
+        .from(auditPhotosTable)
+        .where(eq(auditPhotosTable.blobUrl, blobUrl))
+        .limit(1);
+
+      if (auditPhoto) {
+        const [item] = await db
+          .select({ auditId: auditItemsTable.auditId })
+          .from(auditItemsTable)
+          .where(eq(auditItemsTable.id, auditPhoto.auditItemId))
+          .limit(1);
+
+        if (!item) { res.status(404).json({ error: "Photo not found" }); return; }
+
+        const [audit] = await db
+          .select({ auditorId: auditsTable.auditorId })
+          .from(auditsTable)
+          .where(eq(auditsTable.id, item.auditId))
+          .limit(1);
+
+        if (!audit) { res.status(404).json({ error: "Photo not found" }); return; }
+
+        // workers and team_leaders have no audit access
+        if (!isPrivileged) {
+          res.status(403).json({ error: "Forbidden" }); return;
+        }
+        // managers may only access audits they conducted
+        if (callerRole === "manager" && audit.auditorId !== callerId) {
+          res.status(403).json({ error: "Forbidden" }); return;
+        }
+        // Access granted — fall through to serve the file
+      } else {
+        // File not registered in any known table — deny
+        res.status(404).json({ error: "Photo not found" }); return;
+      }
+    }
 
     const bucket = objectStorageClient.bucket(bucketId);
     const file   = bucket.file(objectName);
