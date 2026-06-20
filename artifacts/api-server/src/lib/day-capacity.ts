@@ -47,7 +47,7 @@ export async function computeTotalScheduledMins(
         and(
           eq(infillJobsTable.assignedTeamId, teamId),
           eq(infillJobsTable.plannedDate, date),
-          notInArray(infillJobsTable.status, ["completed", "cancelled"]),
+          notInArray(infillJobsTable.status, ["planted"]),
         ),
       ),
 
@@ -59,7 +59,7 @@ export async function computeTotalScheduledMins(
         and(
           eq(mulchingRecordsTable.assignedTeamId, teamId),
           eq(mulchingRecordsTable.scheduledDate, date),
-          notInArray(mulchingRecordsTable.status, ["completed", "cancelled"]),
+          notInArray(mulchingRecordsTable.status, ["completed", "not_required"]),
         ),
       ),
   ]);

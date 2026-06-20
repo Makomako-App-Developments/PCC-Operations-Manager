@@ -1693,10 +1693,11 @@ export function ReactiveJobReviewDrawer({
   const handleSave = async (assign: boolean) => {
     setSaving(true);
     try {
+      const priorityMap: Record<string, string> = { urgent: "urgent", standard: "medium", routine: "low" };
       const patch: Record<string, unknown> = {
         issueType:         issueType || undefined,
         description:       description || undefined,
-        priority,
+        priority:          priorityMap[priority] ?? priority,
         notes:             notes || undefined,
         assignedTeamId:    teamId || undefined,
         scheduledDate:     date || undefined,
