@@ -1,5 +1,6 @@
 import { Feather } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
+import { requestMediaLibraryPermission } from "@/hooks/usePhotoLibraryPermission";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import * as Haptics from "expo-haptics";
 import React, { useState } from "react";
@@ -155,11 +156,7 @@ function AttachmentsSection({ jobId, isDone }: { jobId: string; isDone: boolean 
   const photos = data?.data ?? [];
 
   const pickFromLibrary = async () => {
-    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (status !== "granted") {
-      Alert.alert("Permission needed", "Please allow photo library access in Settings.");
-      return;
-    }
+    if (!(await requestMediaLibraryPermission())) return;
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ["images"],
       quality: 0.7,

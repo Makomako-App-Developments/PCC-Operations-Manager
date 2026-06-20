@@ -10,6 +10,7 @@ import {
 } from "@workspace/api-client-react";
 import * as Haptics from "expo-haptics";
 import * as ImagePicker from "expo-image-picker";
+import { requestMediaLibraryPermission } from "@/hooks/usePhotoLibraryPermission";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import {
@@ -303,11 +304,7 @@ function PhotoSection({ jobId, readOnly }: { jobId: string; readOnly: boolean })
   const photos = data?.data ?? [];
 
   const pickFromLibrary = async () => {
-    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (status !== "granted") {
-      Alert.alert("Permission needed", "Please allow photo library access in Settings.");
-      return;
-    }
+    if (!(await requestMediaLibraryPermission())) return;
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ["images"],
       quality: 0.7,

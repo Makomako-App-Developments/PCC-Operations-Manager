@@ -3,6 +3,7 @@ import { Feather } from "@expo/vector-icons";
 import { useCreateReactiveJob } from "@workspace/api-client-react";
 import * as Haptics from "expo-haptics";
 import * as ImagePicker from "expo-image-picker";
+import { requestMediaLibraryPermission } from "@/hooks/usePhotoLibraryPermission";
 import * as Location from "expo-location";
 import { useFocusEffect, useNavigation } from "expo-router";
 import React, { useState, useMemo, useEffect, useRef, useCallback } from "react";
@@ -645,11 +646,7 @@ export default function ReportScreen() {
   };
 
   const pickFromLibrary = async () => {
-    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (status !== "granted") {
-      Alert.alert("Permission needed", "Please allow photo library access in Settings.");
-      return;
-    }
+    if (!(await requestMediaLibraryPermission())) return;
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ["images"],
       quality: 0.8,

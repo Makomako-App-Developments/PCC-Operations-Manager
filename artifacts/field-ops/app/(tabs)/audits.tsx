@@ -1,6 +1,7 @@
 import { Feather } from "@expo/vector-icons";
 import { useListAssets } from "@workspace/api-client-react";
 import * as ImagePicker from "expo-image-picker";
+import { requestMediaLibraryPermission } from "@/hooks/usePhotoLibraryPermission";
 import * as Location from "expo-location";
 import { useLocalSearchParams } from "expo-router";
 import React, { useState, useMemo, useEffect, useRef } from "react";
@@ -635,11 +636,7 @@ ${userMarker}
   }, [startAssetId, startAssetName, token]);
 
   const handlePhotoAdd = async (criterion: string) => {
-    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (status !== "granted") {
-      Alert.alert("Permission needed", "Allow photo library access to add photos.");
-      return;
-    }
+    if (!(await requestMediaLibraryPermission())) return;
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: "images",
       quality: 0.7,
