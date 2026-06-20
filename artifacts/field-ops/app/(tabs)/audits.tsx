@@ -464,6 +464,7 @@ export default function AuditsScreen() {
   const [responses, setResponses] = useState<Record<string, KpiResponse>>({});
   const [photos, setPhotos] = useState<Record<string, LocalPhoto>>({});
   const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
   const [doneScore, setDoneScore] = useState<number | null>(null);
   const [openingAuditId, setOpeningAuditId] = useState<string | null>(null);
   const [selectedAssetDetail, setSelectedAssetDetail] = useState<any>(null);
@@ -653,11 +654,12 @@ ${userMarker}
   };
 
   const handleSubmit = async () => {
+    setSubmitError(null);
     if (!auditId) return;
 
     const scored = Object.values(responses).filter((r) => r.result !== "");
     if (scored.length === 0) {
-      Alert.alert("No scores entered", "Please score at least one KPI item before submitting.");
+      setSubmitError("Please score at least one KPI item before submitting.");
       return;
     }
 
@@ -669,9 +671,8 @@ ${userMarker}
       .map(([criterion]) => kpiLabelMap[criterion] ?? criterion);
 
     if (failsWithoutPhoto.length > 0) {
-      Alert.alert(
-        "Photos required",
-        `Please add a photo for each failed item:\n\n• ${failsWithoutPhoto.join("\n• ")}`,
+      setSubmitError(
+        `Photo evidence is required for all audit fails. Please add a photo for:\n• ${failsWithoutPhoto.join("\n• ")}`,
       );
       return;
     }
@@ -723,7 +724,7 @@ ${userMarker}
       qc.invalidateQueries({ queryKey: ["audit-quota-current"] });
       setView("done");
     } catch {
-      Alert.alert("Submit failed", "Could not save the audit. Please try again.");
+      setSubmitError("Could not save the audit. Please try again.");
     } finally {
       setSubmitting(false);
     }
@@ -995,6 +996,12 @@ ${userMarker}
         </ScrollView>
 
         <View style={[styles.actionBar, { backgroundColor: colors.card, borderTopColor: colors.border, paddingBottom: insets.bottom + (Platform.OS === "web" ? 72 : 16) }]}>
+          {submitError && (
+            <View style={styles.submitErrorBanner}>
+              <Feather name="alert-circle" size={15} color="#b45309" />
+              <Text style={styles.submitErrorText}>{submitError}</Text>
+            </View>
+          )}
           <TouchableOpacity
             style={[styles.submitBtn, { backgroundColor: submitting ? colors.muted : colors.primary }]}
             onPress={handleSubmit}
@@ -1207,6 +1214,25 @@ const styles = StyleSheet.create({
     borderRadius: 10,
   },
   submitBtnText: { fontFamily: "Inter_700Bold", fontSize: 16, color: "#fff" },
+  submitErrorBanner: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 8,
+    backgroundColor: "#fef3c7",
+    borderWidth: 1,
+    borderColor: "#fcd34d",
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginBottom: 10,
+  },
+  submitErrorText: {
+    fontFamily: "Inter_500Medium",
+    fontSize: 13,
+    color: "#92400e",
+    flex: 1,
+    lineHeight: 18,
+  },
 
   // Done
   doneCard: {
