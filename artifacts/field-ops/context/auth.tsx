@@ -1,5 +1,6 @@
 import { customFetch, setAuthTokenGetter } from "@workspace/api-client-react";
 import * as SecureStore from "expo-secure-store";
+import * as Sentry from "@sentry/react-native";
 import React, {
   createContext,
   ReactNode,
@@ -124,6 +125,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               _currentToken = urlToken;
               setToken(urlToken);
               setUser(parsedUser);
+              Sentry.setUser({ id: parsedUser.id, username: parsedUser.name });
               await Promise.all([
                 SecureStore.setItemAsync(TOKEN_KEY, urlToken),
                 SecureStore.setItemAsync(USER_KEY, JSON.stringify(parsedUser)),
@@ -147,6 +149,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setToken(storedToken);
           const parsedUser = JSON.parse(storedUser) as AuthUser;
           setUser(parsedUser);
+          Sentry.setUser({ id: parsedUser.id, username: parsedUser.name });
           // Re-register push token on app restart (token may have rotated)
           registerPushToken(storedToken).catch(() => {});
         }
@@ -163,6 +166,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     _currentToken = newToken;
     setToken(newToken);
     setUser(newUser);
+    Sentry.setUser({ id: newUser.id, username: newUser.name });
     // Persist to storage in the background. Safari private mode / strict ITP
     // can throw from localStorage, so we never let storage failures propagate
     // back to the caller (which would incorrectly show "Invalid password").
@@ -176,6 +180,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     _currentToken = null;
     setToken(null);
     setUser(null);
+    Sentry.setUser(null);
     await Promise.all([
       SecureStore.deleteItemAsync(TOKEN_KEY),
       SecureStore.deleteItemAsync(USER_KEY),

@@ -3,6 +3,7 @@ import React, { createContext, useContext, ReactNode, useEffect, useRef } from "
 import { useGetMe, useLogin, useLogout, LoginRequest, User } from "@workspace/api-client-react";
 import { useLocation } from "wouter";
 import { useQueryClient } from "@tanstack/react-query";
+import { Sentry } from "@/lib/sentry";
 
 const IDLE_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes
 
@@ -43,6 +44,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     mutation: {
       onSuccess: (data: any) => {
         queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
+        Sentry.setUser({ id: data?.user?.id, email: data?.user?.email });
         const role = data?.user?.role ?? "";
         const token = data?.accessToken ?? "";
         if (role === "field_worker" || (FIELD_OPS_ROLES.includes(role) && isMobileDevice())) {
@@ -58,6 +60,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const logoutMutation = useLogout({
     mutation: {
       onSuccess: () => {
+        Sentry.setUser(null);
         queryClient.clear();
         setLocation("/login");
       }
@@ -100,8 +103,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (isLoading) return;
     if (!user && location !== "/login") {
+      Sentry.setUser(null);
       setLocation("/login");
     } else if (user && !redirectingRef.current) {
+      Sentry.setUser({ id: (user as any).id, email: (user as any).email });
       // Already-authenticated session restore: send mobile privileged users to field-ops
       const role = (user as any).role ?? "";
       if (role === "field_worker" || (FIELD_OPS_ROLES.includes(role) && isMobileDevice())) {
