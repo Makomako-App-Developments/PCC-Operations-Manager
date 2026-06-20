@@ -424,7 +424,10 @@ function RecordDepthModal({ visible, token, onClose, onSubmit, initialAsset }: R
 
 // ─── New Assessment Modal ─────────────────────────────────────────────────────
 
-const SPECIES_CATEGORIES = ["Tree", "Shrub", "Groundcover", "Grass", "Fern", "Other"];
+const PLANT_GRADES = [
+  "Root Trainer", "1 litre", "1.5 litre/PB2", "2 litre/PB3",
+  "5 litre/PB 6.5", "PB 8", "PB12", "PB40", "PB95",
+];
 
 interface SpeciesRow { speciesName: string; speciesCategory: string; quantity: string; }
 
@@ -451,7 +454,7 @@ function NewAssessmentModal({ visible, token, onClose, onSuccess, initialAsset }
   }, [visible, initialAsset]);
   const [assessmentDate, setAssessmentDate] = useState(() => localDateStr(new Date()));
   const [notes, setNotes] = useState("");
-  const [species, setSpecies] = useState<SpeciesRow[]>([{ speciesName: "", speciesCategory: "", quantity: "" }]);
+  const [species, setSpecies] = useState<SpeciesRow[]>([{ speciesName: "", speciesCategory: "1 litre", quantity: "" }]);
   const [submitting, setSubmitting] = useState(false);
 
   const { data: assetResults, isFetching: fetchingAssets } = useQuery({
@@ -501,7 +504,7 @@ function NewAssessmentModal({ visible, token, onClose, onSuccess, initialAsset }
 
   const updateRow = (idx: number, field: keyof SpeciesRow, value: string) =>
     setSpecies(prev => prev.map((r, i) => i === idx ? { ...r, [field]: value } : r));
-  const addRow = () => setSpecies(prev => [...prev, { speciesName: "", speciesCategory: "", quantity: "" }]);
+  const addRow = () => setSpecies(prev => [...prev, { speciesName: "", speciesCategory: "1 litre", quantity: "" }]);
   const removeRow = (idx: number) => setSpecies(prev => prev.filter((_, i) => i !== idx));
 
   const handleSubmit = async () => {
@@ -512,7 +515,7 @@ function NewAssessmentModal({ visible, token, onClose, onSuccess, initialAsset }
     }
     const validSpecies = species.filter(s => s.speciesName.trim() && s.speciesCategory.trim() && parseInt(s.quantity, 10) > 0);
     if (validSpecies.length === 0) {
-      Alert.alert("Species required", "Add at least one species with a name, category, and quantity greater than zero.");
+      Alert.alert("Species required", "Add at least one species with a name, grade, and quantity greater than zero.");
       return;
     }
     setSubmitting(true);
@@ -668,35 +671,25 @@ function NewAssessmentModal({ visible, token, onClose, onSuccess, initialAsset }
                 </TouchableOpacity>
                 <View style={{ height: 10 }} />
 
-                <Text style={[naStyles.rowLabel, { color: colors.mutedForeground }]}>Category</Text>
+                <Text style={[naStyles.rowLabel, { color: colors.mutedForeground }]}>Grade / Container Size</Text>
                 <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 8 }}>
                   <View style={{ flexDirection: "row", gap: 6 }}>
-                    {SPECIES_CATEGORIES.map(cat => (
+                    {PLANT_GRADES.map(grade => (
                       <TouchableOpacity
-                        key={cat}
+                        key={grade}
                         style={[
                           naStyles.catChip,
-                          row.speciesCategory === cat
+                          row.speciesCategory === grade
                             ? { backgroundColor: colors.primary, borderColor: colors.primary }
                             : { backgroundColor: "transparent", borderColor: colors.border },
                         ]}
-                        onPress={() => updateRow(idx, "speciesCategory", cat)}
+                        onPress={() => updateRow(idx, "speciesCategory", grade)}
                       >
-                        <Text style={[naStyles.catChipText, { color: row.speciesCategory === cat ? "#fff" : colors.foreground }]}>{cat}</Text>
+                        <Text style={[naStyles.catChipText, { color: row.speciesCategory === grade ? "#fff" : colors.foreground }]}>{grade}</Text>
                       </TouchableOpacity>
                     ))}
                   </View>
                 </ScrollView>
-                {!SPECIES_CATEGORIES.includes(row.speciesCategory) && row.speciesCategory.length > 0 && (
-                  <Text style={[naStyles.catCustom, { color: colors.primary }]}>Custom: {row.speciesCategory}</Text>
-                )}
-                <TextInput
-                  style={[naStyles.rowInput, { borderColor: colors.border, color: colors.foreground, backgroundColor: colors.background, borderRadius: colors.radius / 2 }]}
-                  value={!SPECIES_CATEGORIES.includes(row.speciesCategory) ? row.speciesCategory : ""}
-                  onChangeText={v => updateRow(idx, "speciesCategory", v)}
-                  placeholder="Or type a custom category…"
-                  placeholderTextColor={colors.mutedForeground}
-                />
 
                 <Text style={[naStyles.rowLabel, { color: colors.mutedForeground }]}>Quantity</Text>
                 <TextInput
@@ -783,7 +776,7 @@ function NewAssessmentModal({ visible, token, onClose, onSuccess, initialAsset }
                         setSpecies(prev => prev.map((r, i) => i === palettePickerIdx ? {
                           ...r,
                           speciesName: p.botanicalName,
-                          speciesCategory: SPECIES_CATEGORIES.includes(p.plantType) ? p.plantType : r.speciesCategory,
+                          speciesCategory: r.speciesCategory || "1 litre",
                         } : r));
                       }
                       setPalettePickerIdx(null);
