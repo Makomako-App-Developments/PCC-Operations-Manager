@@ -7,7 +7,7 @@ import { requireAuth, requireRole } from "../middlewares/auth";
 import { validateBody, validateQuery } from "../middlewares/validate";
 import { auditLog } from "../lib/audit";
 import { FREQ_DAYS } from "../lib/crew-utils";
-import { notifyTeam } from "../lib/push-notifications";
+import { notifyTeam, notifyUsers } from "../lib/push-notifications";
 import { objectStorageClient } from "../lib/objectStorage";
 import { checkDayCapacity, computeTotalScheduledMins } from "../lib/day-capacity";
 
@@ -524,8 +524,8 @@ router.post(
       ipAddress: req.ip ?? null,
     });
 
-    // Send push notification to assigned team members
-    if (created.teamId || created.isAllTeams) {
+    // Send push notification to assigned crew
+    if (created.assignedUserId || created.teamId || created.isAllTeams) {
       const [asset] = await db
         .select({ name: assetsTable.name })
         .from(assetsTable)
@@ -536,11 +536,21 @@ router.post(
         ? created.scheduledDate
         : (created.scheduledDate as Date).toISOString().slice(0, 10);
 
-      notifyTeam(created.teamId, created.isAllTeams, {
-        title: "New job assigned",
-        body:  `${assetName} is scheduled for ${dateStr}.`,
-        data:  { jobId: created.id, screen: "job" },
-      }).catch(err => console.error("[push] notify error:", err));
+      if (created.assignedUserId) {
+        // Individual assignment — notify only that crew member
+        notifyUsers([created.assignedUserId], {
+          title: "Job assigned to you",
+          body:  `${assetName} is scheduled for ${dateStr}.`,
+          data:  { jobId: created.id, screen: "job" },
+        }).catch(err => console.error("[push] notify error:", err));
+      } else {
+        // Team-wide assignment
+        notifyTeam(created.teamId, created.isAllTeams, {
+          title: "New job assigned",
+          body:  `${assetName} is scheduled for ${dateStr}.`,
+          data:  { jobId: created.id, screen: "job" },
+        }).catch(err => console.error("[push] notify error:", err));
+      }
     }
 
     res.status(201).json(created);
@@ -682,6 +692,30 @@ router.patch("/jobs/:id", requireAuth, async (req, res) => {
     oldData: before as Record<string, unknown>, newData: updated as Record<string, unknown>,
     ipAddress: req.ip ?? null,
   });
+
+  // ── Assignment notification ──────────────────────────────────────────────────
+  // Notify the crew member when a job is directly assigned (or reassigned) to them.
+  const newAssignedUserId = updated.assignedUserId ?? null;
+  const oldAssignedUserId = before.assignedUserId ?? null;
+  if (newAssignedUserId && newAssignedUserId !== oldAssignedUserId) {
+    const [asset] = await db
+      .select({ name: assetsTable.name })
+      .from(assetsTable)
+      .where(eq(assetsTable.id, updated.assetId))
+      .limit(1);
+    const assetName = asset?.name ?? "a site";
+    const dateStr = typeof updated.scheduledDate === "string"
+      ? updated.scheduledDate
+      : updated.scheduledDate
+        ? (updated.scheduledDate as Date).toISOString().slice(0, 10)
+        : "TBD";
+
+    notifyUsers([newAssignedUserId], {
+      title: "Job assigned to you",
+      body:  `${assetName} is scheduled for ${dateStr}.`,
+      data:  { jobId: updated.id, screen: "job" },
+    }).catch(err => console.error("[push] notify error:", err));
+  }
 
   // ── Skip → reschedule ───────────────────────────────────────────────────────
   // When a job is skipped, create a new pending job at the next scheduled occurrence.
