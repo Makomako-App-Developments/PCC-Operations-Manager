@@ -937,13 +937,30 @@ router.get("/reactive-jobs", requireAuth, async (req, res) => {
 // POST /api/reactive-jobs
 router.post("/reactive-jobs", requireAuth, validateBody(insertReactiveJobSchema.omit({ raisedById: true, origin: true })), async (req, res) => {
   const role = req.auth!.role;
-  const origin =
-    role === "manager" || role === "administrator" ? "manager" :
-    role === "supervisor" || role === "team_leader" ? "supervisor" :
-    "field_worker";
+  const isManager = role === "manager" || role === "administrator";
+  const isSupervisor = role === "supervisor" || role === "team_leader";
+  const origin = isManager ? "manager" : isSupervisor ? "supervisor" : "field_worker";
+
+  // Field workers may only supply basic issue details.
+  // Privileged assignment/scheduling fields are reserved for supervisors and above.
+  // Status is always forced to "raised" on creation — no role may skip the workflow.
+  const {
+    assignedTeamId,
+    assignedUserId,
+    scheduledDate,
+    estimatedTimeMins,
+    priority,
+    status: _status,  // always ignored — forced below
+    ...allowedBody
+  } = req.body;
+
+  const privilegedFields = isManager || isSupervisor
+    ? { assignedTeamId, assignedUserId, scheduledDate, estimatedTimeMins, priority }
+    : {};
+
   const [created] = await db
     .insert(reactiveJobsTable)
-    .values({ ...req.body, raisedById: req.auth!.userId, origin })
+    .values({ ...allowedBody, ...privilegedFields, status: "raised", raisedById: req.auth!.userId, origin })
     .returning();
   await auditLog({
     tableName: "reactive_jobs", recordId: created.id, action: "INSERT",
