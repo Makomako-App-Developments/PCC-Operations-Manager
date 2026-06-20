@@ -92,7 +92,7 @@ export function BugReportButton() {
           {
             backgroundColor: colors.card,
             borderColor: colors.border,
-            bottom: insets.bottom + (Platform.OS === "web" ? 84 : 84) + 16,
+            top: insets.top + 8,
           },
         ]}
         onPress={() => setOpen(true)}
