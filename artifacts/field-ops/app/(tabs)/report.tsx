@@ -636,12 +636,18 @@ export default function ReportScreen() {
           const mimeType = filename.endsWith(".png") ? "image/png" : "image/jpeg";
           form.append("photo", { uri: photo.uri, name: filename, type: mimeType } as any);
         }
-        await fetch(getApiUrl(`/api/reactive-jobs/${jobId}/photos`), {
+        const res = await fetch(getApiUrl(`/api/reactive-jobs/${jobId}/photos`), {
           method: "POST",
           headers: { Authorization: `Bearer ${token}` },
           body: form,
         });
-      } catch { /* best effort — don't block success */ }
+        if (!res.ok) throw new Error("Upload failed");
+      } catch (err) {
+        if (Platform.OS !== "web" && err instanceof TypeError) {
+          const { enqueuePhoto } = await import("@/hooks/useOfflinePhotoQueue");
+          await enqueuePhoto("reactive-job", jobId, photo.uri);
+        }
+      }
     }
   };
 

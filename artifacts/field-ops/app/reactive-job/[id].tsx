@@ -22,6 +22,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 
 import { useColors } from "@/hooks/useColors";
 import { getApiUrl } from "@/lib/api";
+import { useOfflinePhotoQueue } from "@/hooks/useOfflinePhotoQueue";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -97,31 +98,39 @@ function useReactiveJobPhotos(id: string) {
 function useUploadReactivePhoto(jobId: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async ({ uri, file }: { uri: string; file?: File }) => {
-      const form = new FormData();
-      if (Platform.OS === "web") {
-        if (file) {
-          form.append("photo", file);
+    mutationFn: async ({ uri, file }: { uri: string; file?: File }): Promise<JobPhoto | { queued: true; uri: string }> => {
+      try {
+        const form = new FormData();
+        if (Platform.OS === "web") {
+          if (file) {
+            form.append("photo", file);
+          } else {
+            const filename = uri.split("/").pop() ?? "photo.jpg";
+            const mimeType = filename.endsWith(".png") ? "image/png" : "image/jpeg";
+            const blob = await fetch(uri).then(r => r.blob());
+            form.append("photo", new File([blob], filename, { type: mimeType }));
+          }
         } else {
           const filename = uri.split("/").pop() ?? "photo.jpg";
           const mimeType = filename.endsWith(".png") ? "image/png" : "image/jpeg";
-          const blob = await fetch(uri).then(r => r.blob());
-          form.append("photo", new File([blob], filename, { type: mimeType }));
+          form.append("photo", { uri, name: filename, type: mimeType } as any);
         }
-      } else {
-        const filename = uri.split("/").pop() ?? "photo.jpg";
-        const mimeType = filename.endsWith(".png") ? "image/png" : "image/jpeg";
-        form.append("photo", { uri, name: filename, type: mimeType } as any);
+        const res = await fetch(getApiUrl(`/api/reactive-jobs/${jobId}/photos`), {
+          method: "POST",
+          credentials: "include",
+          body: form,
+        });
+        if (!res.ok) throw new Error("Upload failed");
+        const photo = await res.json() as JobPhoto;
+        qc.invalidateQueries({ queryKey: ["reactive-job-photos", jobId] });
+        return photo;
+      } catch (err) {
+        if (Platform.OS !== "web" && err instanceof TypeError) {
+          return { queued: true, uri };
+        }
+        throw err;
       }
-      const res = await fetch(getApiUrl(`/api/reactive-jobs/${jobId}/photos`), {
-        method: "POST",
-        credentials: "include",
-        body: form,
-      });
-      if (!res.ok) throw new Error("Upload failed");
-      return res.json() as Promise<JobPhoto>;
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["reactive-job-photos", jobId] }),
     onError: () => Alert.alert("Upload failed", "Could not upload photo. Please try again."),
   });
 }
@@ -153,7 +162,15 @@ function AttachmentsSection({ jobId, isDone }: { jobId: string; isDone: boolean 
   const colors = useColors();
   const { data, isLoading } = useReactiveJobPhotos(jobId);
   const upload = useUploadReactivePhoto(jobId);
+  const { pending: queuedPhotos, isFlushing, add: addToQueue } = useOfflinePhotoQueue("reactive-job", jobId);
   const photos = data?.data ?? [];
+  const totalCount = photos.length + queuedPhotos.length;
+
+  const handleMutateResult = async (result: any, uri: string) => {
+    if (result && result.queued === true) {
+      await addToQueue(uri);
+    }
+  };
 
   const pickFromLibrary = async () => {
     if (!(await requestMediaLibraryPermission())) return;
@@ -164,7 +181,10 @@ function AttachmentsSection({ jobId, isDone }: { jobId: string; isDone: boolean 
     });
     if (!result.canceled && result.assets[0]) {
       const asset = result.assets[0];
-      upload.mutate({ uri: asset.uri, file: (asset as any).file ?? undefined });
+      upload.mutate(
+        { uri: asset.uri, file: (asset as any).file ?? undefined },
+        { onSuccess: (r) => handleMutateResult(r, asset.uri) },
+      );
     }
   };
 
@@ -176,8 +196,11 @@ function AttachmentsSection({ jobId, isDone }: { jobId: string; isDone: boolean 
     if (!(await requestCameraPermission())) return;
     const result = await ImagePicker.launchCameraAsync({ mediaTypes: ["images"], quality: 0.7 });
     if (!result.canceled && result.assets[0]) {
-      const asset = result.assets[0];
-      upload.mutate({ uri: asset.uri, file: (asset as any).file ?? undefined });
+      const uri = result.assets[0].uri;
+      upload.mutate(
+        { uri, file: (result.assets[0] as any).file ?? undefined },
+        { onSuccess: (r) => handleMutateResult(r, uri) },
+      );
     }
   };
 
@@ -188,14 +211,22 @@ function AttachmentsSection({ jobId, isDone }: { jobId: string; isDone: boolean 
       <View style={styles.sectionHeader}>
         <Feather name="paperclip" size={16} color={colors.primary} />
         <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Attachments</Text>
-        {photos.length > 0 && (
-          <Text style={[styles.sectionCount, { color: colors.mutedForeground }]}>{photos.length}</Text>
+        {totalCount > 0 && (
+          <Text style={[styles.sectionCount, { color: colors.mutedForeground }]}>{totalCount}</Text>
+        )}
+        {(queuedPhotos.length > 0 || isFlushing) && (
+          <View style={[styles.queueBadge, { backgroundColor: "#fef3c7" }]}>
+            <Feather name={isFlushing ? "upload-cloud" : "clock"} size={11} color="#b45309" />
+            <Text style={[styles.queueBadgeText, { color: "#b45309" }]}>
+              {isFlushing ? "Uploading…" : `${queuedPhotos.length} queued`}
+            </Text>
+          </View>
         )}
       </View>
 
       {isLoading ? (
         <ActivityIndicator color={colors.primary} style={{ marginBottom: 14 }} />
-      ) : photos.length === 0 ? (
+      ) : totalCount === 0 ? (
         <Text style={[styles.emptyPhotos, { color: colors.mutedForeground }]}>No attachments yet</Text>
       ) : (
         <ScrollView
@@ -235,6 +266,18 @@ function AttachmentsSection({ jobId, isDone }: { jobId: string; isDone: boolean 
                 </Text>
               </TouchableOpacity>
             )
+          ))}
+          {queuedPhotos.map(q => (
+            <View key={q.id} style={styles.photoThumb}>
+              <Image
+                source={{ uri: q.uri }}
+                style={[styles.thumbImage, { borderRadius: colors.radius / 2, borderColor: colors.border, opacity: 0.65 }]}
+                resizeMode="cover"
+              />
+              <View style={[styles.queuedOverlay, { borderRadius: colors.radius / 2 }]}>
+                <Feather name="clock" size={16} color="#fff" />
+              </View>
+            </View>
           ))}
         </ScrollView>
       )}
@@ -590,6 +633,16 @@ const styles = StyleSheet.create({
   photoRow: { paddingHorizontal: 14, paddingBottom: 14, gap: 10, flexDirection: "row" },
   photoThumb: { width: 90 },
   thumbImage: { width: 90, height: 90, borderWidth: 1 },
+  queuedOverlay: {
+    position: "absolute", top: 0, left: 0, width: 90, height: 90,
+    alignItems: "center", justifyContent: "center",
+    backgroundColor: "rgba(0,0,0,0.35)",
+  },
+  queueBadge: {
+    flexDirection: "row", alignItems: "center", gap: 4,
+    paddingHorizontal: 7, paddingVertical: 3, borderRadius: 10,
+  },
+  queueBadgeText: { fontFamily: "Inter_500Medium", fontSize: 11 },
   docThumb: {
     width: 90,
     height: 90,

@@ -14,15 +14,27 @@ import { Platform } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 import { SafeAreaProvider } from "react-native-safe-area-context";
+import * as Sentry from "@sentry/react-native";
 
 import { ErrorBoundary } from "@/components/ErrorBoundary";
+import { BugReportButton } from "@/components/BugReportButton";
 import { AuthProvider, useAuth } from "@/context/auth";
+import { PhotoQueueProvider } from "@/context/PhotoQueueProvider";
+
+// ── Sentry ────────────────────────────────────────────────────────────────────
+const sentryDsn = process.env.EXPO_PUBLIC_SENTRY_DSN;
+if (sentryDsn) {
+  Sentry.init({
+    dsn: sentryDsn,
+    environment: __DEV__ ? "development" : "production",
+    tracesSampleRate: 0.2,
+    enableNativeFramesTracking: Platform.OS !== "web",
+  });
+}
 
 // On native: use the absolute API base URL baked in at build time.
 // On web: leave baseUrl empty so all fetches use relative paths (/api/...)
 // which the Replit proxy routes correctly in both dev and production.
-// (Baking an absolute URL at dev-build time breaks production — the bundled
-// URL is the dev tunnel, not manager.replit.app.)
 if (Platform.OS !== "web") {
   setBaseUrl(`https://${process.env.EXPO_PUBLIC_DOMAIN ?? ""}`);
 }
@@ -67,18 +79,9 @@ function RootLayoutNav() {
       <Stack.Screen name="index" options={{ headerShown: false }} />
       <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
       <Stack.Screen name="login" options={{ headerShown: false }} />
-      <Stack.Screen
-        name="job/[id]"
-        options={{ headerShown: false }}
-      />
-      <Stack.Screen
-        name="reactive-job/[id]"
-        options={{ headerShown: false }}
-      />
-      <Stack.Screen
-        name="asset/[id]"
-        options={{ headerShown: false }}
-      />
+      <Stack.Screen name="job/[id]" options={{ headerShown: false }} />
+      <Stack.Screen name="reactive-job/[id]" options={{ headerShown: false }} />
+      <Stack.Screen name="asset/[id]" options={{ headerShown: false }} />
     </Stack>
   );
 }
@@ -101,15 +104,20 @@ export default function RootLayout() {
 
   return (
     <SafeAreaProvider>
-      <ErrorBoundary>
+      <ErrorBoundary onError={(err, stack) => {
+        if (sentryDsn) Sentry.captureException(err, { extra: { componentStack: stack } });
+      }}>
         <QueryClientProvider client={queryClient}>
           <AuthProvider>
-            <GestureHandlerRootView>
-              <KeyboardProvider>
-                <AuthGuard />
-                <RootLayoutNav />
-              </KeyboardProvider>
-            </GestureHandlerRootView>
+            <PhotoQueueProvider>
+              <GestureHandlerRootView>
+                <KeyboardProvider>
+                  <AuthGuard />
+                  <RootLayoutNav />
+                  <BugReportButton />
+                </KeyboardProvider>
+              </GestureHandlerRootView>
+            </PhotoQueueProvider>
           </AuthProvider>
         </QueryClientProvider>
       </ErrorBoundary>

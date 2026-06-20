@@ -37,6 +37,7 @@ import { BoundaryMap } from "@/components/BoundaryMap";
 import { useAuth } from "@/context/auth";
 import { useColors } from "@/hooks/useColors";
 import { getApiUrl } from "@/lib/api";
+import { useOfflinePhotoQueue } from "@/hooks/useOfflinePhotoQueue";
 
 // ─── Task definitions ────────────────────────────────────────────────────────
 
@@ -109,34 +110,40 @@ function useJobPhotos(jobId: string) {
 function useUploadPhoto(jobId: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async ({ uri, file, caption }: { uri: string; file?: File; caption?: string }) => {
-      const form = new FormData();
-      if (Platform.OS === "web") {
-        if (file) {
-          // Use the File object directly — most reliable on iOS Safari
-          form.append("photo", file);
+    mutationFn: async ({ uri, file, caption }: { uri: string; file?: File; caption?: string }): Promise<JobPhoto | { queued: true; uri: string; caption?: string }> => {
+      try {
+        const form = new FormData();
+        if (Platform.OS === "web") {
+          if (file) {
+            form.append("photo", file);
+          } else {
+            const filename = uri.split("/").pop() ?? "photo.jpg";
+            const mimeType = filename.endsWith(".png") ? "image/png" : "image/jpeg";
+            const blob = await fetch(uri).then(r => r.blob());
+            form.append("photo", new File([blob], filename, { type: mimeType }));
+          }
         } else {
-          // Fallback: fetch blob URL
           const filename = uri.split("/").pop() ?? "photo.jpg";
           const mimeType = filename.endsWith(".png") ? "image/png" : "image/jpeg";
-          const blob = await fetch(uri).then(r => r.blob());
-          form.append("photo", new File([blob], filename, { type: mimeType }));
+          form.append("photo", { uri, name: filename, type: mimeType } as any);
         }
-      } else {
-        const filename = uri.split("/").pop() ?? "photo.jpg";
-        const mimeType = filename.endsWith(".png") ? "image/png" : "image/jpeg";
-        form.append("photo", { uri, name: filename, type: mimeType } as any);
+        if (caption) form.append("caption", caption);
+        const res = await fetch(getApiUrl(`/api/jobs/${jobId}/photos`), {
+          method: "POST",
+          credentials: "include",
+          body: form,
+        });
+        if (!res.ok) throw new Error("Upload failed");
+        const photo = await res.json() as JobPhoto;
+        qc.invalidateQueries({ queryKey: ["job-photos", jobId] });
+        return photo;
+      } catch (err) {
+        if (Platform.OS !== "web" && err instanceof TypeError) {
+          return { queued: true, uri, caption };
+        }
+        throw err;
       }
-      if (caption) form.append("caption", caption);
-      const res = await fetch(getApiUrl(`/api/jobs/${jobId}/photos`), {
-        method: "POST",
-        credentials: "include",
-        body: form,
-      });
-      if (!res.ok) throw new Error("Upload failed");
-      return res.json() as Promise<JobPhoto>;
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["job-photos", jobId] }),
     onError: () => Alert.alert("Upload failed", "Could not attach photo. Please try again."),
   });
 }
@@ -301,7 +308,15 @@ function PhotoSection({ jobId, readOnly }: { jobId: string; readOnly: boolean })
   const colors = useColors();
   const { data, isLoading } = useJobPhotos(jobId);
   const uploadPhoto = useUploadPhoto(jobId);
+  const { pending: queuedPhotos, isFlushing, add: addToQueue } = useOfflinePhotoQueue("job", jobId);
   const photos = data?.data ?? [];
+  const totalCount = photos.length + queuedPhotos.length;
+
+  const handleMutateResult = async (result: any, uri: string, caption?: string) => {
+    if (result && result.queued === true) {
+      await addToQueue(uri, caption);
+    }
+  };
 
   const pickFromLibrary = async () => {
     if (!(await requestMediaLibraryPermission())) return;
@@ -312,7 +327,10 @@ function PhotoSection({ jobId, readOnly }: { jobId: string; readOnly: boolean })
     });
     if (!result.canceled && result.assets[0]) {
       const asset = result.assets[0];
-      uploadPhoto.mutate({ uri: asset.uri, file: (asset as any).file ?? undefined });
+      uploadPhoto.mutate(
+        { uri: asset.uri, file: (asset as any).file ?? undefined },
+        { onSuccess: (r) => handleMutateResult(r, asset.uri) },
+      );
     }
   };
 
@@ -335,7 +353,11 @@ function PhotoSection({ jobId, readOnly }: { jobId: string; readOnly: boolean })
     if (!(await requestCameraPermission())) return;
     const result = await ImagePicker.launchCameraAsync({ mediaTypes: ["images"], quality: 0.7 });
     if (!result.canceled && result.assets[0]) {
-      uploadPhoto.mutate({ uri: result.assets[0].uri });
+      const uri = result.assets[0].uri;
+      uploadPhoto.mutate(
+        { uri },
+        { onSuccess: (r) => handleMutateResult(r, uri) },
+      );
     }
   };
 
@@ -344,14 +366,22 @@ function PhotoSection({ jobId, readOnly }: { jobId: string; readOnly: boolean })
       <View style={styles.sectionHeader}>
         <Feather name="camera" size={16} color={colors.primary} />
         <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Photo Record</Text>
-        {photos.length > 0 && (
-          <Text style={[styles.sectionCount, { color: colors.mutedForeground }]}>{photos.length}</Text>
+        {totalCount > 0 && (
+          <Text style={[styles.sectionCount, { color: colors.mutedForeground }]}>{totalCount}</Text>
+        )}
+        {(queuedPhotos.length > 0 || isFlushing) && (
+          <View style={[styles.queueBadge, { backgroundColor: "#fef3c7" }]}>
+            <Feather name={isFlushing ? "upload-cloud" : "clock"} size={11} color="#b45309" />
+            <Text style={[styles.queueBadgeText, { color: "#b45309" }]}>
+              {isFlushing ? "Uploading…" : `${queuedPhotos.length} queued`}
+            </Text>
+          </View>
         )}
       </View>
 
       {isLoading ? (
         <ActivityIndicator color={colors.primary} style={{ margin: 14 }} />
-      ) : photos.length > 0 ? (
+      ) : totalCount > 0 ? (
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.photoRow}>
           {photos.map(photo => (
             <View key={photo.id} style={styles.photoThumb}>
@@ -362,6 +392,21 @@ function PhotoSection({ jobId, readOnly }: { jobId: string; readOnly: boolean })
               />
               {photo.caption ? (
                 <Text style={[styles.caption, { color: colors.mutedForeground }]} numberOfLines={1}>{photo.caption}</Text>
+              ) : null}
+            </View>
+          ))}
+          {queuedPhotos.map(q => (
+            <View key={q.id} style={styles.photoThumb}>
+              <Image
+                source={{ uri: q.uri }}
+                style={[styles.thumbImage, { borderRadius: colors.radius / 2, opacity: 0.65 }]}
+                resizeMode="cover"
+              />
+              <View style={[styles.queuedOverlay, { borderRadius: colors.radius / 2 }]}>
+                <Feather name="clock" size={16} color="#fff" />
+              </View>
+              {q.caption ? (
+                <Text style={[styles.caption, { color: colors.mutedForeground }]} numberOfLines={1}>{q.caption}</Text>
               ) : null}
             </View>
           ))}
@@ -1530,6 +1575,16 @@ const styles = StyleSheet.create({
   photoRow: { paddingHorizontal: 14, paddingBottom: 14, gap: 10, flexDirection: "row" },
   photoThumb: { width: 90 },
   thumbImage: { width: 90, height: 90 },
+  queuedOverlay: {
+    position: "absolute", top: 0, left: 0, width: 90, height: 90,
+    alignItems: "center", justifyContent: "center",
+    backgroundColor: "rgba(0,0,0,0.35)",
+  },
+  queueBadge: {
+    flexDirection: "row", alignItems: "center", gap: 4,
+    paddingHorizontal: 7, paddingVertical: 3, borderRadius: 10,
+  },
+  queueBadgeText: { fontFamily: "Inter_500Medium", fontSize: 11 },
   caption: { fontFamily: "Inter_400Regular", fontSize: 10, marginTop: 4 },
   emptyPhotos: { fontFamily: "Inter_400Regular", fontSize: 13, paddingHorizontal: 14, paddingBottom: 14 },
   photoActions: {

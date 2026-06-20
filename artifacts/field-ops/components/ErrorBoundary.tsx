@@ -1,4 +1,5 @@
 import React, { Component, ComponentType, PropsWithChildren } from "react";
+import * as Sentry from "@sentry/react-native";
 
 import { ErrorFallback, ErrorFallbackProps } from "@/components/ErrorFallback";
 
@@ -30,6 +31,7 @@ export class ErrorBoundary extends Component<
   }
 
   componentDidCatch(error: Error, info: { componentStack: string }): void {
+    Sentry.captureException(error, { extra: { componentStack: info.componentStack } });
     if (typeof this.props.onError === "function") {
       this.props.onError(error, info.componentStack);
     }

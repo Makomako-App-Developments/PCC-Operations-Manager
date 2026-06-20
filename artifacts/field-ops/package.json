@@ -55,6 +55,7 @@
     "zod-validation-error": "^3.4.0"
   },
   "dependencies": {
+    "@sentry/react-native": "^7.2.0",
     "expo-notifications": "^56.0.15",
     "expo-secure-store": "^15.0.8",
     "react-native-webview": "^13.16.1"
