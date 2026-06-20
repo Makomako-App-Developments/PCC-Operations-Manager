@@ -58,6 +58,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
   ];
   const isWorker = user?.role === "field_worker";
   const isPrivileged = user?.role === "administrator" || user?.role === "manager" || user?.role === "supervisor";
+  const isManagerOrAdmin = user?.role === "administrator" || user?.role === "manager";
   const nav = isWorker
     ? allNav.filter(item => item.href === "/specification")
     : allNav.filter(item => !item.managerOnly || isPrivileged);
@@ -104,7 +105,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
               <p className="text-white text-xs font-medium truncate">{user?.name || "User"}</p>
               <p className="text-white/40 text-[10px] uppercase truncate">{user?.role?.replace("_", " ")}</p>
             </div>
-            {isPrivileged && (
+            {isManagerOrAdmin && (
               <Link href="/settings">
                 <div
                   className={`p-1.5 rounded-md cursor-pointer transition-colors ${location.startsWith("/settings") ? "bg-[#00AECD] text-white" : "text-white/40 hover:text-white hover:bg-white/10"}`}

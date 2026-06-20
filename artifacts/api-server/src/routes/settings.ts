@@ -46,7 +46,7 @@ const patchSettingsSchema = z.object({
 router.patch(
   "/settings",
   requireAuth,
-  requireRole("manager", "supervisor"),
+  requireRole("manager"),
   validateBody(patchSettingsSchema),
   async (req, res) => {
     const patch = req.body as z.infer<typeof patchSettingsSchema>;
@@ -79,7 +79,7 @@ router.patch(
 router.post(
   "/assets/optimise-routes",
   requireAuth,
-  requireRole("manager", "supervisor"),
+  requireRole("manager"),
   async (_req, res) => {
     const teams = await db.select().from(teamsTable);
 

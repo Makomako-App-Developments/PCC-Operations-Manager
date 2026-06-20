@@ -31,6 +31,16 @@ export default function SettingsPage() {
   const isManager = user?.role === "manager" || user?.role === "administrator";
   const isAdmin = user?.role === "administrator";
 
+  if (!isManager) {
+    return (
+      <div className="flex flex-col flex-1 min-h-0 items-center justify-center bg-[#f5f7f9]">
+        <Shield className="w-12 h-12 text-gray-300 mb-4" />
+        <h2 className="text-lg font-semibold text-gray-700">Access Denied</h2>
+        <p className="text-sm text-gray-500 mt-1">You do not have permission to view Settings.</p>
+      </div>
+    );
+  }
+
   const TABS = BASE_TABS.filter(t => (!t.managerOnly || isManager) && (!t.adminOnly || isAdmin));
 
   return (

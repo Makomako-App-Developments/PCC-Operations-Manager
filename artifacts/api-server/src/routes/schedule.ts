@@ -187,6 +187,14 @@ router.post(
   async (req, res) => {
     const { fromDate, toDate, teamId } = req.body as z.infer<typeof generateBodySchema>;
 
+    // Supervisors are restricted to their own team and must always supply teamId
+    if (req.auth!.role === "supervisor") {
+      if (!teamId || teamId !== req.auth!.teamId) {
+        res.status(403).json({ error: "Supervisors may only generate schedules for their own team" });
+        return;
+      }
+    }
+
     // Load system settings
     const [settings] = await db.select().from(systemSettingsTable).limit(1);
     const productiveTimeMins = settings?.productiveTimeMins ?? 390;
@@ -1330,6 +1338,12 @@ router.post(
   async (req, res) => {
     const { teamId, fromDate, deltaDays, minutesToFree, insertionAssetId, pushedAt } = res.locals.body as z.infer<typeof pushForwardBodySchema>;
 
+    // Supervisors may only modify their own team's schedule
+    if (req.auth!.role === "supervisor" && teamId !== req.auth!.teamId) {
+      res.status(403).json({ error: "Supervisors may only modify their own team's schedule" });
+      return;
+    }
+
     // For undo calls (deltaDays < 0), validate the pushedAt echo-back is within the allowed window.
     if (deltaDays < 0 && pushedAt) {
       const age = Date.now() - new Date(pushedAt).getTime();
@@ -1584,6 +1598,12 @@ router.post(
     const { jobType, assetId, teamId, date, estimatedMins, notes, force } =
       res.locals.body as z.infer<typeof insertJobBodySchema>;
 
+    // Supervisors may only insert jobs for their own team
+    if (req.auth!.role === "supervisor" && teamId !== req.auth!.teamId) {
+      res.status(403).json({ error: "Supervisors may only insert jobs for their own team" });
+      return;
+    }
+
     // ── Server-side capacity check (all active job types for this team/day) ─
     if (!force && teamId) {
       const conflict = await checkDayCapacity(teamId, date, estimatedMins);
@@ -1653,6 +1673,12 @@ router.post(
   validateBody(replanDaySchema),
   async (req, res) => {
     const { teamId, date } = res.locals.body as z.infer<typeof replanDaySchema>;
+
+    // Supervisors may only replan their own team's schedule
+    if (req.auth!.role === "supervisor" && teamId !== req.auth!.teamId) {
+      res.status(403).json({ error: "Supervisors may only replan their own team's schedule" });
+      return;
+    }
     const { productiveTimeMins, standardCrewSize } = await loadSystemSettings();
 
     // Build crew/absence data for the affected date
