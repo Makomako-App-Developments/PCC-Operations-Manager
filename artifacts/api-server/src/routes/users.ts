@@ -93,7 +93,7 @@ router.patch(
   async (req, res) => {
     const id = String(req.params.id);
     const [before] = await db
-      .select()
+      .select(SAFE_COLS)
       .from(usersTable)
       .where(eq(usersTable.id, id))
       .limit(1);

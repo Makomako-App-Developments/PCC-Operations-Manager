@@ -7,6 +7,17 @@ import { validateQuery } from "../middlewares/validate";
 
 const router = Router();
 
+const USER_SENSITIVE_FIELDS = ["passwordHash", "expoPushToken"] as const;
+
+function scrubUserData(data: unknown): unknown {
+  if (!data || typeof data !== "object" || Array.isArray(data)) return data;
+  const scrubbed = { ...(data as Record<string, unknown>) };
+  for (const field of USER_SENSITIVE_FIELDS) {
+    delete scrubbed[field];
+  }
+  return scrubbed;
+}
+
 const listQuerySchema = z.object({
   table:    z.string().optional(),
   action:   z.string().optional(),
@@ -60,7 +71,16 @@ router.get(
       .limit(limit)
       .offset(offset);
 
-    res.json({ data: rows, limit, offset });
+    const sanitized = rows.map(row => {
+      if (row.tableName !== "users") return row;
+      return {
+        ...row,
+        oldData: scrubUserData(row.oldData),
+        newData: scrubUserData(row.newData),
+      };
+    });
+
+    res.json({ data: sanitized, limit, offset });
   },
 );
 
