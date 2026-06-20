@@ -1,9 +1,11 @@
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Feather } from "@expo/vector-icons";
 import { useCreateReactiveJob } from "@workspace/api-client-react";
 import * as Haptics from "expo-haptics";
 import * as ImagePicker from "expo-image-picker";
 import * as Location from "expo-location";
-import React, { useState, useMemo, useEffect, useRef } from "react";
+import { useFocusEffect, useNavigation } from "expo-router";
+import React, { useState, useMemo, useEffect, useRef, useCallback } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -22,6 +24,8 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "@/context/auth";
 import { useColors } from "@/hooks/useColors";
 import { getApiUrl } from "@/lib/api";
+
+const REPORT_DRAFT_KEY = "@report_draft_v1";
 
 // ─── Pest Plants ─────────────────────────────────────────────────────────────
 
@@ -536,6 +540,8 @@ export default function ReportScreen() {
   const insets = useSafeAreaInsets();
   const { token } = useAuth();
 
+  const navigation = useNavigation();
+
   const [issueType, setIssueType] = useState<string>("");
   const [priority, setPriority] = useState<string>("medium");
   const [description, setDescription] = useState("");
@@ -548,8 +554,68 @@ export default function ReportScreen() {
   const [success, setSuccess] = useState(false);
   const [selectedPhotos, setSelectedPhotos] = useState<Array<{ uri: string; file?: File }>>([]);
   const [uploadingPhotos, setUploadingPhotos] = useState(false);
+  const [draftRestored, setDraftRestored] = useState(false);
 
   const mutation = useCreateReactiveJob();
+
+  const hasDraft =
+    !!selectedAssetId ||
+    !!issueType ||
+    description.trim().length > 0 ||
+    pestPlantsSelected.length > 0 ||
+    selectedPhotos.length > 0;
+
+  const saveDraft = useCallback(async () => {
+    if (!hasDraft) {
+      await AsyncStorage.removeItem(REPORT_DRAFT_KEY);
+      return;
+    }
+    await AsyncStorage.setItem(
+      REPORT_DRAFT_KEY,
+      JSON.stringify({
+        issueType,
+        priority,
+        description,
+        selectedAssetId,
+        selectedAssetName,
+        pestPlantsSelected,
+        photoUris: selectedPhotos.map(p => p.uri),
+      }),
+    );
+  }, [hasDraft, issueType, priority, description, selectedAssetId, selectedAssetName, pestPlantsSelected, selectedPhotos]);
+
+  const clearDraft = useCallback(async () => {
+    await AsyncStorage.removeItem(REPORT_DRAFT_KEY);
+  }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      (async () => {
+        try {
+          const raw = await AsyncStorage.getItem(REPORT_DRAFT_KEY);
+          if (!raw) return;
+          const draft = JSON.parse(raw);
+          if (draft.issueType) setIssueType(draft.issueType);
+          if (draft.priority) setPriority(draft.priority);
+          if (draft.description) setDescription(draft.description);
+          if (draft.selectedAssetId) setSelectedAssetId(draft.selectedAssetId);
+          if (draft.selectedAssetName) setSelectedAssetName(draft.selectedAssetName);
+          if (Array.isArray(draft.pestPlantsSelected)) setPestPlantsSelected(draft.pestPlantsSelected);
+          if (Array.isArray(draft.photoUris) && draft.photoUris.length > 0) {
+            setSelectedPhotos(draft.photoUris.map((uri: string) => ({ uri })));
+          }
+          setDraftRestored(true);
+        } catch { /* ignore corrupt drafts */ }
+      })();
+    }, []),
+  );
+
+  useEffect(() => {
+    const unsubscribe = navigation.addListener("blur", () => {
+      saveDraft();
+    });
+    return unsubscribe;
+  }, [navigation, saveDraft]);
 
   const uploadPhotos = async (jobId: string) => {
     for (const photo of selectedPhotos) {
@@ -649,7 +715,9 @@ export default function ReportScreen() {
             await uploadPhotos(newJob.id);
             setUploadingPhotos(false);
           }
+          await clearDraft();
           setSuccess(true);
+          setDraftRestored(false);
           setIssueType("");
           setPriority("medium");
           setDescription("");
@@ -700,6 +768,30 @@ export default function ReportScreen() {
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
+        {draftRestored ? (
+          <View style={[styles.draftBanner, { backgroundColor: "#fef9c3", borderColor: "#fde047", borderRadius: colors.radius }]}>
+            <Feather name="edit-2" size={15} color="#854d0e" />
+            <Text style={styles.draftBannerText}>Draft restored</Text>
+            <TouchableOpacity
+              onPress={async () => {
+                await clearDraft();
+                setDraftRestored(false);
+                setIssueType("");
+                setPriority("medium");
+                setDescription("");
+                setSelectedAssetId("");
+                setSelectedAssetName("");
+                setPestPlantsSelected([]);
+                setSelectedPhotos([]);
+              }}
+              activeOpacity={0.75}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <Text style={styles.draftBannerDiscard}>Discard</Text>
+            </TouchableOpacity>
+          </View>
+        ) : null}
+
         {success ? (
           <View style={[styles.successBanner, { backgroundColor: "#dcfce7", borderRadius: colors.radius }]}>
             <Feather name="check-circle" size={18} color="#16a34a" />
@@ -961,6 +1053,26 @@ const styles = StyleSheet.create({
     fontSize: 13,
   },
   scroll: { flex: 1 },
+  draftBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 11,
+    marginBottom: 12,
+    borderWidth: 1,
+  },
+  draftBannerText: {
+    fontFamily: "Inter_500Medium",
+    fontSize: 13,
+    color: "#854d0e",
+    flex: 1,
+  },
+  draftBannerDiscard: {
+    fontFamily: "Inter_600SemiBold",
+    fontSize: 13,
+    color: "#b45309",
+  },
   successBanner: {
     flexDirection: "row",
     alignItems: "center",
