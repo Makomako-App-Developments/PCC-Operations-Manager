@@ -9,9 +9,11 @@ interface Props {
 export function AssetMap({ html, onOpenAsset }: Props) {
   const onOpenAssetRef = useRef(onOpenAsset);
   onOpenAssetRef.current = onOpenAsset;
+  const iframeRef = useRef<HTMLIFrameElement>(null);
 
   useEffect(() => {
     const handler = (e: MessageEvent) => {
+      if (iframeRef.current && e.source !== iframeRef.current.contentWindow) return;
       try {
         const msg = typeof e.data === "string" ? JSON.parse(e.data) : e.data;
         if (msg?.type === "openAsset" && msg.id && onOpenAssetRef.current) {
@@ -26,9 +28,10 @@ export function AssetMap({ html, onOpenAsset }: Props) {
   return (
     <View style={{ flex: 1 }}>
       <iframe
+        ref={iframeRef}
         srcDoc={html}
         style={{ flex: 1, width: "100%", height: "100%", border: "none" } as any}
-        sandbox="allow-scripts allow-same-origin"
+        sandbox="allow-scripts"
       />
     </View>
   );

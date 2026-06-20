@@ -564,7 +564,8 @@ html,body,#map{margin:0;padding:0;height:100%;width:100%;}
 .popup-name{font-weight:600;font-size:14px;font-family:sans-serif;display:block;margin-bottom:2px;}
 </style>
 </head><body><div id="map"></div><script>
-var _assets=${JSON.stringify(mapAssets)};
+var _assets=${JSON.stringify(mapAssets).replace(/</g,'\\u003c').replace(/>/g,'\\u003e').replace(/&/g,'\\u0026').replace(/\u2028/g,'\\u2028').replace(/\u2029/g,'\\u2029')};
+function _esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');}
 function _selectAsset(idx){
   var a=_assets[idx];
   var msg=JSON.stringify({type:'selectAsset',id:a.id,name:a.name});
@@ -574,7 +575,7 @@ function _selectAsset(idx){
 var map=L.map('map',{zoomControl:false,attributionControl:false}).setView([${center[0]},${center[1]}],14);
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
 _assets.forEach(function(a,i){
-  var popup='<span class="popup-name">'+a.name+'</span><button class="select-btn" onclick="_selectAsset('+i+')">Select this site</button>';
+  var popup='<span class="popup-name">'+_esc(a.name)+'</span><button class="select-btn" onclick="_selectAsset('+i+')">Select this site</button>';
   L.circleMarker([a.lat,a.lng],{radius:6,color:"#00AECD",fillColor:"#00AECD",fillOpacity:0.85,weight:1.5})
     .bindPopup(popup,{maxWidth:200}).addTo(map);
 });

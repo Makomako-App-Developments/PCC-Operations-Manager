@@ -10,9 +10,11 @@ interface Props {
 export function AuditMap({ html, height = 190, onAssetSelect }: Props) {
   const onAssetSelectRef = useRef(onAssetSelect);
   onAssetSelectRef.current = onAssetSelect;
+  const iframeRef = useRef<HTMLIFrameElement>(null);
 
   useEffect(() => {
     const handler = (e: MessageEvent) => {
+      if (iframeRef.current && e.source !== iframeRef.current.contentWindow) return;
       try {
         const msg = typeof e.data === "string" ? JSON.parse(e.data) : e.data;
         if (msg?.type === "selectAsset" && onAssetSelectRef.current) {
@@ -27,9 +29,10 @@ export function AuditMap({ html, height = 190, onAssetSelect }: Props) {
   return (
     <View style={{ height, width: "100%" }}>
       <iframe
+        ref={iframeRef}
         srcDoc={html}
         style={{ height: "100%", width: "100%", border: "none" } as any}
-        sandbox="allow-scripts allow-same-origin"
+        sandbox="allow-scripts"
       />
     </View>
   );

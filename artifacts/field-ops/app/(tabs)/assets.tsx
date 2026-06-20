@@ -155,7 +155,8 @@ html,body,#map{margin:0;padding:0;height:100%;width:100%;}
 .popup-desc{font-size:12px;font-family:sans-serif;color:#6b7280;display:block;margin-bottom:4px;}
 </style>
 </head><body><div id="map"></div><script>
-var _assets=${JSON.stringify(mapAssets)};
+var _assets=${JSON.stringify(mapAssets).replace(/</g,'\\u003c').replace(/>/g,'\\u003e').replace(/&/g,'\\u0026').replace(/\u2028/g,'\\u2028').replace(/\u2029/g,'\\u2029')};
+function _esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');}
 function _openAsset(idx){
   var a=_assets[idx];
   var msg=JSON.stringify({type:'openAsset',id:a.id,name:a.name});
@@ -165,8 +166,8 @@ function _openAsset(idx){
 var map=L.map('map',{zoomControl:true,attributionControl:false}).setView([${center[0]},${center[1]}],14);
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
 _assets.forEach(function(a,i){
-  var desc=a.desc?'<span class="popup-desc">'+a.desc+'</span>':'';
-  var popup='<span class="popup-name">'+a.name+'</span>'+desc+'<button class="open-btn" onclick="_openAsset('+i+')">View asset</button>';
+  var desc=a.desc?'<span class="popup-desc">'+_esc(a.desc)+'</span>':'';
+  var popup='<span class="popup-name">'+_esc(a.name)+'</span>'+desc+'<button class="open-btn" onclick="_openAsset('+i+')">View asset</button>';
   L.circleMarker([a.lat,a.lng],{radius:7,color:"#00AECD",fillColor:"#00AECD",fillOpacity:0.9,weight:1.5})
     .bindPopup(popup,{maxWidth:220}).addTo(map);
 });
