@@ -16,6 +16,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useAuth } from "@/context/auth";
 import { useColors } from "@/hooks/useColors";
+import { BugReportModal } from "@/components/BugReportButton";
 
 const ROLE_LABEL: Record<string, string> = {
   manager: "Manager",
@@ -34,6 +35,7 @@ export default function MeScreen() {
     user?.pushNotificationsEnabled !== false,
   );
   const [notifLoading, setNotifLoading] = useState(false);
+  const [bugReportOpen, setBugReportOpen] = useState(false);
 
   // Sync toggle state whenever the user object changes (e.g. after cold-start
   // once the persisted session loads, or after a server-side preference update)
@@ -209,7 +211,24 @@ export default function MeScreen() {
                 </Text>
               </View>
             </View>
+            <View style={[styles.divider, { backgroundColor: colors.border }]} />
+            <TouchableOpacity
+              style={styles.infoRow}
+              onPress={() => setBugReportOpen(true)}
+              activeOpacity={0.7}
+            >
+              <Feather name="alert-octagon" size={16} color={colors.primary} />
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.infoValue, { color: colors.foreground }]}>Report a Problem</Text>
+                <Text style={[styles.infoLabel, { color: colors.mutedForeground }]}>
+                  Let us know if something isn't working
+                </Text>
+              </View>
+              <Feather name="chevron-right" size={16} color={colors.mutedForeground} />
+            </TouchableOpacity>
           </View>
+
+          <BugReportModal open={bugReportOpen} onClose={() => setBugReportOpen(false)} />
 
           <TouchableOpacity
             style={[

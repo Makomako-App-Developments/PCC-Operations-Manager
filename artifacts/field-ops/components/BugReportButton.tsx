@@ -21,13 +21,17 @@ import { useAuth } from "@/context/auth";
 import { useColors } from "@/hooks/useColors";
 import { getApiUrl } from "@/lib/api";
 
-export function BugReportButton() {
+interface BugReportModalProps {
+  open: boolean;
+  onClose: () => void;
+}
+
+export function BugReportModal({ open, onClose }: BugReportModalProps) {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const { user, token } = useAuth();
   const pathname = usePathname();
 
-  const [open, setOpen] = useState(false);
   const [description, setDescription] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
@@ -66,7 +70,7 @@ export function BugReportButton() {
       setDescription("");
       setTimeout(() => {
         setSubmitted(false);
-        setOpen(false);
+        onClose();
       }, 2500);
     } catch {
       Alert.alert(
@@ -79,185 +83,167 @@ export function BugReportButton() {
   };
 
   const handleClose = () => {
-    setOpen(false);
     setDescription("");
     setSubmitted(false);
+    onClose();
   };
 
+  if (!open) return null;
+
   return (
-    <>
-      <TouchableOpacity
-        style={[
-          styles.fab,
-          {
-            backgroundColor: colors.card,
-            borderColor: colors.border,
-            top: insets.top + 8,
-          },
-        ]}
-        onPress={() => setOpen(true)}
-        activeOpacity={0.85}
-        accessibilityLabel="Report a problem"
+    <Modal
+      visible
+      animationType="slide"
+      presentationStyle="pageSheet"
+      onRequestClose={handleClose}
+    >
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
       >
-        <Feather name="alert-octagon" size={18} color={colors.mutedForeground} />
-      </TouchableOpacity>
-
-      {open && (
-        <Modal
-          visible
-          animationType="slide"
-          presentationStyle="pageSheet"
-          onRequestClose={handleClose}
-        >
-          <KeyboardAvoidingView
-            style={{ flex: 1 }}
-            behavior={Platform.OS === "ios" ? "padding" : "height"}
+        <View style={[styles.modal, { backgroundColor: colors.background }]}>
+          <View
+            style={[
+              styles.header,
+              {
+                backgroundColor: colors.card,
+                borderBottomColor: colors.border,
+                paddingTop: insets.top + 16,
+              },
+            ]}
           >
-            <View style={[styles.modal, { backgroundColor: colors.background }]}>
-              <View
-                style={[
-                  styles.header,
-                  {
-                    backgroundColor: colors.card,
-                    borderBottomColor: colors.border,
-                    paddingTop: insets.top + 16,
-                  },
-                ]}
-              >
-                <View style={{ flex: 1 }}>
-                  <Text style={[styles.title, { color: colors.foreground }]}>
-                    Report a Problem
-                  </Text>
-                  <Text style={[styles.sub, { color: colors.mutedForeground }]}>
-                    Help us fix it — describe what happened
-                  </Text>
-                </View>
-                <TouchableOpacity
-                  onPress={handleClose}
-                  style={{ padding: 4 }}
-                  activeOpacity={0.7}
-                >
-                  <Feather name="x" size={22} color={colors.foreground} />
-                </TouchableOpacity>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.title, { color: colors.foreground }]}>
+                Report a Problem
+              </Text>
+              <Text style={[styles.sub, { color: colors.mutedForeground }]}>
+                Help us fix it — describe what happened
+              </Text>
+            </View>
+            <TouchableOpacity
+              onPress={handleClose}
+              style={{ padding: 4 }}
+              activeOpacity={0.7}
+            >
+              <Feather name="x" size={22} color={colors.foreground} />
+            </TouchableOpacity>
+          </View>
+
+          <ScrollView
+            style={{ flex: 1 }}
+            contentContainerStyle={styles.body}
+            keyboardShouldPersistTaps="handled"
+          >
+            {submitted ? (
+              <View style={[styles.successBox, { backgroundColor: "#dcfce7", borderRadius: colors.radius }]}>
+                <Feather name="check-circle" size={28} color="#16a34a" />
+                <Text style={styles.successText}>
+                  Thanks — we've got your report!
+                </Text>
               </View>
+            ) : (
+              <>
+                <Text style={[styles.label, { color: colors.mutedForeground }]}>
+                  What were you doing when this happened?
+                </Text>
+                <TextInput
+                  style={[
+                    styles.input,
+                    {
+                      color: colors.foreground,
+                      borderColor: description.trim()
+                        ? colors.primary
+                        : colors.border,
+                      backgroundColor: colors.card,
+                      borderRadius: colors.radius,
+                    },
+                  ]}
+                  value={description}
+                  onChangeText={setDescription}
+                  placeholder="e.g. I tapped the camera button and nothing happened…"
+                  placeholderTextColor={colors.mutedForeground}
+                  multiline
+                  numberOfLines={5}
+                  textAlignVertical="top"
+                  autoFocus
+                />
 
-              <ScrollView
-                style={{ flex: 1 }}
-                contentContainerStyle={styles.body}
-                keyboardShouldPersistTaps="handled"
-              >
-                {submitted ? (
-                  <View style={[styles.successBox, { backgroundColor: "#dcfce7", borderRadius: colors.radius }]}>
-                    <Feather name="check-circle" size={28} color="#16a34a" />
-                    <Text style={styles.successText}>
-                      Thanks — we've got your report!
-                    </Text>
-                  </View>
-                ) : (
-                  <>
-                    <Text style={[styles.label, { color: colors.mutedForeground }]}>
-                      What were you doing when this happened?
-                    </Text>
-                    <TextInput
-                      style={[
-                        styles.input,
-                        {
-                          color: colors.foreground,
-                          borderColor: description.trim()
-                            ? colors.primary
-                            : colors.border,
-                          backgroundColor: colors.card,
-                          borderRadius: colors.radius,
-                        },
-                      ]}
-                      value={description}
-                      onChangeText={setDescription}
-                      placeholder="e.g. I tapped the camera button and nothing happened…"
-                      placeholderTextColor={colors.mutedForeground}
-                      multiline
-                      numberOfLines={5}
-                      textAlignVertical="top"
-                      autoFocus
-                    />
-
-                    <View
-                      style={[
-                        styles.metaCard,
-                        {
-                          backgroundColor: colors.card,
-                          borderColor: colors.border,
-                          borderRadius: colors.radius,
-                        },
-                      ]}
-                    >
-                      <Text
-                        style={[styles.metaTitle, { color: colors.mutedForeground }]}
-                      >
-                        Sent automatically with your report
-                      </Text>
-                      <MetaRow icon="user" label="User" value={user.name} colors={colors} />
-                      <MetaRow icon="map-pin" label="Screen" value={pathname} colors={colors} />
-                      <MetaRow icon="smartphone" label="Device" value={`${Platform.OS} ${Platform.Version}`} colors={colors} />
-                      <MetaRow icon="clock" label="Time" value={new Date().toLocaleTimeString()} colors={colors} />
-                    </View>
-                  </>
-                )}
-              </ScrollView>
-
-              {!submitted && (
                 <View
                   style={[
-                    styles.footer,
+                    styles.metaCard,
                     {
                       backgroundColor: colors.card,
-                      borderTopColor: colors.border,
-                      paddingBottom: insets.bottom + 16,
+                      borderColor: colors.border,
+                      borderRadius: colors.radius,
                     },
                   ]}
                 >
-                  <TouchableOpacity
-                    style={[
-                      styles.cancelBtn,
-                      { borderColor: colors.border, borderRadius: colors.radius },
-                    ]}
-                    onPress={handleClose}
-                    activeOpacity={0.8}
+                  <Text
+                    style={[styles.metaTitle, { color: colors.mutedForeground }]}
                   >
-                    <Text style={[styles.cancelText, { color: colors.mutedForeground }]}>
-                      Cancel
-                    </Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[
-                      styles.submitBtn,
-                      {
-                        backgroundColor: description.trim()
-                          ? colors.primary
-                          : colors.muted,
-                        borderRadius: colors.radius,
-                        opacity: submitting ? 0.7 : 1,
-                      },
-                    ]}
-                    onPress={handleSubmit}
-                    disabled={!description.trim() || submitting}
-                    activeOpacity={0.85}
-                  >
-                    {submitting ? (
-                      <ActivityIndicator color="#fff" size="small" />
-                    ) : (
-                      <>
-                        <Feather name="send" size={15} color="#fff" />
-                        <Text style={styles.submitText}>Send Report</Text>
-                      </>
-                    )}
-                  </TouchableOpacity>
+                    Sent automatically with your report
+                  </Text>
+                  <MetaRow icon="user" label="User" value={user.name} colors={colors} />
+                  <MetaRow icon="map-pin" label="Screen" value={pathname} colors={colors} />
+                  <MetaRow icon="smartphone" label="Device" value={`${Platform.OS} ${Platform.Version}`} colors={colors} />
+                  <MetaRow icon="clock" label="Time" value={new Date().toLocaleTimeString()} colors={colors} />
                 </View>
-              )}
+              </>
+            )}
+          </ScrollView>
+
+          {!submitted && (
+            <View
+              style={[
+                styles.footer,
+                {
+                  backgroundColor: colors.card,
+                  borderTopColor: colors.border,
+                  paddingBottom: insets.bottom + 16,
+                },
+              ]}
+            >
+              <TouchableOpacity
+                style={[
+                  styles.cancelBtn,
+                  { borderColor: colors.border, borderRadius: colors.radius },
+                ]}
+                onPress={handleClose}
+                activeOpacity={0.8}
+              >
+                <Text style={[styles.cancelText, { color: colors.mutedForeground }]}>
+                  Cancel
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  styles.submitBtn,
+                  {
+                    backgroundColor: description.trim()
+                      ? colors.primary
+                      : colors.muted,
+                    borderRadius: colors.radius,
+                    opacity: submitting ? 0.7 : 1,
+                  },
+                ]}
+                onPress={handleSubmit}
+                disabled={!description.trim() || submitting}
+                activeOpacity={0.85}
+              >
+                {submitting ? (
+                  <ActivityIndicator color="#fff" size="small" />
+                ) : (
+                  <>
+                    <Feather name="send" size={15} color="#fff" />
+                    <Text style={styles.submitText}>Send Report</Text>
+                  </>
+                )}
+              </TouchableOpacity>
             </View>
-          </KeyboardAvoidingView>
-        </Modal>
-      )}
-    </>
+          )}
+        </View>
+      </KeyboardAvoidingView>
+    </Modal>
   );
 }
 
@@ -284,22 +270,6 @@ function MetaRow({
 }
 
 const styles = StyleSheet.create({
-  fab: {
-    position: "absolute",
-    right: 16,
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    borderWidth: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    shadowColor: "#000",
-    shadowOpacity: 0.12,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 3,
-    zIndex: 50,
-  },
   modal: { flex: 1 },
   header: {
     flexDirection: "row",

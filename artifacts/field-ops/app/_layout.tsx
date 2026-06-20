@@ -17,7 +17,6 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 import * as Sentry from "@sentry/react-native";
 
 import { ErrorBoundary } from "@/components/ErrorBoundary";
-import { BugReportButton } from "@/components/BugReportButton";
 import { AuthProvider, useAuth } from "@/context/auth";
 import { PhotoQueueProvider } from "@/context/PhotoQueueProvider";
 
@@ -114,7 +113,6 @@ export default function RootLayout() {
                 <KeyboardProvider>
                   <AuthGuard />
                   <RootLayoutNav />
-                  <BugReportButton />
                 </KeyboardProvider>
               </GestureHandlerRootView>
             </PhotoQueueProvider>
