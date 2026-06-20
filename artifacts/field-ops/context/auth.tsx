@@ -114,26 +114,36 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     async function init() {
       try {
-        // On web: check if the web app passed a token via URL params (single sign-on)
+        // On web: check if the web app passed a one-time handoff code via URL.
+        // The code is redeemed server-side so the bearer token never appears in the URL.
         if (Platform.OS === "web" && typeof window !== "undefined") {
           const params = new URLSearchParams(window.location.search);
-          const urlToken = params.get("token");
-          const urlUser = params.get("user");
-          if (urlToken && urlUser) {
+          const handoffCode = params.get("handoff");
+          if (handoffCode) {
+            // Strip the code from the URL immediately before any async work
+            window.history.replaceState({}, "", window.location.pathname);
             try {
-              const parsedUser = JSON.parse(decodeURIComponent(urlUser)) as AuthUser;
-              _currentToken = urlToken;
-              setToken(urlToken);
-              setUser(parsedUser);
-              Sentry.setUser({ id: parsedUser.id, username: parsedUser.name });
-              await Promise.all([
-                SecureStore.setItemAsync(TOKEN_KEY, urlToken),
-                SecureStore.setItemAsync(USER_KEY, JSON.stringify(parsedUser)),
-              ]);
-              // Remove the token from the URL so it isn't exposed in history
-              window.history.replaceState({}, "", window.location.pathname);
-              registerPushToken(urlToken).catch(() => {});
-              return;
+              const resp = await fetch("/api/auth/handoff/redeem", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ code: handoffCode }),
+              });
+              if (resp.ok) {
+                const { accessToken: redeemedToken, user: redeemedUser } = await resp.json() as {
+                  accessToken: string;
+                  user: AuthUser;
+                };
+                _currentToken = redeemedToken;
+                setToken(redeemedToken);
+                setUser(redeemedUser);
+                Sentry.setUser({ id: redeemedUser.id, username: redeemedUser.name });
+                await Promise.all([
+                  SecureStore.setItemAsync(TOKEN_KEY, redeemedToken),
+                  SecureStore.setItemAsync(USER_KEY, JSON.stringify(redeemedUser)),
+                ]);
+                registerPushToken(redeemedToken).catch(() => {});
+                return;
+              }
             } catch {
               // fall through to stored token
             }

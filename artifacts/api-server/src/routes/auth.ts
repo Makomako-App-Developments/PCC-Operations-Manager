@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { randomBytes } from "crypto";
 import { db, usersTable } from "@workspace/db";
 import { eq, sql } from "drizzle-orm";
 import { z } from "zod";
@@ -7,6 +8,62 @@ import { signTokens, requireAuth } from "../middlewares/auth";
 import { validateBody } from "../middlewares/validate";
 
 const router = Router();
+
+// ── One-time handoff codes (web → field-ops session transfer) ─────────────────
+// Codes are opaque random strings, single-use, expire in 60 s.
+// The bearer token never touches a URL this way.
+interface HandoffEntry {
+  accessToken: string;
+  user: { id: string; name: string; initials: string; role: string; teamId: string | null };
+  expiresAt: number;
+}
+const handoffCodes = new Map<string, HandoffEntry>();
+
+// POST /api/auth/handoff/create
+// Requires an authenticated session (cookie or bearer). Issues a one-time
+// code that the field-ops surface can exchange for a fresh access token.
+router.post("/auth/handoff/create", requireAuth, async (req, res) => {
+  const [user] = await db.select().from(usersTable).where(eq(usersTable.id, req.auth!.userId)).limit(1);
+  if (!user || !user.isActive) {
+    res.status(403).json({ error: "Account disabled" });
+    return;
+  }
+
+  const { accessToken } = signTokens({ userId: user.id, role: user.role, teamId: user.teamId });
+  const code = randomBytes(32).toString("hex");
+  const expiresAt = Date.now() + 60_000;
+
+  handoffCodes.set(code, {
+    accessToken,
+    user: { id: user.id, name: user.name, initials: user.initials, role: user.role, teamId: user.teamId },
+    expiresAt,
+  });
+  setTimeout(() => handoffCodes.delete(code), 60_000);
+
+  res.json({ code });
+});
+
+// POST /api/auth/handoff/redeem
+// Accepts a one-time code, invalidates it immediately, and returns the
+// access token + user. Never exposes the token in a URL.
+router.post("/auth/handoff/redeem", async (req, res) => {
+  const { code } = req.body ?? {};
+  if (!code || typeof code !== "string") {
+    res.status(400).json({ error: "Missing code" });
+    return;
+  }
+
+  const entry = handoffCodes.get(code);
+  handoffCodes.delete(code); // single-use: invalidate immediately regardless of outcome
+
+  if (!entry || Date.now() > entry.expiresAt) {
+    res.status(401).json({ error: "Invalid or expired handoff code" });
+    return;
+  }
+
+  res.json({ accessToken: entry.accessToken, user: entry.user });
+});
+// ─────────────────────────────────────────────────────────────────────────────
 
 const loginSchema = z.object({
   email:    z.string().email(),

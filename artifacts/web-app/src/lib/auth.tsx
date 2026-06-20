@@ -17,9 +17,13 @@ function isMobileDevice() {
   return false;
 }
 
-function redirectToFieldOps(token: string, user: object) {
-  const u = encodeURIComponent(JSON.stringify(user));
-  window.location.href = `/field-ops/?token=${token}&user=${u}`;
+async function redirectToFieldOps() {
+  // Exchange the current authenticated session for a short-lived one-time
+  // handoff code. The bearer token is never placed in the URL.
+  const res = await fetch("/api/auth/handoff/create", { method: "POST" });
+  if (!res.ok) throw new Error("Failed to create handoff code");
+  const { code } = await res.json();
+  window.location.href = `/field-ops/?handoff=${encodeURIComponent(code)}`;
 }
 
 interface AuthContextType {
@@ -46,10 +50,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
         Sentry.setUser({ id: data?.user?.id, email: data?.user?.email });
         const role = data?.user?.role ?? "";
-        const token = data?.accessToken ?? "";
         if (role === "field_worker" || (FIELD_OPS_ROLES.includes(role) && isMobileDevice())) {
           redirectingRef.current = true;
-          redirectToFieldOps(token, data?.user ?? {});
+          redirectToFieldOps().catch(() => {
+            // If handoff creation fails, fall back to the web dashboard
+            redirectingRef.current = false;
+            setLocation("/dashboard");
+          });
         } else {
           setLocation("/dashboard");
         }
