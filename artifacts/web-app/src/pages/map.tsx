@@ -443,7 +443,7 @@ export default function MapPage() {
                   className="w-full flex flex-col items-start px-3 py-2 hover:bg-gray-50 border-b border-gray-100 last:border-0 transition-colors"
                 >
                   <span className="text-xs font-semibold text-gray-800 truncate w-full text-left">{asset.name}</span>
-                  <span className="text-[10px] text-gray-400 mt-0.5">{TYPE_LABELS[asset.gardenType] ?? asset.gardenType}</span>
+                  <span className="text-[10px] text-gray-400 mt-0.5">{asset.description || TYPE_LABELS[asset.gardenType] || asset.gardenType}</span>
                 </button>
               ))}
             </div>
