@@ -435,7 +435,7 @@ export default function MapPage() {
 
           {/* Dropdown results */}
           {searchOpen && searchResults.length > 0 && (
-            <div className="absolute left-3 right-3 top-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-[600] overflow-hidden">
+            <div className="absolute left-3 right-3 top-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-[600] overflow-y-auto max-h-72">
               {searchResults.map(asset => (
                 <button
                   key={asset.id}
