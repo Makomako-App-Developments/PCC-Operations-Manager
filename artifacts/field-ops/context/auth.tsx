@@ -14,6 +14,21 @@ import * as Notifications from "expo-notifications";
 const TOKEN_KEY = "pcc_auth_token";
 const USER_KEY = "pcc_auth_user";
 
+const secureGet = (key: string): Promise<string | null> =>
+  Platform.OS === "web"
+    ? Promise.resolve(localStorage.getItem(key))
+    : SecureStore.getItemAsync(key);
+
+const secureSet = (key: string, value: string): Promise<void> =>
+  Platform.OS === "web"
+    ? Promise.resolve(localStorage.setItem(key, value))
+    : SecureStore.setItemAsync(key, value);
+
+const secureDelete = (key: string): Promise<void> =>
+  Platform.OS === "web"
+    ? Promise.resolve(localStorage.removeItem(key))
+    : SecureStore.deleteItemAsync(key);
+
 export interface AuthUser {
   id: string;
   name: string;
@@ -138,8 +153,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 setUser(redeemedUser);
                 Sentry.setUser({ id: redeemedUser.id, username: redeemedUser.name });
                 await Promise.all([
-                  SecureStore.setItemAsync(TOKEN_KEY, redeemedToken),
-                  SecureStore.setItemAsync(USER_KEY, JSON.stringify(redeemedUser)),
+                  secureSet(TOKEN_KEY, redeemedToken),
+                  secureSet(USER_KEY, JSON.stringify(redeemedUser)),
                 ]);
                 registerPushToken(redeemedToken).catch(() => {});
                 return;
@@ -151,8 +166,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
 
         const [storedToken, storedUser] = await Promise.all([
-          SecureStore.getItemAsync(TOKEN_KEY),
-          SecureStore.getItemAsync(USER_KEY),
+          secureGet(TOKEN_KEY),
+          secureGet(USER_KEY),
         ]);
         if (storedToken && storedUser) {
           _currentToken = storedToken;
@@ -180,8 +195,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // Persist to storage in the background. Safari private mode / strict ITP
     // can throw from localStorage, so we never let storage failures propagate
     // back to the caller (which would incorrectly show "Invalid password").
-    SecureStore.setItemAsync(TOKEN_KEY, newToken).catch(() => {});
-    SecureStore.setItemAsync(USER_KEY, JSON.stringify(newUser)).catch(() => {});
+    secureSet(TOKEN_KEY, newToken).catch(() => {});
+    secureSet(USER_KEY, JSON.stringify(newUser)).catch(() => {});
     registerPushToken(newToken).catch(() => {});
   };
 
@@ -192,8 +207,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null);
     Sentry.setUser(null);
     await Promise.all([
-      SecureStore.deleteItemAsync(TOKEN_KEY),
-      SecureStore.deleteItemAsync(USER_KEY),
+      secureDelete(TOKEN_KEY),
+      secureDelete(USER_KEY),
     ]);
   };
 
@@ -204,10 +219,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         body: JSON.stringify({ enabled }),
       });
       setUser(prev => prev ? { ...prev, pushNotificationsEnabled: enabled } : prev);
-      const stored = await SecureStore.getItemAsync(USER_KEY);
+      const stored = await secureGet(USER_KEY);
       if (stored) {
         const parsed = JSON.parse(stored) as AuthUser;
-        await SecureStore.setItemAsync(USER_KEY, JSON.stringify({ ...parsed, pushNotificationsEnabled: enabled }));
+        await secureSet(USER_KEY, JSON.stringify({ ...parsed, pushNotificationsEnabled: enabled }));
       }
     } catch (err) {
       console.warn("[push] Failed to update notification preference:", err);
