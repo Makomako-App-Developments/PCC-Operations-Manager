@@ -293,6 +293,9 @@ router.get("/mulching-records", requireAuth, async (req, res) => {
       estimatedMins:       mulchingRecordsTable.estimatedMins,
       alignedJobId:        mulchingRecordsTable.alignedJobId,
       alignedJobDate:      mulchingRecordsTable.alignedJobDate,
+      splitGroupId:        mulchingRecordsTable.splitGroupId,
+      splitDayIndex:       mulchingRecordsTable.splitDayIndex,
+      splitTotalDays:      mulchingRecordsTable.splitTotalDays,
       createdAt:           mulchingRecordsTable.createdAt,
       updatedAt:           mulchingRecordsTable.updatedAt,
     })
@@ -360,12 +363,23 @@ router.post(
     const lastDayMins = totalMins - minsPerDay * (n - 1);
     const groupId = crypto.randomUUID();
 
+    // Distribute volumeM3 proportionally by time fraction.
+    // Each day gets round(fraction * total, 2); last day gets the remainder.
+    const totalVolumeM3 = original.volumeM3 != null ? parseFloat(String(original.volumeM3)) : null;
+    function dayVolume(dayMins: number, isLast: boolean, accruedVol: number): string | null {
+      if (totalVolumeM3 == null) return null;
+      if (isLast) return String(Math.round((totalVolumeM3 - accruedVol) * 100) / 100);
+      return String(Math.round((dayMins / totalMins) * totalVolumeM3 * 100) / 100);
+    }
+    const day1Vol = dayVolume(minsPerDay, n === 1, 0);
+
     const [day1] = await db
       .update(mulchingRecordsTable)
       .set({
         scheduledDate:  dates[0],
         assignedTeamId: teamId,
         estimatedMins:  minsPerDay,
+        volumeM3:       day1Vol,
         status:         "scheduled",
         splitGroupId:   groupId,
         splitDayIndex:  1,
@@ -379,19 +393,31 @@ router.post(
       ? await db
           .insert(mulchingRecordsTable)
           .values(
-            dates.slice(1).map((date: string, i: number) => ({
-              assetId:         original.assetId,
-              scheduledDate:   date,
-              assignedTeamId:  teamId,
-              estimatedMins:   i === n - 2 ? lastDayMins : minsPerDay,
-              status:          "scheduled" as const,
-              mulchType:       original.mulchType,
-              notes:           original.notes,
-              sourceReadingId: original.sourceReadingId,
-              splitGroupId:    groupId,
-              splitDayIndex:   i + 2,
-              splitTotalDays:  n,
-            })),
+            dates.slice(1).map((date: string, i: number) => {
+              const isLast = i === n - 2;
+              const sibMins = isLast ? lastDayMins : minsPerDay;
+              const accruedVol = totalVolumeM3 != null
+                ? parseFloat(day1Vol ?? "0") +
+                  dates.slice(1, i + 1).reduce((acc, _, j) => {
+                    const m = j === n - 2 ? lastDayMins : minsPerDay;
+                    return acc + Math.round((m / totalMins) * totalVolumeM3 * 100) / 100;
+                  }, 0)
+                : 0;
+              return {
+                assetId:         original.assetId,
+                scheduledDate:   date,
+                assignedTeamId:  teamId,
+                estimatedMins:   sibMins,
+                volumeM3:        dayVolume(sibMins, isLast, accruedVol),
+                status:          "scheduled" as const,
+                mulchType:       original.mulchType,
+                notes:           original.notes,
+                sourceReadingId: original.sourceReadingId,
+                splitGroupId:    groupId,
+                splitDayIndex:   i + 2,
+                splitTotalDays:  n,
+              };
+            }),
           )
           .returning()
       : [];

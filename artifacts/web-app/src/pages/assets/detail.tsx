@@ -1037,10 +1037,108 @@ function RecordDepthPanel({
   );
 }
 
+function MulchingJobModal({ rec, onClose }: { rec: any; onClose: () => void }) {
+  const statusLabel = (s: string) => ({
+    due: "Due", scheduled: "Scheduled", completed: "Completed", draft: "Draft", not_required: "Not required",
+  }[s] ?? s);
+  const statusColor = (s: string) => ({
+    due: "bg-amber-100 text-amber-700",
+    draft: "bg-gray-100 text-gray-500",
+    scheduled: "bg-blue-100 text-blue-700",
+    completed: "bg-green-100 text-green-700",
+    not_required: "bg-gray-100 text-gray-500",
+  }[s] ?? "bg-gray-100 text-gray-500");
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="absolute inset-0 bg-black/40" />
+      <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between px-5 py-4 border-b">
+          <div className="flex items-center gap-2">
+            <Layers className="w-4 h-4 text-gray-400" />
+            <span className="font-semibold text-gray-900 text-sm">Mulching Job</span>
+          </div>
+          <button onClick={onClose} className="p-1 rounded-lg hover:bg-gray-100 transition-colors">
+            <X className="w-4 h-4 text-gray-400" />
+          </button>
+        </div>
+        <div className="px-5 py-4 space-y-3">
+          <span className={`text-[10px] font-bold px-2.5 py-1 rounded-full ${statusColor(rec.status)}`}>
+            {statusLabel(rec.status)}
+          </span>
+          {(rec.splitTotalDays ?? 1) > 1 && (
+            <div className="bg-blue-50 rounded-xl p-3 flex items-center gap-2.5">
+              <CalendarDays className="w-4 h-4 text-blue-400 shrink-0" />
+              <div>
+                <p className="text-[10px] text-blue-400 uppercase tracking-wider font-semibold mb-0.5">Multi-Day Job</p>
+                <p className="text-sm font-semibold text-blue-800">
+                  Day {rec.splitDayIndex} of {rec.splitTotalDays}
+                  <span className="font-normal text-blue-500 ml-1.5">— one day of a {rec.splitTotalDays}-day spread</span>
+                </p>
+              </div>
+            </div>
+          )}
+          <div className="grid grid-cols-2 gap-2.5">
+            {rec.scheduledDate && (
+              <div className="bg-gray-50 rounded-xl p-3">
+                <p className="text-[10px] text-gray-400 uppercase tracking-wider font-semibold mb-1 flex items-center gap-1">
+                  <Calendar className="w-3 h-3" /> Scheduled
+                </p>
+                <p className="text-sm font-semibold text-gray-800">{fmtMulch(rec.scheduledDate)}</p>
+                {rec.completedDate && <p className="text-[10px] text-gray-400 mt-0.5">Done {fmtMulch(rec.completedDate)}</p>}
+              </div>
+            )}
+            {rec.mulchType && (
+              <div className="bg-gray-50 rounded-xl p-3">
+                <p className="text-[10px] text-gray-400 uppercase tracking-wider font-semibold mb-1 flex items-center gap-1">
+                  <Layers className="w-3 h-3" /> Type
+                </p>
+                <p className="text-sm font-semibold text-gray-800">{rec.mulchType}</p>
+              </div>
+            )}
+            {rec.estimatedMins && (
+              <div className="bg-gray-50 rounded-xl p-3">
+                <p className="text-[10px] text-gray-400 uppercase tracking-wider font-semibold mb-1 flex items-center gap-1">
+                  <Clock className="w-3 h-3" /> Est. Time
+                </p>
+                <p className="text-sm font-semibold text-gray-800">
+                  {Math.floor(rec.estimatedMins / 60) > 0 ? `${Math.floor(rec.estimatedMins / 60)}h ` : ""}{rec.estimatedMins % 60 > 0 ? `${rec.estimatedMins % 60}m` : ""}
+                </p>
+              </div>
+            )}
+            {rec.volumeM3 != null && (
+              <div className="bg-gray-50 rounded-xl p-3">
+                <p className="text-[10px] text-gray-400 uppercase tracking-wider font-semibold mb-1">Volume</p>
+                <p className="text-sm font-semibold text-gray-800">{rec.volumeM3} m³</p>
+              </div>
+            )}
+            {rec.projectedDepthAtDue != null && (
+              <div className="bg-gray-50 rounded-xl p-3">
+                <p className="text-[10px] text-gray-400 uppercase tracking-wider font-semibold mb-1">Depth at Due</p>
+                <p className="text-sm font-semibold text-gray-800">~{rec.projectedDepthAtDue}mm</p>
+              </div>
+            )}
+          </div>
+          {rec.notes && (
+            <p className="text-xs text-gray-500 italic px-1">"{rec.notes}"</p>
+          )}
+        </div>
+        <div className="px-5 pb-4 flex justify-end">
+          <button onClick={onClose}
+            className="text-sm font-medium px-4 py-2 rounded-xl border border-gray-200 hover:bg-gray-50 transition-colors text-gray-600">
+            Close
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function MulchingTab({ assetId, assetName }: { assetId: string; assetName: string }) {
   const qc = useQueryClient();
   const [, navigate] = useLocation();
   const [showForm, setShowForm] = useState(false);
+  const [selectedJob, setSelectedJob] = useState<any | null>(null);
 
   const { data: readingsData, isLoading: readingsLoading } = useQuery({
     queryKey: ["/api/mulch-depth-readings", assetId],
@@ -1142,11 +1240,15 @@ function MulchingTab({ assetId, assetName }: { assetId: string; assetName: strin
             <div className="space-y-2">
               {records.map((rec: any) => {
                 const isDraft = rec.status === "draft";
+                const isMultiDay = (rec.splitTotalDays ?? 1) > 1;
                 return (
                   <div
                     key={rec.id}
-                    onClick={isDraft ? () => navigate(`/programmes/mulching?review=${rec.id}`) : undefined}
-                    className={`bg-white border rounded-xl px-4 py-3 flex items-center gap-3 shadow-sm transition-colors ${isDraft ? "border-gray-200 cursor-pointer hover:bg-gray-50" : "border-gray-100"}`}
+                    onClick={() => isDraft
+                      ? navigate(`/programmes/mulching?review=${rec.id}`)
+                      : setSelectedJob(rec)
+                    }
+                    className="bg-white border border-gray-200 rounded-xl px-4 py-3 flex items-center gap-3 shadow-sm transition-colors cursor-pointer hover:bg-gray-50"
                   >
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
@@ -1158,18 +1260,25 @@ function MulchingTab({ assetId, assetName }: { assetId: string; assetName: strin
                             <Calendar className="w-3 h-3" />{fmtMulch(rec.scheduledDate)}
                           </span>
                         )}
+                        {isMultiDay && (
+                          <span className="text-[10px] text-blue-500 font-semibold flex items-center gap-0.5">
+                            <CalendarDays className="w-3 h-3" /> Day {rec.splitDayIndex}/{rec.splitTotalDays}
+                          </span>
+                        )}
                         {isDraft && (
                           <span className="text-[10px] text-violet-500 font-medium">Click to review & schedule →</span>
                         )}
                       </div>
                       <div className="grid grid-cols-2 gap-x-4 text-xs mt-1.5">
                         {rec.mulchType && <><span className="text-gray-400">Type:</span><span className="text-gray-700">{rec.mulchType}</span></>}
+                        {rec.volumeM3 != null && <><span className="text-gray-400">Volume:</span><span className="text-gray-700">{rec.volumeM3} m³</span></>}
                         {rec.projectedDepthAtDue != null && <><span className="text-gray-400">Depth at due:</span><span className="text-gray-700">~{rec.projectedDepthAtDue}mm</span></>}
                       </div>
                     </div>
                     {rec.completedDate && (
                       <span className="text-[10px] text-green-600 font-semibold">Done {fmtMulch(rec.completedDate)}</span>
                     )}
+                    {!isDraft && <ChevronRight className="w-4 h-4 text-gray-300 shrink-0" />}
                   </div>
                 );
               })}
@@ -1222,6 +1331,9 @@ function MulchingTab({ assetId, assetName }: { assetId: string; assetName: strin
             qc.invalidateQueries({ queryKey: ["/api/mulching-records", assetId] });
           }}
         />
+      )}
+      {selectedJob && (
+        <MulchingJobModal rec={selectedJob} onClose={() => setSelectedJob(null)} />
       )}
     </div>
   );
