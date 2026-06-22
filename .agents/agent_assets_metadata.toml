@@ -11,3 +11,9 @@ id = "Tjho8sp4GC2Ud03BPM6Q-"
 uri = "file://PCC_Gardens_Implementation_Plan.docx"
 type = "word_document"
 title = "PCC Gardens Manager — Implementation Plan"
+
+[[outputs]]
+id = "CWXoIX5lxC1n4jdnLQli3"
+uri = "file://scheduling-report.md"
+type = "text"
+title = "Maintenance Scheduling — How It Works"
