@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import { createPortal } from "react-dom";
 import { useParams, Link, useLocation } from "wouter";
 import { useGetAsset, useListTeams, getGetAssetQueryKey, getListTeamsQueryKey } from "@workspace/api-client-react";
 import { Badge } from "@/components/ui/badge";
@@ -1049,8 +1050,8 @@ function MulchingJobModal({ rec, onClose }: { rec: any; onClose: () => void }) {
     not_required: "bg-gray-100 text-gray-500",
   }[s] ?? "bg-gray-100 text-gray-500");
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={onClose}>
+  return createPortal(
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4" onClick={onClose}>
       <div className="absolute inset-0 bg-black/40" />
       <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between px-5 py-4 border-b">
@@ -1130,7 +1131,8 @@ function MulchingJobModal({ rec, onClose }: { rec: any; onClose: () => void }) {
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 
