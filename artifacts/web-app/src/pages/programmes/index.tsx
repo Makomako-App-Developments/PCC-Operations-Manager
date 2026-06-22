@@ -29,7 +29,7 @@ import { format, parseISO } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
 import {
   Sprout, Plus, Layers, X, Search, ChevronRight,
-  Calendar, CalendarCheck, Users, Leaf, FileText, AlertTriangle, CheckCircle2,
+  Calendar, CalendarCheck, CalendarDays, Users, Leaf, FileText, AlertTriangle, CheckCircle2,
   Download, ChevronDown, ChevronUp, Package, List, Map as MapIcon, ExternalLink,
   Ruler, History, ClipboardList, Zap, SkipForward, Trash2, Clock, Check, ChevronsUpDown, Scissors, Pencil,
   RotateCcw, ChevronsRight,
@@ -2957,6 +2957,18 @@ function MulchingTab({
                         </div>
                         <p className="text-sm font-semibold text-gray-800">{r.estimatedMins ? fmtMins(r.estimatedMins) : "—"}</p>
                       </div>
+                      {(r.splitTotalDays ?? 1) > 1 && (
+                        <div className="col-span-2 bg-blue-50 rounded-xl p-3.5 flex items-center gap-3">
+                          <CalendarDays className="w-4 h-4 text-blue-400 shrink-0" />
+                          <div>
+                            <p className="text-[10px] text-blue-400 uppercase tracking-wider font-semibold mb-0.5">Multi-Day Job</p>
+                            <p className="text-sm font-semibold text-blue-800">
+                              Day {r.splitDayIndex} of {r.splitTotalDays}
+                              <span className="font-normal text-blue-500 ml-1.5">— this record covers one day of a {r.splitTotalDays}-day spread</span>
+                            </p>
+                          </div>
+                        </div>
+                      )}
                       {(r.volumeM3 != null || r.contractor || r.costNzd != null) && (
                         <>
                           {r.volumeM3 != null && (
