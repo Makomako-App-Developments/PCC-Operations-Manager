@@ -47,7 +47,7 @@ export async function computeTotalScheduledMins(
         and(
           eq(infillJobsTable.assignedTeamId, teamId),
           eq(infillJobsTable.plannedDate, date),
-          notInArray(infillJobsTable.status, ["planted"]),
+          notInArray(infillJobsTable.status, ["completed", "cancelled"]),
         ),
       ),
 
