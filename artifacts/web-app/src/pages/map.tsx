@@ -303,7 +303,7 @@ export default function MapPage() {
         a.name.toLowerCase().includes(q) ||
         (a.description ?? "").toLowerCase().includes(q),
       )
-      .slice(0, 8);
+      .slice(0, 50);
   }, [searchQuery, mappableAssets]);
 
   function handleSelectSearchResult(asset: Asset) {
