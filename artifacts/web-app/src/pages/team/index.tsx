@@ -443,10 +443,15 @@ function CompositionTab() {
                           <Pencil className="w-3.5 h-3.5" />
                         </button>
                         <button
-                          onClick={() => deleteTeam.mutate(team.id)}
-                          disabled={deleteTeam.isPending || members.length > 0}
+                          onClick={() => {
+                            const msg = members.length > 0
+                              ? `Delete "${team.name}"? Its ${members.length} member(s) will be unassigned.`
+                              : `Delete "${team.name}"?`;
+                            if (window.confirm(msg)) deleteTeam.mutate(team.id);
+                          }}
+                          disabled={deleteTeam.isPending}
                           className="p-1.5 rounded-md opacity-0 group-hover:opacity-100 hover:bg-red-50 text-gray-400 hover:text-red-500 transition-all disabled:opacity-40"
-                          title={members.length > 0 ? "Remove all members before deleting" : "Delete team"}
+                          title="Delete team"
                         >
                           <Trash2 className="w-3.5 h-3.5" />
                         </button>

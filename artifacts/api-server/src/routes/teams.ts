@@ -230,19 +230,9 @@ router.delete(
   requireRole("manager"),
   async (req, res) => {
     const id = String(req.params.id);
-    const [accountCount] = await db
-      .select({ count: sql<number>`cast(count(*) as int)` })
-      .from(usersTable)
-      .where(eq(usersTable.teamId, id));
-    const [crewCount] = await db
-      .select({ count: sql<number>`cast(count(*) as int)` })
-      .from(teamMembersTable)
-      .where(eq(teamMembersTable.teamId, id));
-    const total = (accountCount?.count ?? 0) + (crewCount?.count ?? 0);
-    if (total > 0) {
-      res.status(409).json({ error: `Cannot delete — ${total} member(s) still assigned to this team.` });
-      return;
-    }
+    // Unassign account users from the team, delete crew members, then delete the team
+    await db.update(usersTable).set({ teamId: null }).where(eq(usersTable.teamId, id));
+    await db.delete(teamMembersTable).where(eq(teamMembersTable.teamId, id));
     await db.delete(teamsTable).where(eq(teamsTable.id, id));
     res.status(204).end();
   },
