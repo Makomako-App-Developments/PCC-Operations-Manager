@@ -280,6 +280,12 @@ async function parseSuccessBody(
 }
 
 let _refreshing: Promise<boolean> | null = null;
+let _onUnauthorized: (() => void) | null = null;
+
+/** Called when a 401 cannot be recovered by token refresh (e.g. expired session on mobile). */
+export function setOnUnauthorized(cb: () => void): void {
+  _onUnauthorized = cb;
+}
 
 async function tryRefreshToken(baseUrl: string): Promise<boolean> {
   try {
@@ -350,6 +356,8 @@ export async function customFetch<T = unknown>(
       if (refreshed) {
         return customFetch<T>(input, options, true);
       }
+      // Refresh failed — session is unrecoverable; notify the app to re-login
+      _onUnauthorized?.();
     }
     const errorData = await parseErrorBody(response, method);
     throw new ApiError(response, errorData, requestInfo);

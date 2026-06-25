@@ -1,4 +1,4 @@
-import { customFetch, setAuthTokenGetter } from "@workspace/api-client-react";
+import { customFetch, setAuthTokenGetter, setOnUnauthorized } from "@workspace/api-client-react";
 import * as SecureStore from "expo-secure-store";
 import * as Sentry from "@sentry/react-native";
 import React, {
@@ -48,8 +48,10 @@ interface AuthContextValue {
 }
 
 let _currentToken: string | null = null;
+let _logoutFn: (() => Promise<void>) | null = null;
 
 setAuthTokenGetter(() => _currentToken);
+setOnUnauthorized(() => { _logoutFn?.().catch(() => {}); });
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
@@ -186,6 +188,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     init();
   }, []);
 
+  const logout = async () => {
+    await clearPushToken();
+    _currentToken = null;
+    _logoutFn = null;
+    setToken(null);
+    setUser(null);
+    Sentry.setUser(null);
+    await Promise.all([
+      secureDelete(TOKEN_KEY),
+      secureDelete(USER_KEY),
+    ]);
+  };
+
+  // Register logout with the module-level callback so customFetch can trigger
+  // it when a 401 cannot be recovered (e.g. expired token on native mobile).
+  _logoutFn = logout;
+
   const login = async (newToken: string, newUser: AuthUser) => {
     // Set in-memory state immediately — this is what drives the UI.
     _currentToken = newToken;
@@ -198,18 +217,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     secureSet(TOKEN_KEY, newToken).catch(() => {});
     secureSet(USER_KEY, JSON.stringify(newUser)).catch(() => {});
     registerPushToken(newToken).catch(() => {});
-  };
-
-  const logout = async () => {
-    await clearPushToken();
-    _currentToken = null;
-    setToken(null);
-    setUser(null);
-    Sentry.setUser(null);
-    await Promise.all([
-      secureDelete(TOKEN_KEY),
-      secureDelete(USER_KEY),
-    ]);
   };
 
   const setNotificationsEnabled = async (enabled: boolean) => {
