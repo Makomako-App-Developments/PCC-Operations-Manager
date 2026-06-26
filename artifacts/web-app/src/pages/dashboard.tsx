@@ -224,7 +224,7 @@ export default function Dashboard() {
       const visits = VISITS_PER_YEAR[(a as any).frequency] ?? 12;
       return sum + ((a as any).serviceTimeMins ?? 0) * visits;
     }, 0);
-    return totalAnnualMins > 0 ? (totalAnnualMins / MINS_PER_FTE_YEAR) : 0;
+    return totalAnnualMins > 0 ? ((totalAnnualMins * 2) / MINS_PER_FTE_YEAR) : 0;
   }, [assetsData]);
 
   if (isLoading || !summary) {
