@@ -67,6 +67,7 @@ function FitBounds({ positions }: { positions: [number, number][] }) {
 
 function AssetMap({ asset }: { asset: any }) {
   const [layer, setLayer] = useState<"street" | "aerial">("aerial");
+  const [, navigate] = useLocation();
   const boundary = asset.boundary as GeoPolygon | null;
   const hasPolygon = !!(boundary?.coordinates?.[0]?.length);
   const positions: [number, number][] = hasPolygon
@@ -112,6 +113,7 @@ function AssetMap({ asset }: { asset: any }) {
             <Polygon
               positions={positions}
               pathOptions={{ color: BRAND, fillColor: BRAND, fillOpacity: 0.2, weight: 3 }}
+              eventHandlers={{ click: () => navigate(`/map?assetId=${asset.id}&from=asset`) }}
             />
           </>
         ) : (
@@ -119,6 +121,7 @@ function AssetMap({ asset }: { asset: any }) {
             center={center}
             radius={10}
             pathOptions={{ color: "#fff", weight: 2.5, fillColor: BRAND, fillOpacity: 1 }}
+            eventHandlers={{ click: () => navigate(`/map?assetId=${asset.id}&from=asset`) }}
           >
             <LeafletTooltip permanent direction="top" offset={[0, -14]}>
               <span className="text-[10px] font-semibold">{asset.name}</span>
