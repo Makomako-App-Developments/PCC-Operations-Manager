@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { createPortal } from "react-dom";
 import { useParams, Link, useLocation } from "wouter";
-import { useGetAsset, useListTeams, getGetAssetQueryKey, getListTeamsQueryKey } from "@workspace/api-client-react";
+import { useGetAsset, useListTeams, getGetAssetQueryKey, getListTeamsQueryKey, useDeleteAsset } from "@workspace/api-client-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -17,7 +17,7 @@ import {
   CheckCircle2, AlertTriangle, ChevronDown, ChevronRight,
   Camera, History, Wrench, Pencil, CalendarCheck, Zap,
   User, ImageIcon, Leaf, Info, Loader2, X, ClipboardCheck, Sprout,
-  Layers, Calendar, Plus,
+  Layers, Calendar, Plus, Trash2,
 } from "lucide-react";
 import { MapContainer, TileLayer, CircleMarker, Polygon, Tooltip, useMap } from "react-leaflet";
 import L from "leaflet";
@@ -1364,6 +1364,19 @@ export default function AssetDetail() {
   const [infillCount, setInfillCount]         = useState<number | null>(null);
   const [mulchingCount, setMulchingCount]     = useState<number | null>(null);
 
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+  const deleteMutation = useDeleteAsset({
+    mutation: {
+      onSuccess: () => {
+        toast({ title: "Asset archived" });
+        queryClient.invalidateQueries({ queryKey: ["/api/assets"] });
+        navigate("/assets");
+      },
+      onError: () => toast({ title: "Delete failed", variant: "destructive" }),
+    },
+  });
+
   useEffect(() => {
     if (!id) return;
     fetch(`/api/jobs?assetId=${id}&status=pending,in_progress,overdue&limit=50`, { credentials: "include" })
@@ -1526,6 +1539,14 @@ export default function AssetDetail() {
 
               {/* Action buttons */}
               <div className="px-5 py-4 mt-auto flex-shrink-0 border-t bg-gray-50 sticky bottom-0 flex items-center gap-2">
+                <button
+                  disabled={deleteMutation.isPending}
+                  onClick={() => { if (confirm("Archive this asset? This will remove it from the active register.")) deleteMutation.mutate({ id: asset.id }); }}
+                  className="p-1.5 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 transition-colors disabled:opacity-40 mr-1"
+                  title="Archive asset"
+                >
+                  {deleteMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+                </button>
                 <Button
                   variant="outline"
                   size="sm"
