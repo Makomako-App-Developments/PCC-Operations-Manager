@@ -778,6 +778,11 @@ export default function MapPage() {
                         </div>
                       </div>
                     )}
+                    <div style={{ marginTop: 10, textAlign: "right" }}>
+                      <a href={`/assets/${asset.id}`} style={{ fontSize: 11, fontWeight: 700, color: "#00AECD", textDecoration: "none" }}>
+                        Go to asset →
+                      </a>
+                    </div>
                   </div>
                 </Popup>
               </Polygon>
@@ -876,6 +881,11 @@ export default function MapPage() {
                         </div>
                       </div>
                     )}
+                    <div style={{ marginTop: 10, textAlign: "right" }}>
+                      <a href={`/assets/${asset.id}`} style={{ fontSize: 11, fontWeight: 700, color: "#00AECD", textDecoration: "none" }}>
+                        Go to asset →
+                      </a>
+                    </div>
                   </div>
                 </Popup>
               </CircleMarker>
