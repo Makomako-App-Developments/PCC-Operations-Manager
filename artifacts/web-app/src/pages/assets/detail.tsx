@@ -21,7 +21,7 @@ import {
   User, ImageIcon, Leaf, Info, Loader2, X, ClipboardCheck, Sprout,
   Layers, Calendar, Plus, Trash2,
 } from "lucide-react";
-import { MapContainer, TileLayer, CircleMarker, Polygon, Tooltip, useMap } from "react-leaflet";
+import { MapContainer, TileLayer, CircleMarker, Polygon, Tooltip as LeafletTooltip, useMap } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 
@@ -120,9 +120,9 @@ function AssetMap({ asset }: { asset: any }) {
             radius={10}
             pathOptions={{ color: "#fff", weight: 2.5, fillColor: BRAND, fillOpacity: 1 }}
           >
-            <Tooltip permanent direction="top" offset={[0, -14]}>
+            <LeafletTooltip permanent direction="top" offset={[0, -14]}>
               <span className="text-[10px] font-semibold">{asset.name}</span>
-            </Tooltip>
+            </LeafletTooltip>
           </CircleMarker>
         )}
       </MapContainer>
