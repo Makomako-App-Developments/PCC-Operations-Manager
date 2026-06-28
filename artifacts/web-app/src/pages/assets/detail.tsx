@@ -9,6 +9,8 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { useQueryClient, useQuery } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { format, parseISO } from "date-fns";
@@ -1363,6 +1365,7 @@ export default function AssetDetail() {
   const [historyCount, setHistoryCount]       = useState<number | null>(null);
   const [infillCount, setInfillCount]         = useState<number | null>(null);
   const [mulchingCount, setMulchingCount]     = useState<number | null>(null);
+  const [showArchiveConfirm, setShowArchiveConfirm] = useState(false);
 
   const queryClient = useQueryClient();
   const { toast } = useToast();
@@ -1539,14 +1542,39 @@ export default function AssetDetail() {
 
               {/* Action buttons */}
               <div className="px-5 py-4 mt-auto flex-shrink-0 border-t bg-gray-50 sticky bottom-0 flex items-center gap-2">
-                <button
-                  disabled={deleteMutation.isPending}
-                  onClick={() => { if (confirm("Archive this asset? This will remove it from the active register.")) deleteMutation.mutate({ id: asset.id }); }}
-                  className="p-1.5 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 transition-colors disabled:opacity-40 mr-1"
-                  title="Archive asset"
-                >
-                  {deleteMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
-                </button>
+                <TooltipProvider delayDuration={300}>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <button
+                        disabled={deleteMutation.isPending}
+                        onClick={() => setShowArchiveConfirm(true)}
+                        className="p-1.5 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 transition-colors disabled:opacity-40 mr-1"
+                      >
+                        {deleteMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent side="top" className="text-xs">Archive asset</TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+                <AlertDialog open={showArchiveConfirm} onOpenChange={setShowArchiveConfirm}>
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>Archive this asset?</AlertDialogTitle>
+                      <AlertDialogDescription>
+                        This will remove <span className="font-semibold text-gray-900">{asset.name}</span> from the active register. The record is preserved and can be restored by an administrator.
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel>Cancel</AlertDialogCancel>
+                      <AlertDialogAction
+                        className="bg-red-600 hover:bg-red-700 text-white"
+                        onClick={() => deleteMutation.mutate({ id: asset.id })}
+                      >
+                        Archive Asset
+                      </AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
                 <Button
                   variant="outline"
                   size="sm"
