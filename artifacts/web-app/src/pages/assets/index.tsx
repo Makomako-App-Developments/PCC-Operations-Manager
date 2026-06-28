@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Search, Plus, ChevronUp, ChevronDown, ChevronsUpDown, Loader2, Pencil } from "lucide-react";
+import { Search, Plus, ChevronUp, ChevronDown, ChevronsUpDown, Loader2, Pencil, Trash2 } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { useQueryClient } from "@tanstack/react-query";
@@ -580,9 +580,14 @@ function AssetDetailDrawer({ assetId, onClose, teamName }: { assetId: string | n
                   )}
                 </div>
                 <div className="p-4 border-t bg-gray-50 flex items-center justify-between flex-shrink-0">
-                  <Button variant="destructive" size="sm" disabled={deleteMutation.isPending}
-                    onClick={() => { if (confirm("Archive this asset?")) deleteMutation.mutate({ id: asset.id }); }}
-                  >Archive Asset</Button>
+                  <button
+                    disabled={deleteMutation.isPending}
+                    onClick={() => { if (confirm("Delete this asset? This cannot be undone.")) deleteMutation.mutate({ id: asset.id }); }}
+                    className="p-2 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 transition-colors disabled:opacity-40"
+                    title="Delete asset"
+                  >
+                    {deleteMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+                  </button>
                   <Button variant="outline" size="sm" onClick={onClose}>Close</Button>
                 </div>
               </>
