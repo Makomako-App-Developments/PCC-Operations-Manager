@@ -149,8 +149,8 @@ export default function Assets() {
   const [gardenType, setGardenType] = useState<any>("all");
   const [ward, setWard] = useState<any>("all");
   const [teamId, setTeamId] = useState<any>("all");
-  const [sortCol, setSortCol] = useState<SortCol>("name");
-  const [sortDir, setSortDir] = useState<SortDir>("asc");
+  const [sortCol, setSortCol] = useState<SortCol>(() => (sessionStorage.getItem("assets-sort-col") as SortCol) || "name");
+  const [sortDir, setSortDir] = useState<SortDir>(() => (sessionStorage.getItem("assets-sort-dir") as SortDir) || "asc");
 
   const { data: teamsData } = useListTeams({ query: { queryKey: getListTeamsQueryKey() }});
 
@@ -170,8 +170,16 @@ export default function Assets() {
   };
 
   const handleSort = (col: SortCol) => {
-    if (col === sortCol) setSortDir(d => d === "asc" ? "desc" : "asc");
-    else { setSortCol(col); setSortDir("asc"); }
+    if (col === sortCol) {
+      const next: SortDir = sortDir === "asc" ? "desc" : "asc";
+      setSortDir(next);
+      sessionStorage.setItem("assets-sort-dir", next);
+    } else {
+      setSortCol(col);
+      setSortDir("asc");
+      sessionStorage.setItem("assets-sort-col", col);
+      sessionStorage.setItem("assets-sort-dir", "asc");
+    }
   };
 
   const sortedAssets = useMemo(() => {
