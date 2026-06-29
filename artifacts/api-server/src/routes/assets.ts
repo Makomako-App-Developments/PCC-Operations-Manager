@@ -108,11 +108,31 @@ router.get("/assets/:id", requireAuth, async (req, res) => {
   res.json(asset);
 });
 
+// Coerce JS numbers to strings for Postgres `numeric` columns before schema validation.
+// drizzle-zod maps numeric columns to z.string(); the frontend form sends JS numbers.
+function coerceAssetNumerics(body: Record<string, unknown>): Record<string, unknown> {
+  const out = { ...body };
+  if (typeof out.areaM2 === "number") out.areaM2 = String(out.areaM2);
+  if (typeof out.lat    === "number") out.lat    = String(out.lat);
+  if (typeof out.lng    === "number") out.lng    = String(out.lng);
+  return out;
+}
+
 // POST /api/assets
-router.post("/assets", requireAuth, requireRole("manager", "supervisor"), validateBody(insertAssetSchema), async (req, res) => {
-  const [created] = await db.insert(assetsTable).values(req.body).returning();
-  await auditLog({ tableName: "assets", recordId: created.id, action: "INSERT", changedById: req.auth?.userId ?? null, newData: created as Record<string, unknown>, ipAddress: req.ip ?? null });
-  res.status(201).json(created);
+router.post("/assets", requireAuth, requireRole("manager", "supervisor"), async (req, res) => {
+  try {
+    const parsed = insertAssetSchema.safeParse(coerceAssetNumerics(req.body));
+    if (!parsed.success) {
+      res.status(400).json({ error: "Validation error", issues: parsed.error.issues });
+      return;
+    }
+    const [created] = await db.insert(assetsTable).values(parsed.data as any).returning();
+    await auditLog({ tableName: "assets", recordId: created.id, action: "INSERT", changedById: req.auth?.userId ?? null, newData: created as Record<string, unknown>, ipAddress: req.ip ?? null });
+    res.status(201).json(created);
+  } catch (err) {
+    console.error("POST /assets error:", err);
+    res.status(500).json({ error: "Internal server error" });
+  }
 });
 
 const routeOrderSchema = z.object({
@@ -126,37 +146,47 @@ const routeOrderSchema = z.object({
 // Must be registered BEFORE /assets/:id to avoid Express matching "route-order" as an id.
 // Body: { updates: [{ id: string, routeOrder: number }] }
 router.patch("/assets/route-order", requireAuth, requireRole("manager", "supervisor"), validateBody(routeOrderSchema), async (req, res) => {
-  const { updates } = req.body as z.infer<typeof routeOrderSchema>;
+  try {
+    const { updates } = req.body as z.infer<typeof routeOrderSchema>;
 
-  const ids    = updates.map(u => u.id);
-  const orders = updates.map(u => u.routeOrder);
+    const ids    = updates.map(u => u.id);
+    const orders = updates.map(u => u.routeOrder);
 
-  await db.execute(sql`
-    UPDATE assets
-    SET route_order = v.ord,
-        updated_at  = NOW()
-    FROM (
-      SELECT unnest(${ids}::uuid[]) AS id,
-             unnest(${orders}::int[]) AS ord
-    ) v
-    WHERE assets.id = v.id
-  `);
+    await db.execute(sql`
+      UPDATE assets
+      SET route_order = v.ord,
+          updated_at  = NOW()
+      FROM (
+        SELECT unnest(${ids}::uuid[]) AS id,
+               unnest(${orders}::int[]) AS ord
+      ) v
+      WHERE assets.id = v.id
+    `);
 
-  res.json({ updated: updates.length });
+    res.json({ updated: updates.length });
+  } catch (err) {
+    console.error("PATCH /assets/route-order error:", err);
+    res.status(500).json({ error: "Internal server error" });
+  }
 });
 
 // PATCH /api/assets/:id
 router.patch("/assets/:id", requireAuth, requireRole("manager", "supervisor"), async (req, res) => {
-  const id = String(req.params.id);
-  const [before] = await db.select().from(assetsTable).where(eq(assetsTable.id, id)).limit(1);
-  if (!before) { res.status(404).json({ error: "Asset not found" }); return; }
-  const [updated] = await db
-    .update(assetsTable)
-    .set({ ...req.body, updatedAt: new Date() })
-    .where(eq(assetsTable.id, id))
-    .returning();
-  await auditLog({ tableName: "assets", recordId: id, action: "UPDATE", changedById: req.auth?.userId ?? null, oldData: before as Record<string, unknown>, newData: updated as Record<string, unknown>, ipAddress: req.ip ?? null });
-  res.json(updated);
+  try {
+    const id = String(req.params.id);
+    const [before] = await db.select().from(assetsTable).where(eq(assetsTable.id, id)).limit(1);
+    if (!before) { res.status(404).json({ error: "Asset not found" }); return; }
+    const [updated] = await db
+      .update(assetsTable)
+      .set({ ...req.body, updatedAt: new Date() })
+      .where(eq(assetsTable.id, id))
+      .returning();
+    await auditLog({ tableName: "assets", recordId: id, action: "UPDATE", changedById: req.auth?.userId ?? null, oldData: before as Record<string, unknown>, newData: updated as Record<string, unknown>, ipAddress: req.ip ?? null });
+    res.json(updated);
+  } catch (err) {
+    console.error("PATCH /assets/:id error:", err);
+    res.status(500).json({ error: "Internal server error" });
+  }
 });
 
 // GET /api/assets/:id/history
@@ -199,16 +229,21 @@ router.get("/assets/:id/history", requireAuth, async (req, res) => {
 
 // DELETE /api/assets/:id  (soft delete)
 router.delete("/assets/:id", requireAuth, requireRole("manager"), async (req, res) => {
-  const id = String(req.params.id);
-  const [before] = await db.select().from(assetsTable).where(eq(assetsTable.id, id)).limit(1);
-  const [updated] = await db
-    .update(assetsTable)
-    .set({ isActive: false, updatedAt: new Date() })
-    .where(eq(assetsTable.id, id))
-    .returning();
-  if (!updated) { res.status(404).json({ error: "Asset not found" }); return; }
-  await auditLog({ tableName: "assets", recordId: id, action: "DELETE", changedById: req.auth?.userId ?? null, oldData: before as Record<string, unknown>, newData: updated as Record<string, unknown>, ipAddress: req.ip ?? null });
-  res.json({ ok: true });
+  try {
+    const id = String(req.params.id);
+    const [before] = await db.select().from(assetsTable).where(eq(assetsTable.id, id)).limit(1);
+    const [updated] = await db
+      .update(assetsTable)
+      .set({ isActive: false, updatedAt: new Date() })
+      .where(eq(assetsTable.id, id))
+      .returning();
+    if (!updated) { res.status(404).json({ error: "Asset not found" }); return; }
+    await auditLog({ tableName: "assets", recordId: id, action: "DELETE", changedById: req.auth?.userId ?? null, oldData: before as Record<string, unknown>, newData: updated as Record<string, unknown>, ipAddress: req.ip ?? null });
+    res.json({ ok: true });
+  } catch (err) {
+    console.error("DELETE /assets/:id error:", err);
+    res.status(500).json({ error: "Internal server error" });
+  }
 });
 
 export default router;
