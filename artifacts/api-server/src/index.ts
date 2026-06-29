@@ -2,6 +2,13 @@ import app from "./app";
 import { startOverdueChecker } from "./lib/overdue-checker";
 import { runStartupPatches } from "./lib/startup-patch";
 
+process.on("unhandledRejection", (reason) => {
+  console.error("[unhandledRejection]", reason);
+});
+process.on("uncaughtException", (err) => {
+  console.error("[uncaughtException]", err);
+});
+
 startOverdueChecker();
 runStartupPatches();
 

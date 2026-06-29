@@ -107,37 +107,42 @@ router.post(
   requireRole("manager", "supervisor"),
   validateBody(createInfillJobSchema),
   async (req, res) => {
-    const { species, ...jobData } = req.body as z.infer<typeof createInfillJobSchema>;
+    try {
+      const { species, ...jobData } = req.body as z.infer<typeof createInfillJobSchema>;
 
-    const job = await db.transaction(async tx => {
-      const [created] = await tx.insert(infillJobsTable).values({
-        ...jobData,
-        assessedById: req.auth!.userId,
-        status: "draft",
-      }).returning();
+      const job = await db.transaction(async tx => {
+        const [created] = await tx.insert(infillJobsTable).values({
+          ...jobData,
+          assessedById: req.auth!.userId,
+          status: "draft",
+        }).returning();
 
-      await tx.insert(infillOrdersTable).values(
-        species.map(sp => ({
-          assetId:         created.assetId,
-          infillJobId:     created.id,
-          speciesName:     sp.speciesName,
-          speciesCategory: sp.speciesCategory,
-          quantity:        sp.quantity,
-          notes:           sp.notes,
-          orderedById:     req.auth!.userId,
-        }))
-      );
+        await tx.insert(infillOrdersTable).values(
+          species.map(sp => ({
+            assetId:         created.assetId,
+            infillJobId:     created.id,
+            speciesName:     sp.speciesName,
+            speciesCategory: sp.speciesCategory,
+            quantity:        sp.quantity,
+            notes:           sp.notes,
+            orderedById:     req.auth!.userId,
+          }))
+        );
 
-      return created;
-    });
+        return created;
+      });
 
-    await auditLog({
-      tableName: "infill_jobs", recordId: job.id, action: "INSERT",
-      changedById: req.auth?.userId ?? null, newData: job as Record<string, unknown>,
-      ipAddress: req.ip ?? null,
-    });
+      await auditLog({
+        tableName: "infill_jobs", recordId: job.id, action: "INSERT",
+        changedById: req.auth?.userId ?? null, newData: job as Record<string, unknown>,
+        ipAddress: req.ip ?? null,
+      });
 
-    res.status(201).json(job);
+      res.status(201).json(job);
+    } catch (err) {
+      console.error("POST /infill-jobs error:", err);
+      res.status(500).json({ error: "Internal server error" });
+    }
   },
 );
 
@@ -147,44 +152,49 @@ router.patch(
   requireRole("manager", "supervisor"),
   validateBody(patchInfillJobSchema),
   async (req, res) => {
-    const id = String(req.params.id);
-    const [before] = await db.select().from(infillJobsTable).where(eq(infillJobsTable.id, id)).limit(1);
-    if (!before) { res.status(404).json({ error: "Infill job not found" }); return; }
+    try {
+      const id = String(req.params.id);
+      const [before] = await db.select().from(infillJobsTable).where(eq(infillJobsTable.id, id)).limit(1);
+      if (!before) { res.status(404).json({ error: "Infill job not found" }); return; }
 
-    const patch = (res.locals.body ?? req.body) as z.infer<typeof patchInfillJobSchema>;
+      const patch = (res.locals.body ?? req.body) as z.infer<typeof patchInfillJobSchema>;
 
-    if (patch.status && patch.status !== before.status) {
-      const allowed = ALLOWED_TRANSITIONS[before.status as InfillJobStatus] ?? [];
-      if (!allowed.includes(patch.status as InfillJobStatus)) {
-        res.status(422).json({
-          error: `Cannot transition job from '${before.status}' to '${patch.status}'. Allowed transitions: ${allowed.join(", ") || "none"}.`,
-        });
-        return;
+      if (patch.status && patch.status !== before.status) {
+        const allowed = ALLOWED_TRANSITIONS[before.status as InfillJobStatus] ?? [];
+        if (!allowed.includes(patch.status as InfillJobStatus)) {
+          res.status(422).json({
+            error: `Cannot transition job from '${before.status}' to '${patch.status}'. Allowed transitions: ${allowed.join(", ") || "none"}.`,
+          });
+          return;
+        }
       }
-    }
 
-    if (patch.status === "scheduled") {
-      const resolvedTeam = patch.assignedTeamId ?? before.assignedTeamId;
-      const resolvedDate = patch.plannedDate ?? before.plannedDate;
-      if (!resolvedTeam || !resolvedDate) {
-        res.status(422).json({ error: "Scheduling a job requires an assigned team and a planned date." });
-        return;
+      if (patch.status === "scheduled") {
+        const resolvedTeam = patch.assignedTeamId ?? before.assignedTeamId;
+        const resolvedDate = patch.plannedDate ?? before.plannedDate;
+        if (!resolvedTeam || !resolvedDate) {
+          res.status(422).json({ error: "Scheduling a job requires an assigned team and a planned date." });
+          return;
+        }
       }
+
+      const [updated] = await db
+        .update(infillJobsTable)
+        .set({ ...patch, updatedAt: new Date() })
+        .where(eq(infillJobsTable.id, id))
+        .returning();
+
+      await auditLog({
+        tableName: "infill_jobs", recordId: id, action: "UPDATE",
+        changedById: req.auth?.userId ?? null,
+        oldData: before as Record<string, unknown>, newData: updated as Record<string, unknown>,
+        ipAddress: req.ip ?? null,
+      });
+      res.json(updated);
+    } catch (err) {
+      console.error("PATCH /infill-jobs/:id error:", err);
+      res.status(500).json({ error: "Internal server error" });
     }
-
-    const [updated] = await db
-      .update(infillJobsTable)
-      .set({ ...patch, updatedAt: new Date() })
-      .where(eq(infillJobsTable.id, id))
-      .returning();
-
-    await auditLog({
-      tableName: "infill_jobs", recordId: id, action: "UPDATE",
-      changedById: req.auth?.userId ?? null,
-      oldData: before as Record<string, unknown>, newData: updated as Record<string, unknown>,
-      ipAddress: req.ip ?? null,
-    });
-    res.json(updated);
   },
 );
 
@@ -193,11 +203,16 @@ router.delete(
   requireAuth,
   requireRole("manager", "supervisor"),
   async (req, res) => {
-    const id = String(req.params.id);
-    const [found] = await db.select().from(infillJobsTable).where(eq(infillJobsTable.id, id)).limit(1);
-    if (!found) { res.status(404).json({ error: "Infill job not found" }); return; }
-    await db.delete(infillJobsTable).where(eq(infillJobsTable.id, id));
-    res.status(204).send();
+    try {
+      const id = String(req.params.id);
+      const [found] = await db.select().from(infillJobsTable).where(eq(infillJobsTable.id, id)).limit(1);
+      if (!found) { res.status(404).json({ error: "Infill job not found" }); return; }
+      await db.delete(infillJobsTable).where(eq(infillJobsTable.id, id));
+      res.status(204).send();
+    } catch (err) {
+      console.error("DELETE /infill-jobs/:id error:", err);
+      res.status(500).json({ error: "Internal server error" });
+    }
   },
 );
 
@@ -244,8 +259,13 @@ router.post(
   requireRole("manager", "supervisor"),
   validateBody(insertInfillOrderSchema),
   async (req, res) => {
-    const [created] = await db.insert(infillOrdersTable).values(req.body).returning();
-    res.status(201).json(created);
+    try {
+      const [created] = await db.insert(infillOrdersTable).values(req.body).returning();
+      res.status(201).json(created);
+    } catch (err) {
+      console.error("POST /infill-orders error:", err);
+      res.status(500).json({ error: "Internal server error" });
+    }
   },
 );
 
@@ -254,14 +274,19 @@ router.patch(
   requireAuth,
   requireRole("manager", "supervisor"),
   async (req, res) => {
-    const id = String(req.params.id);
-    const [updated] = await db
-      .update(infillOrdersTable)
-      .set({ ...req.body, updatedAt: new Date() })
-      .where(eq(infillOrdersTable.id, id))
-      .returning();
-    if (!updated) { res.status(404).json({ error: "Infill order not found" }); return; }
-    res.json(updated);
+    try {
+      const id = String(req.params.id);
+      const [updated] = await db
+        .update(infillOrdersTable)
+        .set({ ...req.body, updatedAt: new Date() })
+        .where(eq(infillOrdersTable.id, id))
+        .returning();
+      if (!updated) { res.status(404).json({ error: "Infill order not found" }); return; }
+      res.json(updated);
+    } catch (err) {
+      console.error("PATCH /infill-orders/:id error:", err);
+      res.status(500).json({ error: "Internal server error" });
+    }
   },
 );
 
@@ -314,8 +339,13 @@ router.post(
   requireRole("manager", "supervisor"),
   validateBody(insertMulchingRecordSchema),
   async (req, res) => {
-    const [created] = await db.insert(mulchingRecordsTable).values(req.body).returning();
-    res.status(201).json(created);
+    try {
+      const [created] = await db.insert(mulchingRecordsTable).values(req.body).returning();
+      res.status(201).json(created);
+    } catch (err) {
+      console.error("POST /mulching-records error:", err);
+      res.status(500).json({ error: "Internal server error" });
+    }
   },
 );
 
@@ -324,14 +354,19 @@ router.patch(
   requireAuth,
   requireRole("manager", "supervisor"),
   async (req, res) => {
-    const id = String(req.params.id);
-    const [updated] = await db
-      .update(mulchingRecordsTable)
-      .set({ ...req.body, updatedAt: new Date() })
-      .where(eq(mulchingRecordsTable.id, id))
-      .returning();
-    if (!updated) { res.status(404).json({ error: "Mulching record not found" }); return; }
-    res.json(updated);
+    try {
+      const id = String(req.params.id);
+      const [updated] = await db
+        .update(mulchingRecordsTable)
+        .set({ ...req.body, updatedAt: new Date() })
+        .where(eq(mulchingRecordsTable.id, id))
+        .returning();
+      if (!updated) { res.status(404).json({ error: "Mulching record not found" }); return; }
+      res.json(updated);
+    } catch (err) {
+      console.error("PATCH /mulching-records/:id error:", err);
+      res.status(500).json({ error: "Internal server error" });
+    }
   },
 );
 
@@ -348,6 +383,7 @@ router.post(
   requireRole("manager", "supervisor"),
   validateBody(splitMulchingSchema),
   async (req, res) => {
+    try {
     const id = String(req.params.id);
     const { dates, teamId, totalMins } = res.locals.body as z.infer<typeof splitMulchingSchema>;
 
@@ -423,6 +459,10 @@ router.post(
       : [];
 
     res.json({ groupId, records: [day1, ...siblings] });
+    } catch (err) {
+      console.error("POST /mulching-records/:id/split error:", err);
+      res.status(500).json({ error: "Internal server error" });
+    }
   },
 );
 
@@ -473,6 +513,7 @@ router.post(
   requireRole("manager", "supervisor"),
   validateBody(createDepthReadingSchema),
   async (req, res) => {
+    try {
     const body = (res.locals.body ?? req.body) as z.infer<typeof createDepthReadingSchema>;
 
     const [sysSettings] = await db.select().from(systemSettingsTable).limit(1);
@@ -632,6 +673,10 @@ router.post(
     });
 
     res.status(201).json(result);
+    } catch (err) {
+      console.error("POST /mulch-depth-readings error:", err);
+      res.status(500).json({ error: "Internal server error" });
+    }
   },
 );
 
