@@ -1681,7 +1681,7 @@ export default function AssetDetail() {
                 key={`infill-${id}`}
                 assetId={id!}
                 onJobClick={() => navigate("/programmes")}
-                onNewAssessment={() => navigate(`/programmes?newAssessment=${id}`)}
+                onNewAssessment={() => navigate(`/programmes/infill?newAssessment=${id}`)}
               />
             )}
             {activeTab === "mulching" && (
