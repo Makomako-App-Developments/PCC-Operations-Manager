@@ -2,6 +2,7 @@ import { useCreateAsset, useListTeams, getListTeamsQueryKey } from "@workspace/a
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
+import { useState } from "react";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -11,6 +12,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useLocation } from "wouter";
 import { useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft } from "lucide-react";
+import BoundaryEditor, { type GeoPolygon } from "@/components/BoundaryEditor";
 
 const BRAND = "#00AECD";
 
@@ -36,6 +38,7 @@ export default function NewAsset() {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const [boundary, setBoundary] = useState<GeoPolygon | null>(null);
 
   const { data: teamsData } = useListTeams({ query: { queryKey: getListTeamsQueryKey() }});
 
@@ -66,7 +69,7 @@ export default function NewAsset() {
   });
 
   const onSubmit = (data: z.infer<typeof assetSchema>) => {
-    createMutation.mutate({ data });
+    createMutation.mutate({ data: { ...data, boundary } as any });
   };
 
   return (
@@ -252,17 +255,32 @@ export default function NewAsset() {
                   )} />
                 </div>
                 
+                <div>
+                  <p className="text-xs text-gray-500 uppercase tracking-wide font-medium mb-2">Map Boundary</p>
+                  <BoundaryEditor
+                    initialBoundary={boundary}
+                    initialLat={form.getValues("lat")}
+                    initialLng={form.getValues("lng")}
+                    onChange={(b, lat, lng) => {
+                      setBoundary(b);
+                      if (lat != null) form.setValue("lat", lat);
+                      if (lng != null) form.setValue("lng", lng);
+                    }}
+                    height={300}
+                  />
+                </div>
+
                 <div className="grid grid-cols-2 gap-6">
                   <FormField control={form.control} name="lat" render={({ field }) => (
                     <FormItem>
-                      <FormLabel className="text-xs text-gray-500 uppercase tracking-wide">Latitude</FormLabel>
+                      <FormLabel className="text-xs text-gray-500 uppercase tracking-wide">Latitude (or set via map)</FormLabel>
                       <FormControl><Input type="number" step="any" placeholder="-41.13" {...field} className="h-10 font-mono" /></FormControl>
                       <FormMessage />
                     </FormItem>
                   )} />
                   <FormField control={form.control} name="lng" render={({ field }) => (
                     <FormItem>
-                      <FormLabel className="text-xs text-gray-500 uppercase tracking-wide">Longitude</FormLabel>
+                      <FormLabel className="text-xs text-gray-500 uppercase tracking-wide">Longitude (or set via map)</FormLabel>
                       <FormControl><Input type="number" step="any" placeholder="174.85" {...field} className="h-10 font-mono" /></FormControl>
                       <FormMessage />
                     </FormItem>

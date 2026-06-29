@@ -24,6 +24,7 @@ import {
 import { MapContainer, TileLayer, CircleMarker, Polygon, Tooltip as LeafletTooltip, useMap } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
+import BoundaryEditor, { type GeoPolygon as EditorGeoPolygon } from "@/components/BoundaryEditor";
 
 const BRAND = "#00AECD";
 const NAVY = "#0f2a36";
@@ -700,6 +701,7 @@ type EditForm = {
   name: string; description: string; gardenType: string; standard: string; areaM2: string;
   serviceTimeMins: string; frequency: string; siteType: string; ward: string;
   teamId: string; suburb: string; streetAddress: string; notes: string; knownHazards: string;
+  lat: string; lng: string;
 };
 
 function EditPanel({
@@ -713,6 +715,9 @@ function EditPanel({
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [saving, setSaving] = useState(false);
+  const [boundary, setBoundaryState] = useState<EditorGeoPolygon | null>(
+    (asset as any).boundary ?? null
+  );
   const [form, setForm] = useState<EditForm>({
     name:            asset.name || "",
     description:     asset.description || "",
@@ -728,6 +733,8 @@ function EditPanel({
     streetAddress:   asset.streetAddress || "",
     notes:           asset.notes || "",
     knownHazards:    (asset as any).knownHazards || "",
+    lat:             asset.lat != null ? String(Number(asset.lat)) : "",
+    lng:             asset.lng != null ? String(Number(asset.lng)) : "",
   });
 
   const f = (key: keyof EditForm, val: string) => setForm(prev => ({ ...prev, [key]: val }));
@@ -747,6 +754,9 @@ function EditPanel({
         streetAddress:   form.streetAddress || null,
         notes:           form.notes         || null,
         knownHazards:    form.knownHazards   || null,
+        lat:             form.lat ? Number(form.lat) : null,
+        lng:             form.lng ? Number(form.lng) : null,
+        boundary:        boundary ?? null,
       };
       const r = await fetch(`/api/assets/${asset.id}`, {
         method: "PATCH", credentials: "include",
@@ -864,6 +874,30 @@ function EditPanel({
         <FormField label="Known Hazards">
           <Textarea value={form.knownHazards} onChange={e => f("knownHazards", e.target.value)} className="text-sm border-amber-300 focus-visible:ring-amber-400" rows={3} placeholder="e.g. Low overhead power lines, uneven ground, aggressive dog on site…" />
         </FormField>
+
+        <div>
+          <p className="text-xs text-gray-400 uppercase tracking-wide font-semibold mb-3">Map Boundary</p>
+          <BoundaryEditor
+            key={asset.id}
+            initialBoundary={boundary}
+            initialLat={form.lat ? Number(form.lat) : null}
+            initialLng={form.lng ? Number(form.lng) : null}
+            onChange={(b, lat, lng) => {
+              setBoundaryState(b);
+              if (lat != null) f("lat", String(lat));
+              if (lng != null) f("lng", String(lng));
+            }}
+            height={280}
+          />
+          <div className="grid grid-cols-2 gap-3 mt-3">
+            <FormField label="Latitude">
+              <Input type="number" step="any" value={form.lat} onChange={e => f("lat", e.target.value)} className="text-sm font-mono" placeholder="-41.13" />
+            </FormField>
+            <FormField label="Longitude">
+              <Input type="number" step="any" value={form.lng} onChange={e => f("lng", e.target.value)} className="text-sm font-mono" placeholder="174.85" />
+            </FormField>
+          </div>
+        </div>
       </div>
       <div className="px-5 py-4 border-t bg-gray-50 flex items-center justify-end gap-2 flex-shrink-0">
         <Button variant="outline" size="sm" onClick={onCancel} disabled={saving}>Cancel</Button>
