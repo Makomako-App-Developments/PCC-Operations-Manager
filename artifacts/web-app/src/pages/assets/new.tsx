@@ -1,4 +1,4 @@
-import { useCreateAsset, useListTeams, getListTeamsQueryKey } from "@workspace/api-client-react";
+import { useListTeams, getListTeamsQueryKey } from "@workspace/api-client-react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -54,22 +54,37 @@ export default function NewAsset() {
     }
   });
 
-  const createMutation = useCreateAsset({
-    mutation: {
-      onSuccess: (data) => {
-        toast({ title: "Asset Created", description: `${data.name} added to register.` });
-        queryClient.invalidateQueries({ queryKey: ["/api/assets"] });
-        queryClient.invalidateQueries({ queryKey: ["/api/dashboard/summary"] });
-        setLocation("/assets");
-      },
-      onError: (err: any) => {
-        toast({ title: "Failed to create", description: err.message, variant: "destructive" });
-      }
-    }
-  });
+  const [submitting, setSubmitting] = useState(false);
 
-  const onSubmit = (data: z.infer<typeof assetSchema>) => {
-    createMutation.mutate({ data: { ...data, boundary } as any });
+  const onSubmit = async (data: z.infer<typeof assetSchema>) => {
+    setSubmitting(true);
+    try {
+      const payload: Record<string, unknown> = { ...data };
+      if (boundary) payload.boundary = boundary;
+      const r = await fetch("/api/assets", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      if (!r.ok) {
+        const err = await r.json().catch(() => ({ error: r.statusText }));
+        throw new Error((err as Record<string, string>).error ?? "Failed to create asset");
+      }
+      const created = await r.json() as { name: string };
+      toast({ title: "Asset Created", description: `${created.name} added to register.` });
+      queryClient.invalidateQueries({ queryKey: ["/api/assets"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/dashboard/summary"] });
+      setLocation("/assets");
+    } catch (err: unknown) {
+      toast({
+        title: "Failed to create",
+        description: err instanceof Error ? err.message : "Unknown error",
+        variant: "destructive",
+      });
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -306,8 +321,8 @@ export default function NewAsset() {
 
               <div className="flex justify-end gap-3 pt-6 border-t">
                 <Button type="button" variant="outline" onClick={() => window.history.back()}>Cancel</Button>
-                <Button type="submit" disabled={createMutation.isPending} style={{ background: BRAND }} className="text-white hover:opacity-90">
-                  {createMutation.isPending ? "Creating..." : "Save Asset"}
+                <Button type="submit" disabled={submitting} style={{ background: BRAND }} className="text-white hover:opacity-90">
+                  {submitting ? "Creating..." : "Save Asset"}
                 </Button>
               </div>
             </form>

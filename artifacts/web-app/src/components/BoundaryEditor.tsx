@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { MapContainer, TileLayer, Polygon, Polyline, CircleMarker, useMapEvents, useMap } from "react-leaflet";
+import { MapContainer, TileLayer, Polygon, Polyline, CircleMarker, Tooltip as LeafletTooltip, useMapEvents, useMap } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 
@@ -42,17 +42,21 @@ function FitBounds({ positions }: { positions: [number, number][] }) {
   return null;
 }
 
-function DrawHandler({
+function MapClickHandler({
   drawing,
-  onAdd,
+  onAddVertex,
+  onSetPoint,
 }: {
   drawing: boolean;
-  onAdd: (latlng: [number, number]) => void;
+  onAddVertex: (latlng: [number, number]) => void;
+  onSetPoint: (latlng: [number, number]) => void;
 }) {
   useMapEvents({
     click(e) {
       if (drawing) {
-        onAdd([e.latlng.lat, e.latlng.lng]);
+        onAddVertex([e.latlng.lat, e.latlng.lng]);
+      } else {
+        onSetPoint([e.latlng.lat, e.latlng.lng]);
       }
     },
   });
@@ -70,6 +74,12 @@ export default function BoundaryEditor({
   const [boundary, setBoundary] = useState<GeoPolygon | null>(initialBoundary ?? null);
   const [drawing, setDrawing] = useState(false);
   const [vertices, setVertices] = useState<[number, number][]>([]);
+  // Standalone point marker — tracks lat/lng when no polygon (or alongside polygon centroid)
+  const [point, setPoint] = useState<[number, number] | null>(
+    initialLat != null && initialLng != null
+      ? [Number(initialLat), Number(initialLng)]
+      : null
+  );
 
   const tiles = {
     aerial: {
@@ -86,9 +96,15 @@ export default function BoundaryEditor({
   const center: [number, number] =
     existingVerts.length > 1
       ? centroid(existingVerts)
-      : initialLat != null && initialLng != null
-      ? [Number(initialLat), Number(initialLng)]
+      : point
+      ? point
       : PORIRUA;
+
+  function handleSetPoint(latlng: [number, number]) {
+    setPoint(latlng);
+    // Keep existing boundary; update lat/lng to the clicked point
+    onChange(boundary, latlng[0], latlng[1]);
+  }
 
   function startDrawing() {
     setDrawing(true);
@@ -109,6 +125,7 @@ export default function BoundaryEditor({
     const geo = geoFromVerts(vertices);
     const c = centroid(vertices);
     setBoundary(geo);
+    setPoint(c);
     onChange(geo, c[0], c[1]);
     setDrawing(false);
     setVertices([]);
@@ -116,18 +133,13 @@ export default function BoundaryEditor({
 
   function clearBoundary() {
     setBoundary(null);
-    onChange(null, null, null);
+    // Keep point (lat/lng) — just remove the polygon shape
+    onChange(null, point ? point[0] : null, point ? point[1] : null);
   }
-
-  const polylinePoints: [number, number][] =
-    vertices.length > 0 && vertices[0]
-      ? drawing
-        ? vertices
-        : vertices
-      : [];
 
   return (
     <div className="space-y-2">
+      {/* Toolbar */}
       <div className="flex items-center gap-2 flex-wrap">
         {!drawing ? (
           <>
@@ -187,16 +199,23 @@ export default function BoundaryEditor({
         )}
       </div>
 
-      {drawing && (
+      {/* Instruction banner */}
+      {drawing ? (
         <p className="text-[11px] text-teal-700 bg-teal-50 border border-teal-200 rounded-md px-3 py-2">
-          Click the map to add polygon vertices. Add at least 3 points, then press <strong>Finish</strong>.
+          Click the map to add polygon vertices. Add at least 3, then press <strong>Finish</strong>.
+        </p>
+      ) : (
+        <p className="text-[11px] text-gray-500 bg-gray-50 border border-gray-200 rounded-md px-3 py-2">
+          <strong>Click the map</strong> to set the site location marker •{" "}
+          Use <strong>Draw boundary</strong> to outline the garden polygon
         </p>
       )}
 
+      {/* Map */}
       <div className="rounded-lg overflow-hidden border border-gray-200" style={{ height }}>
         <MapContainer
           center={center}
-          zoom={existingVerts.length > 1 ? 17 : 15}
+          zoom={existingVerts.length > 1 ? 17 : point ? 17 : 14}
           style={{ height: "100%", width: "100%" }}
           scrollWheelZoom
           zoomControl
@@ -210,7 +229,11 @@ export default function BoundaryEditor({
           />
           {existingVerts.length > 1 && <FitBounds positions={existingVerts} />}
 
-          <DrawHandler drawing={drawing} onAdd={addVertex} />
+          <MapClickHandler
+            drawing={drawing}
+            onAddVertex={addVertex}
+            onSetPoint={handleSetPoint}
+          />
 
           {/* Existing / committed polygon */}
           {!drawing && boundary && existingVerts.length > 2 && (
@@ -220,10 +243,25 @@ export default function BoundaryEditor({
             />
           )}
 
-          {/* In-progress drawing */}
+          {/* Standalone point marker (shown when no polygon, or as centroid indicator) */}
+          {!drawing && point && (
+            <CircleMarker
+              center={point}
+              radius={9}
+              pathOptions={{ color: "#fff", weight: 2.5, fillColor: BRAND, fillOpacity: 1 }}
+            >
+              <LeafletTooltip direction="top" offset={[0, -14]} permanent={!boundary}>
+                <span className="text-[10px] font-semibold">
+                  {point[0].toFixed(5)}, {point[1].toFixed(5)}
+                </span>
+              </LeafletTooltip>
+            </CircleMarker>
+          )}
+
+          {/* In-progress polygon outline */}
           {drawing && vertices.length >= 2 && (
             <Polyline
-              positions={polylinePoints}
+              positions={vertices}
               pathOptions={{ color: BRAND, weight: 2.5, dashArray: "6 4" }}
             />
           )}
@@ -246,12 +284,24 @@ export default function BoundaryEditor({
         </MapContainer>
       </div>
 
-      {boundary && !drawing && (
-        <p className="text-[11px] text-gray-400 flex items-center gap-1">
-          <span className="inline-block w-2.5 h-2.5 rounded-sm flex-shrink-0" style={{ background: BRAND, opacity: 0.6 }} />
-          Boundary set — {existingVerts.length} vertices. Centroid will be saved as coordinates.
-        </p>
-      )}
+      {/* Status */}
+      <div className="flex gap-4 text-[11px] text-gray-400">
+        {boundary && !drawing && (
+          <span className="flex items-center gap-1">
+            <span className="inline-block w-2.5 h-2.5 rounded-sm flex-shrink-0" style={{ background: BRAND, opacity: 0.6 }} />
+            Boundary: {existingVerts.length} vertices
+          </span>
+        )}
+        {point && (
+          <span className="flex items-center gap-1">
+            <span className="inline-block w-2 h-2 rounded-full flex-shrink-0" style={{ background: BRAND }} />
+            Location: {point[0].toFixed(5)}, {point[1].toFixed(5)}
+          </span>
+        )}
+        {!boundary && !point && (
+          <span>No location set — click the map to place a marker</span>
+        )}
+      </div>
     </div>
   );
 }
