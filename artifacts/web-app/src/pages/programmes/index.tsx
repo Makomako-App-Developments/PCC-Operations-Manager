@@ -3373,6 +3373,7 @@ export default function Programmes() {
   const { user } = useAuth();
   const role = user?.role as string | undefined;
   const isManager = role === "manager" || role === "administrator";
+  const canEditInfill = isManager || role === "supervisor";
 
   // Infill jobs
   const { data: jobsData, isLoading: jobsLoading } = useQuery<{ data: InfillJob[]; total: number }>({
@@ -3677,7 +3678,7 @@ export default function Programmes() {
               <h1 className="text-lg font-semibold text-gray-900">Infill Planting</h1>
               <p className="text-xs text-gray-400">Planting assessments and species orders</p>
             </div>
-            {isManager && (
+            {canEditInfill && (
               <Button
                 onClick={() => setDrawerOpen(true)}
                 className="text-white gap-1.5 h-9 text-sm"
@@ -3900,7 +3901,7 @@ export default function Programmes() {
                               </td>
                               <td className="px-4 py-3" onClick={e => e.stopPropagation()}>
                                 <div className="flex items-center gap-0.5 justify-end">
-                                  {isManager && canSchedule && (
+                                  {canEditInfill && canSchedule && (
                                     <Button
                                       variant="ghost" size="sm"
                                       className="h-8 w-8 p-0 hover:bg-[#e0f7fb]"
@@ -3910,7 +3911,7 @@ export default function Programmes() {
                                       <CalendarCheck className="w-4 h-4" />
                                     </Button>
                                   )}
-                                  {isManager ? (
+                                  {canEditInfill ? (
                                     <Button
                                       variant="ghost" size="sm"
                                       className="h-8 w-8 p-0 text-gray-500 hover:text-gray-700"
@@ -3927,7 +3928,7 @@ export default function Programmes() {
                                       <Pencil className="w-4 h-4" />
                                     </Button>
                                   ) : null}
-                                  {isManager && canCancel && (
+                                  {canEditInfill && canCancel && (
                                     <Button
                                       variant="ghost" size="sm"
                                       className="h-8 w-8 p-0 text-gray-400 hover:text-red-600 hover:bg-red-50"
