@@ -66,7 +66,14 @@ function boundaryToLeaflet(boundary: GeoPolygon): [number, number][] {
 }
 
 function AssetRegisterMap({ assets, onSelect }: { assets: any[]; onSelect: (id: string) => void }) {
-  const [layer, setLayer] = useState<"street" | "aerial">("street");
+  const [layer, setLayer] = useState<"street" | "aerial">(
+    () => (localStorage.getItem("assets-map-layer") as "street" | "aerial") || "street"
+  );
+
+  const handleLayerChange = (next: "street" | "aerial") => {
+    setLayer(next);
+    localStorage.setItem("assets-map-layer", next);
+  };
 
   const { markers, polygons, allPositions } = useMemo(() => {
     const markers: Array<{ id: string; name: string; pos: [number, number] }> = [];
@@ -138,13 +145,13 @@ function AssetRegisterMap({ assets, onSelect }: { assets: any[]; onSelect: (id: 
 
       <div className="absolute top-2 right-2 z-[1000] flex rounded-md overflow-hidden shadow-md border border-gray-300 text-[11px] font-semibold">
         <button
-          onClick={() => setLayer("street")}
+          onClick={() => handleLayerChange("street")}
           className={`px-2.5 py-1 transition-colors ${layer === "street" ? "bg-[#00AECD] text-white" : "bg-white text-gray-700 hover:bg-gray-50"}`}
         >
           Street
         </button>
         <button
-          onClick={() => setLayer("aerial")}
+          onClick={() => handleLayerChange("aerial")}
           className={`px-2.5 py-1 transition-colors border-l border-gray-300 ${layer === "aerial" ? "bg-[#00AECD] text-white" : "bg-white text-gray-700 hover:bg-gray-50"}`}
         >
           Aerial
