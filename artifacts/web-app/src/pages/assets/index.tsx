@@ -102,7 +102,7 @@ function AssetRegisterMap({ assets, onSelect }: { assets: any[]; onSelect: (id: 
   const defaultCenter: [number, number] = allPositions.length > 0 ? allPositions[0] : [-36.85, 174.76];
 
   return (
-    <div style={{ height: "20vh", minHeight: 140 }} className="relative border-b border-gray-200 flex-shrink-0">
+    <div style={{ height: "30vh", minHeight: 210 }} className="relative border-b border-gray-200 flex-shrink-0">
       <MapContainer
         center={defaultCenter}
         zoom={13}
