@@ -420,7 +420,7 @@ export default function Assets() {
       {!isLoading && (
         <AssetRegisterMap
           assets={sortedAssets}
-          onSelect={(id) => setSelectedAssetId(id)}
+          onSelect={(id) => navigate(`/assets/${id}`)}
         />
       )}
 
@@ -447,7 +447,7 @@ export default function Assets() {
                   <tr 
                     key={asset.id} 
                     className="hover:bg-gray-50/50 transition-colors cursor-pointer"
-                    onClick={() => setSelectedAssetId(asset.id)}
+                    onClick={() => navigate(`/assets/${asset.id}`)}
                     data-testid={`row-asset-${asset.id}`}
                   >
                     <td className="px-4 py-3 font-medium text-gray-900 w-[25%]">{asset.name}</td>
