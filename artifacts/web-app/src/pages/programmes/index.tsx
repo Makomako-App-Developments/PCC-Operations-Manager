@@ -1201,7 +1201,7 @@ const MULCH_TYPES = ["Bark Mulch", "Wood Chip", "Compost", "Straw", "Pea Gravel"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-interface SpeciesLine { speciesName: string; speciesCategory: string; quantity: number; }
+interface SpeciesLine { speciesName: string; speciesCategory: string; quantity: number; status: string; }
 
 interface InfillJob {
   id: string;
@@ -3572,6 +3572,7 @@ export default function Programmes() {
       speciesName: string; category: string;
       totalQty: number; siteIds: Set<string>;
       draftQty: number; scheduledQty: number; completedQty: number;
+      orderedQty: number;
     }>();
     for (const j of jobs) {
       if (j.status === "cancelled") continue;
@@ -3579,6 +3580,7 @@ export default function Programmes() {
       if (speciesScope === "in_ground"      && j.status !== "completed") continue;
       for (const sp of j.species) {
         const key = `${sp.speciesName}||${sp.speciesCategory}`;
+        const isOrdered = sp.status !== "draft";
         const existing = map.get(key);
         if (existing) {
           existing.totalQty += sp.quantity;
@@ -3586,6 +3588,7 @@ export default function Programmes() {
           if (j.status === "draft")       existing.draftQty     += sp.quantity;
           if (j.status === "scheduled")   existing.scheduledQty += sp.quantity;
           if (j.status === "completed")   existing.completedQty += sp.quantity;
+          if (isOrdered)                  existing.orderedQty   += sp.quantity;
         } else {
           map.set(key, {
             speciesName:  sp.speciesName,
@@ -3595,6 +3598,7 @@ export default function Programmes() {
             draftQty:     j.status === "draft"     ? sp.quantity : 0,
             scheduledQty: j.status === "scheduled" ? sp.quantity : 0,
             completedQty: j.status === "completed" ? sp.quantity : 0,
+            orderedQty:   isOrdered ? sp.quantity : 0,
           });
         }
       }
@@ -3615,10 +3619,15 @@ export default function Programmes() {
   }, [jobs, speciesScope, speciesSortKey, speciesSortDir]);
 
   const exportSpeciesCSV = () => {
-    const headers = ["Species", "Category", "Total Qty", "Sites"];
-    const rows = speciesSummary.map(s =>
-      [s.speciesName, s.category, s.totalQty, s.sites]
-    );
+    const headers = ["Species", "Category", "Total Qty", "Sites", "Order Status"];
+    const rows = speciesSummary.map(s => {
+      const orderStatus = s.orderedQty === 0
+        ? "Not ordered"
+        : s.orderedQty >= s.totalQty
+        ? "Ordered"
+        : `Partial (${s.orderedQty}/${s.totalQty})`;
+      return [s.speciesName, s.category, s.totalQty, s.sites, orderStatus];
+    });
     const csv = [headers, ...rows].map(r => r.map(v => `"${v}"`).join(",")).join("\n");
     const blob = new Blob([csv], { type: "text/csv" });
     const url  = URL.createObjectURL(blob);
@@ -3980,6 +3989,9 @@ export default function Programmes() {
                             </span>
                           </th>
                         ))}
+                        <th className="px-4 py-2.5 text-left text-[11px] font-semibold text-gray-400 uppercase tracking-wider whitespace-nowrap">
+                          Order status
+                        </th>
                         <th
                           className="px-4 py-2.5 text-left text-[11px] font-semibold text-gray-400 uppercase tracking-wider cursor-pointer select-none hover:text-gray-700 whitespace-nowrap"
                           onClick={() => handleSpeciesSort("completedQty")}>
@@ -4007,6 +4019,21 @@ export default function Programmes() {
                             <span className="text-lg font-black" style={{ color: BRAND }}>{row.totalQty}</span>
                           </td>
                           <td className="px-4 py-2.5 text-sm text-gray-600">{row.sites}</td>
+                          <td className="px-4 py-2.5">
+                            {row.orderedQty === 0 ? (
+                              <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-gray-100 text-gray-500">
+                                Not ordered
+                              </span>
+                            ) : row.orderedQty >= row.totalQty ? (
+                              <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-green-100 text-green-700">
+                                ✓ Ordered
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-amber-50 text-amber-700">
+                                Partial ({row.orderedQty}/{row.totalQty})
+                              </span>
+                            )}
+                          </td>
                           <td className="px-4 py-2.5">
                             <div className="flex items-center gap-1.5 flex-wrap">
                               {row.draftQty > 0 && (
