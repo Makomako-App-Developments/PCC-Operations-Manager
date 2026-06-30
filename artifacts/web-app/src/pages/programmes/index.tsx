@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect, useRef } from "react";
+import { useAuth } from "@/lib/auth";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   useListAssets, getListAssetsQueryKey,
@@ -3369,6 +3370,9 @@ export default function Programmes() {
   const params = new URLSearchParams(search);
   const initialReviewId = params.get("review") ?? undefined;
   const isInfill = !location.includes("/mulching");
+  const { user } = useAuth();
+  const role = user?.role as string | undefined;
+  const isManager = role === "manager" || role === "administrator";
 
   // Infill jobs
   const { data: jobsData, isLoading: jobsLoading } = useQuery<{ data: InfillJob[]; total: number }>({
@@ -3673,13 +3677,15 @@ export default function Programmes() {
               <h1 className="text-lg font-semibold text-gray-900">Infill Planting</h1>
               <p className="text-xs text-gray-400">Planting assessments and species orders</p>
             </div>
-            <Button
-              onClick={() => setDrawerOpen(true)}
-              className="text-white gap-1.5 h-9 text-sm"
-              style={{ background: BRAND }}
-            >
-              <Plus className="w-4 h-4" /> New Assessment
-            </Button>
+            {isManager && (
+              <Button
+                onClick={() => setDrawerOpen(true)}
+                className="text-white gap-1.5 h-9 text-sm"
+                style={{ background: BRAND }}
+              >
+                <Plus className="w-4 h-4" /> New Assessment
+              </Button>
+            )}
           </header>
 
           {/* Stat cards */}
@@ -3894,7 +3900,7 @@ export default function Programmes() {
                               </td>
                               <td className="px-4 py-3" onClick={e => e.stopPropagation()}>
                                 <div className="flex items-center gap-0.5 justify-end">
-                                  {canSchedule && (
+                                  {isManager && canSchedule && (
                                     <Button
                                       variant="ghost" size="sm"
                                       className="h-8 w-8 p-0 hover:bg-[#e0f7fb]"
@@ -3904,14 +3910,24 @@ export default function Programmes() {
                                       <CalendarCheck className="w-4 h-4" />
                                     </Button>
                                   )}
-                                  <Button
-                                    variant="ghost" size="sm"
-                                    className="h-8 w-8 p-0 text-gray-500 hover:text-gray-700"
-                                    title="Edit job"
-                                    onClick={() => job.status === "draft" ? setSelectedJobId(job.id) : setDetailInfillJobId(job.id)}>
-                                    <Pencil className="w-4 h-4" />
-                                  </Button>
-                                  {canCancel && (
+                                  {isManager ? (
+                                    <Button
+                                      variant="ghost" size="sm"
+                                      className="h-8 w-8 p-0 text-gray-500 hover:text-gray-700"
+                                      title="Edit job"
+                                      onClick={() => job.status === "draft" ? setSelectedJobId(job.id) : setDetailInfillJobId(job.id)}>
+                                      <Pencil className="w-4 h-4" />
+                                    </Button>
+                                  ) : job.status !== "draft" ? (
+                                    <Button
+                                      variant="ghost" size="sm"
+                                      className="h-8 w-8 p-0 text-gray-400 hover:text-gray-600"
+                                      title="View job"
+                                      onClick={() => setDetailInfillJobId(job.id)}>
+                                      <Pencil className="w-4 h-4" />
+                                    </Button>
+                                  ) : null}
+                                  {isManager && canCancel && (
                                     <Button
                                       variant="ghost" size="sm"
                                       className="h-8 w-8 p-0 text-gray-400 hover:text-red-600 hover:bg-red-50"

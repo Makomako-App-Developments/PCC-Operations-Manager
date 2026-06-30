@@ -104,7 +104,7 @@ const ALLOWED_TRANSITIONS: Record<InfillJobStatus, InfillJobStatus[]> = {
 router.post(
   "/infill-jobs",
   requireAuth,
-  requireRole("manager", "supervisor"),
+  requireRole("manager"),
   validateBody(createInfillJobSchema),
   async (req, res) => {
     try {
@@ -149,7 +149,7 @@ router.post(
 router.patch(
   "/infill-jobs/:id",
   requireAuth,
-  requireRole("manager", "supervisor"),
+  requireRole("manager"),
   validateBody(patchInfillJobSchema),
   async (req, res) => {
     try {
@@ -201,7 +201,7 @@ router.patch(
 router.delete(
   "/infill-jobs/:id",
   requireAuth,
-  requireRole("manager", "supervisor"),
+  requireRole("manager"),
   async (req, res) => {
     try {
       const id = String(req.params.id);
@@ -256,7 +256,7 @@ router.get("/infill-orders", requireAuth, async (req, res) => {
 router.post(
   "/infill-orders",
   requireAuth,
-  requireRole("manager", "supervisor"),
+  requireRole("manager"),
   validateBody(insertInfillOrderSchema),
   async (req, res) => {
     try {
@@ -272,7 +272,7 @@ router.post(
 router.patch(
   "/infill-orders/:id",
   requireAuth,
-  requireRole("manager", "supervisor"),
+  requireRole("manager"),
   async (req, res) => {
     try {
       const id = String(req.params.id);

@@ -21,7 +21,7 @@ const bodySchema = z.object({
 });
 
 // POST /api/plant-palette
-router.post("/plant-palette", requireAuth, requireRole("manager", "supervisor"), async (req, res) => {
+router.post("/plant-palette", requireAuth, requireRole("manager"), async (req, res) => {
   const parsed = bodySchema.safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: "Invalid body" }); return; }
   const [row] = await db.insert(plantPaletteTable).values(parsed.data).returning();
@@ -29,7 +29,7 @@ router.post("/plant-palette", requireAuth, requireRole("manager", "supervisor"),
 });
 
 // PATCH /api/plant-palette/:id
-router.patch("/plant-palette/:id", requireAuth, requireRole("manager", "supervisor"), async (req, res) => {
+router.patch("/plant-palette/:id", requireAuth, requireRole("manager"), async (req, res) => {
   const { id } = req.params;
   const parsed = bodySchema.partial().safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: "Invalid body" }); return; }
@@ -43,7 +43,7 @@ router.patch("/plant-palette/:id", requireAuth, requireRole("manager", "supervis
 });
 
 // DELETE /api/plant-palette/:id
-router.delete("/plant-palette/:id", requireAuth, requireRole("manager", "supervisor"), async (req, res) => {
+router.delete("/plant-palette/:id", requireAuth, requireRole("manager"), async (req, res) => {
   const { id } = req.params;
   await db.delete(plantPaletteTable).where(eq(plantPaletteTable.id, id));
   res.status(204).send();
