@@ -13,8 +13,13 @@ import { Link, useLocation } from "wouter";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
+import { MapContainer, TileLayer, CircleMarker, Polygon, Tooltip as LeafletTooltip, useMap } from "react-leaflet";
+import L from "leaflet";
+import "leaflet/dist/leaflet.css";
 
 const BRAND = "#00AECD";
+
+type GeoPolygon = { type: string; coordinates: number[][][] };
 
 const TILES = {
   street: {
@@ -35,6 +40,124 @@ function FitBounds({ positions }: { positions: [number, number][] }) {
     }
   }, [map]);
   return null;
+}
+
+function FitBoundsOnChange({ positions }: { positions: [number, number][] }) {
+  const map = useMap();
+  useEffect(() => {
+    if (positions.length === 1) {
+      map.setView(positions[0], 17);
+    } else if (positions.length > 1) {
+      map.fitBounds(L.latLngBounds(positions), { padding: [32, 32], maxZoom: 18 });
+    }
+  }, [map, JSON.stringify(positions)]);
+  return null;
+}
+
+function boundaryCenter(boundary: GeoPolygon): [number, number] {
+  const ring = boundary.coordinates[0];
+  const lat = ring.reduce((s, c) => s + c[1], 0) / ring.length;
+  const lng = ring.reduce((s, c) => s + c[0], 0) / ring.length;
+  return [lat, lng];
+}
+
+function boundaryToLeaflet(boundary: GeoPolygon): [number, number][] {
+  return boundary.coordinates[0].map(([lng, lat]) => [lat, lng]);
+}
+
+function AssetRegisterMap({ assets, onSelect }: { assets: any[]; onSelect: (id: string) => void }) {
+  const [layer, setLayer] = useState<"street" | "aerial">("street");
+
+  const { markers, polygons, allPositions } = useMemo(() => {
+    const markers: Array<{ id: string; name: string; pos: [number, number] }> = [];
+    const polygons: Array<{ id: string; name: string; ring: [number, number][]; center: [number, number] }> = [];
+    const allPositions: [number, number][] = [];
+
+    for (const a of assets) {
+      const boundary = a.boundary as GeoPolygon | null;
+      const hasBoundary = !!(boundary?.coordinates?.[0]?.length);
+
+      if (hasBoundary) {
+        const ring = boundaryToLeaflet(boundary!);
+        const center = boundaryCenter(boundary!);
+        polygons.push({ id: a.id, name: a.name, ring, center });
+        allPositions.push(center);
+      } else if (a.lat != null && a.lng != null) {
+        const pos: [number, number] = [Number(a.lat), Number(a.lng)];
+        markers.push({ id: a.id, name: a.name, pos });
+        allPositions.push(pos);
+      }
+    }
+
+    return { markers, polygons, allPositions };
+  }, [assets]);
+
+  const defaultCenter: [number, number] = allPositions.length > 0 ? allPositions[0] : [-36.85, 174.76];
+
+  return (
+    <div style={{ height: "20vh", minHeight: 140 }} className="relative border-b border-gray-200 flex-shrink-0">
+      <MapContainer
+        center={defaultCenter}
+        zoom={13}
+        style={{ height: "100%", width: "100%" }}
+        scrollWheelZoom
+        zoomControl={false}
+      >
+        <TileLayer
+          key={layer}
+          url={TILES[layer].url}
+          attribution={TILES[layer].attribution}
+          maxNativeZoom={layer === "aerial" ? 20 : 19}
+          maxZoom={21}
+        />
+        <FitBoundsOnChange positions={allPositions} />
+
+        {polygons.map(({ id, name, ring, center }) => (
+          <Polygon
+            key={id}
+            positions={ring}
+            pathOptions={{ color: BRAND, fillColor: BRAND, fillOpacity: 0.25, weight: 2 }}
+            eventHandlers={{ click: () => onSelect(id) }}
+          >
+            <LeafletTooltip sticky>{name}</LeafletTooltip>
+          </Polygon>
+        ))}
+
+        {markers.map(({ id, name, pos }) => (
+          <CircleMarker
+            key={id}
+            center={pos}
+            radius={7}
+            pathOptions={{ color: "#fff", weight: 2, fillColor: BRAND, fillOpacity: 1 }}
+            eventHandlers={{ click: () => onSelect(id) }}
+          >
+            <LeafletTooltip sticky>{name}</LeafletTooltip>
+          </CircleMarker>
+        ))}
+      </MapContainer>
+
+      <div className="absolute top-2 right-2 z-[1000] flex rounded-md overflow-hidden shadow-md border border-gray-300 text-[11px] font-semibold">
+        <button
+          onClick={() => setLayer("street")}
+          className={`px-2.5 py-1 transition-colors ${layer === "street" ? "bg-[#00AECD] text-white" : "bg-white text-gray-700 hover:bg-gray-50"}`}
+        >
+          Street
+        </button>
+        <button
+          onClick={() => setLayer("aerial")}
+          className={`px-2.5 py-1 transition-colors border-l border-gray-300 ${layer === "aerial" ? "bg-[#00AECD] text-white" : "bg-white text-gray-700 hover:bg-gray-50"}`}
+        >
+          Aerial
+        </button>
+      </div>
+
+      {allPositions.length === 0 && (
+        <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-[500]">
+          <span className="text-xs text-gray-400 bg-white/80 px-3 py-1 rounded-full">No located assets in current filter</span>
+        </div>
+      )}
+    </div>
+  );
 }
 
 function DrawerMap({ asset }: { asset: any }) {
@@ -149,6 +272,7 @@ export default function Assets() {
   const [gardenType, setGardenType] = useState<any>("all");
   const [ward, setWard] = useState<any>("all");
   const [teamId, setTeamId] = useState<any>("all");
+  const [selectedAssetId, setSelectedAssetId] = useState<string | null>(null);
   const [sortCol, setSortCol] = useState<SortCol>(() => (sessionStorage.getItem("assets-sort-col") as SortCol) || "name");
   const [sortDir, setSortDir] = useState<SortDir>(() => (sessionStorage.getItem("assets-sort-dir") as SortDir) || "asc");
 
@@ -286,6 +410,13 @@ export default function Assets() {
         )}
       </div>
 
+      {!isLoading && (
+        <AssetRegisterMap
+          assets={sortedAssets}
+          onSelect={(id) => setSelectedAssetId(id)}
+        />
+      )}
+
       <div className="flex-1 overflow-auto p-8">
         {isLoading ? (
           <Skeleton className="w-full h-96 rounded-xl" />
@@ -309,7 +440,7 @@ export default function Assets() {
                   <tr 
                     key={asset.id} 
                     className="hover:bg-gray-50/50 transition-colors cursor-pointer"
-                    onClick={() => navigate("/assets/" + asset.id)}
+                    onClick={() => setSelectedAssetId(asset.id)}
                     data-testid={`row-asset-${asset.id}`}
                   >
                     <td className="px-4 py-3 font-medium text-gray-900 w-[25%]">{asset.name}</td>
@@ -349,6 +480,11 @@ export default function Assets() {
         )}
       </div>
 
+      <AssetDetailDrawer
+        assetId={selectedAssetId}
+        onClose={() => setSelectedAssetId(null)}
+        teamName={getTeamName}
+      />
     </div>
   );
 }
