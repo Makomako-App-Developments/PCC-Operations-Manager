@@ -1,4 +1,4 @@
-import { Switch, Route, Router as WouterRouter, Redirect } from "wouter";
+import { Switch, Route, Router as WouterRouter, Redirect, useSearch } from "wouter";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -32,6 +32,11 @@ import MapPage from "@/pages/map";
 import CompletedWorks from "@/pages/completed-works/index";
 
 const queryClient = new QueryClient();
+
+function ProgrammesRedirect() {
+  const search = useSearch();
+  return <Redirect to={`/programmes/infill${search || ""}`} />;
+}
 
 function ProtectedRoute({ component: Component, path, ...rest }: any) {
   const { user, isLoading } = useAuth();
@@ -77,7 +82,7 @@ function Router() {
       <Route path="/audits"><ProtectedRoute path="/audits" component={Audits} /></Route>
       <Route path="/programmes/infill"><ProtectedRoute path="/programmes" component={Programmes} /></Route>
       <Route path="/programmes/mulching"><ProtectedRoute path="/programmes" component={Programmes} /></Route>
-      <Route path="/programmes"><Redirect to="/programmes/infill" /></Route>
+      <Route path="/programmes"><ProgrammesRedirect /></Route>
       <Route path="/reports"><ProtectedRoute path="/reports" component={Reports} /></Route>
       <Route path="/audit-log"><ProtectedRoute path="/audit-log" component={AuditLog} /></Route>
       <Route path="/users"><ProtectedRoute path="/users" component={Users} /></Route>
