@@ -1039,8 +1039,24 @@ router.patch("/reactive-jobs/:id", requireAuth, async (req, res) => {
   const allowedFields = isPrivilegedRole(req.auth!.role)
     ? [...workerFields, ...managerFields]
     : workerFields;
+
+  const VALID_PRIORITIES = new Set(["low", "medium", "high", "urgent"]);
+  const VALID_STATUSES   = new Set(["raised", "assigned", "in_progress", "completed", "cancelled"]);
+  const NOT_NULL_FIELDS  = new Set(["issueType", "description"]);
+
   for (const key of allowedFields) {
-    if (key in body) patch[key] = body[key];
+    if (!(key in body)) continue;
+    const val = body[key];
+    // Skip values that would violate NOT NULL constraints
+    if (NOT_NULL_FIELDS.has(key) && (val === null || val === undefined || val === "")) continue;
+    // Validate enum fields
+    if (key === "priority" && typeof val === "string" && !VALID_PRIORITIES.has(val)) {
+      res.status(400).json({ error: `Invalid priority value: ${val}` }); return;
+    }
+    if (key === "status" && typeof val === "string" && !VALID_STATUSES.has(val)) {
+      res.status(400).json({ error: `Invalid status value: ${val}` }); return;
+    }
+    patch[key] = val;
   }
 
   const [updated] = await db

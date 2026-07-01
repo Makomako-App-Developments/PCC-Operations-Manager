@@ -19,49 +19,70 @@ export interface DayCapacityResult {
  * Counts ALL active job types: regular maintenance (jobsTable) + infill +
  * mulching. Excludes completed / skipped / cancelled records.
  */
+async function safeQueryMins<T extends { mins: number }>(
+  promise: Promise<T[]>,
+  label: string,
+): Promise<T[]> {
+  try {
+    return await promise;
+  } catch (err) {
+    console.error(`[day-capacity] ${label} query failed (returning 0):`, err);
+    return [];
+  }
+}
+
 export async function computeTotalScheduledMins(
   teamId: string,
   date: string,
 ): Promise<number> {
   const [regularRows, infillRows, mulchRows] = await Promise.all([
     // Regular maintenance + reactive + contingency jobs
-    db
-      .select({
-        mins: sql<number>`coalesce(${jobsTable.estimatedTimeMins}, ${assetsTable.serviceTimeMins}, 0)`,
-      })
-      .from(jobsTable)
-      .innerJoin(assetsTable, eq(jobsTable.assetId, assetsTable.id))
-      .where(
-        and(
-          eq(jobsTable.teamId, teamId),
-          eq(jobsTable.scheduledDate, date),
-          notInArray(jobsTable.status, ["completed", "skipped"]),
+    safeQueryMins(
+      db
+        .select({
+          mins: sql<number>`coalesce(${jobsTable.estimatedTimeMins}, ${assetsTable.serviceTimeMins}, 0)`,
+        })
+        .from(jobsTable)
+        .innerJoin(assetsTable, eq(jobsTable.assetId, assetsTable.id))
+        .where(
+          and(
+            eq(jobsTable.teamId, teamId),
+            eq(jobsTable.scheduledDate, date),
+            notInArray(jobsTable.status, ["completed", "skipped"]),
+          ),
         ),
-      ),
+      "regular jobs",
+    ),
 
     // Infill planting jobs
-    db
-      .select({ mins: sql<number>`coalesce(${infillJobsTable.estimatedMins}, 0)` })
-      .from(infillJobsTable)
-      .where(
-        and(
-          eq(infillJobsTable.assignedTeamId, teamId),
-          eq(infillJobsTable.plannedDate, date),
-          notInArray(infillJobsTable.status, ["completed", "cancelled"]),
+    safeQueryMins(
+      db
+        .select({ mins: sql<number>`coalesce(${infillJobsTable.estimatedMins}, 0)` })
+        .from(infillJobsTable)
+        .where(
+          and(
+            eq(infillJobsTable.assignedTeamId, teamId),
+            eq(infillJobsTable.plannedDate, date),
+            notInArray(infillJobsTable.status, ["completed", "cancelled"]),
+          ),
         ),
-      ),
+      "infill jobs",
+    ),
 
     // Mulching records
-    db
-      .select({ mins: sql<number>`coalesce(${mulchingRecordsTable.estimatedMins}, 0)` })
-      .from(mulchingRecordsTable)
-      .where(
-        and(
-          eq(mulchingRecordsTable.assignedTeamId, teamId),
-          eq(mulchingRecordsTable.scheduledDate, date),
-          notInArray(mulchingRecordsTable.status, ["completed", "not_required"]),
+    safeQueryMins(
+      db
+        .select({ mins: sql<number>`coalesce(${mulchingRecordsTable.estimatedMins}, 0)` })
+        .from(mulchingRecordsTable)
+        .where(
+          and(
+            eq(mulchingRecordsTable.assignedTeamId, teamId),
+            eq(mulchingRecordsTable.scheduledDate, date),
+            notInArray(mulchingRecordsTable.status, ["completed", "not_required"]),
+          ),
         ),
-      ),
+      "mulching records",
+    ),
   ]);
 
   const total =
