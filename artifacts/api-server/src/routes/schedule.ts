@@ -563,8 +563,14 @@ router.post(
       jobsRefreshed++;
     }
 
-    if (insertRows.length > 0) {
-      await db.insert(jobsTable).values(insertRows);
+    // Postgres has a 65535 bind-parameter limit per query. Each row here binds
+    // ~8 columns, so batch inserts to stay well under that ceiling — a full
+    // year of scheduled jobs across many assets can easily exceed it in one
+    // insert, which previously surfaced as a raw, unhandled Postgres error.
+    const INSERT_BATCH_SIZE = 1000;
+    for (let i = 0; i < insertRows.length; i += INSERT_BATCH_SIZE) {
+      const batch = insertRows.slice(i, i + INSERT_BATCH_SIZE);
+      await db.insert(jobsTable).values(batch);
     }
 
     res.json({ jobsCreated, jobsRefreshed, jobsSpilled, fromDate, toDate });

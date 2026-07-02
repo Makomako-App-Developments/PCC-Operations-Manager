@@ -207,12 +207,22 @@ app.get("/api/uploads/*splat", requireAuth, async (req: Request, res: Response) 
 app.use("/api", router);
 
 // ── Sentry error handler (must be last) ──────────────────────────────────────
+const MAX_CLIENT_ERROR_MESSAGE_LENGTH = 300;
+
 app.use((err: unknown, req: Request, res: Response, _next: NextFunction) => {
   if (process.env["SENTRY_DSN"]) {
     Sentry.captureException(err);
   }
-  const message = err instanceof Error ? err.message : "Internal server error";
   console.error("[error]", err);
+
+  // Some DB drivers embed the full failed query (including all bind params)
+  // in Error.message. Never echo that raw text to the client — truncate
+  // defensively so a bulk-write failure can't dump thousands of tokens to
+  // the UI (as happened with a full-year schedule generation).
+  let message = err instanceof Error ? err.message : "Internal server error";
+  if (message.length > MAX_CLIENT_ERROR_MESSAGE_LENGTH) {
+    message = `${message.slice(0, MAX_CLIENT_ERROR_MESSAGE_LENGTH)}… (truncated)`;
+  }
   res.status(500).json({ error: message });
 });
 

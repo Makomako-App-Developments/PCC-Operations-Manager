@@ -1217,7 +1217,9 @@ export default function Schedule() {
         queryClient.invalidateQueries({ queryKey: ["/api/schedule/range"] });
       },
       onError: (err: any) => {
-        toast({ title: "Generation failed", description: err?.message || "Unknown error", variant: "destructive" });
+        const raw = err?.message || "Unknown error";
+        const description = raw.length > 300 ? `${raw.slice(0, 300)}…` : raw;
+        toast({ title: "Generation failed", description, variant: "destructive" });
       },
     },
   });
