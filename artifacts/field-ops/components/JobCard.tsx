@@ -123,6 +123,31 @@ export function JobCard({
   };
 
   const isUnscheduled = jobType === "unscheduled";
+  const isCompleted = status === "completed";
+  const isSkipped = status === "skipped";
+
+  const cardBg = isCompleted
+    ? "#f0fdf4"
+    : isSkipped
+    ? "#fef2f2"
+    : isUnscheduled
+    ? "#fff7ed"
+    : colors.card;
+  const cardBorder = isCompleted
+    ? "#16a34a40"
+    : isSkipped
+    ? "#dc262640"
+    : isUnscheduled
+    ? "#f9731640"
+    : colors.border;
+  const cardLeftBorder = isCompleted
+    ? "#16a34a"
+    : isSkipped
+    ? "#dc2626"
+    : isUnscheduled
+    ? "#f97316"
+    : colors.border;
+  const cardLeftBorderWidth = isCompleted || isSkipped || isUnscheduled ? 4 : 1;
 
   return (
     <TouchableOpacity
@@ -133,10 +158,10 @@ export function JobCard({
       style={[
         styles.card,
         {
-          backgroundColor: isUnscheduled ? "#fff7ed" : colors.card,
-          borderColor: isUnscheduled ? "#f9731640" : colors.border,
-          borderLeftColor: isUnscheduled ? "#f97316" : colors.border,
-          borderLeftWidth: isUnscheduled ? 4 : 1,
+          backgroundColor: cardBg,
+          borderColor: cardBorder,
+          borderLeftColor: cardLeftBorder,
+          borderLeftWidth: cardLeftBorderWidth,
           borderRadius: colors.radius,
         },
       ]}
