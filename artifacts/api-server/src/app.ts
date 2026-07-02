@@ -163,11 +163,7 @@ app.get("/api/uploads/*splat", requireAuth, async (req: Request, res: Response) 
         if (!isPrivileged) {
           res.status(403).json({ error: "Forbidden" }); return;
         }
-        // managers may only access audits they conducted
-        if (callerRole === "manager" && audit.auditorId !== callerId) {
-          res.status(403).json({ error: "Forbidden" }); return;
-        }
-        // Access granted — fall through to serve the file
+        // administrator / manager / supervisor: access granted — fall through to serve the file
       } else {
         // File not registered in any known table — deny
         res.status(404).json({ error: "Photo not found" }); return;
