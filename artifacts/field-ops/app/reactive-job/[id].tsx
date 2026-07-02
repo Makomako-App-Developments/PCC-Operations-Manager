@@ -23,6 +23,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useColors } from "@/hooks/useColors";
 import { getApiUrl } from "@/lib/api";
 import { useOfflinePhotoQueue } from "@/hooks/useOfflinePhotoQueue";
+import { PinMap } from "@/components/PinMap";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -31,6 +32,8 @@ interface ReactiveJob {
   issueType: string;
   description: string | null;
   location: string | null;
+  locationLat: number | null;
+  locationLng: number | null;
   assetId: string | null;
   status: string;
   priority: string;
@@ -436,18 +439,41 @@ export default function ReactiveJobDetailScreen() {
           </View>
         ) : null}
 
+        {/* Location section */}
+        <View style={[styles.section, { backgroundColor: colors.card, borderColor: colors.border, borderRadius: colors.radius, overflow: "hidden" }]}>
+          <View style={[styles.sectionHeader, { paddingBottom: 6 }]}>
+            <Feather name="map-pin" size={16} color={colors.primary} />
+            <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Site / Location</Text>
+          </View>
+          <Text style={[styles.bodyText, { color: colors.foreground, marginBottom: job.locationLat != null ? 12 : 0 }]}>
+            {job.location ?? "—"}
+          </Text>
+          {job.locationLat != null && job.locationLng != null && (
+            <>
+              <View style={{ borderRadius: colors.radius, overflow: "hidden", marginHorizontal: -16, height: 220 }}>
+                <PinMap lat={job.locationLat} lng={job.locationLng} height={220} />
+              </View>
+              <TouchableOpacity
+                style={[styles.navigateBtn, { backgroundColor: colors.primary, borderRadius: colors.radius, marginTop: 12 }]}
+                onPress={() => {
+                  const url = Platform.select({
+                    ios: `maps://maps.apple.com/?q=${job.locationLat},${job.locationLng}&ll=${job.locationLat},${job.locationLng}&z=17`,
+                    android: `geo:${job.locationLat},${job.locationLng}?z=17`,
+                    default: `https://maps.google.com/?q=${job.locationLat},${job.locationLng}`,
+                  });
+                  Linking.openURL(url!);
+                }}
+                activeOpacity={0.85}
+              >
+                <Feather name="navigation" size={15} color="#fff" />
+                <Text style={styles.navigateBtnText}>Navigate Here</Text>
+              </TouchableOpacity>
+            </>
+          )}
+        </View>
+
         {/* Details grid */}
         <View style={styles.infoGrid}>
-          {/* Location */}
-          <View style={[styles.infoTile, styles.infoTileWide, { backgroundColor: colors.card, borderColor: colors.border, borderRadius: colors.radius }]}>
-            <View style={styles.infoTileHeader}>
-              <Feather name="map-pin" size={13} color={colors.primary} />
-              <Text style={[styles.infoTileLabel, { color: colors.mutedForeground }]}>Site / Location</Text>
-            </View>
-            <Text style={[styles.infoTileValue, { color: colors.foreground }]}>
-              {job.location ?? "—"}
-            </Text>
-          </View>
 
           {/* Scheduled date */}
           <View style={[styles.infoTile, { backgroundColor: colors.card, borderColor: colors.border, borderRadius: colors.radius }]}>
@@ -700,4 +726,15 @@ const styles = StyleSheet.create({
     paddingVertical: 13,
   },
   confirmBtnText: { fontFamily: "Inter_700Bold", fontSize: 15, color: "#fff" },
+
+  navigateBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    paddingVertical: 12,
+    marginHorizontal: 14,
+    marginBottom: 14,
+  },
+  navigateBtnText: { fontFamily: "Inter_700Bold", fontSize: 14, color: "#fff" },
 });
