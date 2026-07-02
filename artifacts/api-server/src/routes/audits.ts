@@ -3,7 +3,7 @@ import multer from "multer";
 import path from "path";
 import { randomUUID } from "crypto";
 import { db, auditsTable, auditItemsTable, auditPhotosTable, teamsTable, assetsTable, usersTable } from "@workspace/db";
-import { eq, and, desc, sql } from "drizzle-orm";
+import { eq, and, desc, sql, or } from "drizzle-orm";
 import { requireAuth, requireRole } from "../middlewares/auth";
 import { auditLog } from "../lib/audit";
 import { objectStorageClient } from "../lib/objectStorage";
@@ -17,7 +17,9 @@ async function assertAuditTeamAccess(auditId: string, role: string, callerTeamId
   const [audit] = await db.select({ id: auditsTable.id, teamId: auditsTable.teamId, auditorId: auditsTable.auditorId }).from(auditsTable).where(eq(auditsTable.id, auditId)).limit(1);
   if (!audit) return { error: "Audit not found", status: 404 };
   if (role === "manager") {
-    if (audit.auditorId !== callerId) return { error: "Forbidden", status: 403 };
+    const isOwnAudit   = audit.auditorId === callerId;
+    const isTeamAudit  = callerTeamId != null && audit.teamId === callerTeamId;
+    if (!isOwnAudit && !isTeamAudit) return { error: "Forbidden", status: 403 };
   } else if (!isPrivilegedRole(role)) {
     // worker / team_leader have no audit access
     return { error: "Forbidden", status: 403 };
@@ -148,8 +150,10 @@ router.get("/audits", requireAuth, async (req, res) => {
 
   const role = req.auth!.role;
   if (role === "manager") {
-    // Managers see only audits they created
-    conditions.push(eq(auditsTable.auditorId, req.auth!.userId));
+    // Managers see audits they created OR audits belonging to their team
+    const clauses = [eq(auditsTable.auditorId, req.auth!.userId)];
+    if (req.auth!.teamId) clauses.push(eq(auditsTable.teamId, req.auth!.teamId));
+    conditions.push(or(...clauses)!);
   } else if (!isPrivilegedRole(role)) {
     // worker / team_leader have no audit access
     res.status(403).json({ error: "Forbidden" }); return;
