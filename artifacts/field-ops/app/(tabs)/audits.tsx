@@ -335,6 +335,8 @@ interface LocalPhoto {
   fileName?: string;
 }
 
+const MAX_PHOTOS_PER_ITEM = 5;
+
 // ─── Status pill ──────────────────────────────────────────────────────────────
 
 function AuditStatusBadge({ status, score }: { status: string; score?: number | string | null }) {
@@ -365,16 +367,18 @@ function KpiRow({
   id,
   label,
   response,
-  photo,
+  photos,
   onChange,
   onPhotoAdd,
+  onPhotoRemove,
 }: {
   id: string;
   label: string;
   response: KpiResponse;
-  photo: LocalPhoto | null;
+  photos: LocalPhoto[];
   onChange: (r: Partial<KpiResponse>) => void;
   onPhotoAdd: () => void;
+  onPhotoRemove: (index: number) => void;
 }) {
   const colors = useColors();
 
@@ -431,15 +435,28 @@ function KpiRow({
             multiline
             textAlignVertical="top"
           />
-          {photo ? (
-            <View style={styles.photoThumbRow}>
-              <Image source={{ uri: photo.uri }} style={styles.photoThumb} />
-              <Text style={[styles.photoThumbLabel, { color: colors.success }]}>Photo added</Text>
+          {photos.length > 0 && (
+            <View style={styles.photoThumbGrid}>
+              {photos.map((p, i) => (
+                <View key={`${p.uri}-${i}`} style={styles.photoThumbWrap}>
+                  <Image source={{ uri: p.uri }} style={styles.photoThumb} />
+                  <TouchableOpacity
+                    style={[styles.photoRemoveBtn, { backgroundColor: colors.destructive }]}
+                    onPress={() => onPhotoRemove(i)}
+                    hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                  >
+                    <Feather name="x" size={10} color="#fff" />
+                  </TouchableOpacity>
+                </View>
+              ))}
             </View>
-          ) : (
+          )}
+          {photos.length < MAX_PHOTOS_PER_ITEM && (
             <TouchableOpacity style={[styles.addPhotoBtn, { borderColor: colors.border, borderRadius: colors.radius / 2 }]} onPress={onPhotoAdd}>
               <Feather name="camera" size={14} color={colors.primary} />
-              <Text style={[styles.addPhotoBtnText, { color: colors.primary }]}>Add Photo</Text>
+              <Text style={[styles.addPhotoBtnText, { color: colors.primary }]}>
+                Add Photo ({photos.length}/{MAX_PHOTOS_PER_ITEM})
+              </Text>
             </TouchableOpacity>
           )}
         </View>
@@ -462,7 +479,7 @@ export default function AuditsScreen() {
   const [selectedAsset, setSelectedAsset] = useState<{ id: string; name: string } | null>(null);
   const [auditId, setAuditId] = useState<string | null>(null);
   const [responses, setResponses] = useState<Record<string, KpiResponse>>({});
-  const [photos, setPhotos] = useState<Record<string, LocalPhoto>>({});
+  const [photos, setPhotos] = useState<Record<string, LocalPhoto[]>>({});
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [doneScore, setDoneScore] = useState<number | null>(null);
@@ -638,6 +655,7 @@ ${userMarker}
   }, [startAssetId, startAssetName, token]);
 
   const handlePhotoAdd = async (criterion: string) => {
+    if ((photos[criterion]?.length ?? 0) >= MAX_PHOTOS_PER_ITEM) return;
     if (!(await requestMediaLibraryPermission())) return;
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: "images",
@@ -646,11 +664,25 @@ ${userMarker}
     });
     if (!result.canceled && result.assets[0]) {
       const asset = result.assets[0];
-      setPhotos((prev) => ({
-        ...prev,
-        [criterion]: { uri: asset.uri, mimeType: asset.mimeType ?? "image/jpeg", fileName: asset.fileName ?? `audit-${criterion}.jpg` },
-      }));
+      setPhotos((prev) => {
+        const existing = prev[criterion] ?? [];
+        if (existing.length >= MAX_PHOTOS_PER_ITEM) return prev;
+        return {
+          ...prev,
+          [criterion]: [
+            ...existing,
+            { uri: asset.uri, mimeType: asset.mimeType ?? "image/jpeg", fileName: asset.fileName ?? `audit-${criterion}-${existing.length}.jpg` },
+          ],
+        };
+      });
     }
+  };
+
+  const handlePhotoRemove = (criterion: string, index: number) => {
+    setPhotos((prev) => ({
+      ...prev,
+      [criterion]: (prev[criterion] ?? []).filter((_, i) => i !== index),
+    }));
   };
 
   const handleSubmit = async () => {
@@ -667,7 +699,7 @@ ${userMarker}
     KPI_SECTIONS.forEach((s) => s.items.forEach((i) => { kpiLabelMap[i.id] = i.label; }));
 
     const failsWithoutPhoto = Object.entries(responses)
-      .filter(([criterion, r]) => r.result === "fail" && !photos[criterion])
+      .filter(([criterion, r]) => r.result === "fail" && !(photos[criterion]?.length))
       .map(([criterion]) => kpiLabelMap[criterion] ?? criterion);
 
     if (failsWithoutPhoto.length > 0) {
@@ -695,27 +727,29 @@ ${userMarker}
       if (!putRes.ok) throw new Error("Failed to submit responses");
       const detail = await putRes.json();
 
-      // Upload photos for any fail items that have a local photo
+      // Upload photos (up to MAX_PHOTOS_PER_ITEM) for any fail items that have local photos
       const photoEntries = Object.entries(photos);
-      for (const [criterion, photo] of photoEntries) {
+      for (const [criterion, criterionPhotos] of photoEntries) {
         const item = detail.items?.find((i: any) => i.criterion === criterion);
         if (!item) continue;
-        const formData = new FormData();
-        if (Platform.OS === "web") {
-          const blob = await (await fetch(photo.uri)).blob();
-          formData.append("photo", blob, photo.fileName ?? "photo.jpg");
-        } else {
-          formData.append("photo", {
-            uri: photo.uri,
-            type: photo.mimeType ?? "image/jpeg",
-            name: photo.fileName ?? "photo.jpg",
-          } as any);
+        for (const photo of criterionPhotos) {
+          const formData = new FormData();
+          if (Platform.OS === "web") {
+            const blob = await (await fetch(photo.uri)).blob();
+            formData.append("photo", blob, photo.fileName ?? "photo.jpg");
+          } else {
+            formData.append("photo", {
+              uri: photo.uri,
+              type: photo.mimeType ?? "image/jpeg",
+              name: photo.fileName ?? "photo.jpg",
+            } as any);
+          }
+          await fetch(getApiUrl(`/api/audits/${auditId}/items/${item.id}/photos`), {
+            method: "POST",
+            headers: { Authorization: `Bearer ${token}` },
+            body: formData,
+          });
         }
-        await fetch(getApiUrl(`/api/audits/${auditId}/items/${item.id}/photos`), {
-          method: "POST",
-          headers: { Authorization: `Bearer ${token}` },
-          body: formData,
-        });
       }
 
       setDoneScore(detail.overallScore != null ? Number(detail.overallScore) : null);
@@ -982,12 +1016,13 @@ ${userMarker}
                     id={item.id}
                     label={item.label}
                     response={responses[item.id] ?? { result: "", notes: "" }}
-                    photo={photos[item.id] ?? null}
+                    photos={photos[item.id] ?? []}
                     onChange={(r) => setResponses((prev) => ({
                       ...prev,
                       [item.id]: { ...prev[item.id], ...r },
                     }))}
                     onPhotoAdd={() => handlePhotoAdd(item.id)}
+                    onPhotoRemove={(index) => handlePhotoRemove(item.id, index)}
                   />
                 ))}
               </View>
@@ -1191,9 +1226,13 @@ const styles = StyleSheet.create({
     paddingVertical: 7,
   },
   addPhotoBtnText: { fontFamily: "Inter_500Medium", fontSize: 13 },
-  photoThumbRow: { flexDirection: "row", alignItems: "center", gap: 10 },
+  photoThumbGrid: { flexDirection: "row", flexWrap: "wrap", gap: 10, marginBottom: 8 },
+  photoThumbWrap: { position: "relative" },
   photoThumb: { width: 52, height: 52, borderRadius: 6 },
-  photoThumbLabel: { fontFamily: "Inter_500Medium", fontSize: 12 },
+  photoRemoveBtn: {
+    position: "absolute", top: -6, right: -6, width: 18, height: 18, borderRadius: 9,
+    alignItems: "center", justifyContent: "center",
+  },
 
   // Action bar
   actionBar: {
