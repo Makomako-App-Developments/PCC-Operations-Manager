@@ -141,6 +141,20 @@ export async function runStartupPatches() {
   await seedPlantPalette();
   await patchServiceTimes();
   await patchServiceTimes2();
+  await patchReactiveJobCoords();
+}
+
+async function patchReactiveJobCoords() {
+  try {
+    await db.execute(sql`
+      ALTER TABLE reactive_jobs
+        ADD COLUMN IF NOT EXISTS location_lat double precision,
+        ADD COLUMN IF NOT EXISTS location_lng double precision
+    `);
+    console.log("[startup-patch] reactive_jobs coordinate columns ensured.");
+  } catch (err) {
+    console.error("[startup-patch] reactive_jobs coordinate patch failed (non-fatal):", err);
+  }
 }
 
 const PLANT_PALETTE = [

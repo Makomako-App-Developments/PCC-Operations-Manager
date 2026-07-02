@@ -1035,7 +1035,7 @@ router.patch("/reactive-jobs/:id", requireAuth, async (req, res) => {
   const body = req.body as Record<string, unknown>;
   const patch: Record<string, unknown> = {};
   const workerFields = ["status", "notes", "actualTimeMins", "scheduledDate"];
-  const managerFields = ["assignedTeamId", "assignedUserId", "priority", "description", "raisedById", "issueType", "estimatedTimeMins"];
+  const managerFields = ["assignedTeamId", "assignedUserId", "priority", "description", "raisedById", "issueType", "estimatedTimeMins", "location", "locationLat", "locationLng"];
   const allowedFields = isPrivilegedRole(req.auth!.role)
     ? [...workerFields, ...managerFields]
     : workerFields;

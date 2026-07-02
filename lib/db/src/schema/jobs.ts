@@ -1,5 +1,5 @@
 import {
-  pgTable, uuid, timestamp, integer, text, date, index, boolean
+  pgTable, uuid, timestamp, integer, text, date, index, boolean, doublePrecision,
 } from "drizzle-orm/pg-core";
 import { createInsertSchema, createSelectSchema } from "drizzle-zod";
 import { z } from "zod/v4";
@@ -80,6 +80,8 @@ export const reactiveJobsTable = pgTable("reactive_jobs", {
   assignedTeamId:    uuid("assigned_team_id").references(() => teamsTable.id),
   assignedUserId:    uuid("assigned_user_id").references(() => usersTable.id),
   location:          text("location"),
+  locationLat:       doublePrecision("location_lat"),
+  locationLng:       doublePrecision("location_lng"),
   issueType:         text("issue_type").notNull(),
   description:       text("description").notNull(),
   scheduledDate:     date("scheduled_date"),

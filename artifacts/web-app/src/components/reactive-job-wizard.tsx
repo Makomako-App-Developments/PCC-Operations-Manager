@@ -1,5 +1,15 @@
 import { useState, useMemo, useEffect } from "react";
 import { format } from "date-fns";
+import { MapContainer, TileLayer, Marker, useMapEvents } from "react-leaflet";
+import L from "leaflet";
+import "leaflet/dist/leaflet.css";
+
+delete (L.Icon.Default.prototype as any)._getIconUrl;
+L.Icon.Default.mergeOptions({
+  iconRetinaUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png",
+  iconUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png",
+  shadowUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
+});
 import {
   useCreateReactiveJob,
   useGetScheduleWeek, getGetScheduleWeekQueryKey,
@@ -225,6 +235,71 @@ export interface WizardProps {
   onPublished: () => void;
 }
 
+function MapClickHandler({ onPin }: { onPin: (lat: number, lng: number) => void }) {
+  useMapEvents({ click: (e) => onPin(e.latlng.lat, e.latlng.lng) });
+  return null;
+}
+
+interface PinMapModalProps {
+  initial?: { lat: number; lng: number } | null;
+  onConfirm: (lat: number, lng: number) => void;
+  onClose: () => void;
+}
+function PinMapModal({ initial, onConfirm, onClose }: PinMapModalProps) {
+  const [pin, setPin] = useState<{ lat: number; lng: number } | null>(initial ?? null);
+  const center: [number, number] = initial ? [initial.lat, initial.lng] : [-41.09, 174.87];
+  return (
+    <div className="fixed inset-0 z-[200] bg-black/50 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between px-5 py-4 border-b">
+          <p className="font-semibold text-gray-900 flex items-center gap-2">
+            <MapPin className="w-4 h-4" style={{ color: BRAND }} />
+            Drop Pin on Map
+          </p>
+          <button className="text-gray-400 hover:text-gray-600 transition-colors p-1" onClick={onClose}>
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+        <p className="text-xs text-gray-500 px-5 py-2">Click anywhere on the map to place the pin.</p>
+        <div style={{ height: 280 }}>
+          <MapContainer center={center} zoom={15} style={{ height: "100%", width: "100%" }} zoomControl>
+            <TileLayer
+              url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
+              attribution="Esri"
+              maxZoom={19}
+            />
+            <MapClickHandler onPin={(lat, lng) => setPin({ lat, lng })} />
+            {pin && <Marker position={[pin.lat, pin.lng]} />}
+          </MapContainer>
+        </div>
+        <div className="px-5 py-4 flex items-center justify-between border-t">
+          {pin ? (
+            <p className="text-xs text-gray-500 font-mono">{pin.lat.toFixed(5)}, {pin.lng.toFixed(5)}</p>
+          ) : (
+            <p className="text-xs text-gray-400">No pin dropped yet</p>
+          )}
+          <div className="flex gap-2">
+            <button
+              className="px-3 py-1.5 rounded-lg text-sm border border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors"
+              onClick={onClose}
+            >
+              Cancel
+            </button>
+            <button
+              disabled={!pin}
+              className="px-3 py-1.5 rounded-lg text-sm text-white font-semibold transition-colors disabled:opacity-40"
+              style={{ background: pin ? BRAND : "#9ca3af" }}
+              onClick={() => { if (pin) { onConfirm(pin.lat, pin.lng); onClose(); } }}
+            >
+              Confirm Pin
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function WizardSectionCard({ num, title, children }: { num: number; title: string; children: React.ReactNode }) {
   return (
     <div className="rounded-2xl border border-gray-100 bg-white shadow-sm overflow-hidden">
@@ -260,6 +335,9 @@ export function ReactiveJobWizard({ teamsData, assetsData, onClose, onPublished 
   const [reactiveMin, setReactiveMin] = useState(90);
   const [priority, setPriority] = useState<string>("urgent");
   const [notes, setNotes] = useState("");
+
+  const [pinnedCoords, setPinnedCoords] = useState<{ lat: number; lng: number } | null>(null);
+  const [pinMapOpen, setPinMapOpen] = useState(false);
 
   const [attachments, setAttachments] = useState<File[]>([]);
   const [actions, setActions] = useState<Record<string, JobAction>>({});
@@ -459,6 +537,7 @@ export function ReactiveJobWizard({ teamsData, assetsData, onClose, onPublished 
         scheduledDate: selectedDate,
         estimatedTimeMins: serviceMin,
         location: location || undefined,
+        ...(pinnedCoords ? { locationLat: pinnedCoords.lat, locationLng: pinnedCoords.lng } : {}),
         status: selectedTeamId ? "assigned" : "raised",
       };
       if (locationType === "asset" && selectedAssetId) {
@@ -736,20 +815,50 @@ export function ReactiveJobWizard({ teamsData, assetsData, onClose, onPublished 
                     )}
                   </div>
                 ) : (
-                  <div>
-                    <label className="text-xs text-gray-500 font-medium block mb-1.5">
-                      Location / Description *
-                    </label>
-                    <input
-                      value={freeTextLocation}
-                      onChange={e => setFreeTextLocation(e.target.value)}
-                      placeholder="e.g. Parumoana St Roundabout, outside 42 Kenepuru Dr…"
-                      className="w-full px-3 py-2 text-sm border border-gray-200 rounded-xl outline-none focus:border-[#00AECD]"
-                    />
-                    <p className="text-[10px] text-gray-400 mt-1.5">
-                      Any publicly managed land — road berms, reserves, footpaths, parks not in the
-                      asset register.
-                    </p>
+                  <div className="space-y-3">
+                    <div>
+                      <label className="text-xs text-gray-500 font-medium block mb-1.5">
+                        Location / Description *
+                      </label>
+                      <input
+                        value={freeTextLocation}
+                        onChange={e => setFreeTextLocation(e.target.value)}
+                        placeholder="e.g. Parumoana St Roundabout, outside 42 Kenepuru Dr…"
+                        className="w-full px-3 py-2 text-sm border border-gray-200 rounded-xl outline-none focus:border-[#00AECD]"
+                      />
+                      <p className="text-[10px] text-gray-400 mt-1.5">
+                        Any publicly managed land — road berms, reserves, footpaths, parks not in the
+                        asset register.
+                      </p>
+                    </div>
+
+                    <div className="flex items-center gap-3">
+                      <button
+                        type="button"
+                        onClick={() => setPinMapOpen(true)}
+                        className="flex items-center gap-2 px-3 py-2 rounded-xl border-2 text-sm font-semibold transition-all"
+                        style={pinnedCoords
+                          ? { borderColor: BRAND, color: BRAND, background: `${BRAND}12` }
+                          : { borderColor: "#e5e7eb", color: "#6b7280", background: "white" }}
+                      >
+                        <MapPin className="w-3.5 h-3.5" />
+                        {pinnedCoords ? "Reposition Pin" : "Drop Pin on Map"}
+                      </button>
+                      {pinnedCoords && (
+                        <div className="flex items-center gap-2 flex-1 min-w-0">
+                          <span className="text-xs font-mono text-gray-500 truncate">
+                            {pinnedCoords.lat.toFixed(5)}, {pinnedCoords.lng.toFixed(5)}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => setPinnedCoords(null)}
+                            className="text-gray-400 hover:text-gray-600 transition-colors flex-shrink-0"
+                          >
+                            <X className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 )}
               </WizardSectionCard>
@@ -1577,6 +1686,14 @@ export function ReactiveJobWizard({ teamsData, assetsData, onClose, onPublished 
           )}
         </div>
       </div>
+
+      {pinMapOpen && (
+        <PinMapModal
+          initial={pinnedCoords}
+          onConfirm={(lat, lng) => setPinnedCoords({ lat, lng })}
+          onClose={() => setPinMapOpen(false)}
+        />
+      )}
     </div>
   );
 }
