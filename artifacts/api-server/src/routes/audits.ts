@@ -16,11 +16,7 @@ function isPrivilegedRole(role: string): boolean {
 async function assertAuditTeamAccess(auditId: string, role: string, callerTeamId: string | null, callerId?: string): Promise<{ audit: { id: string; teamId: string | null } } | { error: string; status: number }> {
   const [audit] = await db.select({ id: auditsTable.id, teamId: auditsTable.teamId, auditorId: auditsTable.auditorId }).from(auditsTable).where(eq(auditsTable.id, auditId)).limit(1);
   if (!audit) return { error: "Audit not found", status: 404 };
-  if (role === "manager") {
-    const isOwnAudit   = audit.auditorId === callerId;
-    const isTeamAudit  = callerTeamId != null && audit.teamId === callerTeamId;
-    if (!isOwnAudit && !isTeamAudit) return { error: "Forbidden", status: 403 };
-  } else if (!isPrivilegedRole(role)) {
+  if (!isPrivilegedRole(role)) {
     // worker / team_leader have no audit access
     return { error: "Forbidden", status: 403 };
   }
@@ -149,16 +145,11 @@ router.get("/audits", requireAuth, async (req, res) => {
   const conditions = [];
 
   const role = req.auth!.role;
-  if (role === "manager") {
-    // Managers see audits they created OR audits belonging to their team
-    const clauses = [eq(auditsTable.auditorId, req.auth!.userId)];
-    if (req.auth!.teamId) clauses.push(eq(auditsTable.teamId, req.auth!.teamId));
-    conditions.push(or(...clauses)!);
-  } else if (!isPrivilegedRole(role)) {
+  if (!isPrivilegedRole(role)) {
     // worker / team_leader have no audit access
     res.status(403).json({ error: "Forbidden" }); return;
   }
-  // administrator / supervisor: no filter — see everything
+  // administrator / manager / supervisor: no filter — see everything
 
   const rows = await db
     .select({
