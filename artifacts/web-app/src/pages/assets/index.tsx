@@ -362,7 +362,7 @@ export default function Assets() {
           <SelectTrigger className="w-[160px] h-9 text-sm bg-white">
             <SelectValue placeholder="Specification" />
           </SelectTrigger>
-          <SelectContent>
+          <SelectContent className="z-[1100]">
             <SelectItem value="all">All Specifications</SelectItem>
             <SelectItem value="amenity">Amenity</SelectItem>
             <SelectItem value="annuals">Annuals</SelectItem>
@@ -380,7 +380,7 @@ export default function Assets() {
           <SelectTrigger className="w-[140px] h-9 text-sm bg-white">
             <SelectValue placeholder="Ward" />
           </SelectTrigger>
-          <SelectContent>
+          <SelectContent className="z-[1100]">
             <SelectItem value="all">All Wards</SelectItem>
             <SelectItem value="eastern">Eastern</SelectItem>
             <SelectItem value="northern">Northern</SelectItem>
@@ -392,7 +392,7 @@ export default function Assets() {
           <SelectTrigger className="w-[160px] h-9 text-sm bg-white">
             <SelectValue placeholder="Assigned Team" />
           </SelectTrigger>
-          <SelectContent>
+          <SelectContent className="z-[1100]">
             <SelectItem value="all">All Teams</SelectItem>
             {teamsData?.map((t) => (
               <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>
