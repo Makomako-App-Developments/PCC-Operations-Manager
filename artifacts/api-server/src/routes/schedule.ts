@@ -611,7 +611,7 @@ router.get(
     const condition = and(
       gte(jobsTable.scheduledDate, weekStart),
       lte(jobsTable.scheduledDate, weekEnd),
-      ...(teamId ? [eq(jobsTable.teamId, teamId)] : []),
+      ...(teamId ? [eq(assetsTable.teamId, teamId)] : []),
     );
 
     const rows = await db
@@ -1006,7 +1006,7 @@ router.get(
         and(
           gte(jobsTable.scheduledDate, from),
           lte(jobsTable.scheduledDate, to),
-          ...(teamId ? [eq(jobsTable.teamId, teamId)] : []),
+          ...(teamId ? [eq(assetsTable.teamId, teamId)] : []),
         ),
       )
       .orderBy(
