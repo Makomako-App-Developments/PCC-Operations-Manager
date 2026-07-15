@@ -4,7 +4,7 @@ import {
   systemSettingsTable, jobTeamCompletionsTable, infillJobsTable, mulchingRecordsTable,
   reactiveJobsTable,
 } from "@workspace/db";
-import { eq, and, gte, lte, lt, inArray, sql, notInArray, or, isNull } from "drizzle-orm";
+import { eq, and, gte, lte, lt, inArray, sql, notInArray, isNull } from "drizzle-orm";
 import { z } from "zod";
 import { requireAuth, requireRole } from "../middlewares/auth";
 import { validateBody, validateQuery } from "../middlewares/validate";
@@ -611,7 +611,7 @@ router.get(
     const condition = and(
       gte(jobsTable.scheduledDate, weekStart),
       lte(jobsTable.scheduledDate, weekEnd),
-      ...(teamId ? [or(eq(jobsTable.teamId, teamId), eq(jobsTable.isAllTeams, true))] : []),
+      ...(teamId ? [eq(jobsTable.teamId, teamId)] : []),
     );
 
     const rows = await db
