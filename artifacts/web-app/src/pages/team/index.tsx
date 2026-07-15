@@ -1203,7 +1203,7 @@ export default function TeamPage() {
   const thisWeek = () => setWeekMon(getMondayOfWeek(new Date()));
 
   return (
-    <div className="flex flex-col min-h-full bg-[#f5f7f9]">
+    <div className="flex flex-col flex-1 overflow-y-auto bg-[#f5f7f9]">
       {/* Header */}
       <div className="bg-white border-b border-gray-200 px-8 py-5 flex items-center justify-between">
         <div>
