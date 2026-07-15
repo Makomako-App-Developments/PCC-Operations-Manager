@@ -1,6 +1,6 @@
 import { Router } from "express";
-import { db } from "@workspace/db";
-import { sql } from "drizzle-orm";
+import { db, teamMembersTable, teamAvailabilityTable, jobsTable } from "@workspace/db";
+import { sql, eq, and, inArray } from "drizzle-orm";
 import { requireAuth } from "../middlewares/auth.js";
 
 const router = Router();
@@ -225,6 +225,100 @@ router.post("/realloc-cbd-to-specialist", requireAuth, async (req, res) => {
     console.error("[admin/realloc-cbd-to-specialist]", err);
     res.status(500).json({ error: err.message });
   }
+});
+
+/**
+ * POST /api/admin/replan-holiday-date?date=YYYY-MM-DD
+ * For every team where ALL members are fully absent on `date`, moves all
+ * pending scheduled jobs to the next working day.
+ * Idempotent — safe to run multiple times.
+ * Requires manager/administrator role.
+ */
+router.post("/replan-holiday-date", requireAuth, async (req, res) => {
+  const role = req.auth?.role;
+  if (role !== "manager" && role !== "administrator") {
+    res.status(403).json({ error: "Manager/administrator required" });
+    return;
+  }
+
+  const date = req.query.date as string | undefined;
+  if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+    res.status(400).json({ error: "?date=YYYY-MM-DD required" });
+    return;
+  }
+
+  const ABSENT_HOURS = 5;
+
+  function shiftDays(d: string, n: number): string {
+    const dt = new Date(d + "T00:00:00Z");
+    dt.setUTCDate(dt.getUTCDate() + n);
+    return dt.toISOString().slice(0, 10);
+  }
+  function nextWorkDay(d: string): string {
+    let next = shiftDays(d, 1);
+    while ([0, 6].includes(new Date(next + "T00:00:00Z").getUTCDay())) {
+      next = shiftDays(next, 1);
+    }
+    return next;
+  }
+
+  const nextDay = nextWorkDay(date);
+
+  const allTeams = await db
+    .selectDistinct({ teamId: teamMembersTable.teamId })
+    .from(teamMembersTable);
+
+  const summary: { teamId: string; moved: number; reason: string }[] = [];
+
+  for (const { teamId } of allTeams) {
+    if (!teamId) continue;
+
+    const members = await db
+      .select({ personName: teamMembersTable.personName })
+      .from(teamMembersTable)
+      .where(eq(teamMembersTable.teamId, teamId));
+
+    const personNames = members.map(m => m.personName).filter(Boolean) as string[];
+    if (personNames.length === 0) continue;
+
+    const absRows = await db
+      .select({ personName: teamAvailabilityTable.personName })
+      .from(teamAvailabilityTable)
+      .where(
+        and(
+          eq(teamAvailabilityTable.date, date),
+          inArray(teamAvailabilityTable.personName, personNames),
+        ),
+      );
+
+    const hourCount = new Map<string, number>();
+    for (const r of absRows) {
+      hourCount.set(r.personName, (hourCount.get(r.personName) ?? 0) + 1);
+    }
+
+    const fullyAbsent = personNames.filter(n => (hourCount.get(n) ?? 0) >= ABSENT_HOURS);
+    if (fullyAbsent.length < personNames.length) {
+      summary.push({ teamId, moved: 0, reason: `only ${fullyAbsent.length}/${personNames.length} fully absent` });
+      continue;
+    }
+
+    const result = await db
+      .update(jobsTable)
+      .set({ scheduledDate: nextDay, updatedAt: new Date() })
+      .where(
+        and(
+          eq(jobsTable.teamId, teamId),
+          eq(jobsTable.scheduledDate, date),
+          eq(jobsTable.status, "pending"),
+          eq(jobsTable.jobType, "scheduled"),
+        ),
+      );
+
+    summary.push({ teamId, moved: (result as any).rowCount ?? 0, reason: "all absent — jobs moved" });
+  }
+
+  const totalMoved = summary.reduce((s, r) => s + r.moved, 0);
+  res.json({ date, nextDay, totalMoved, teams: summary });
 });
 
 export default router;

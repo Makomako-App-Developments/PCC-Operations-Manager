@@ -1291,6 +1291,12 @@ router.get(
     const { computeTotalScheduledMins: computeTotal } = await import("../lib/day-capacity");
     const totalMins = await computeTotal(teamId, date);
 
+    // Check if the entire team is absent on this date — if so, effective capacity = 0
+    const { membersByTeam: mtMap, absenceMap: abMap } = await buildAbsenceDataForTeamDate(teamId, date);
+    const teamMemberNames = mtMap.get(teamId) ?? [];
+    const absentToday = abMap.get(date) ?? new Set<string>();
+    const allAbsent = teamMemberNames.length > 0 && teamMemberNames.every(n => absentToday.has(n));
+
     // Count pending scheduled (regular maintenance) jobs on or after this date for the team.
     // This is what the push-forward endpoint would shift if triggered.
     const [pendingCountRow] = await db
@@ -1309,9 +1315,9 @@ router.get(
     res.json({
       date,
       teamId,
-      productiveTimeMins,
+      productiveTimeMins: allAbsent ? 0 : productiveTimeMins,
       totalScheduledMins: totalMins,
-      utilizationPct:     Math.round((totalMins / productiveTimeMins) * 100),
+      utilizationPct:     allAbsent ? 9999 : Math.round((totalMins / productiveTimeMins) * 100),
       jobs,
       pendingScheduledFromCount,
     });
@@ -1785,7 +1791,7 @@ router.post(
         teamId, date, membersByTeam, absenceMap, job.serviceTimeMins, standardCrewSize,
       );
 
-      if (usedMins + estimatedTimeMins <= productiveTimeMins) {
+      if (crewStatus !== "none" && usedMins + estimatedTimeMins <= productiveTimeMins) {
         // Fits on the affected date
         insertRows.push({
           assetId: job.assetId, jobType: "scheduled", teamId,
