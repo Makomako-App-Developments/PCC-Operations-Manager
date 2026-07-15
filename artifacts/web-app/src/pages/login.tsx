@@ -4,13 +4,16 @@ import { useAuth } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
 
 export default function Login() {
-  const [email, setEmail] = useState("daniela.biaggio@poriruacity.govt.nz");
-  const [password, setPassword] = useState("Porirua2024!");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [showPw, setShowPw] = useState(false);
   const [loading, setLoading] = useState(false);
   const [inactivityBanner, setInactivityBanner] = useState(false);
 
   useEffect(() => {
+    const saved = localStorage.getItem("pcc:lastEmail");
+    if (saved) setEmail(saved);
+
     if (sessionStorage.getItem("loggedOutReason") === "inactivity") {
       sessionStorage.removeItem("loggedOutReason");
       setInactivityBanner(true);
@@ -32,6 +35,7 @@ export default function Login() {
     setLoading(true);
     try {
       await login({ email, password });
+      localStorage.setItem("pcc:lastEmail", email);
     } catch (err: any) {
       toast({ 
         title: "Login failed", 
