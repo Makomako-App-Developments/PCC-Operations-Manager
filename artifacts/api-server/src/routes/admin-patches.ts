@@ -183,4 +183,48 @@ router.post("/realloc-full-team", requireAuth, async (req, res) => {
   }
 });
 
+/**
+ * POST /api/admin/realloc-cbd-to-specialist
+ * One-time patch: reassigns all assets from "CBD" to "Specialist".
+ * Idempotent — safe to call multiple times (no-ops if already done).
+ * Requires manager role.
+ */
+router.post("/realloc-cbd-to-specialist", requireAuth, async (req, res) => {
+  const role = req.auth?.role;
+  if (role !== "manager" && role !== "administrator") {
+    res.status(403).json({ error: "Manager role required" });
+    return;
+  }
+
+  const CBD_ID        = "0e5c3c4c-ea66-4e9f-9cd0-7502a35cdfeb";
+  const SPECIALIST_ID = "fb241838-9b87-4230-9e51-2ed7907f9671";
+
+  try {
+    const assetResult = await db.execute(sql`
+      UPDATE assets
+      SET team_id = ${SPECIALIST_ID}
+      WHERE team_id = ${CBD_ID}
+    `);
+    const assetsUpdated = (assetResult as any).rowCount ?? 0;
+
+    const jobResult = await db.execute(sql`
+      UPDATE jobs
+      SET team_id = ${SPECIALIST_ID}
+      WHERE team_id = ${CBD_ID}
+      AND status = 'pending'
+    `);
+    const jobsUpdated = (jobResult as any).rowCount ?? 0;
+
+    res.json({
+      ok: true,
+      assetsUpdated,
+      jobsUpdated,
+      message: `Reallocated ${assetsUpdated} assets and ${jobsUpdated} pending jobs from CBD → Specialist`,
+    });
+  } catch (err: any) {
+    console.error("[admin/realloc-cbd-to-specialist]", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 export default router;
