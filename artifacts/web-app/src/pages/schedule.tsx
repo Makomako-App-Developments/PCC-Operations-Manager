@@ -1168,6 +1168,8 @@ export default function Schedule() {
   const [printTeamId, setPrintTeamId]         = useState<string>("");
   const [printWeekStart, setPrintWeekStart]   = useState<Date>(() => startOfWeek(new Date(), { weekStartsOn: 1 }));
   const [printLoading, setPrintLoading]       = useState(false);
+  const [printFormat, setPrintFormat]         = useState<"list" | "xlsx">("list");
+  const [xlsxLoading, setXlsxLoading]         = useState(false);
 
   // ── Insert Infill / Mulch job ────────────────────────────────────────────
   const [insertOpen, setInsertOpen]         = useState(false);
@@ -1437,6 +1439,31 @@ export default function Schedule() {
       toast({ title: "Print failed", description: "Could not load schedule data.", variant: "destructive" });
     } finally {
       setPrintLoading(false);
+    }
+  };
+
+  const handleExportXlsx = async () => {
+    if (!printTeamId) return;
+    setXlsxLoading(true);
+    try {
+      const from = format(new Date(), "yyyy-MM-dd");
+      const to   = format(addWeeks(new Date(), 13), "yyyy-MM-dd");
+      const params = new URLSearchParams({ teamId: printTeamId, from, to });
+      const res = await fetch(`/api/schedule/export-xlsx?${params}`, { credentials: "include" });
+      if (!res.ok) throw new Error("Export failed");
+      const blob = await res.blob();
+      const url  = URL.createObjectURL(blob);
+      const a    = document.createElement("a");
+      const team = teamsData?.find(t => t.id === printTeamId);
+      a.href     = url;
+      a.download = `Schedule-Gantt-${(team?.name ?? "Team").replace(/\s+/g, "-")}-${from}.xlsx`;
+      a.click();
+      URL.revokeObjectURL(url);
+      setPrintDialogOpen(false);
+    } catch {
+      toast({ title: "Export failed", description: "Could not generate the spreadsheet.", variant: "destructive" });
+    } finally {
+      setXlsxLoading(false);
     }
   };
 
@@ -3005,19 +3032,47 @@ export default function Schedule() {
       )}
 
       {/* ── Print Schedule Dialog ───────────────────────────────────────────── */}
-      <Dialog open={printDialogOpen} onOpenChange={setPrintDialogOpen}>
-        <DialogContent className="sm:max-w-sm">
+      <Dialog open={printDialogOpen} onOpenChange={open => { setPrintDialogOpen(open); if (!open) setPrintFormat("list"); }}>
+        <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Printer className="w-4 h-4" />
-              Print Schedule
+              Print / Export Schedule
             </DialogTitle>
             <DialogDescription>
-              Generate a printable A4 schedule for a team's week.
+              Choose a format and team, then generate your output.
             </DialogDescription>
           </DialogHeader>
 
           <div className="space-y-4 py-1">
+            {/* Format toggle */}
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                onClick={() => setPrintFormat("list")}
+                className={`flex flex-col items-center gap-1.5 p-3 rounded-lg border-2 text-left transition-colors ${
+                  printFormat === "list"
+                    ? "border-[#00AECD] bg-[#00AECD]/5"
+                    : "border-gray-200 hover:border-gray-300 hover:bg-gray-50"
+                }`}
+              >
+                <Printer className={`w-5 h-5 ${printFormat === "list" ? "text-[#00AECD]" : "text-gray-400"}`} />
+                <span className={`text-sm font-semibold ${printFormat === "list" ? "text-[#00AECD]" : "text-gray-700"}`}>Weekly List</span>
+                <span className="text-[11px] text-gray-400 text-center">A4 PDF · one week · by day</span>
+              </button>
+              <button
+                onClick={() => setPrintFormat("xlsx")}
+                className={`flex flex-col items-center gap-1.5 p-3 rounded-lg border-2 text-left transition-colors ${
+                  printFormat === "xlsx"
+                    ? "border-[#00AECD] bg-[#00AECD]/5"
+                    : "border-gray-200 hover:border-gray-300 hover:bg-gray-50"
+                }`}
+              >
+                <svg className={`w-5 h-5 ${printFormat === "xlsx" ? "text-[#00AECD]" : "text-gray-400"}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 3v18"/></svg>
+                <span className={`text-sm font-semibold ${printFormat === "xlsx" ? "text-[#00AECD]" : "text-gray-700"}`}>Gantt Spreadsheet</span>
+                <span className="text-[11px] text-gray-400 text-center">XLSX · 3 months · all sites</span>
+              </button>
+            </div>
+
             {/* Team selector */}
             <div className="space-y-1.5">
               <Label>Team</Label>
@@ -3033,43 +3088,70 @@ export default function Schedule() {
               </Select>
             </div>
 
-            {/* Week navigator */}
-            <div className="space-y-1.5">
-              <Label>Week</Label>
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => setPrintWeekStart(d => addWeeks(d, -1))}
-                  className="p-1.5 rounded border border-gray-200 text-gray-500 hover:bg-gray-50 transition-colors"
-                >
-                  <ChevronLeft className="w-4 h-4" />
-                </button>
-                <div className="flex-1 text-center text-sm font-medium text-gray-700">
-                  {format(printWeekStart, "d MMM")} – {format(addDays(printWeekStart, 4), "d MMM yyyy")}
+            {/* Week navigator — list only */}
+            {printFormat === "list" && (
+              <div className="space-y-1.5">
+                <Label>Week</Label>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setPrintWeekStart(d => addWeeks(d, -1))}
+                    className="p-1.5 rounded border border-gray-200 text-gray-500 hover:bg-gray-50 transition-colors"
+                  >
+                    <ChevronLeft className="w-4 h-4" />
+                  </button>
+                  <div className="flex-1 text-center text-sm font-medium text-gray-700">
+                    {format(printWeekStart, "d MMM")} – {format(addDays(printWeekStart, 4), "d MMM yyyy")}
+                  </div>
+                  <button
+                    onClick={() => setPrintWeekStart(d => addWeeks(d, 1))}
+                    className="p-1.5 rounded border border-gray-200 text-gray-500 hover:bg-gray-50 transition-colors"
+                  >
+                    <ChevronRight className="w-4 h-4" />
+                  </button>
                 </div>
-                <button
-                  onClick={() => setPrintWeekStart(d => addWeeks(d, 1))}
-                  className="p-1.5 rounded border border-gray-200 text-gray-500 hover:bg-gray-50 transition-colors"
-                >
-                  <ChevronRight className="w-4 h-4" />
-                </button>
+                <p className="text-xs text-gray-400">Monday – Friday</p>
               </div>
-              <p className="text-xs text-gray-400">Monday – Friday</p>
-            </div>
+            )}
+
+            {/* XLSX info */}
+            {printFormat === "xlsx" && (
+              <div className="rounded-lg bg-gray-50 border border-gray-100 px-4 py-3 space-y-1">
+                <p className="text-xs font-semibold text-gray-600">What's included</p>
+                <ul className="text-xs text-gray-400 space-y-0.5">
+                  <li>• All active sites for the selected team</li>
+                  <li>• {format(new Date(), "d MMM yyyy")} → {format(addWeeks(new Date(), 13), "d MMM yyyy")} (13 weeks)</li>
+                  <li>• Colour-coded: teal = scheduled, green = done</li>
+                  <li>• Frozen header rows and site columns</li>
+                </ul>
+              </div>
+            )}
           </div>
 
           <DialogFooter>
             <Button variant="outline" onClick={() => setPrintDialogOpen(false)}>
               Cancel
             </Button>
-            <Button
-              style={{ background: BRAND }}
-              className="text-white hover:opacity-90 gap-2"
-              disabled={!printTeamId || printLoading}
-              onClick={handlePrintSchedule}
-            >
-              <Printer className="w-4 h-4" />
-              {printLoading ? "Loading…" : "Print"}
-            </Button>
+            {printFormat === "list" ? (
+              <Button
+                style={{ background: BRAND }}
+                className="text-white hover:opacity-90 gap-2"
+                disabled={!printTeamId || printLoading}
+                onClick={handlePrintSchedule}
+              >
+                <Printer className="w-4 h-4" />
+                {printLoading ? "Loading…" : "Print PDF"}
+              </Button>
+            ) : (
+              <Button
+                style={{ background: BRAND }}
+                className="text-white hover:opacity-90 gap-2"
+                disabled={!printTeamId || xlsxLoading}
+                onClick={handleExportXlsx}
+              >
+                <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+                {xlsxLoading ? "Generating…" : "Download XLSX"}
+              </Button>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>

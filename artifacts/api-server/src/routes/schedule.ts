@@ -2,7 +2,7 @@ import { Router } from "express";
 import {
   db, assetsTable, jobsTable, teamMembersTable, teamAvailabilityTable,
   systemSettingsTable, jobTeamCompletionsTable, infillJobsTable, mulchingRecordsTable,
-  reactiveJobsTable,
+  reactiveJobsTable, teamsTable,
 } from "@workspace/db";
 import { eq, and, gte, lte, lt, inArray, sql, notInArray, isNull } from "drizzle-orm";
 import { z } from "zod";
@@ -1842,6 +1842,273 @@ router.post(
     }
 
     res.json({ jobsOnDate, jobsSpilled });
+  },
+);
+
+// ── GET /api/schedule/export-xlsx ─────────────────────────────────────────────
+// Streams a Gantt-style Excel workbook for the next 3 months (or the supplied
+// date range). Rows = assets sorted by routeOrder; columns = working days.
+// Colour key: teal = pending, amber = in_progress, green = completed.
+router.get(
+  "/schedule/export-xlsx",
+  requireAuth,
+  requireRole("manager", "supervisor"),
+  async (req, res) => {
+    const { default: ExcelJS } = await import("exceljs");
+
+    const teamId = req.query.teamId ? String(req.query.teamId) : undefined;
+
+    // Date helpers (UTC, matching the rest of the file)
+    const todayUtc = (() => {
+      const n = new Date();
+      return `${n.getUTCFullYear()}-${String(n.getUTCMonth() + 1).padStart(2, "0")}-${String(n.getUTCDate()).padStart(2, "0")}`;
+    })();
+    const from = String(req.query.from || todayUtc);
+    const to   = String(req.query.to   || addDays(from, 91));
+
+    // Collect Mon-Fri working days
+    const workingDays: string[] = [];
+    let cur = from;
+    while (cur <= to) {
+      const dow = new Date(cur + "T00:00:00Z").getUTCDay();
+      if (dow !== 0 && dow !== 6) workingDays.push(cur);
+      cur = addDays(cur, 1);
+    }
+
+    // Query assets
+    const assets = await db.select({
+      id:              assetsTable.id,
+      name:            assetsTable.name,
+      description:     assetsTable.description,
+      gardenType:      assetsTable.gardenType,
+      frequency:       assetsTable.frequency,
+      serviceTimeMins: assetsTable.serviceTimeMins,
+      routeOrder:      assetsTable.routeOrder,
+    }).from(assetsTable)
+      .where(and(
+        sql`${assetsTable.isActive} = true`,
+        teamId ? eq(assetsTable.teamId, teamId) : sql`true`,
+      ))
+      .orderBy(assetsTable.routeOrder, assetsTable.name);
+
+    // Query jobs in range
+    const jobs = await db.select({
+      assetId:       jobsTable.assetId,
+      scheduledDate: jobsTable.scheduledDate,
+      status:        jobsTable.status,
+    }).from(jobsTable)
+      .where(and(
+        gte(jobsTable.scheduledDate, from),
+        lte(jobsTable.scheduledDate, to),
+        teamId ? eq(jobsTable.teamId, teamId) : sql`true`,
+        inArray(jobsTable.status, ["pending", "in_progress", "completed"]),
+      ));
+
+    // assetId → date → status
+    const jobMap = new Map<string, Map<string, string>>();
+    for (const j of jobs) {
+      if (!jobMap.has(j.assetId)) jobMap.set(j.assetId, new Map());
+      jobMap.get(j.assetId)!.set(j.scheduledDate, j.status);
+    }
+
+    // ── Build workbook ─────────────────────────────────────────────────────
+    const wb = new ExcelJS.Workbook();
+    wb.creator = "PCC Gardens Manager";
+    const ws = wb.addWorksheet("Schedule", {
+      views: [{ state: "frozen", xSplit: 5, ySplit: 3 }],
+    });
+
+    ws.columns = [
+      { width: 6  }, // GS#
+      { width: 32 }, // Site
+      { width: 14 }, // Garden Type
+      { width: 12 }, // Freq
+      { width: 7  }, // Mins
+      ...workingDays.map(() => ({ width: 5 })),
+    ];
+
+    const TEAL      = "FF00AECD";
+    const NAVY      = "FF0f2a36";
+    const GREEN     = "FF10b981";
+    const AMBER     = "FFf59e0b";
+    const HDR_BG    = "FFf1f5f9";
+    const NAVY_FILL = "FF0f2a36";
+    const TODAY_BG  = "FFe0f7fc";
+
+    const fmtDate = (d: string) => new Date(d + "T00:00:00Z");
+
+    // ── Row 1: Month header + title ────────────────────────────────────────
+    const r1 = ws.getRow(1);
+    r1.height = 22;
+
+    // Title in first 5 fixed columns
+    const titleCfg: [number, string][] = [[1,"GS#"],[2,"Maintenance Schedule — 3-Month Gantt"],[3,"Type"],[4,"Freq"],[5,"Mins"]];
+    for (const [col, val] of titleCfg) {
+      const c = r1.getCell(col);
+      c.value = col === 2 ? val : "";
+      c.font  = { bold: true, color: { argb: "FFFFFFFF" }, size: col === 2 ? 11 : 9 };
+      c.fill  = { type: "pattern", pattern: "solid", fgColor: { argb: NAVY_FILL } };
+      c.alignment = { vertical: "middle", horizontal: col === 2 ? "left" : "center" };
+    }
+
+    // Month groups
+    const monthGroups: { label: string; startCol: number; endCol: number }[] = [];
+    let lastMonth = "";
+    workingDays.forEach((d, i) => {
+      const ym = d.slice(0, 7);
+      if (ym !== lastMonth) {
+        monthGroups.push({ label: "", startCol: 6 + i, endCol: 6 + i });
+        lastMonth = ym;
+      }
+      monthGroups[monthGroups.length - 1].endCol = 6 + i;
+      if (!monthGroups[monthGroups.length - 1].label) {
+        const dt = fmtDate(d);
+        monthGroups[monthGroups.length - 1].label =
+          dt.toLocaleString("en-NZ", { month: "long", year: "numeric", timeZone: "UTC" });
+      }
+    });
+    for (const mg of monthGroups) {
+      if (mg.startCol === mg.endCol) {
+        const c = r1.getCell(mg.startCol);
+        c.value = mg.label;
+        c.font  = { bold: true, color: { argb: "FFFFFFFF" }, size: 10 };
+        c.fill  = { type: "pattern", pattern: "solid", fgColor: { argb: NAVY_FILL } };
+        c.alignment = { vertical: "middle", horizontal: "center" };
+      } else {
+        ws.mergeCells(1, mg.startCol, 1, mg.endCol);
+        const c = ws.getCell(1, mg.startCol);
+        c.value = mg.label;
+        c.font  = { bold: true, color: { argb: "FFFFFFFF" }, size: 10 };
+        c.fill  = { type: "pattern", pattern: "solid", fgColor: { argb: NAVY_FILL } };
+        c.alignment = { vertical: "middle", horizontal: "center" };
+      }
+    }
+
+    // ── Row 2: Week labels + column headers ────────────────────────────────
+    const r2 = ws.getRow(2);
+    r2.height = 16;
+    const hdrLabels = ["GS#", "Site", "Type", "Freq", "Mins"];
+    for (let i = 0; i < 5; i++) {
+      const c = r2.getCell(i + 1);
+      c.value = hdrLabels[i];
+      c.font  = { bold: true, size: 9, color: { argb: NAVY } };
+      c.fill  = { type: "pattern", pattern: "solid", fgColor: { argb: HDR_BG } };
+      c.alignment = { vertical: "middle", horizontal: i === 1 ? "left" : "center" };
+      c.border = { bottom: { style: "thin", color: { argb: "FFe5e7eb" } } };
+    }
+
+    // Week groups
+    const weekGroups: { label: string; startCol: number; endCol: number }[] = [];
+    workingDays.forEach((d, i) => {
+      const dow = fmtDate(d).getUTCDay();
+      if (dow === 1 || i === 0) {
+        weekGroups.push({ label: "", startCol: 6 + i, endCol: 6 + i });
+      }
+      weekGroups[weekGroups.length - 1].endCol = 6 + i;
+      if (!weekGroups[weekGroups.length - 1].label) {
+        weekGroups[weekGroups.length - 1].label =
+          `w/c ${fmtDate(d).toLocaleString("en-NZ", { day: "numeric", month: "short", timeZone: "UTC" })}`;
+      }
+    });
+    for (const wg of weekGroups) {
+      const applyWkCell = (c: ExcelJS.Cell) => {
+        c.value = wg.label;
+        c.font  = { size: 8, color: { argb: "FF6b7280" } };
+        c.fill  = { type: "pattern", pattern: "solid", fgColor: { argb: HDR_BG } };
+        c.alignment = { vertical: "middle", horizontal: "center" };
+        c.border = { bottom: { style: "thin", color: { argb: "FFe5e7eb" } } };
+      };
+      if (wg.startCol === wg.endCol) {
+        applyWkCell(r2.getCell(wg.startCol));
+      } else {
+        ws.mergeCells(2, wg.startCol, 2, wg.endCol);
+        applyWkCell(ws.getCell(2, wg.startCol));
+      }
+    }
+
+    // ── Row 3: Day labels ──────────────────────────────────────────────────
+    const r3 = ws.getRow(3);
+    r3.height = 28;
+    for (let i = 0; i < 5; i++) {
+      const c = r3.getCell(i + 1);
+      c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: HDR_BG } };
+      c.border = { bottom: { style: "medium", color: { argb: "FF00AECD" } } };
+    }
+    workingDays.forEach((d, i) => {
+      const c = r3.getCell(6 + i);
+      const dt = fmtDate(d);
+      const isToday = d === todayUtc;
+      const dayInitial = ["S","M","T","W","T","F","S"][dt.getUTCDay()];
+      c.value = `${dayInitial}\n${dt.getUTCDate()}`;
+      c.font  = { size: 8, bold: isToday, color: { argb: isToday ? "FF00AECD" : "FF374151" } };
+      c.fill  = { type: "pattern", pattern: "solid", fgColor: { argb: isToday ? TODAY_BG : HDR_BG } };
+      c.alignment = { vertical: "middle", horizontal: "center", wrapText: true };
+      c.border = { bottom: { style: "medium", color: { argb: "FF00AECD" } } };
+    });
+
+    // ── Data rows ──────────────────────────────────────────────────────────
+    assets.forEach((asset, ri) => {
+      const row   = ws.getRow(4 + ri);
+      row.height  = 15;
+      const rowBg = ri % 2 === 1 ? "FFf9fafb" : "FFFFFFFF";
+
+      const applyFixed = (col: number, val: ExcelJS.CellValue, bold = false, align: ExcelJS.Alignment["horizontal"] = "center") => {
+        const c = row.getCell(col);
+        c.value = val;
+        c.font  = { size: 9, bold, color: { argb: col === 2 ? NAVY : "FF374151" } };
+        c.fill  = { type: "pattern", pattern: "solid", fgColor: { argb: rowBg } };
+        c.alignment = { vertical: "middle", horizontal: align };
+      };
+
+      applyFixed(1, asset.routeOrder ?? "", false, "center");
+      applyFixed(2, asset.name + (asset.description ? ` — ${asset.description}` : ""), true, "left");
+      applyFixed(3, asset.gardenType.charAt(0).toUpperCase() + asset.gardenType.slice(1));
+      applyFixed(4, asset.frequency.charAt(0).toUpperCase() + asset.frequency.slice(1));
+      applyFixed(5, asset.serviceTimeMins);
+
+      const assetJobs = jobMap.get(asset.id) ?? new Map<string, string>();
+      workingDays.forEach((d, di) => {
+        const c      = row.getCell(6 + di);
+        const status = assetJobs.get(d);
+        const isToday = d === todayUtc;
+        if (status) {
+          const fg = status === "completed" ? GREEN : status === "in_progress" ? AMBER : TEAL;
+          c.value = status === "completed" ? "✓" : status === "in_progress" ? "►" : "•";
+          c.font  = { size: 9, bold: true, color: { argb: "FFFFFFFF" } };
+          c.fill  = { type: "pattern", pattern: "solid", fgColor: { argb: fg } };
+        } else {
+          c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: isToday ? TODAY_BG : rowBg } };
+        }
+        c.alignment = { vertical: "middle", horizontal: "center" };
+      });
+    });
+
+    // ── Legend row ─────────────────────────────────────────────────────────
+    const legendRow = ws.getRow(4 + assets.length + 1);
+    legendRow.height = 14;
+    const legend: [number, string, string][] = [
+      [2, "• Pending",      TEAL ],
+      [3, "► In Progress",  AMBER],
+      [4, "✓ Completed",   GREEN],
+    ];
+    for (const [col, text, argb] of legend) {
+      const c = legendRow.getCell(col);
+      c.value = text;
+      c.font  = { size: 8, bold: true, color: { argb } };
+      c.fill  = { type: "pattern", pattern: "solid", fgColor: { argb: "FFFFFFFF" } };
+    }
+
+    // ── Stream ─────────────────────────────────────────────────────────────
+    let teamName = "All-Teams";
+    if (teamId) {
+      const [t] = await db.select({ name: teamsTable.name }).from(teamsTable).where(eq(teamsTable.id, teamId)).limit(1);
+      if (t) teamName = t.name.replace(/\s+/g, "-");
+    }
+    const filename = `Schedule-Gantt-${teamName}-${from}.xlsx`;
+    res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+    res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+    await wb.xlsx.write(res);
+    res.end();
   },
 );
 
