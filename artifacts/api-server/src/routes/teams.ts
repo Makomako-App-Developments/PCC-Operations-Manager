@@ -33,14 +33,15 @@ router.get("/teams/workload", requireAuth, requireRole("manager", "supervisor"),
   const annualFteHours = ANNUAL_FTE_HOURS;
 
   // Aggregate per-team stats using SQL CASE for freq → annual visits
+  // Use the same integer visit counts as the dashboard FTE calculation
   const freqCase = sql<number>`
     CASE ${assetsTable.frequency}
-      WHEN 'weekly'      THEN 365.0 / 7
-      WHEN 'fortnightly' THEN 365.0 / 14
-      WHEN 'monthly'     THEN 365.0 / 28
-      WHEN 'bimonthly'   THEN 365.0 / 56
-      WHEN 'quarterly'   THEN 365.0 / 91
-      ELSE                    365.0 / 28
+      WHEN 'weekly'      THEN 52.0
+      WHEN 'fortnightly' THEN 26.0
+      WHEN 'monthly'     THEN 12.0
+      WHEN 'bimonthly'   THEN 6.0
+      WHEN 'quarterly'   THEN 4.0
+      ELSE                    12.0
     END
   `;
 
