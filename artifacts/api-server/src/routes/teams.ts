@@ -18,13 +18,19 @@ router.get("/teams", requireAuth, async (_req, res) => {
 // Returns per-team asset stats: site count, area m², annual service hours, FTE requirement.
 // Includes a synthetic "All Teams" row for null-teamId (full-team) assets.
 router.get("/teams/workload", requireAuth, requireRole("manager", "supervisor"), async (_req, res) => {
-  const WORKING_DAYS_PER_YEAR = 251; // NZ standard: 52 × 5 – 11 public holidays – ~8 annual leave days
+  // FTE basis: standard full-time hours (matches dashboard calculation)
+  // Service times are calibrated for a crew of standardCrewSize people working together,
+  // so total person-hours = elapsed hours × standardCrewSize.
+  const ANNUAL_FTE_HOURS = 52 * 5 * 8; // 2080 hrs/FTE/year (gross full-time basis)
 
-  // System settings for productive time
-  const [settings] = await db.select({ productiveTimeMins: systemSettingsTable.productiveTimeMins })
-    .from(systemSettingsTable).limit(1);
+  // System settings for productive time + crew size
+  const [settings] = await db.select({
+    productiveTimeMins: systemSettingsTable.productiveTimeMins,
+    standardCrewSize:   systemSettingsTable.standardCrewSize,
+  }).from(systemSettingsTable).limit(1);
   const productiveTimeMins = settings?.productiveTimeMins ?? 390;
-  const annualFteHours = (productiveTimeMins / 60) * WORKING_DAYS_PER_YEAR;
+  const standardCrewSize   = settings?.standardCrewSize   ?? 2;
+  const annualFteHours = ANNUAL_FTE_HOURS;
 
   // Aggregate per-team stats using SQL CASE for freq → annual visits
   const freqCase = sql<number>`
@@ -60,7 +66,7 @@ router.get("/teams/workload", requireAuth, requireRole("manager", "supervisor"),
       siteCount:    Number(row.siteCount),
       totalAreaM2:  Math.round(Number(row.totalAreaM2)),
       annualHours:  Math.round(annualHours),
-      ftesRequired: annualFteHours > 0 ? Math.round((annualHours / annualFteHours) * 100) / 100 : 0,
+      ftesRequired: annualFteHours > 0 ? Math.round((annualHours * standardCrewSize / annualFteHours) * 100) / 100 : 0,
     };
   });
 
@@ -73,7 +79,7 @@ router.get("/teams/workload", requireAuth, requireRole("manager", "supervisor"),
 
   res.json({
     rows: result,
-    meta: { productiveTimeMins, annualFteHours: Math.round(annualFteHours * 10) / 10, workingDaysPerYear: WORKING_DAYS_PER_YEAR },
+    meta: { productiveTimeMins, standardCrewSize, annualFteHours: Math.round(annualFteHours * 10) / 10 },
   });
 });
 

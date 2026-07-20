@@ -754,11 +754,9 @@ function WorkloadTab() {
           <h2 className="text-sm font-bold" style={{ color: NAVY }}>Team Breakdown</h2>
           <div className="text-[10px] text-gray-400 flex items-center gap-1">
             <span>Based on</span>
-            <span className="font-semibold text-gray-600">{data.meta.productiveTimeMins} mins/day</span>
-            <span>productive time ×</span>
-            <span className="font-semibold text-gray-600">{data.meta.workingDaysPerYear} working days</span>
-            <span>=</span>
             <span className="font-semibold text-gray-600">{data.meta.annualFteHours} hrs/FTE/year</span>
+            <span>× crew of</span>
+            <span className="font-semibold text-gray-600">{data.meta.standardCrewSize}</span>
           </div>
         </div>
         <div className="overflow-x-auto">
@@ -860,7 +858,7 @@ function WorkloadTab() {
         {/* Footnote */}
         <div className="px-6 py-3 border-t border-gray-100 bg-gray-50/60">
           <p className="text-[10px] text-gray-400">
-            FTE calculation: annual service hours ÷ {data.meta.annualFteHours} productive hrs/FTE/year.
+            FTE calculation: (annual service hours × crew size {data.meta.standardCrewSize}) ÷ {data.meta.annualFteHours} hrs/FTE/year.
             "All Teams" sites are shared across all field teams on scheduled days and are excluded from individual FTE totals.
           </p>
         </div>
