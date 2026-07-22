@@ -157,8 +157,8 @@ router.patch("/assets/route-order", requireAuth, requireRole("manager", "supervi
       SET route_order = v.ord,
           updated_at  = NOW()
       FROM (
-        SELECT unnest(${ids}::uuid[]) AS id,
-               unnest(${orders}::int[]) AS ord
+        SELECT unnest(${sql.raw(`ARRAY[${ids.map(id => `'${id}'`).join(",")}]::uuid[]`)}) AS id,
+               unnest(${sql.raw(`ARRAY[${orders.join(",")}]::int[]`)})                   AS ord
       ) v
       WHERE assets.id = v.id
     `);
