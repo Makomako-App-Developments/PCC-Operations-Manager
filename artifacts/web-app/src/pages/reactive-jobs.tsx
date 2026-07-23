@@ -67,6 +67,8 @@ export default function ReactiveJobs() {
   type BulkConfirm = { teamId: string; teamName: string; date: string; jobIds: string[] };
   const [bulkConfirm, setBulkConfirm] = useState<BulkConfirm | null>(null);
   const bulkConfirmTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const bulkConfirmRemainingRef = useRef<number>(8000);
+  const bulkConfirmPausedAtRef = useRef<number | null>(null);
 
   const { toast } = useToast();
   const qc = useQueryClient();
@@ -353,9 +355,48 @@ export default function ReactiveJobs() {
 
   useEffect(() => {
     if (!bulkConfirm) return;
-    if (bulkConfirmTimerRef.current) clearTimeout(bulkConfirmTimerRef.current);
-    bulkConfirmTimerRef.current = setTimeout(() => setBulkConfirm(null), 8000);
-    return () => { if (bulkConfirmTimerRef.current) clearTimeout(bulkConfirmTimerRef.current); };
+
+    const DURATION = 8000;
+    bulkConfirmRemainingRef.current = DURATION;
+    bulkConfirmPausedAtRef.current = null;
+
+    const startTimer = (ms: number) => {
+      if (bulkConfirmTimerRef.current) clearTimeout(bulkConfirmTimerRef.current);
+      const startedAt = Date.now();
+      bulkConfirmTimerRef.current = setTimeout(() => setBulkConfirm(null), ms);
+      bulkConfirmPausedAtRef.current = startedAt;
+    };
+
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "hidden") {
+        if (bulkConfirmTimerRef.current) {
+          clearTimeout(bulkConfirmTimerRef.current);
+          bulkConfirmTimerRef.current = null;
+          const elapsed = bulkConfirmPausedAtRef.current
+            ? Date.now() - bulkConfirmPausedAtRef.current
+            : 0;
+          bulkConfirmRemainingRef.current = Math.max(0, bulkConfirmRemainingRef.current - elapsed);
+          bulkConfirmPausedAtRef.current = null;
+        }
+      } else {
+        if (bulkConfirmRemainingRef.current > 0) {
+          startTimer(bulkConfirmRemainingRef.current);
+        } else {
+          setBulkConfirm(null);
+        }
+      }
+    };
+
+    // Only start if tab is currently visible
+    if (document.visibilityState === "visible") {
+      startTimer(DURATION);
+    }
+
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+      if (bulkConfirmTimerRef.current) clearTimeout(bulkConfirmTimerRef.current);
+    };
   }, [bulkConfirm]);
 
   const handleBulkStatusUpdate = async (status: "completed" | "cancelled") => {
