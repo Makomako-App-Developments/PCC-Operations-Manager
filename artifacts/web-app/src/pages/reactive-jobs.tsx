@@ -45,6 +45,7 @@ export default function ReactiveJobs() {
   const [dateFilter, setDateFilter] = useState<"all" | "this_week" | "this_month" | "custom">("all");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
+  const [jobTypeFilter, setJobTypeFilter] = useState("all");
   const [selectedJob, setSelectedJob] = useState<Record<string, unknown> | null>(null);
   const [sortCol, setSortCol] = useState<SortCol>("scheduledDate");
   const [sortDir, setSortDir] = useState<SortDir>("asc");
@@ -114,6 +115,11 @@ export default function ReactiveJobs() {
 
   const allJobs = (jobsData?.data ?? []) as unknown as Record<string, unknown>[];
 
+  const uniqueJobTypes = useMemo(() => {
+    const types = new Set(allJobs.map(j => String(j.issueType ?? "")).filter(Boolean));
+    return [...types].sort((a, b) => a.localeCompare(b));
+  }, [allJobs]);
+
   const filteredSortedJobs = useMemo(() => {
     let jobs = allJobs;
     if (overdueOnly) {
@@ -124,6 +130,7 @@ export default function ReactiveJobs() {
       );
     }
     if (statusFilter !== "all") jobs = jobs.filter(j => j.status === statusFilter);
+    if (jobTypeFilter !== "all") jobs = jobs.filter(j => String(j.issueType ?? "") === jobTypeFilter);
     if (search.trim()) {
       const q = search.trim().toLowerCase();
       jobs = jobs.filter(j =>
@@ -198,7 +205,7 @@ export default function ReactiveJobs() {
       }
       return sortDir === "asc" ? cmp : -cmp;
     });
-  }, [allJobs, statusFilter, search, sortCol, sortDir, assets, teams]);
+  }, [allJobs, statusFilter, jobTypeFilter, search, sortCol, sortDir, assets, teams]);
 
   const TODAY = new Date().toISOString().slice(0, 10);
   const needsReassignmentJobs = useMemo(
@@ -212,6 +219,7 @@ export default function ReactiveJobs() {
 
   const reactiveBaseFiltered = useMemo(() => {
     let jobs = allJobs;
+    if (jobTypeFilter !== "all") jobs = jobs.filter(j => String(j.issueType ?? "") === jobTypeFilter);
     if (search.trim()) {
       const q = search.trim().toLowerCase();
       jobs = jobs.filter(j =>
@@ -245,7 +253,7 @@ export default function ReactiveJobs() {
       });
     }
     return jobs;
-  }, [allJobs, search, teamFilter, dateFilter, dateFrom, dateTo]);
+  }, [allJobs, jobTypeFilter, search, teamFilter, dateFilter, dateFrom, dateTo]);
 
   const statusCounts = useMemo(
     () => ({
@@ -438,6 +446,17 @@ export default function ReactiveJobs() {
               <SelectItem value="this_week">This week</SelectItem>
               <SelectItem value="this_month">This month</SelectItem>
               <SelectItem value="custom">Custom</SelectItem>
+            </SelectContent>
+          </Select>
+          <Select value={jobTypeFilter} onValueChange={setJobTypeFilter}>
+            <SelectTrigger className="w-[175px] h-9 text-sm bg-white">
+              <SelectValue placeholder="All job types" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All job types</SelectItem>
+              {uniqueJobTypes.map(t => (
+                <SelectItem key={t} value={t}>{t}</SelectItem>
+              ))}
             </SelectContent>
           </Select>
           {dateFilter === "custom" && (
