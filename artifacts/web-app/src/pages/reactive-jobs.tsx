@@ -51,6 +51,12 @@ export default function ReactiveJobs() {
   const [sortDir, setSortDir] = useState<SortDir>("asc");
   const [editDrawerJob, setEditDrawerJob] = useState<Record<string, unknown> | null>(null);
 
+  // Bulk selection
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkTeam, setBulkTeam] = useState("");
+  const [bulkDate, setBulkDate] = useState("");
+  const [isBulkAssigning, setIsBulkAssigning] = useState(false);
+
   const { toast } = useToast();
   const qc = useQueryClient();
 
@@ -267,6 +273,69 @@ export default function ReactiveJobs() {
     [reactiveBaseFiltered],
   );
 
+  const toggleSelectId = (id: string) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const allVisibleSelected =
+    filteredSortedJobs.length > 0 &&
+    filteredSortedJobs.every(j => selectedIds.has(j.id as string));
+
+  const someVisibleSelected =
+    !allVisibleSelected && filteredSortedJobs.some(j => selectedIds.has(j.id as string));
+
+  const toggleSelectAll = () => {
+    if (allVisibleSelected) {
+      setSelectedIds(prev => {
+        const next = new Set(prev);
+        filteredSortedJobs.forEach(j => next.delete(j.id as string));
+        return next;
+      });
+    } else {
+      setSelectedIds(prev => {
+        const next = new Set(prev);
+        filteredSortedJobs.forEach(j => next.add(j.id as string));
+        return next;
+      });
+    }
+  };
+
+  const handleBulkAssign = async () => {
+    if (!bulkTeam || !bulkDate || selectedIds.size === 0) return;
+    setIsBulkAssigning(true);
+    const ids = [...selectedIds];
+    const results = await Promise.allSettled(
+      ids.map(id =>
+        fetch(`/api/reactive-jobs/${id}`, {
+          method: "PATCH",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ assignedTeamId: bulkTeam, scheduledDate: bulkDate, status: "assigned" }),
+        }).then(r => { if (!r.ok) throw new Error(r.statusText); })
+      ),
+    );
+    const failed = results.filter(r => r.status === "rejected").length;
+    const succeeded = ids.length - failed;
+    setIsBulkAssigning(false);
+    setSelectedIds(new Set());
+    setBulkTeam("");
+    setBulkDate("");
+    void qc.invalidateQueries({ queryKey: getListReactiveJobsQueryKey() });
+    if (failed === 0) {
+      toast({ title: `${succeeded} job${succeeded !== 1 ? "s" : ""} assigned successfully` });
+    } else {
+      toast({
+        title: `${succeeded} assigned, ${failed} failed`,
+        description: "Some jobs could not be updated — please try again.",
+        variant: "destructive",
+      });
+    }
+  };
+
   const handleSort = (col: SortCol) => {
     if (sortCol === col) setSortDir(d => d === "asc" ? "desc" : "asc");
     else { setSortCol(col); setSortDir("asc"); }
@@ -479,6 +548,48 @@ export default function ReactiveJobs() {
         </div>
       </div>
 
+      {/* Bulk action bar */}
+      {selectedIds.size > 0 && (
+        <div
+          className="mx-6 mt-4 flex items-center gap-3 px-5 py-3 rounded-xl border flex-shrink-0 flex-wrap"
+          style={{ background: `${NAVY}f2`, borderColor: `${NAVY}` }}
+        >
+          <span className="text-sm font-bold text-white whitespace-nowrap">
+            {selectedIds.size} job{selectedIds.size !== 1 ? "s" : ""} selected
+          </span>
+          <div className="flex items-center gap-2 flex-1 flex-wrap">
+            <Select value={bulkTeam} onValueChange={setBulkTeam}>
+              <SelectTrigger className="w-[160px] h-9 text-sm bg-white/10 border-white/20 text-white">
+                <SelectValue placeholder="Choose team…" />
+              </SelectTrigger>
+              <SelectContent>
+                {teams.map(t => <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>)}
+              </SelectContent>
+            </Select>
+            <input
+              type="date"
+              value={bulkDate}
+              onChange={e => setBulkDate(e.target.value)}
+              className="h-9 rounded-md border border-white/20 bg-white/10 px-3 text-sm text-white focus:outline-none focus:ring-2 focus:ring-white/40 focus:ring-offset-0 [color-scheme:dark]"
+            />
+            <button
+              onClick={handleBulkAssign}
+              disabled={!bulkTeam || !bulkDate || isBulkAssigning}
+              className="px-4 py-2 rounded-lg text-sm font-bold text-white disabled:opacity-40 transition-opacity"
+              style={{ background: BRAND }}
+            >
+              {isBulkAssigning ? "Assigning…" : `Assign ${selectedIds.size} job${selectedIds.size !== 1 ? "s" : ""}`}
+            </button>
+          </div>
+          <button
+            onClick={() => { setSelectedIds(new Set()); setBulkTeam(""); setBulkDate(""); }}
+            className="text-white/60 hover:text-white text-sm font-semibold transition-colors whitespace-nowrap"
+          >
+            Cancel
+          </button>
+        </div>
+      )}
+
       {/* Table */}
       <div className="flex-1 overflow-hidden flex flex-col min-h-0 p-6">
         {isLoading ? (
@@ -500,6 +611,17 @@ export default function ReactiveJobs() {
           <table className="w-full border-separate border-spacing-0 text-sm">
             <thead>
               <tr className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide">
+                {/* Checkbox column */}
+                <th className="sticky top-0 z-10 bg-gray-50 px-4 py-3 border-b border-gray-100 w-10">
+                  <input
+                    type="checkbox"
+                    checked={allVisibleSelected}
+                    ref={el => { if (el) el.indeterminate = someVisibleSelected; }}
+                    onChange={toggleSelectAll}
+                    className="w-4 h-4 rounded cursor-pointer accent-[#00AECD]"
+                    title="Select all visible"
+                  />
+                </th>
                 {([
                   { col: "site",          label: "Site" },
                   { col: "description",   label: "Job details" },
@@ -529,12 +651,22 @@ export default function ReactiveJobs() {
                 const site = getSiteName(job);
                 const rowBg = idx % 2 === 0 ? "bg-white" : "bg-gray-50/60";
 
+                const isSelected = selectedIds.has(job.id as string);
                 return (
                   <tr
                     key={job.id as string}
                     onClick={() => job.status === "raised" ? setEditDrawerJob(job) : setSelectedJob(job)}
-                    className={`${rowBg} cursor-pointer hover:bg-[#00AECD]/5 transition-colors`}
+                    className={`${isSelected ? "bg-[#00AECD]/8" : rowBg} cursor-pointer hover:bg-[#00AECD]/5 transition-colors`}
                   >
+                    {/* Checkbox */}
+                    <td className="px-4 py-3 border-b border-gray-100 w-10" onClick={e => { e.stopPropagation(); toggleSelectId(job.id as string); }}>
+                      <input
+                        type="checkbox"
+                        checked={isSelected}
+                        onChange={() => toggleSelectId(job.id as string)}
+                        className="w-4 h-4 rounded cursor-pointer accent-[#00AECD]"
+                      />
+                    </td>
                     {/* Site */}
                     <td className="px-4 py-3 max-w-[180px] border-b border-gray-100">
                       <div className="flex items-center gap-1.5">
