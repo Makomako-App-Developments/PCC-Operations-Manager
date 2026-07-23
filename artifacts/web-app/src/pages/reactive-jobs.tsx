@@ -17,6 +17,10 @@ import { Input } from "@/components/ui/input";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { useSearch } from "wouter";
 import { useToast } from "@/hooks/use-toast";
 import {
@@ -57,6 +61,7 @@ export default function ReactiveJobs() {
   const [bulkDate, setBulkDate] = useState("");
   const [isBulkAssigning, setIsBulkAssigning] = useState(false);
   const [isBulkActioning, setIsBulkActioning] = useState(false);
+  const [cancelConfirmOpen, setCancelConfirmOpen] = useState(false);
 
   // Bulk assign confirmation banner
   type BulkConfirm = { teamId: string; teamName: string; date: string; jobIds: string[] };
@@ -680,7 +685,7 @@ export default function ReactiveJobs() {
               {isBulkActioning ? "Updating…" : `Mark ${selectedIds.size} complete`}
             </button>
             <button
-              onClick={() => handleBulkStatusUpdate("cancelled")}
+              onClick={() => setCancelConfirmOpen(true)}
               disabled={isBulkActioning || isBulkAssigning}
               className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-bold text-white bg-red-600 hover:bg-red-700 disabled:opacity-40 transition-colors whitespace-nowrap"
             >
@@ -1123,6 +1128,28 @@ export default function ReactiveJobs() {
           }}
         />
       )}
+
+      {/* ── Bulk-cancel confirmation dialog ── */}
+      <AlertDialog open={cancelConfirmOpen} onOpenChange={setCancelConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Cancel {selectedIds.size} job{selectedIds.size !== 1 ? "s" : ""}?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will mark <strong>{selectedIds.size} job{selectedIds.size !== 1 ? "s" : ""}</strong> as cancelled.
+              This action is difficult to undo — are you sure you want to proceed?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Keep jobs</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-red-600 hover:bg-red-700 text-white"
+              onClick={() => handleBulkStatusUpdate("cancelled")}
+            >
+              Yes, cancel jobs
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
