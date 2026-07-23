@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import { format } from "date-fns";
 import {
   useListReactiveJobs, getListReactiveJobsQueryKey,
@@ -57,6 +57,11 @@ export default function ReactiveJobs() {
   const [bulkDate, setBulkDate] = useState("");
   const [isBulkAssigning, setIsBulkAssigning] = useState(false);
   const [isBulkActioning, setIsBulkActioning] = useState(false);
+
+  // Bulk assign confirmation banner
+  type BulkConfirm = { teamId: string; teamName: string; date: string; jobIds: string[] };
+  const [bulkConfirm, setBulkConfirm] = useState<BulkConfirm | null>(null);
+  const bulkConfirmTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const { toast } = useToast();
   const qc = useQueryClient();
@@ -309,6 +314,9 @@ export default function ReactiveJobs() {
     if (!bulkTeam || !bulkDate || selectedIds.size === 0) return;
     setIsBulkAssigning(true);
     const ids = [...selectedIds];
+    const teamName = teams.find(t => t.id === bulkTeam)?.name ?? bulkTeam;
+    const assignedDate = bulkDate;
+    const assignedTeamId = bulkTeam;
     const results = await Promise.allSettled(
       ids.map(id =>
         fetch(`/api/reactive-jobs/${id}`, {
@@ -327,7 +335,8 @@ export default function ReactiveJobs() {
     setBulkDate("");
     void qc.invalidateQueries({ queryKey: getListReactiveJobsQueryKey() });
     if (failed === 0) {
-      toast({ title: `${succeeded} job${succeeded !== 1 ? "s" : ""} assigned successfully` });
+      if (bulkConfirmTimerRef.current) clearTimeout(bulkConfirmTimerRef.current);
+      setBulkConfirm({ teamId: assignedTeamId, teamName, date: assignedDate, jobIds: ids });
     } else {
       toast({
         title: `${succeeded} assigned, ${failed} failed`,
@@ -336,6 +345,13 @@ export default function ReactiveJobs() {
       });
     }
   };
+
+  useEffect(() => {
+    if (!bulkConfirm) return;
+    if (bulkConfirmTimerRef.current) clearTimeout(bulkConfirmTimerRef.current);
+    bulkConfirmTimerRef.current = setTimeout(() => setBulkConfirm(null), 8000);
+    return () => { if (bulkConfirmTimerRef.current) clearTimeout(bulkConfirmTimerRef.current); };
+  }, [bulkConfirm]);
 
   const handleBulkStatusUpdate = async (status: "completed" | "cancelled") => {
     if (selectedIds.size === 0) return;
@@ -581,6 +597,45 @@ export default function ReactiveJobs() {
           )}
         </div>
       </div>
+
+      {/* Bulk assign confirmation banner */}
+      {bulkConfirm && selectedIds.size === 0 && (
+        <div
+          className="mx-6 mt-4 flex items-center gap-3 px-5 py-3 rounded-xl border flex-shrink-0 flex-wrap"
+          style={{ background: "#166534", borderColor: "#15803d" }}
+        >
+          <CheckCircle2 className="w-5 h-5 text-green-300 flex-shrink-0" />
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-bold text-white">
+              {bulkConfirm.jobIds.length} job{bulkConfirm.jobIds.length !== 1 ? "s" : ""} assigned
+            </p>
+            <p className="text-xs text-green-200 mt-0.5">
+              Team: <span className="font-semibold text-white">{bulkConfirm.teamName}</span>
+              {" · "}
+              Date: <span className="font-semibold text-white">{format(new Date(bulkConfirm.date + "T00:00:00"), "d MMM yyyy")}</span>
+            </p>
+          </div>
+          <button
+            onClick={() => {
+              if (bulkConfirmTimerRef.current) clearTimeout(bulkConfirmTimerRef.current);
+              setSelectedIds(new Set(bulkConfirm.jobIds));
+              setBulkTeam(bulkConfirm.teamId);
+              setBulkDate(bulkConfirm.date);
+              setBulkConfirm(null);
+            }}
+            className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-bold text-green-900 bg-green-200 hover:bg-green-100 transition-colors whitespace-nowrap flex-shrink-0"
+          >
+            Undo
+          </button>
+          <button
+            onClick={() => { if (bulkConfirmTimerRef.current) clearTimeout(bulkConfirmTimerRef.current); setBulkConfirm(null); }}
+            className="text-green-300 hover:text-white transition-colors flex-shrink-0"
+            aria-label="Dismiss"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
 
       {/* Bulk action bar */}
       {selectedIds.size > 0 && (
