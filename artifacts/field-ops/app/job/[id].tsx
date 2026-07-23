@@ -66,7 +66,7 @@ const UNIVERSAL_PREVIEW_TASKS = [
 
 const UNIVERSAL_CHECKLIST_TASKS = [
   "I have removed all old litter",
-  "I have removed all weeds",
+  "Weeds controlled",
   "No pest plants exist in this garden.",
   "If present mulch is: Clear of trunks/stems/crowns, evenly spread, not spilling over garden edge",
   "Plants have been pruned away from assets, pedestrians and carriageways. Shape has been maintained and flowering maximised as a result of my work.",
