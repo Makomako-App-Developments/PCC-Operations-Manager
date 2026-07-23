@@ -56,6 +56,7 @@ export default function ReactiveJobs() {
   const [bulkTeam, setBulkTeam] = useState("");
   const [bulkDate, setBulkDate] = useState("");
   const [isBulkAssigning, setIsBulkAssigning] = useState(false);
+  const [isBulkActioning, setIsBulkActioning] = useState(false);
 
   const { toast } = useToast();
   const qc = useQueryClient();
@@ -336,6 +337,39 @@ export default function ReactiveJobs() {
     }
   };
 
+  const handleBulkStatusUpdate = async (status: "completed" | "cancelled") => {
+    if (selectedIds.size === 0) return;
+    setIsBulkActioning(true);
+    const ids = [...selectedIds];
+    const results = await Promise.allSettled(
+      ids.map(id =>
+        fetch(`/api/reactive-jobs/${id}`, {
+          method: "PATCH",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ status }),
+        }).then(r => { if (!r.ok) throw new Error(r.statusText); })
+      ),
+    );
+    const failed = results.filter(r => r.status === "rejected").length;
+    const succeeded = ids.length - failed;
+    setIsBulkActioning(false);
+    setSelectedIds(new Set());
+    setBulkTeam("");
+    setBulkDate("");
+    void qc.invalidateQueries({ queryKey: getListReactiveJobsQueryKey() });
+    const label = status === "completed" ? "completed" : "cancelled";
+    if (failed === 0) {
+      toast({ title: `${succeeded} job${succeeded !== 1 ? "s" : ""} marked ${label}` });
+    } else {
+      toast({
+        title: `${succeeded} ${label}, ${failed} failed`,
+        description: "Some jobs could not be updated — please try again.",
+        variant: "destructive",
+      });
+    }
+  };
+
   const handleSort = (col: SortCol) => {
     if (sortCol === col) setSortDir(d => d === "asc" ? "desc" : "asc");
     else { setSortCol(col); setSortDir("asc"); }
@@ -574,18 +608,36 @@ export default function ReactiveJobs() {
             />
             <button
               onClick={handleBulkAssign}
-              disabled={!bulkTeam || !bulkDate || isBulkAssigning}
+              disabled={!bulkTeam || !bulkDate || isBulkAssigning || isBulkActioning}
               className="px-4 py-2 rounded-lg text-sm font-bold text-white disabled:opacity-40 transition-opacity"
               style={{ background: BRAND }}
             >
               {isBulkAssigning ? "Assigning…" : `Assign ${selectedIds.size} job${selectedIds.size !== 1 ? "s" : ""}`}
             </button>
           </div>
+          <div className="flex items-center gap-2 flex-shrink-0">
+            <button
+              onClick={() => handleBulkStatusUpdate("completed")}
+              disabled={isBulkActioning || isBulkAssigning}
+              className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-bold text-white bg-green-600 hover:bg-green-700 disabled:opacity-40 transition-colors whitespace-nowrap"
+            >
+              <CheckCircle2 className="w-4 h-4" />
+              {isBulkActioning ? "Updating…" : `Mark ${selectedIds.size} complete`}
+            </button>
+            <button
+              onClick={() => handleBulkStatusUpdate("cancelled")}
+              disabled={isBulkActioning || isBulkAssigning}
+              className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-bold text-white bg-red-600 hover:bg-red-700 disabled:opacity-40 transition-colors whitespace-nowrap"
+            >
+              <Trash2 className="w-4 h-4" />
+              {isBulkActioning ? "Updating…" : `Cancel ${selectedIds.size}`}
+            </button>
+          </div>
           <button
             onClick={() => { setSelectedIds(new Set()); setBulkTeam(""); setBulkDate(""); }}
             className="text-white/60 hover:text-white text-sm font-semibold transition-colors whitespace-nowrap"
           >
-            Cancel
+            Deselect
           </button>
         </div>
       )}
