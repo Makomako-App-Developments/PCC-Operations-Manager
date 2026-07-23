@@ -314,7 +314,7 @@ export default function ReactiveJobs() {
           method: "PATCH",
           credentials: "include",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ assignedTeamId: bulkTeam, scheduledDate: bulkDate, status: "assigned" }),
+          body: JSON.stringify({ assignedTeamId: bulkTeam, scheduledDate: bulkDate }),
         }).then(r => { if (!r.ok) throw new Error(r.statusText); })
       ),
     );
@@ -658,8 +658,8 @@ export default function ReactiveJobs() {
                     onClick={() => job.status === "raised" ? setEditDrawerJob(job) : setSelectedJob(job)}
                     className={`${isSelected ? "bg-[#00AECD]/8" : rowBg} cursor-pointer hover:bg-[#00AECD]/5 transition-colors`}
                   >
-                    {/* Checkbox */}
-                    <td className="px-4 py-3 border-b border-gray-100 w-10" onClick={e => { e.stopPropagation(); toggleSelectId(job.id as string); }}>
+                    {/* Checkbox — td stops row click; input onChange is the sole toggle */}
+                    <td className="px-4 py-3 border-b border-gray-100 w-10" onClick={e => e.stopPropagation()}>
                       <input
                         type="checkbox"
                         checked={isSelected}
