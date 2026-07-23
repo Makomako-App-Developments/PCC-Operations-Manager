@@ -517,20 +517,32 @@ function IncompleteTasksWarningModal({ tasks, onConfirm, onCancel }: IncompleteT
 
 // ─── Task Skip Reason Modal ───────────────────────────────────────────────────
 
+const CANT_SPRAY_REASON = "Conditions not suitable for spraying";
+
+interface SkipReasonItem {
+  taskIndex: number;
+  taskLabel: string;
+  reason: string;
+  createSprayJob?: boolean;
+}
+
 interface SkipReasonModalProps {
   tasks: { index: number; label: string }[];
-  onConfirm: (reasons: { taskIndex: number; taskLabel: string; reason: string }[]) => void;
+  onConfirm: (reasons: SkipReasonItem[]) => void;
   onCancel: () => void;
 }
 
 function TaskSkipReasonModal({ tasks, onConfirm, onCancel }: SkipReasonModalProps) {
   const colors = useColors();
   const [reasons, setReasons] = useState<Record<number, string>>({});
+  const [sprayJobTasks, setSprayJobTasks] = useState<Set<number>>(new Set());
   const [current, setCurrent] = useState(0);
 
   const task = tasks[current];
   const reason = reasons[task.index] ?? "";
   const isLast = current === tasks.length - 1;
+  const isWeedsTask = task.label === "Weeds controlled";
+  const spraySelected = sprayJobTasks.has(task.index);
 
   // On Android, hardware back steps to the previous task rather than closing the modal.
   // When already on the first task, it cancels (closes the modal).
@@ -542,10 +554,20 @@ function TaskSkipReasonModal({ tasks, onConfirm, onCancel }: SkipReasonModalProp
     }
   };
 
+  const handleSelectSprayOption = () => {
+    setReasons(prev => ({ ...prev, [task.index]: CANT_SPRAY_REASON }));
+    setSprayJobTasks(prev => new Set([...prev, task.index]));
+  };
+
   const handleNext = () => {
     if (!reason.trim()) return;
     if (isLast) {
-      const result = tasks.map(t => ({ taskIndex: t.index, taskLabel: t.label, reason: reasons[t.index]?.trim() ?? "" }));
+      const result = tasks.map(t => ({
+        taskIndex: t.index,
+        taskLabel: t.label,
+        reason: reasons[t.index]?.trim() ?? "",
+        createSprayJob: sprayJobTasks.has(t.index),
+      }));
       onConfirm(result);
     } else {
       setCurrent(c => c + 1);
@@ -574,13 +596,47 @@ function TaskSkipReasonModal({ tasks, onConfirm, onCancel }: SkipReasonModalProp
               <Text style={[styles.skipTaskLabel, { color: colors.foreground }]}>{task.label}</Text>
             </View>
 
+            {isWeedsTask && (
+              <TouchableOpacity
+                onPress={handleSelectSprayOption}
+                activeOpacity={0.8}
+                style={[
+                  styles.sprayOptionChip,
+                  {
+                    borderRadius: colors.radius,
+                    borderColor: spraySelected ? colors.primary : colors.border,
+                    backgroundColor: spraySelected ? colors.primary + "15" : colors.card,
+                  },
+                ]}
+              >
+                <Feather
+                  name={spraySelected ? "check-circle" : "cloud-drizzle"}
+                  size={16}
+                  color={spraySelected ? colors.primary : colors.mutedForeground}
+                />
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.sprayOptionLabel, { color: spraySelected ? colors.primary : colors.foreground }]}>
+                    {CANT_SPRAY_REASON}
+                  </Text>
+                  <Text style={[styles.sprayOptionSub, { color: colors.mutedForeground }]}>
+                    A draft spray job will be raised for this site
+                  </Text>
+                </View>
+              </TouchableOpacity>
+            )}
+
             <Text style={[styles.skipReasonLabel, { color: colors.mutedForeground }]}>
-              Why wasn't this task completed?
+              {isWeedsTask ? "Or describe the reason:" : "Why wasn't this task completed?"}
             </Text>
             <TextInput
               style={[styles.skipReasonInput, { color: colors.foreground, borderColor: reason.trim() ? colors.primary : colors.border, borderRadius: colors.radius, backgroundColor: colors.background }]}
               value={reason}
-              onChangeText={v => setReasons(prev => ({ ...prev, [task.index]: v }))}
+              onChangeText={v => {
+                setReasons(prev => ({ ...prev, [task.index]: v }));
+                if (isWeedsTask && spraySelected) {
+                  setSprayJobTasks(prev => { const s = new Set(prev); s.delete(task.index); return s; });
+                }
+              }}
               placeholder="Enter reason…"
               placeholderTextColor={colors.mutedForeground}
               multiline
@@ -1037,11 +1093,29 @@ export default function JobDetailScreen() {
   };
 
   const handleSkipReasonsConfirmed = async (
-    reasons: { taskIndex: number; taskLabel: string; reason: string }[]
+    reasons: SkipReasonItem[]
   ) => {
     setSkipTasks(null);
     for (const r of reasons) {
       await postSkipReason.mutateAsync(r).catch(() => {});
+    }
+    const needsSprayJob = reasons.some(r => r.createSprayJob);
+    if (needsSprayJob && job?.assetId) {
+      try {
+        await fetch(getApiUrl("/api/reactive-jobs"), {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            assetId: job.assetId,
+            issueType: "Can't spray",
+            priority: "medium",
+            description: `Conditions not suitable for spraying — raised automatically from job checklist on ${new Date().toLocaleDateString("en-NZ")}.`,
+          }),
+        });
+      } catch {
+        // Non-fatal — job completion still proceeds
+      }
     }
     executeComplete();
   };
@@ -1660,6 +1734,12 @@ const styles = StyleSheet.create({
   },
   skipTaskLabel: { fontFamily: "Inter_600SemiBold", fontSize: 14, flex: 1 },
   skipReasonLabel: { fontFamily: "Inter_500Medium", fontSize: 13, marginBottom: 8 },
+  sprayOptionChip: {
+    flexDirection: "row", alignItems: "center", gap: 10,
+    padding: 14, borderWidth: 1.5, marginBottom: 14,
+  },
+  sprayOptionLabel: { fontFamily: "Inter_600SemiBold", fontSize: 14, marginBottom: 2 },
+  sprayOptionSub: { fontFamily: "Inter_400Regular", fontSize: 11 },
   skipReasonInput: {
     borderWidth: 1.5, paddingHorizontal: 12, paddingVertical: 10,
     fontSize: 14, fontFamily: "Inter_400Regular", minHeight: 100,
