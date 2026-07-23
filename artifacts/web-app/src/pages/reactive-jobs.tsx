@@ -70,6 +70,11 @@ export default function ReactiveJobs() {
   const bulkConfirmRemainingRef = useRef<number>(8000);
   const bulkConfirmPausedAtRef = useRef<number | null>(null);
 
+  // Bulk status confirmation banner (complete / cancel)
+  type BulkStatusConfirm = { jobIds: string[]; status: "completed" | "cancelled"; prevStatuses: Record<string, string> };
+  const [bulkStatusConfirm, setBulkStatusConfirm] = useState<BulkStatusConfirm | null>(null);
+  const bulkStatusConfirmTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   const { toast } = useToast();
   const qc = useQueryClient();
 
@@ -399,10 +404,23 @@ export default function ReactiveJobs() {
     };
   }, [bulkConfirm]);
 
+  useEffect(() => {
+    if (!bulkStatusConfirm) return;
+    if (bulkStatusConfirmTimerRef.current) clearTimeout(bulkStatusConfirmTimerRef.current);
+    bulkStatusConfirmTimerRef.current = setTimeout(() => setBulkStatusConfirm(null), 8000);
+    return () => { if (bulkStatusConfirmTimerRef.current) clearTimeout(bulkStatusConfirmTimerRef.current); };
+  }, [bulkStatusConfirm]);
+
   const handleBulkStatusUpdate = async (status: "completed" | "cancelled") => {
     if (selectedIds.size === 0) return;
     setIsBulkActioning(true);
     const ids = [...selectedIds];
+    // Snapshot previous statuses so Undo can revert each job individually
+    const prevStatuses: Record<string, string> = {};
+    for (const id of ids) {
+      const job = allJobs.find(j => j.id === id);
+      if (job) prevStatuses[id] = job.status as string;
+    }
     const results = await Promise.allSettled(
       ids.map(id =>
         fetch(`/api/reactive-jobs/${id}`, {
@@ -420,16 +438,37 @@ export default function ReactiveJobs() {
     setBulkTeam("");
     setBulkDate("");
     void qc.invalidateQueries({ queryKey: getListReactiveJobsQueryKey() });
-    const label = status === "completed" ? "completed" : "cancelled";
     if (failed === 0) {
-      toast({ title: `${succeeded} job${succeeded !== 1 ? "s" : ""} marked ${label}` });
+      if (bulkStatusConfirmTimerRef.current) clearTimeout(bulkStatusConfirmTimerRef.current);
+      setBulkStatusConfirm({ jobIds: ids, status, prevStatuses });
     } else {
       toast({
-        title: `${succeeded} ${label}, ${failed} failed`,
+        title: `${succeeded} ${status === "completed" ? "completed" : "cancelled"}, ${failed} failed`,
         description: "Some jobs could not be updated — please try again.",
         variant: "destructive",
       });
     }
+  };
+
+  const handleUndoBulkStatus = async () => {
+    if (!bulkStatusConfirm) return;
+    if (bulkStatusConfirmTimerRef.current) clearTimeout(bulkStatusConfirmTimerRef.current);
+    const { jobIds, prevStatuses } = bulkStatusConfirm;
+    setBulkStatusConfirm(null);
+    setIsBulkActioning(true);
+    await Promise.allSettled(
+      jobIds.map(id =>
+        fetch(`/api/reactive-jobs/${id}`, {
+          method: "PATCH",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ status: prevStatuses[id] ?? "raised" }),
+        }).then(r => { if (!r.ok) throw new Error(r.statusText); })
+      ),
+    );
+    setIsBulkActioning(false);
+    setSelectedIds(new Set(jobIds));
+    void qc.invalidateQueries({ queryKey: getListReactiveJobsQueryKey() });
   };
 
   const handleSort = (col: SortCol) => {
@@ -676,6 +715,51 @@ export default function ReactiveJobs() {
           <button
             onClick={() => { if (bulkConfirmTimerRef.current) clearTimeout(bulkConfirmTimerRef.current); setBulkConfirm(null); }}
             className="text-green-300 hover:text-white transition-colors flex-shrink-0"
+            aria-label="Dismiss"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+
+      {/* Bulk status confirmation banner (complete / cancel) */}
+      {bulkStatusConfirm && selectedIds.size === 0 && (
+        <div
+          className="mx-6 mt-4 flex items-center gap-3 px-5 py-3 rounded-xl border flex-shrink-0 flex-wrap"
+          style={
+            bulkStatusConfirm.status === "completed"
+              ? { background: "#166534", borderColor: "#15803d" }
+              : { background: "#7c2d12", borderColor: "#9a3412" }
+          }
+        >
+          {bulkStatusConfirm.status === "completed"
+            ? <CheckCircle2 className="w-5 h-5 text-green-300 flex-shrink-0" />
+            : <X className="w-5 h-5 text-orange-300 flex-shrink-0" />
+          }
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-bold text-white">
+              {bulkStatusConfirm.jobIds.length} job{bulkStatusConfirm.jobIds.length !== 1 ? "s" : ""}{" "}
+              marked {bulkStatusConfirm.status === "completed" ? "complete" : "cancelled"}
+            </p>
+            <p className={`text-xs mt-0.5 ${bulkStatusConfirm.status === "completed" ? "text-green-200" : "text-orange-200"}`}>
+              Action applied to {bulkStatusConfirm.jobIds.length} job{bulkStatusConfirm.jobIds.length !== 1 ? "s" : ""}
+              {" "}— use Undo to revert
+            </p>
+          </div>
+          <button
+            onClick={handleUndoBulkStatus}
+            disabled={isBulkActioning}
+            className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-bold disabled:opacity-40 transition-colors whitespace-nowrap flex-shrink-0 ${
+              bulkStatusConfirm.status === "completed"
+                ? "text-green-900 bg-green-200 hover:bg-green-100"
+                : "text-orange-900 bg-orange-200 hover:bg-orange-100"
+            }`}
+          >
+            Undo
+          </button>
+          <button
+            onClick={() => { if (bulkStatusConfirmTimerRef.current) clearTimeout(bulkStatusConfirmTimerRef.current); setBulkStatusConfirm(null); }}
+            className={`transition-colors flex-shrink-0 ${bulkStatusConfirm.status === "completed" ? "text-green-300 hover:text-white" : "text-orange-300 hover:text-white"}`}
             aria-label="Dismiss"
           >
             <X className="w-4 h-4" />
