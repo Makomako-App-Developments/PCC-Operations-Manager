@@ -294,7 +294,17 @@ export default function ReactiveJobs() {
   const toggleSelectId = (id: string) => {
     setSelectedIds(prev => {
       const next = new Set(prev);
-      if (next.has(id)) next.delete(id); else next.add(id);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        if (prev.size === 0) {
+          if (bulkStatusConfirmTimerRef.current) clearTimeout(bulkStatusConfirmTimerRef.current);
+          setBulkStatusConfirm(null);
+          if (bulkConfirmTimerRef.current) clearTimeout(bulkConfirmTimerRef.current);
+          setBulkConfirm(null);
+        }
+        next.add(id);
+      }
       return next;
     });
   };
@@ -314,6 +324,12 @@ export default function ReactiveJobs() {
         return next;
       });
     } else {
+      if (selectedIds.size === 0) {
+        if (bulkStatusConfirmTimerRef.current) clearTimeout(bulkStatusConfirmTimerRef.current);
+        setBulkStatusConfirm(null);
+        if (bulkConfirmTimerRef.current) clearTimeout(bulkConfirmTimerRef.current);
+        setBulkConfirm(null);
+      }
       setSelectedIds(prev => {
         const next = new Set(prev);
         filteredSortedJobs.forEach(j => next.add(j.id as string));
