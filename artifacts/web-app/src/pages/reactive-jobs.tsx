@@ -427,6 +427,19 @@ export default function ReactiveJobs() {
     return () => { if (bulkStatusConfirmTimerRef.current) clearTimeout(bulkStatusConfirmTimerRef.current); };
   }, [bulkStatusConfirm]);
 
+  // Dismiss confirmation banners when any filter changes
+  useEffect(() => {
+    if (bulkStatusConfirm) {
+      if (bulkStatusConfirmTimerRef.current) clearTimeout(bulkStatusConfirmTimerRef.current);
+      setBulkStatusConfirm(null);
+    }
+    if (bulkConfirm) {
+      if (bulkConfirmTimerRef.current) clearTimeout(bulkConfirmTimerRef.current);
+      setBulkConfirm(null);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [search, teamFilter, dateFilter, dateFrom, dateTo, jobTypeFilter, overdueOnly]);
+
   const handleBulkStatusUpdate = async (status: "completed" | "cancelled") => {
     if (selectedIds.size === 0) return;
     setIsBulkActioning(true);
