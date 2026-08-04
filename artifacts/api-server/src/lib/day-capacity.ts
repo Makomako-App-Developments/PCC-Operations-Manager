@@ -1,5 +1,5 @@
 import {
-  db, jobsTable, assetsTable, infillJobsTable, mulchingRecordsTable,
+  db, executeWithCircuitBreaker, jobsTable, assetsTable, infillJobsTable, mulchingRecordsTable,
   systemSettingsTable,
 } from "@workspace/db";
 import { eq, and, gte, notInArray, inArray, sql } from "drizzle-orm";
@@ -14,30 +14,13 @@ export interface DayCapacityResult {
   teamId: string;
 }
 
-/**
- * Compute total minutes already scheduled for a team on a given date.
- * Counts ALL active job types: regular maintenance (jobsTable) + infill +
- * mulching. Excludes completed / skipped / cancelled records.
- */
-async function safeQueryMins<T extends { mins: number }>(
-  promise: Promise<T[]>,
-  label: string,
-): Promise<T[]> {
-  try {
-    return await promise;
-  } catch (err) {
-    console.error(`[day-capacity] ${label} query failed (returning 0):`, err);
-    return [];
-  }
-}
-
 export async function computeTotalScheduledMins(
   teamId: string,
   date: string,
 ): Promise<number> {
   const [regularRows, infillRows, mulchRows] = await Promise.all([
     // Regular maintenance + reactive + contingency jobs
-    safeQueryMins(
+    executeWithCircuitBreaker(() =>
       db
         .select({
           mins: sql<number>`coalesce(${jobsTable.estimatedTimeMins}, ${assetsTable.serviceTimeMins}, 0)`,
@@ -51,11 +34,10 @@ export async function computeTotalScheduledMins(
             notInArray(jobsTable.status, ["completed", "skipped"]),
           ),
         ),
-      "regular jobs",
     ),
 
     // Infill planting jobs
-    safeQueryMins(
+    executeWithCircuitBreaker(() =>
       db
         .select({ mins: sql<number>`coalesce(${infillJobsTable.estimatedMins}, 0)` })
         .from(infillJobsTable)
@@ -66,11 +48,10 @@ export async function computeTotalScheduledMins(
             notInArray(infillJobsTable.status, ["completed", "cancelled"]),
           ),
         ),
-      "infill jobs",
     ),
 
     // Mulching records
-    safeQueryMins(
+    executeWithCircuitBreaker(() =>
       db
         .select({ mins: sql<number>`coalesce(${mulchingRecordsTable.estimatedMins}, 0)` })
         .from(mulchingRecordsTable)
@@ -81,7 +62,6 @@ export async function computeTotalScheduledMins(
             notInArray(mulchingRecordsTable.status, ["completed", "not_required"]),
           ),
         ),
-      "mulching records",
     ),
   ]);
 
@@ -105,7 +85,9 @@ export async function checkDayCapacity(
   date: string,
   newJobMins: number,
 ): Promise<DayCapacityResult | null> {
-  const [settings] = await db.select().from(systemSettingsTable).limit(1);
+  const [settings] = await executeWithCircuitBreaker(() =>
+    db.select().from(systemSettingsTable).limit(1),
+  );
   const productiveTimeMins = settings?.productiveTimeMins ?? 390;
 
   const totalScheduledMins = await computeTotalScheduledMins(teamId, date);
@@ -115,17 +97,19 @@ export async function checkDayCapacity(
 
   // Count pending regular maintenance jobs on/after this date that
   // push-forward would shift.
-  const [pendingCountRow] = await db
-    .select({ count: sql<number>`count(*)::int` })
-    .from(jobsTable)
-    .where(
-      and(
-        eq(jobsTable.teamId, teamId),
-        gte(jobsTable.scheduledDate, date),
-        eq(jobsTable.status, "pending"),
-        eq(jobsTable.jobType, "scheduled"),
+  const [pendingCountRow] = await executeWithCircuitBreaker(() =>
+    db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(jobsTable)
+      .where(
+        and(
+          eq(jobsTable.teamId, teamId),
+          gte(jobsTable.scheduledDate, date),
+          eq(jobsTable.status, "pending"),
+          eq(jobsTable.jobType, "scheduled"),
+        ),
       ),
-    );
+  );
 
   return {
     date,

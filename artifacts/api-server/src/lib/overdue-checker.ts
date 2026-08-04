@@ -1,4 +1,4 @@
-import { db, jobsTable, assetsTable } from "@workspace/db";
+import { db, executeWithCircuitBreaker, jobsTable, assetsTable } from "@workspace/db";
 import { eq, and, lt, gte, inArray } from "drizzle-orm";
 import { notifyTeam, notifySupervisors } from "./push-notifications";
 
@@ -23,25 +23,27 @@ async function runOverdueCheck(): Promise<void> {
   try {
     // Only notify for jobs that became overdue yesterday — each job gets
     // exactly one notification on the first full day it passes its due date.
-    const overdueJobs = await db
-      .select({
-        id:           jobsTable.id,
-        teamId:       jobsTable.teamId,
-        isAllTeams:   jobsTable.isAllTeams,
-        assetId:      jobsTable.assetId,
-        assetName:    assetsTable.name,
-        scheduledDate: jobsTable.scheduledDate,
-      })
-      .from(jobsTable)
-      .leftJoin(assetsTable, eq(jobsTable.assetId, assetsTable.id))
-      .where(
-        and(
-          inArray(jobsTable.status, ["pending", "in_progress"]),
-          gte(jobsTable.scheduledDate, yesterdayStr),
-          lt(jobsTable.scheduledDate, today),
-        ),
-      )
-      .limit(500);
+    const overdueJobs = await executeWithCircuitBreaker(() =>
+      db
+        .select({
+          id:           jobsTable.id,
+          teamId:       jobsTable.teamId,
+          isAllTeams:   jobsTable.isAllTeams,
+          assetId:      jobsTable.assetId,
+          assetName:    assetsTable.name,
+          scheduledDate: jobsTable.scheduledDate,
+        })
+        .from(jobsTable)
+        .leftJoin(assetsTable, eq(jobsTable.assetId, assetsTable.id))
+        .where(
+          and(
+            inArray(jobsTable.status, ["pending", "in_progress"]),
+            gte(jobsTable.scheduledDate, yesterdayStr),
+            lt(jobsTable.scheduledDate, today),
+          ),
+        )
+        .limit(500),
+    );
 
     // Mark as run for today before sending so a partial failure doesn't
     // re-send the already-dispatched notifications on the next tick.
@@ -79,21 +81,23 @@ async function runSupervisorDigest(): Promise<void> {
   if (now.getUTCHours() < 7) return;
 
   try {
-    const allOverdue = await db
-      .select({
-        id:            jobsTable.id,
-        assetName:     assetsTable.name,
-        scheduledDate: jobsTable.scheduledDate,
-      })
-      .from(jobsTable)
-      .leftJoin(assetsTable, eq(jobsTable.assetId, assetsTable.id))
-      .where(
-        and(
-          inArray(jobsTable.status, ["pending", "in_progress"]),
-          lt(jobsTable.scheduledDate, today),
-        ),
-      )
-      .limit(500);
+    const allOverdue = await executeWithCircuitBreaker(() =>
+      db
+        .select({
+          id:            jobsTable.id,
+          assetName:     assetsTable.name,
+          scheduledDate: jobsTable.scheduledDate,
+        })
+        .from(jobsTable)
+        .leftJoin(assetsTable, eq(jobsTable.assetId, assetsTable.id))
+        .where(
+          and(
+            inArray(jobsTable.status, ["pending", "in_progress"]),
+            lt(jobsTable.scheduledDate, today),
+          ),
+        )
+        .limit(500),
+    );
 
     // Mark digest as sent before dispatching to avoid duplicate sends on error
     lastDigestDate = today;

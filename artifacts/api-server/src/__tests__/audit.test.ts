@@ -8,6 +8,9 @@ vi.mock("@workspace/db", () => ({
     }),
   },
   auditLogTable: {},
+  // Transparent passthrough so auditLog's executeWithCircuitBreaker wrapping
+  // doesn't interfere with the existing test assertions.
+  executeWithCircuitBreaker: vi.fn((fn: () => Promise<unknown>) => fn()),
 }));
 
 describe("auditLog()", () => {

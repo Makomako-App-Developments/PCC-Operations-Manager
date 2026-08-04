@@ -1,4 +1,4 @@
-import { db, teamMembersTable, teamAvailabilityTable, jobsTable, assetsTable, systemSettingsTable } from "@workspace/db";
+import { db, executeWithCircuitBreaker, teamMembersTable, teamAvailabilityTable, jobsTable, assetsTable, systemSettingsTable } from "@workspace/db";
 import { and, eq, inArray } from "drizzle-orm";
 
 export const FREQ_DAYS: Record<string, number> = {
@@ -18,7 +18,9 @@ export type CrewStatus = "full" | "reduced" | "none";
  * Load current system settings. Returns defaults if no row exists.
  */
 export async function loadSystemSettings(): Promise<{ productiveTimeMins: number; standardCrewSize: number }> {
-  const [row] = await db.select().from(systemSettingsTable).limit(1);
+  const [row] = await executeWithCircuitBreaker(() =>
+    db.select().from(systemSettingsTable).limit(1),
+  );
   return {
     productiveTimeMins: row?.productiveTimeMins ?? 390,
     standardCrewSize:   row?.standardCrewSize   ?? 2,
@@ -79,10 +81,12 @@ export async function buildAbsenceDataForTeamDate(
   membersByTeam: Map<string, string[]>;
   absenceMap: Map<string, Set<string>>;
 }> {
-  const members = await db
-    .select()
-    .from(teamMembersTable)
-    .where(eq(teamMembersTable.teamId, teamId));
+  const members = await executeWithCircuitBreaker(() =>
+    db
+      .select()
+      .from(teamMembersTable)
+      .where(eq(teamMembersTable.teamId, teamId)),
+  );
 
   const membersByTeam = new Map<string, string[]>();
   membersByTeam.set(teamId, members.map(m => m.personName));
@@ -90,15 +94,17 @@ export async function buildAbsenceDataForTeamDate(
   const personNames = members.map(m => m.personName);
   if (personNames.length === 0) return { membersByTeam, absenceMap: new Map() };
 
-  const availRows = await db
-    .select()
-    .from(teamAvailabilityTable)
-    .where(
-      and(
-        eq(teamAvailabilityTable.date, date),
-        inArray(teamAvailabilityTable.personName, personNames),
+  const availRows = await executeWithCircuitBreaker(() =>
+    db
+      .select()
+      .from(teamAvailabilityTable)
+      .where(
+        and(
+          eq(teamAvailabilityTable.date, date),
+          inArray(teamAvailabilityTable.personName, personNames),
+        ),
       ),
-    );
+  );
 
   const countMap = new Map<string, number>();
   for (const row of availRows) {
@@ -128,20 +134,22 @@ export async function computeDayCapacity(
 ): Promise<{ totalScheduledMins: number; productiveTimeMins: number; utilizationPct: number }> {
   const { productiveTimeMins } = await loadSystemSettings();
 
-  const pendingJobs = await db
-    .select({
-      estimatedTimeMins: jobsTable.estimatedTimeMins,
-      serviceTimeMins:   assetsTable.serviceTimeMins,
-    })
-    .from(jobsTable)
-    .innerJoin(assetsTable, eq(jobsTable.assetId, assetsTable.id))
-    .where(
-      and(
-        eq(jobsTable.teamId, teamId),
-        eq(jobsTable.scheduledDate, date),
-        inArray(jobsTable.status, ["pending", "in_progress"]),
+  const pendingJobs = await executeWithCircuitBreaker(() =>
+    db
+      .select({
+        estimatedTimeMins: jobsTable.estimatedTimeMins,
+        serviceTimeMins:   assetsTable.serviceTimeMins,
+      })
+      .from(jobsTable)
+      .innerJoin(assetsTable, eq(jobsTable.assetId, assetsTable.id))
+      .where(
+        and(
+          eq(jobsTable.teamId, teamId),
+          eq(jobsTable.scheduledDate, date),
+          inArray(jobsTable.status, ["pending", "in_progress"]),
+        ),
       ),
-    );
+  );
 
   const totalScheduledMins = pendingJobs.reduce(
     (sum, j) => sum + (j.estimatedTimeMins ?? j.serviceTimeMins),
@@ -166,29 +174,33 @@ export async function refreshCrewStatusForTeamDate(
   const { standardCrewSize } = await loadSystemSettings();
   const { membersByTeam, absenceMap } = await buildAbsenceDataForTeamDate(teamId, date);
 
-  const jobs = await db
-    .select({
-      id:              jobsTable.id,
-      serviceTimeMins: assetsTable.serviceTimeMins,
-    })
-    .from(jobsTable)
-    .innerJoin(assetsTable, eq(jobsTable.assetId, assetsTable.id))
-    .where(
-      and(
-        eq(jobsTable.teamId, teamId),
-        eq(jobsTable.scheduledDate, date),
-        eq(jobsTable.status, "pending"),
+  const jobs = await executeWithCircuitBreaker(() =>
+    db
+      .select({
+        id:              jobsTable.id,
+        serviceTimeMins: assetsTable.serviceTimeMins,
+      })
+      .from(jobsTable)
+      .innerJoin(assetsTable, eq(jobsTable.assetId, assetsTable.id))
+      .where(
+        and(
+          eq(jobsTable.teamId, teamId),
+          eq(jobsTable.scheduledDate, date),
+          eq(jobsTable.status, "pending"),
+        ),
       ),
-    );
+  );
 
   for (const job of jobs) {
     const { estimatedTimeMins, crewStatus } = calcCrewAdjustment(
       teamId, date, membersByTeam, absenceMap, job.serviceTimeMins, standardCrewSize,
     );
-    await db
-      .update(jobsTable)
-      .set({ estimatedTimeMins, crewStatus, updatedAt: new Date() })
-      .where(eq(jobsTable.id, job.id));
+    await executeWithCircuitBreaker(() =>
+      db
+        .update(jobsTable)
+        .set({ estimatedTimeMins, crewStatus, updatedAt: new Date() })
+        .where(eq(jobsTable.id, job.id)),
+    );
   }
 
   return jobs.length;
@@ -221,24 +233,26 @@ export async function spillExcessJobs(
 ): Promise<{ spilledCount: number; targetDate: string }> {
   const { productiveTimeMins } = await loadSystemSettings();
 
-  const jobs = await db
-    .select({
-      id:                jobsTable.id,
-      estimatedTimeMins: jobsTable.estimatedTimeMins,
-      serviceTimeMins:   assetsTable.serviceTimeMins,
-      frequency:         assetsTable.frequency,
-      routeOrder:        assetsTable.routeOrder,
-    })
-    .from(jobsTable)
-    .innerJoin(assetsTable, eq(jobsTable.assetId, assetsTable.id))
-    .where(
-      and(
-        eq(jobsTable.teamId, teamId),
-        eq(jobsTable.scheduledDate, date),
-        eq(jobsTable.status, "pending"),
-        eq(jobsTable.jobType, "scheduled"),
+  const jobs = await executeWithCircuitBreaker(() =>
+    db
+      .select({
+        id:                jobsTable.id,
+        estimatedTimeMins: jobsTable.estimatedTimeMins,
+        serviceTimeMins:   assetsTable.serviceTimeMins,
+        frequency:         assetsTable.frequency,
+        routeOrder:        assetsTable.routeOrder,
+      })
+      .from(jobsTable)
+      .innerJoin(assetsTable, eq(jobsTable.assetId, assetsTable.id))
+      .where(
+        and(
+          eq(jobsTable.teamId, teamId),
+          eq(jobsTable.scheduledDate, date),
+          eq(jobsTable.status, "pending"),
+          eq(jobsTable.jobType, "scheduled"),
+        ),
       ),
-    );
+  );
 
   const totalMins = jobs.reduce((s, j) => s + (j.estimatedTimeMins ?? j.serviceTimeMins), 0);
   if (totalMins <= productiveTimeMins) return { spilledCount: 0, targetDate: "" };
@@ -262,10 +276,12 @@ export async function spillExcessJobs(
   }
 
   if (toMove.length > 0) {
-    await db
-      .update(jobsTable)
-      .set({ scheduledDate: target, updatedAt: new Date() })
-      .where(inArray(jobsTable.id, toMove));
+    await executeWithCircuitBreaker(() =>
+      db
+        .update(jobsTable)
+        .set({ scheduledDate: target, updatedAt: new Date() })
+        .where(inArray(jobsTable.id, toMove)),
+    );
   }
 
   return { spilledCount: toMove.length, targetDate: target };
