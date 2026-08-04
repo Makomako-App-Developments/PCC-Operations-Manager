@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { db } from "@workspace/db";
+import { db, dbCircuitBreaker, executeWithCircuitBreaker } from "@workspace/db";
 import { sql } from "drizzle-orm";
 
 const router: IRouter = Router();
@@ -16,15 +16,24 @@ router.get("/health/live", (_req, res) => {
 });
 
 // GET /api/health/ready — readiness probe (checks DB connectivity)
+//
+// Uses executeWithCircuitBreaker so that:
+//   - After CB_FAILURE_THRESHOLD consecutive failures the breaker opens and
+//     probes fast-fail to 503 immediately (no connectionTimeoutMillis wait).
+//   - On recovery, exactly ONE probe is let through (HALF_OPEN); concurrent
+//     probes fast-fail until that probe settles.
+//   - Success closes the breaker; failure resets the recovery timer.
 router.get("/health/ready", async (_req, res) => {
   try {
     const t0 = Date.now();
-    await db.execute(sql`SELECT 1`);
+    await executeWithCircuitBreaker(() => db.execute(sql`SELECT 1`));
     const dbLatencyMs = Date.now() - t0;
-    res.json({ status: "ready", dbLatencyMs });
+    res.json({ status: "ready", dbLatencyMs, cbState: dbCircuitBreaker.getState() });
   } catch (err) {
     const message = err instanceof Error ? err.message : "unknown db error";
-    res.status(503).json({ status: "not_ready", error: message });
+    res
+      .status(503)
+      .json({ status: "not_ready", error: message, cbState: dbCircuitBreaker.getState() });
   }
 });
 
@@ -33,7 +42,7 @@ router.get("/health", async (_req, res) => {
   const uptimeMs = Date.now() - startTime;
   try {
     const t0 = Date.now();
-    await db.execute(sql`SELECT 1`);
+    await executeWithCircuitBreaker(() => db.execute(sql`SELECT 1`));
     const dbLatencyMs = Date.now() - t0;
     res.json({
       status: "ok",
@@ -41,9 +50,15 @@ router.get("/health", async (_req, res) => {
       uptimeMs,
       dbLatencyMs,
       nodeVersion: process.version,
+      cbState: dbCircuitBreaker.getState(),
     });
   } catch {
-    res.status(503).json({ status: "degraded", uptimeMs, db: "unreachable" });
+    res.status(503).json({
+      status: "degraded",
+      uptimeMs,
+      db: "unreachable",
+      cbState: dbCircuitBreaker.getState(),
+    });
   }
 });
 

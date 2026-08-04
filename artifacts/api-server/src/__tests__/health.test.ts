@@ -3,11 +3,19 @@ import request from "supertest";
 import express from "express";
 import healthRouter from "../routes/health";
 
-// Mock the db module so tests run without a real database
+// Mock the db module so tests run without a real database.
+// executeWithCircuitBreaker is a transparent passthrough here — circuit-breaker
+// unit tests live in lib/db/src/circuit-breaker.test.ts.
 vi.mock("@workspace/db", () => ({
   db: {
     execute: vi.fn().mockResolvedValue([]),
   },
+  dbCircuitBreaker: {
+    getState: vi.fn().mockReturnValue("CLOSED"),
+  },
+  executeWithCircuitBreaker: vi.fn().mockImplementation(
+    async (fn: () => Promise<unknown>) => fn(),
+  ),
 }));
 
 function buildApp() {
@@ -25,8 +33,15 @@ describe("GET /health/live", () => {
 });
 
 describe("GET /health/ready", () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.resetAllMocks();
+    // Restore passthrough after resetAllMocks clears the implementation.
+    const { executeWithCircuitBreaker } = vi.mocked(
+      await import("@workspace/db"),
+    );
+    executeWithCircuitBreaker.mockImplementation(
+      async (fn: () => Promise<unknown>) => fn(),
+    );
   });
 
   it("returns 200 with dbLatencyMs when db is up", async () => {
@@ -41,11 +56,29 @@ describe("GET /health/ready", () => {
 
   it("returns 503 when db throws", async () => {
     const { db } = await import("@workspace/db");
-    vi.mocked(db.execute).mockRejectedValueOnce(new Error("connection refused") as never);
+    vi.mocked(db.execute).mockRejectedValueOnce(
+      new Error("connection refused") as never,
+    );
 
     const res = await request(buildApp()).get("/health/ready");
     expect(res.status).toBe(503);
     expect(res.body).toMatchObject({ status: "not_ready" });
+  });
+
+  it("returns 503 immediately when the circuit breaker is open", async () => {
+    const { executeWithCircuitBreaker } = await import("@workspace/db");
+    // Simulate the circuit breaker fast-failing
+    vi.mocked(executeWithCircuitBreaker).mockRejectedValueOnce(
+      Object.assign(
+        new Error("Circuit breaker OPEN — database is temporarily unavailable"),
+        { code: "CIRCUIT_OPEN" },
+      ) as never,
+    );
+
+    const res = await request(buildApp()).get("/health/ready");
+    expect(res.status).toBe(503);
+    expect(res.body).toMatchObject({ status: "not_ready" });
+    expect(res.body.error).toMatch(/circuit breaker/i);
   });
 });
 
@@ -69,17 +102,26 @@ describe("GET /health/ready — network partition", () => {
    * timeout error (simulating connectionTimeoutMillis expiring), then verify
    * the route surfaces a 503 rather than hanging.
    */
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.resetAllMocks();
+    // Restore passthrough
+    const mod = await import("@workspace/db");
+    vi.mocked(mod.executeWithCircuitBreaker).mockImplementation(
+      async (fn: () => Promise<unknown>) => fn(),
+    );
   });
 
   it("returns 503 when the DB is unreachable and the connection times out (partition scenario)", async () => {
     const { db } = await import("@workspace/db");
-    const timeoutErr = new Error("timeout expired — could not connect within 5000ms");
+    const timeoutErr = new Error(
+      "timeout expired — could not connect within 5000ms",
+    );
 
-    // Simulate connectionTimeoutMillis expiring: connect() eventually rejects
     vi.mocked(db.execute).mockImplementationOnce(
-      () => new Promise<never>((_, reject) => setTimeout(() => reject(timeoutErr), 50)),
+      () =>
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(timeoutErr), 50),
+        ),
     );
 
     const res = await request(buildApp()).get("/health/ready");
@@ -93,7 +135,10 @@ describe("GET /health/ready — network partition", () => {
     const timeoutErr = new Error("timeout expired");
 
     vi.mocked(db.execute).mockImplementationOnce(
-      () => new Promise<never>((_, reject) => setTimeout(() => reject(timeoutErr), 50)),
+      () =>
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(timeoutErr), 50),
+        ),
     );
 
     const start = Date.now();
@@ -101,8 +146,6 @@ describe("GET /health/ready — network partition", () => {
     const elapsed = Date.now() - start;
 
     expect(res.status).toBe(503);
-    // Should resolve well within 5 s (the real connectionTimeoutMillis).
-    // In tests we use a 50 ms mock delay; gate on a generous 2 s ceiling.
     expect(elapsed).toBeLessThan(2000);
   });
 
@@ -111,11 +154,12 @@ describe("GET /health/ready — network partition", () => {
     const timeoutErr = new Error("timeout expired");
 
     vi.mocked(db.execute)
-      // During partition: times out
       .mockImplementationOnce(
-        () => new Promise<never>((_, reject) => setTimeout(() => reject(timeoutErr), 50)),
+        () =>
+          new Promise<never>((_, reject) =>
+            setTimeout(() => reject(timeoutErr), 50),
+          ),
       )
-      // After partition clears: succeeds
       .mockResolvedValueOnce([] as never);
 
     const app = buildApp();
@@ -130,13 +174,19 @@ describe("GET /health/ready — network partition", () => {
 });
 
 describe("GET /health/ready — DB restart recovery", () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.resetAllMocks();
+    const mod = await import("@workspace/db");
+    vi.mocked(mod.executeWithCircuitBreaker).mockImplementation(
+      async (fn: () => Promise<unknown>) => fn(),
+    );
   });
 
   it("returns 503 with ECONNREFUSED error message while DB is down after restart", async () => {
     const { db } = await import("@workspace/db");
-    const connRefused = new Error("connect ECONNREFUSED 127.0.0.1:5432") as NodeJS.ErrnoException;
+    const connRefused = new Error(
+      "connect ECONNREFUSED 127.0.0.1:5432",
+    ) as NodeJS.ErrnoException;
     connRefused.code = "ECONNREFUSED";
     vi.mocked(db.execute).mockRejectedValueOnce(connRefused as never);
 
@@ -150,22 +200,21 @@ describe("GET /health/ready — DB restart recovery", () => {
 
   it("returns 200 on the next request once DB comes back up — no process restart needed", async () => {
     const { db } = await import("@workspace/db");
-    const connRefused = new Error("connect ECONNREFUSED 127.0.0.1:5432") as NodeJS.ErrnoException;
+    const connRefused = new Error(
+      "connect ECONNREFUSED 127.0.0.1:5432",
+    ) as NodeJS.ErrnoException;
     connRefused.code = "ECONNREFUSED";
 
-    // First call: DB is down
-    vi.mocked(db.execute).mockRejectedValueOnce(connRefused as never);
-    // Second call: DB has restarted and accepted a fresh connection
-    vi.mocked(db.execute).mockResolvedValueOnce([] as never);
+    vi.mocked(db.execute)
+      .mockRejectedValueOnce(connRefused as never)
+      .mockResolvedValueOnce([] as never);
 
     const app = buildApp();
 
-    // During outage → 503
     const downRes = await request(app).get("/health/ready");
     expect(downRes.status).toBe(503);
     expect(downRes.body.status).toBe("not_ready");
 
-    // After DB restart → 200, no process restart required
     const upRes = await request(app).get("/health/ready");
     expect(upRes.status).toBe(200);
     expect(upRes.body).toMatchObject({ status: "ready" });
@@ -174,14 +223,14 @@ describe("GET /health/ready — DB restart recovery", () => {
 
   it("recovers cleanly across multiple down/up cycles", async () => {
     const { db } = await import("@workspace/db");
-    const connRefused = new Error("connect ECONNREFUSED 127.0.0.1:5432") as NodeJS.ErrnoException;
+    const connRefused = new Error(
+      "connect ECONNREFUSED 127.0.0.1:5432",
+    ) as NodeJS.ErrnoException;
     connRefused.code = "ECONNREFUSED";
 
     vi.mocked(db.execute)
-      // cycle 1: down then up
       .mockRejectedValueOnce(connRefused as never)
       .mockResolvedValueOnce([] as never)
-      // cycle 2: down then up again
       .mockRejectedValueOnce(connRefused as never)
       .mockResolvedValueOnce([] as never);
 
