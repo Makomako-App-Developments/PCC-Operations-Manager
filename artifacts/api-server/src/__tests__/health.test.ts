@@ -57,6 +57,78 @@ describe("GET /healthz", () => {
   });
 });
 
+describe("GET /health/ready — network partition", () => {
+  /**
+   * A network partition differs from a clean DB restart:
+   *   - Existing TCP connections hang silently (no immediate error)
+   *   - New connection attempts block until connectionTimeoutMillis (5 000 ms)
+   *     then pg rejects with a timeout error
+   *   - /health/ready must return 503 within that window — not hang forever
+   *
+   * We model this by making db.execute() reject after a short delay with a
+   * timeout error (simulating connectionTimeoutMillis expiring), then verify
+   * the route surfaces a 503 rather than hanging.
+   */
+  beforeEach(() => {
+    vi.resetAllMocks();
+  });
+
+  it("returns 503 when the DB is unreachable and the connection times out (partition scenario)", async () => {
+    const { db } = await import("@workspace/db");
+    const timeoutErr = new Error("timeout expired — could not connect within 5000ms");
+
+    // Simulate connectionTimeoutMillis expiring: connect() eventually rejects
+    vi.mocked(db.execute).mockImplementationOnce(
+      () => new Promise<never>((_, reject) => setTimeout(() => reject(timeoutErr), 50)),
+    );
+
+    const res = await request(buildApp()).get("/health/ready");
+    expect(res.status).toBe(503);
+    expect(res.body).toMatchObject({ status: "not_ready" });
+    expect(typeof res.body.error).toBe("string");
+  });
+
+  it("does not hang — resolves within a reasonable deadline even with a hung pool", async () => {
+    const { db } = await import("@workspace/db");
+    const timeoutErr = new Error("timeout expired");
+
+    vi.mocked(db.execute).mockImplementationOnce(
+      () => new Promise<never>((_, reject) => setTimeout(() => reject(timeoutErr), 50)),
+    );
+
+    const start = Date.now();
+    const res = await request(buildApp()).get("/health/ready");
+    const elapsed = Date.now() - start;
+
+    expect(res.status).toBe(503);
+    // Should resolve well within 5 s (the real connectionTimeoutMillis).
+    // In tests we use a 50 ms mock delay; gate on a generous 2 s ceiling.
+    expect(elapsed).toBeLessThan(2000);
+  });
+
+  it("recovers and returns 200 once the partition clears", async () => {
+    const { db } = await import("@workspace/db");
+    const timeoutErr = new Error("timeout expired");
+
+    vi.mocked(db.execute)
+      // During partition: times out
+      .mockImplementationOnce(
+        () => new Promise<never>((_, reject) => setTimeout(() => reject(timeoutErr), 50)),
+      )
+      // After partition clears: succeeds
+      .mockResolvedValueOnce([] as never);
+
+    const app = buildApp();
+
+    const downRes = await request(app).get("/health/ready");
+    expect(downRes.status).toBe(503);
+
+    const upRes = await request(app).get("/health/ready");
+    expect(upRes.status).toBe(200);
+    expect(upRes.body).toMatchObject({ status: "ready" });
+  });
+});
+
 describe("GET /health/ready — DB restart recovery", () => {
   beforeEach(() => {
     vi.resetAllMocks();

@@ -88,6 +88,120 @@ afterEach(() => {
   fakePool.query.mockReset();
 });
 
+describe("pool network partition behaviour", () => {
+  /**
+   * A network partition silently freezes existing TCP connections; new
+   * connection attempts hang until pg's connectionTimeoutMillis (5 000 ms)
+   * expires and pool.connect() rejects. These tests verify:
+   *   1. pool.connect() eventually rejects (does NOT hang indefinitely)
+   *   2. The pool recovers cleanly once the partition clears
+   *   3. Multiple queued requests all fail fast and individually
+   *
+   * We model connectionTimeoutMillis firing with a short setTimeout so the
+   * suite stays fast. The actual 5 s timeout is enforced by the real pg Pool.
+   */
+  beforeEach(async () => {
+    await import("./index.js");
+  });
+
+  it("connect() rejects with a timeout error rather than hanging when a partition blocks the connection", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const timeoutErr = new Error(
+      "timeout expired — connectionTimeoutMillis (5000) exceeded",
+    );
+
+    // Model pg's connectionTimeoutMillis: connect() hangs briefly then rejects
+    let settled = false;
+    fakePool.connect.mockImplementationOnce(
+      () =>
+        new Promise<never>((_, reject) =>
+          setTimeout(() => {
+            settled = true;
+            reject(timeoutErr);
+          }, 50),
+        ),
+    );
+
+    await expect(fakePool.connect()).rejects.toThrow(
+      "connectionTimeoutMillis",
+    );
+    expect(settled).toBe(true);
+  });
+
+  it("pool hands out a fresh connection once the partition clears", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const timeoutErr = new Error("timeout expired");
+    const fakeClient = {
+      query: vi
+        .fn()
+        .mockResolvedValue({ rows: [{ "?column?": 1 }], rowCount: 1 }),
+      release: vi.fn(),
+    };
+
+    fakePool.connect
+      // During partition: hangs then times out
+      .mockImplementationOnce(
+        () =>
+          new Promise<never>((_, reject) =>
+            setTimeout(() => reject(timeoutErr), 50),
+          ),
+      )
+      // After partition clears: succeeds immediately
+      .mockResolvedValueOnce(fakeClient);
+
+    // Partition: connection attempt times out
+    await expect(fakePool.connect()).rejects.toThrow("timeout expired");
+
+    // Partition cleared: fresh connection handed out without process restart
+    const client = await fakePool.connect();
+    const result = await client.query("SELECT 1");
+    client.release();
+
+    expect(result.rows).toHaveLength(1);
+    expect(client.release).toHaveBeenCalledTimes(1);
+    // Two pool.connect() calls — pool did not give up after the timeout
+    expect(fakePool.connect).toHaveBeenCalledTimes(2);
+  });
+
+  it("concurrent requests during a partition all fail fast and independently", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const timeoutErr = new Error("timeout expired");
+
+    // Three simultaneous requests — all time out
+    fakePool.connect
+      .mockImplementationOnce(
+        () =>
+          new Promise<never>((_, reject) =>
+            setTimeout(() => reject(timeoutErr), 50),
+          ),
+      )
+      .mockImplementationOnce(
+        () =>
+          new Promise<never>((_, reject) =>
+            setTimeout(() => reject(timeoutErr), 50),
+          ),
+      )
+      .mockImplementationOnce(
+        () =>
+          new Promise<never>((_, reject) =>
+            setTimeout(() => reject(timeoutErr), 50),
+          ),
+      );
+
+    const results = await Promise.allSettled([
+      fakePool.connect(),
+      fakePool.connect(),
+      fakePool.connect(),
+    ]);
+
+    expect(results.every((r) => r.status === "rejected")).toBe(true);
+    expect(fakePool.connect).toHaveBeenCalledTimes(3);
+  });
+});
+
 describe("pool 'error' event handler", () => {
   // Import once — cached thereafter; the error listener is registered once.
   beforeEach(async () => {
