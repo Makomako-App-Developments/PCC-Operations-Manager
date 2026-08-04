@@ -6,6 +6,7 @@ vi.mock("jsonwebtoken", () => ({
   default: {
     verify: vi.fn((token: string, _secret: string) => {
       if (token === "valid-token") return { userId: "user-1", role: "manager", tokenType: "access" };
+      if (token === "refresh-token") return { userId: "user-1", role: "manager", tokenType: "refresh" };
       throw new Error("invalid");
     }),
   },
@@ -57,6 +58,18 @@ describe("requireAuth middleware", () => {
   it("returns 401 for invalid token", async () => {
     const { requireAuth } = await import("../middlewares/auth");
     const req = mockReq("Bearer bad-token");
+    const res = mockRes();
+    const n   = vi.fn() as NextFunction;
+
+    requireAuth(req, res, n);
+
+    expect(n).not.toHaveBeenCalled();
+    expect(res.status).toHaveBeenCalledWith(401);
+  });
+
+  it("returns 401 when a refresh token is presented instead of an access token", async () => {
+    const { requireAuth } = await import("../middlewares/auth");
+    const req = mockReq("Bearer refresh-token");
     const res = mockRes();
     const n   = vi.fn() as NextFunction;
 
