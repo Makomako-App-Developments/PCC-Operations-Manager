@@ -2,6 +2,7 @@ import React from "react";
 import { Link, useLocation } from "wouter";
 import { useAuth } from "@/lib/auth";
 import { useQuery } from "@tanstack/react-query";
+import { SystemStatusBanner } from "@/components/SystemStatusBanner";
 import {
   LayoutDashboard,
   List,
@@ -128,6 +129,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
         </div>
       </aside>
       <main className="flex-1 overflow-hidden flex flex-col">
+        <SystemStatusBanner />
         {children}
       </main>
     </div>

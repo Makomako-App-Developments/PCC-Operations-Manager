@@ -85,6 +85,8 @@ export class DbCircuitBreaker {
   private state: CbState = "CLOSED";
   private consecutiveFailures = 0;
   private lastFailureAt = 0;
+  /** Epoch ms when the circuit last opened; null when CLOSED. */
+  private openedAt: number | null = null;
   /** True while the single HALF_OPEN probe is in-flight. */
   private probeInFlight = false;
   private readonly clock: () => number;
@@ -104,6 +106,14 @@ export class DbCircuitBreaker {
       this.state = "HALF_OPEN";
     }
     return this.state;
+  }
+
+  /**
+   * Returns the epoch ms timestamp when the circuit last opened, or null
+   * when CLOSED. Useful for health responses (time-since-open calculation).
+   */
+  getOpenedAt(): number | null {
+    return this.openedAt;
   }
 
   /**
@@ -134,9 +144,16 @@ export class DbCircuitBreaker {
     this.probeInFlight = false;
     this.consecutiveFailures = 0;
     if (this.state !== "CLOSED") {
-      console.info("[db-circuit-breaker] CLOSED — database recovered");
+      console.info(
+        JSON.stringify({
+          event: "db_circuit_breaker_closed",
+          message: "Circuit breaker CLOSED — database recovered",
+          timestamp: new Date(this.clock()).toISOString(),
+        }),
+      );
     }
     this.state = "CLOSED";
+    this.openedAt = null;
   }
 
   recordFailure(): void {
@@ -145,8 +162,17 @@ export class DbCircuitBreaker {
     this.lastFailureAt = this.clock();
     if (this.consecutiveFailures >= CB_FAILURE_THRESHOLD) {
       if (this.state !== "OPEN") {
-        console.warn(
-          `[db-circuit-breaker] OPEN after ${this.consecutiveFailures} consecutive failures`,
+        const now = this.clock();
+        this.openedAt = now;
+        // Structured log event — parseable by log aggregators and Sentry.
+        console.error(
+          JSON.stringify({
+            event: "db_circuit_breaker_opened",
+            message: `Circuit breaker OPEN after ${this.consecutiveFailures} consecutive DB failures`,
+            consecutiveFailures: this.consecutiveFailures,
+            openedAt: new Date(now).toISOString(),
+            recoverAfterMs: CB_RECOVERY_TIMEOUT_MS,
+          }),
         );
       }
       this.state = "OPEN";

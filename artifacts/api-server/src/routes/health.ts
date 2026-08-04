@@ -23,6 +23,10 @@ router.get("/health/live", (_req, res) => {
 //   - On recovery, exactly ONE probe is let through (HALF_OPEN); concurrent
 //     probes fast-fail until that probe settles.
 //   - Success closes the breaker; failure resets the recovery timer.
+//
+// Response includes `cbState` and, when OPEN/HALF_OPEN, `openedAt` (ISO) and
+// `timeSinceOpenMs` so dashboards and on-call alerts can see how long the DB
+// has been unreachable without querying logs.
 router.get("/health/ready", async (_req, res) => {
   try {
     const t0 = Date.now();
@@ -31,9 +35,18 @@ router.get("/health/ready", async (_req, res) => {
     res.json({ status: "ready", dbLatencyMs, cbState: dbCircuitBreaker.getState() });
   } catch (err) {
     const message = err instanceof Error ? err.message : "unknown db error";
-    res
-      .status(503)
-      .json({ status: "not_ready", error: message, cbState: dbCircuitBreaker.getState() });
+    const cbState = dbCircuitBreaker.getState();
+    const openedAt = dbCircuitBreaker.getOpenedAt();
+    const timeSinceOpenMs = openedAt != null ? Date.now() - openedAt : undefined;
+    res.status(503).json({
+      status: "not_ready",
+      error: message,
+      cbState,
+      ...(openedAt != null && {
+        openedAt: new Date(openedAt).toISOString(),
+        timeSinceOpenMs,
+      }),
+    });
   }
 });
 
