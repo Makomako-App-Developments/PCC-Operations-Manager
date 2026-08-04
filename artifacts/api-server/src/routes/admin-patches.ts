@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { db, teamMembersTable, teamAvailabilityTable, jobsTable } from "@workspace/db";
+import { db, teamMembersTable, teamAvailabilityTable, jobsTable, executeWithCircuitBreaker } from "@workspace/db";
 import { sql, eq, and, inArray } from "drizzle-orm";
 import { requireAuth } from "../middlewares/auth.js";
 
@@ -20,7 +20,7 @@ router.post("/patch-areas", requireAuth, async (req, res) => {
   }
 
   try {
-    const result = await db.execute(sql`
+    const result = await executeWithCircuitBreaker(() => db.execute(sql`
       UPDATE assets SET area_m2 = CASE
         WHEN global_id = 'CEAFCCBD-3EB7-4AFF-9F3E-581C52E332CB' THEN 0.302656
         WHEN global_id = '9B02C317-796C-4973-B25B-F5B93332F0EF' THEN 0.476518
@@ -125,7 +125,7 @@ router.post("/patch-areas", requireAuth, async (req, res) => {
         '9409D56A-FA60-40B7-8D36-E6295036310E','B7B27B57-C01F-468D-AAAA-A2493458A270',
         'EFFB27CC-19F9-423F-A4C0-00626D5A3622','484EB667-E59B-497F-BBB8-369D08C5E255'
       )
-    `);
+    `));
 
     const rowsUpdated = (result as any).rowCount ?? (result as any).count ?? "unknown";
     res.json({ ok: true, rowsUpdated, message: `Area patch applied — ${rowsUpdated} rows updated` });
@@ -152,24 +152,24 @@ router.post("/realloc-full-team", requireAuth, async (req, res) => {
   const MOBILE2_ID   = "5456bd91-2512-47f9-9e77-82e44d0b06f6";
 
   try {
-    const assetResult = await db.execute(sql`
+    const assetResult = await executeWithCircuitBreaker(() => db.execute(sql`
       UPDATE assets
       SET team_id = ${MOBILE2_ID}
       WHERE team_id = ${FULL_TEAM_ID}
-    `);
+    `));
     const assetsUpdated = (assetResult as any).rowCount ?? 0;
 
-    const jobResult = await db.execute(sql`
+    const jobResult = await executeWithCircuitBreaker(() => db.execute(sql`
       UPDATE jobs
       SET team_id = ${MOBILE2_ID}
       WHERE team_id = ${FULL_TEAM_ID}
       AND status = 'pending'
-    `);
+    `));
     const jobsUpdated = (jobResult as any).rowCount ?? 0;
 
     // Null out any audit references (FK), then delete the team row
-    await db.execute(sql`UPDATE audits SET team_id = NULL WHERE team_id = ${FULL_TEAM_ID}`);
-    await db.execute(sql`DELETE FROM teams WHERE id = ${FULL_TEAM_ID}`);
+    await executeWithCircuitBreaker(() => db.execute(sql`UPDATE audits SET team_id = NULL WHERE team_id = ${FULL_TEAM_ID}`));
+    await executeWithCircuitBreaker(() => db.execute(sql`DELETE FROM teams WHERE id = ${FULL_TEAM_ID}`));
 
     res.json({
       ok: true,
@@ -200,19 +200,19 @@ router.post("/realloc-cbd-to-specialist", requireAuth, async (req, res) => {
   const SPECIALIST_ID = "fb241838-9b87-4230-9e51-2ed7907f9671";
 
   try {
-    const assetResult = await db.execute(sql`
+    const assetResult = await executeWithCircuitBreaker(() => db.execute(sql`
       UPDATE assets
       SET team_id = ${SPECIALIST_ID}
       WHERE team_id = ${CBD_ID}
-    `);
+    `));
     const assetsUpdated = (assetResult as any).rowCount ?? 0;
 
-    const jobResult = await db.execute(sql`
+    const jobResult = await executeWithCircuitBreaker(() => db.execute(sql`
       UPDATE jobs
       SET team_id = ${SPECIALIST_ID}
       WHERE team_id = ${CBD_ID}
       AND status = 'pending'
-    `);
+    `));
     const jobsUpdated = (jobResult as any).rowCount ?? 0;
 
     res.json({
@@ -264,24 +264,24 @@ router.post("/replan-holiday-date", requireAuth, async (req, res) => {
 
   const nextDay = nextWorkDay(date);
 
-  const allTeams = await db
+  const allTeams = await executeWithCircuitBreaker(() => db
     .selectDistinct({ teamId: teamMembersTable.teamId })
-    .from(teamMembersTable);
+    .from(teamMembersTable));
 
   const summary: { teamId: string; moved: number; reason: string }[] = [];
 
   for (const { teamId } of allTeams) {
     if (!teamId) continue;
 
-    const members = await db
+    const members = await executeWithCircuitBreaker(() => db
       .select({ personName: teamMembersTable.personName })
       .from(teamMembersTable)
-      .where(eq(teamMembersTable.teamId, teamId));
+      .where(eq(teamMembersTable.teamId, teamId)));
 
     const personNames = members.map(m => m.personName).filter(Boolean) as string[];
     if (personNames.length === 0) continue;
 
-    const absRows = await db
+    const absRows = await executeWithCircuitBreaker(() => db
       .select({ personName: teamAvailabilityTable.personName })
       .from(teamAvailabilityTable)
       .where(
@@ -289,7 +289,7 @@ router.post("/replan-holiday-date", requireAuth, async (req, res) => {
           eq(teamAvailabilityTable.date, date),
           inArray(teamAvailabilityTable.personName, personNames),
         ),
-      );
+      ));
 
     const hourCount = new Map<string, number>();
     for (const r of absRows) {
@@ -302,7 +302,7 @@ router.post("/replan-holiday-date", requireAuth, async (req, res) => {
       continue;
     }
 
-    const result = await db
+    const result = await executeWithCircuitBreaker(() => db
       .update(jobsTable)
       .set({ scheduledDate: nextDay, updatedAt: new Date() })
       .where(
@@ -312,7 +312,7 @@ router.post("/replan-holiday-date", requireAuth, async (req, res) => {
           eq(jobsTable.status, "pending"),
           eq(jobsTable.jobType, "scheduled"),
         ),
-      );
+      ));
 
     summary.push({ teamId, moved: (result as any).rowCount ?? 0, reason: "all absent — jobs moved" });
   }
@@ -334,7 +334,7 @@ router.post("/update-service-times", requireAuth, async (req, res) => {
     return;
   }
   try {
-    const result = await db.execute(sql`
+    const result = await executeWithCircuitBreaker(() => db.execute(sql`
       UPDATE assets SET service_time_mins = CASE
         WHEN UPPER(global_id) = '783378B6-4CB5-43F9-9835-7B1FAFE28ABF' THEN 25
         WHEN UPPER(global_id) = 'D01385DE-1ED9-495D-9268-FCB8AB2C1AF2' THEN 30
@@ -882,7 +882,7 @@ router.post("/update-service-times", requireAuth, async (req, res) => {
         '538A2217-F9B1-4C66-86E5-A1D3EC1757EB',
         'AB3C2918-AAC0-474C-8BCE-658199B427D4'
       )
-    `);
+    `));
     res.json({ updated: (result as any).rowCount ?? 0, message: `Service times updated for up to ${271} assets` });
   } catch (err: any) {
     console.error("[admin/update-service-times]", err);

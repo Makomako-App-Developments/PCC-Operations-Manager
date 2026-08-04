@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { db, teamsTable, teamMembersTable, usersTable, assetsTable, systemSettingsTable, insertTeamSchema } from "@workspace/db";
+import { db, teamsTable, teamMembersTable, usersTable, assetsTable, systemSettingsTable, insertTeamSchema, executeWithCircuitBreaker } from "@workspace/db";
 import { eq, sql, isNull } from "drizzle-orm";
 import { requireAuth, requireRole } from "../middlewares/auth";
 import { validateBody } from "../middlewares/validate";
@@ -9,7 +9,7 @@ const router = Router();
 
 // GET /api/teams
 router.get("/teams", requireAuth, async (_req, res) => {
-  const rows = await db.select().from(teamsTable);
+  const rows = await executeWithCircuitBreaker(() => db.select().from(teamsTable));
   res.json(rows);
 });
 
@@ -24,10 +24,10 @@ router.get("/teams/workload", requireAuth, requireRole("manager", "supervisor"),
   const ANNUAL_FTE_HOURS = 52 * 5 * 8; // 2080 hrs/FTE/year (gross full-time basis)
 
   // System settings for productive time + crew size
-  const [settings] = await db.select({
+  const [settings] = await executeWithCircuitBreaker(() => db.select({
     productiveTimeMins: systemSettingsTable.productiveTimeMins,
     standardCrewSize:   systemSettingsTable.standardCrewSize,
-  }).from(systemSettingsTable).limit(1);
+  }).from(systemSettingsTable).limit(1));
   const productiveTimeMins = settings?.productiveTimeMins ?? 390;
   const standardCrewSize   = settings?.standardCrewSize   ?? 2;
   const annualFteHours = ANNUAL_FTE_HOURS;
@@ -45,7 +45,7 @@ router.get("/teams/workload", requireAuth, requireRole("manager", "supervisor"),
     END
   `;
 
-  const teamRows = await db
+  const teamRows = await executeWithCircuitBreaker(() => db
     .select({
       teamId:      assetsTable.teamId,
       siteCount:   sql<number>`cast(count(*) as int)`,
@@ -54,9 +54,9 @@ router.get("/teams/workload", requireAuth, requireRole("manager", "supervisor"),
     })
     .from(assetsTable)
     .where(sql`${assetsTable.isActive} = true`)
-    .groupBy(assetsTable.teamId);
+    .groupBy(assetsTable.teamId));
 
-  const teams = await db.select({ id: teamsTable.id, name: teamsTable.name }).from(teamsTable);
+  const teams = await executeWithCircuitBreaker(() => db.select({ id: teamsTable.id, name: teamsTable.name }).from(teamsTable));
   const teamNameMap = Object.fromEntries(teams.map(t => [t.id, t.name]));
 
   const result = teamRows.map(row => {
@@ -86,7 +86,7 @@ router.get("/teams/workload", requireAuth, requireRole("manager", "supervisor"),
 
 // GET /api/teams/with-counts
 router.get("/teams/with-counts", requireAuth, async (_req, res) => {
-  const rows = await db
+  const rows = await executeWithCircuitBreaker(() => db
     .select({
       id:           teamsTable.id,
       name:         teamsTable.name,
@@ -95,22 +95,22 @@ router.get("/teams/with-counts", requireAuth, async (_req, res) => {
     })
     .from(teamsTable)
     .leftJoin(usersTable, eq(usersTable.teamId, teamsTable.id))
-    .groupBy(teamsTable.id, teamsTable.name, teamsTable.createdAt);
+    .groupBy(teamsTable.id, teamsTable.name, teamsTable.createdAt));
   res.json(rows);
 });
 
 // GET /api/team-members — crew roster + system account users, merged and deduplicated
 router.get("/team-members", requireAuth, requireRole("manager", "supervisor"), async (_req, res) => {
-  const crewRows = await db
+  const crewRows = await executeWithCircuitBreaker(() => db
     .select({
       id:         teamMembersTable.id,
       personName: teamMembersTable.personName,
       teamId:     teamMembersTable.teamId,
       role:       teamMembersTable.role,
     })
-    .from(teamMembersTable);
+    .from(teamMembersTable));
 
-  const accountRows = await db
+  const accountRows = await executeWithCircuitBreaker(() => db
     .select({
       id:     usersTable.id,
       name:   usersTable.name,
@@ -118,7 +118,7 @@ router.get("/team-members", requireAuth, requireRole("manager", "supervisor"), a
       role:   usersTable.role,
     })
     .from(usersTable)
-    .where(sql`${usersTable.teamId} is not null`);
+    .where(sql`${usersTable.teamId} is not null`));
 
   // Team-scoped composite key: only deduplicate within the same team
   const crewTeamNameSet = new Set(crewRows.map(m => `${m.teamId}:${m.personName.toLowerCase().trim()}`));
@@ -169,10 +169,10 @@ router.post(
     // Derive initials from name if not provided
     const initials = rawInitials?.trim() ||
       trimmedName.split(/\s+/).map(n => n[0]?.toUpperCase() ?? "").join("").slice(0, 4) || trimmedName[0]?.toUpperCase() || "?";
-    const [created] = await db
+    const [created] = await executeWithCircuitBreaker(() => db
       .insert(teamMembersTable)
       .values({ personName: trimmedName, teamId, role, initials })
-      .returning();
+      .returning());
     res.status(201).json(created);
   },
 );
@@ -184,7 +184,7 @@ router.delete(
   requireRole("manager"),
   async (req, res) => {
     const id = String(req.params.id);
-    await db.delete(teamMembersTable).where(eq(teamMembersTable.id, id));
+    await executeWithCircuitBreaker(() => db.delete(teamMembersTable).where(eq(teamMembersTable.id, id)));
     res.status(204).end();
   },
 );
@@ -192,7 +192,7 @@ router.delete(
 // GET /api/teams/:id/members
 router.get("/teams/:id/members", requireAuth, requireRole("manager", "supervisor"), async (req, res) => {
   const id = String(req.params.id);
-  const members = await db
+  const members = await executeWithCircuitBreaker(() => db
     .select({
       id:       usersTable.id,
       name:     usersTable.name,
@@ -202,13 +202,13 @@ router.get("/teams/:id/members", requireAuth, requireRole("manager", "supervisor
       isActive: usersTable.isActive,
     })
     .from(usersTable)
-    .where(eq(usersTable.teamId, id));
+    .where(eq(usersTable.teamId, id)));
   res.json(members);
 });
 
 // POST /api/teams
 router.post("/teams", requireAuth, requireRole("manager"), validateBody(insertTeamSchema), async (req, res) => {
-  const [created] = await db.insert(teamsTable).values(req.body).returning();
+  const [created] = await executeWithCircuitBreaker(() => db.insert(teamsTable).values(req.body).returning());
   res.status(201).json(created);
 });
 
@@ -220,11 +220,11 @@ router.patch(
   validateBody(z.object({ name: z.string().min(1).max(100) })),
   async (req, res) => {
     const id = String(req.params.id);
-    const [updated] = await db
+    const [updated] = await executeWithCircuitBreaker(() => db
       .update(teamsTable)
       .set({ name: (req.body as { name: string }).name })
       .where(eq(teamsTable.id, id))
-      .returning();
+      .returning());
     if (!updated) { res.status(404).json({ error: "Team not found" }); return; }
     res.json(updated);
   },
@@ -238,9 +238,9 @@ router.delete(
   async (req, res) => {
     const id = String(req.params.id);
     // Unassign account users from the team, delete crew members, then delete the team
-    await db.update(usersTable).set({ teamId: null }).where(eq(usersTable.teamId, id));
-    await db.delete(teamMembersTable).where(eq(teamMembersTable.teamId, id));
-    await db.delete(teamsTable).where(eq(teamsTable.id, id));
+    await executeWithCircuitBreaker(() => db.update(usersTable).set({ teamId: null }).where(eq(usersTable.teamId, id)));
+    await executeWithCircuitBreaker(() => db.delete(teamMembersTable).where(eq(teamMembersTable.teamId, id)));
+    await executeWithCircuitBreaker(() => db.delete(teamsTable).where(eq(teamsTable.id, id)));
     res.status(204).end();
   },
 );

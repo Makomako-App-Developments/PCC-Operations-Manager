@@ -3,6 +3,7 @@ import {
   db, infillJobsTable, infillOrdersTable, mulchingRecordsTable, mulchDepthReadingsTable,
   assetsTable, teamsTable, usersTable, jobsTable, systemSettingsTable,
   insertInfillJobSchema, insertInfillOrderSchema, insertMulchingRecordSchema,
+  executeWithCircuitBreaker,
 } from "@workspace/db";
 import { eq, and, inArray, desc, gte, lte } from "drizzle-orm";
 import { requireAuth, requireRole } from "../middlewares/auth";
@@ -23,7 +24,7 @@ router.get("/infill-jobs", requireAuth, async (req, res) => {
   if (assetId) conditions.push(eq(infillJobsTable.assetId, assetId));
   if (status)  conditions.push(eq(infillJobsTable.status, status as any));
 
-  const jobs = await db
+  const jobs = await executeWithCircuitBreaker(() => db
     .select({
       id:              infillJobsTable.id,
       assetId:          infillJobsTable.assetId,
@@ -47,7 +48,7 @@ router.get("/infill-jobs", requireAuth, async (req, res) => {
     .leftJoin(usersTable,  eq(infillJobsTable.assessedById, usersTable.id))
     .where(conditions.length ? and(...conditions) : undefined)
     .orderBy(infillJobsTable.createdAt)
-    .limit(300);
+    .limit(300));
 
   if (jobs.length === 0) {
     res.json({ data: [], total: 0 });
@@ -55,10 +56,10 @@ router.get("/infill-jobs", requireAuth, async (req, res) => {
   }
 
   const jobIds = jobs.map(j => j.id);
-  const orders = await db
+  const orders = await executeWithCircuitBreaker(() => db
     .select()
     .from(infillOrdersTable)
-    .where(inArray(infillOrdersTable.infillJobId, jobIds));
+    .where(inArray(infillOrdersTable.infillJobId, jobIds)));
 
   const ordersByJob = orders.reduce<Record<string, typeof orders>>((acc, o) => {
     if (!acc[o.infillJobId!]) acc[o.infillJobId!] = [];
@@ -110,7 +111,7 @@ router.post(
     try {
       const { species, ...jobData } = req.body as z.infer<typeof createInfillJobSchema>;
 
-      const job = await db.transaction(async tx => {
+      const job = await executeWithCircuitBreaker(() => db.transaction(async tx => {
         const [created] = await tx.insert(infillJobsTable).values({
           ...jobData,
           assessedById: req.auth!.userId,
@@ -130,7 +131,7 @@ router.post(
         );
 
         return created;
-      });
+      }));
 
       await auditLog({
         tableName: "infill_jobs", recordId: job.id, action: "INSERT",
@@ -154,7 +155,7 @@ router.patch(
   async (req, res) => {
     try {
       const id = String(req.params.id);
-      const [before] = await db.select().from(infillJobsTable).where(eq(infillJobsTable.id, id)).limit(1);
+      const [before] = await executeWithCircuitBreaker(() => db.select().from(infillJobsTable).where(eq(infillJobsTable.id, id)).limit(1));
       if (!before) { res.status(404).json({ error: "Infill job not found" }); return; }
 
       const patch = (res.locals.body ?? req.body) as z.infer<typeof patchInfillJobSchema>;
@@ -178,11 +179,11 @@ router.patch(
         }
       }
 
-      const [updated] = await db
+      const [updated] = await executeWithCircuitBreaker(() => db
         .update(infillJobsTable)
         .set({ ...patch, updatedAt: new Date() })
         .where(eq(infillJobsTable.id, id))
-        .returning();
+        .returning());
 
       await auditLog({
         tableName: "infill_jobs", recordId: id, action: "UPDATE",
@@ -205,9 +206,9 @@ router.delete(
   async (req, res) => {
     try {
       const id = String(req.params.id);
-      const [found] = await db.select().from(infillJobsTable).where(eq(infillJobsTable.id, id)).limit(1);
+      const [found] = await executeWithCircuitBreaker(() => db.select().from(infillJobsTable).where(eq(infillJobsTable.id, id)).limit(1));
       if (!found) { res.status(404).json({ error: "Infill job not found" }); return; }
-      await db.delete(infillJobsTable).where(eq(infillJobsTable.id, id));
+      await executeWithCircuitBreaker(() => db.delete(infillJobsTable).where(eq(infillJobsTable.id, id)));
       res.status(204).send();
     } catch (err) {
       console.error("DELETE /infill-jobs/:id error:", err);
@@ -224,7 +225,7 @@ router.get("/infill-orders", requireAuth, async (req, res) => {
   if (assetId) conditions.push(eq(infillOrdersTable.assetId, assetId));
   if (status)  conditions.push(eq(infillOrdersTable.status, status as any));
 
-  const rows = await db
+  const rows = await executeWithCircuitBreaker(() => db
     .select({
       id:              infillOrdersTable.id,
       assetId:         infillOrdersTable.assetId,
@@ -248,7 +249,7 @@ router.get("/infill-orders", requireAuth, async (req, res) => {
     .leftJoin(assetsTable, eq(infillOrdersTable.assetId, assetsTable.id))
     .where(conditions.length ? and(...conditions) : undefined)
     .orderBy(infillOrdersTable.createdAt)
-    .limit(200);
+    .limit(200));
 
   res.json({ data: rows, total: rows.length });
 });
@@ -260,7 +261,7 @@ router.post(
   validateBody(insertInfillOrderSchema),
   async (req, res) => {
     try {
-      const [created] = await db.insert(infillOrdersTable).values(req.body).returning();
+      const [created] = await executeWithCircuitBreaker(() => db.insert(infillOrdersTable).values(req.body).returning());
       res.status(201).json(created);
     } catch (err) {
       console.error("POST /infill-orders error:", err);
@@ -276,11 +277,11 @@ router.patch(
   async (req, res) => {
     try {
       const id = String(req.params.id);
-      const [updated] = await db
+      const [updated] = await executeWithCircuitBreaker(() => db
         .update(infillOrdersTable)
         .set({ ...req.body, updatedAt: new Date() })
         .where(eq(infillOrdersTable.id, id))
-        .returning();
+        .returning());
       if (!updated) { res.status(404).json({ error: "Infill order not found" }); return; }
       res.json(updated);
     } catch (err) {
@@ -298,7 +299,7 @@ router.get("/mulching-records", requireAuth, async (req, res) => {
   if (assetId) conditions.push(eq(mulchingRecordsTable.assetId, assetId));
   if (status)  conditions.push(eq(mulchingRecordsTable.status, status as any));
 
-  const rows = await db
+  const rows = await executeWithCircuitBreaker(() => db
     .select({
       id:                  mulchingRecordsTable.id,
       assetId:             mulchingRecordsTable.assetId,
@@ -328,7 +329,7 @@ router.get("/mulching-records", requireAuth, async (req, res) => {
     .leftJoin(assetsTable, eq(mulchingRecordsTable.assetId, assetsTable.id))
     .where(conditions.length ? and(...conditions) : undefined)
     .orderBy(mulchingRecordsTable.createdAt)
-    .limit(200);
+    .limit(200));
 
   res.json({ data: rows, total: rows.length });
 });
@@ -340,7 +341,7 @@ router.post(
   validateBody(insertMulchingRecordSchema),
   async (req, res) => {
     try {
-      const [created] = await db.insert(mulchingRecordsTable).values(req.body).returning();
+      const [created] = await executeWithCircuitBreaker(() => db.insert(mulchingRecordsTable).values(req.body).returning());
       res.status(201).json(created);
     } catch (err) {
       console.error("POST /mulching-records error:", err);
@@ -356,11 +357,11 @@ router.patch(
   async (req, res) => {
     try {
       const id = String(req.params.id);
-      const [updated] = await db
+      const [updated] = await executeWithCircuitBreaker(() => db
         .update(mulchingRecordsTable)
         .set({ ...req.body, updatedAt: new Date() })
         .where(eq(mulchingRecordsTable.id, id))
-        .returning();
+        .returning());
       if (!updated) { res.status(404).json({ error: "Mulching record not found" }); return; }
       res.json(updated);
     } catch (err) {
@@ -387,11 +388,11 @@ router.post(
     const id = String(req.params.id);
     const { dates, teamId, totalMins } = res.locals.body as z.infer<typeof splitMulchingSchema>;
 
-    const [original] = await db
+    const [original] = await executeWithCircuitBreaker(() => db
       .select()
       .from(mulchingRecordsTable)
       .where(eq(mulchingRecordsTable.id, id))
-      .limit(1);
+      .limit(1));
     if (!original) { res.status(404).json({ error: "Mulching record not found" }); return; }
 
     const n = dates.length;
@@ -409,7 +410,7 @@ router.post(
     }
     const day1Vol = dayVolume(minsPerDay, n === 1, 0);
 
-    const [day1] = await db
+    const [day1] = await executeWithCircuitBreaker(() => db
       .update(mulchingRecordsTable)
       .set({
         scheduledDate:  dates[0],
@@ -423,10 +424,10 @@ router.post(
         updatedAt:      new Date(),
       })
       .where(eq(mulchingRecordsTable.id, id))
-      .returning();
+      .returning());
 
     const siblings = n > 1
-      ? await db
+      ? await executeWithCircuitBreaker(() => db
           .insert(mulchingRecordsTable)
           .values(
             dates.slice(1).map((date: string, i: number) => {
@@ -455,7 +456,7 @@ router.post(
               };
             }),
           )
-          .returning()
+          .returning())
       : [];
 
     res.json({ groupId, records: [day1, ...siblings] });
@@ -482,7 +483,7 @@ router.get("/mulch-depth-readings", requireAuth, async (req, res) => {
   const conditions = [];
   if (assetId) conditions.push(eq(mulchDepthReadingsTable.assetId, assetId));
 
-  const rows = await db
+  const rows = await executeWithCircuitBreaker(() => db
     .select({
       id:                 mulchDepthReadingsTable.id,
       assetId:            mulchDepthReadingsTable.assetId,
@@ -502,7 +503,7 @@ router.get("/mulch-depth-readings", requireAuth, async (req, res) => {
     .leftJoin(usersTable,  eq(mulchDepthReadingsTable.recordedById, usersTable.id))
     .where(conditions.length ? and(...conditions) : undefined)
     .orderBy(desc(mulchDepthReadingsTable.recordedAt), desc(mulchDepthReadingsTable.createdAt))
-    .limit(200);
+    .limit(200));
 
   res.json({ data: rows, total: rows.length });
 });
@@ -516,7 +517,7 @@ router.post(
     try {
     const body = (res.locals.body ?? req.body) as z.infer<typeof createDepthReadingSchema>;
 
-    const [sysSettings] = await db.select().from(systemSettingsTable).limit(1);
+    const [sysSettings] = await executeWithCircuitBreaker(() => db.select().from(systemSettingsTable).limit(1));
     const configDecayRate    = sysSettings?.mulchDecayRateMmPerMonth   ?? 5;
     const configSpreadingRate = sysSettings?.mulchSpreadingRateM3PerHour ?? 2;
 
@@ -555,7 +556,7 @@ router.post(
       if (queryStart < body.recordedAt) queryStart = body.recordedAt;
     }
 
-    const nearbyJobs = await db
+    const nearbyJobs = await executeWithCircuitBreaker(() => db
       .select({ id: jobsTable.id, scheduledDate: jobsTable.scheduledDate })
       .from(jobsTable)
       .where(and(
@@ -563,7 +564,7 @@ router.post(
         inArray(jobsTable.status, ["pending", "in_progress"]),
         gte(jobsTable.scheduledDate, queryStart),
         lte(jobsTable.scheduledDate, queryEnd),
-      ));
+      )));
 
     // Pick the earliest candidate in the valid window
     const nearestJob = nearbyJobs.length > 0
@@ -577,7 +578,7 @@ router.post(
     const alignedJobId   = nearestJob?.id ?? null;
     const alignedJobDate = nearestJob?.scheduledDate ?? null;
 
-    const result = await db.transaction(async tx => {
+    const result = await executeWithCircuitBreaker(() => db.transaction(async tx => {
       const [reading] = await tx
         .insert(mulchDepthReadingsTable)
         .values({
@@ -661,7 +662,7 @@ router.post(
       }
 
       return { reading, draft };
-    });
+    }));
 
     await auditLog({
       tableName:   "mulch_depth_readings",

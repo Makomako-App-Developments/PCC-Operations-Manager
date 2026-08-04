@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { db, assetsTable, systemSettingsTable, teamsTable, teamMembersTable } from "@workspace/db";
+import { db, assetsTable, systemSettingsTable, teamsTable, teamMembersTable, executeWithCircuitBreaker } from "@workspace/db";
 import { eq, isNotNull, and } from "drizzle-orm";
 import { sql } from "drizzle-orm";
 import { z } from "zod";
@@ -11,7 +11,7 @@ const router = Router();
 
 // GET /api/settings
 router.get("/settings", requireAuth, async (_req, res) => {
-  const [row] = await db.select().from(systemSettingsTable).limit(1);
+  const [row] = await executeWithCircuitBreaker(() => db.select().from(systemSettingsTable).limit(1));
   if (!row) {
     res.json({ id: 1, productiveTimeMins: 390, standardCrewSize: 2, workStartHour: 8, workEndHour: 16, mulchDecayRateMmPerMonth: 5, mulchSpreadingRateM3PerHour: 2, reactivePriorities: null, routesLastOptimised: null });
     return;
@@ -61,14 +61,14 @@ router.patch(
       return;
     }
 
-    const [updated] = await db
+    const [updated] = await executeWithCircuitBreaker(() => db
       .insert(systemSettingsTable)
       .values({ id: 1, ...patch, updatedAt: new Date() })
       .onConflictDoUpdate({
         target: systemSettingsTable.id,
         set: { ...patch, updatedAt: new Date() },
       })
-      .returning();
+      .returning());
 
     res.json(updated);
   },
@@ -81,13 +81,13 @@ router.post(
   requireAuth,
   requireRole("manager"),
   async (_req, res) => {
-    const teams = await db.select().from(teamsTable);
+    const teams = await executeWithCircuitBreaker(() => db.select().from(teamsTable));
 
     let totalAssetsUpdated = 0;
 
     for (const team of teams) {
       // Load all active assets for this team that have coordinates
-      const assets = await db
+      const assets = await executeWithCircuitBreaker(() => db
         .select({
           id:  assetsTable.id,
           lat: assetsTable.lat,
@@ -99,7 +99,7 @@ router.post(
             eq(assetsTable.teamId, team.id),
             eq(assetsTable.isActive, true),
           ),
-        );
+        ));
 
       // Separate assets with and without coordinates
       const withCoords = assets
@@ -123,7 +123,7 @@ router.post(
       const allOrders = allIds.map((_, i) => i + 1);
 
       if (allIds.length > 0) {
-        await db.execute(sql`
+        await executeWithCircuitBreaker(() => db.execute(sql`
           UPDATE assets
           SET route_order = v.ord,
               updated_at  = NOW()
@@ -132,20 +132,20 @@ router.post(
                    unnest(${sql.raw(`ARRAY[${allOrders.join(",")}]::int[]`)}               ) AS ord
           ) v
           WHERE assets.id = v.id
-        `);
+        `));
       }
 
       totalAssetsUpdated += assets.length;
     }
 
     // Record timestamp in system_settings
-    await db
+    await executeWithCircuitBreaker(() => db
       .insert(systemSettingsTable)
       .values({ id: 1, routesLastOptimised: new Date(), updatedAt: new Date() })
       .onConflictDoUpdate({
         target: systemSettingsTable.id,
         set: { routesLastOptimised: new Date(), updatedAt: new Date() },
-      });
+      }));
 
     res.json({
       teamsOptimised:      teams.length,

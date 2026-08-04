@@ -2,7 +2,7 @@ import { Router } from "express";
 import multer from "multer";
 import path from "path";
 import { randomUUID } from "crypto";
-import { db, auditsTable, auditItemsTable, auditPhotosTable, teamsTable, assetsTable, usersTable } from "@workspace/db";
+import { db, auditsTable, auditItemsTable, auditPhotosTable, teamsTable, assetsTable, usersTable, executeWithCircuitBreaker } from "@workspace/db";
 import { eq, and, desc, sql, or } from "drizzle-orm";
 import { requireAuth, requireRole } from "../middlewares/auth";
 import { auditLog } from "../lib/audit";
@@ -14,7 +14,7 @@ function isPrivilegedRole(role: string): boolean {
 }
 
 async function assertAuditTeamAccess(auditId: string, role: string, callerTeamId: string | null, callerId?: string): Promise<{ audit: { id: string; teamId: string | null } } | { error: string; status: number }> {
-  const [audit] = await db.select({ id: auditsTable.id, teamId: auditsTable.teamId, auditorId: auditsTable.auditorId }).from(auditsTable).where(eq(auditsTable.id, auditId)).limit(1);
+  const [audit] = await executeWithCircuitBreaker(() => db.select({ id: auditsTable.id, teamId: auditsTable.teamId, auditorId: auditsTable.auditorId }).from(auditsTable).where(eq(auditsTable.id, auditId)).limit(1));
   if (!audit) return { error: "Audit not found", status: 404 };
   if (!isPrivilegedRole(role)) {
     // worker / team_leader have no audit access
@@ -48,36 +48,36 @@ async function uploadPhotoToGCS(buffer: Buffer, mimetype: string, originalname: 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
 async function buildAuditDetail(auditId: string) {
-  const [audit] = await db.select().from(auditsTable).where(eq(auditsTable.id, auditId)).limit(1);
+  const [audit] = await executeWithCircuitBreaker(() => db.select().from(auditsTable).where(eq(auditsTable.id, auditId)).limit(1));
   if (!audit) return null;
-  const items = await db
+  const items = await executeWithCircuitBreaker(() => db
     .select()
     .from(auditItemsTable)
-    .where(eq(auditItemsTable.auditId, auditId));
+    .where(eq(auditItemsTable.auditId, auditId)));
   const photos = items.length
-    ? await db
+    ? await executeWithCircuitBreaker(() => db
         .select()
         .from(auditPhotosTable)
         .where(
           eq(auditPhotosTable.auditItemId, items[0].id), // workaround — fetch all below
-        )
+        ))
     : [];
   // fetch all photos for all items
   const allPhotos = items.length
-    ? await db
+    ? await executeWithCircuitBreaker(() => db
         .select()
         .from(auditPhotosTable)
         .where(
           // Use IN logic manually
           eq(auditPhotosTable.auditItemId, items[0].id),
-        )
+        ))
     : [];
   // Actually, fetch photos per item via a join approach
   const photosByItem = new Map<string, typeof allPhotos>();
   if (items.length) {
     const allP = await Promise.all(
       items.map((item) =>
-        db.select().from(auditPhotosTable).where(eq(auditPhotosTable.auditItemId, item.id)),
+        executeWithCircuitBreaker(() => db.select().from(auditPhotosTable).where(eq(auditPhotosTable.auditItemId, item.id))),
       ),
     );
     items.forEach((item, i) => photosByItem.set(item.id, allP[i] ?? []));
@@ -101,7 +101,7 @@ function calcScore(items: { result: string }[]) {
 // ── GET /api/audits/stats ─────────────────────────────────────────────────────
 router.get("/audits/stats", requireAuth, requireRole("manager", "supervisor"), async (_req, res) => {
   // Team average scores
-  const teamScores = await db
+  const teamScores = await executeWithCircuitBreaker(() => db
     .select({
       teamId:     auditsTable.teamId,
       teamName:   teamsTable.name,
@@ -111,10 +111,10 @@ router.get("/audits/stats", requireAuth, requireRole("manager", "supervisor"), a
     .from(auditsTable)
     .innerJoin(teamsTable, eq(auditsTable.teamId, teamsTable.id))
     .where(sql`${auditsTable.overallScore} is not null`)
-    .groupBy(auditsTable.teamId, teamsTable.name);
+    .groupBy(auditsTable.teamId, teamsTable.name));
 
   // Fail counts per criterion
-  const criterionFails = await db
+  const criterionFails = await executeWithCircuitBreaker(() => db
     .select({
       criterion: auditItemsTable.criterion,
       failCount: sql<number>`cast(count(*) as int)`,
@@ -122,10 +122,10 @@ router.get("/audits/stats", requireAuth, requireRole("manager", "supervisor"), a
     .from(auditItemsTable)
     .where(eq(auditItemsTable.result, "fail"))
     .groupBy(auditItemsTable.criterion)
-    .orderBy(desc(sql`count(*)`));
+    .orderBy(desc(sql`count(*)`)));
 
   // Fail counts per specification (gardenType)
-  const specificationFails = await db
+  const specificationFails = await executeWithCircuitBreaker(() => db
     .select({
       specification: assetsTable.gardenType,
       failCount:     sql<number>`cast(count(*) as int)`,
@@ -135,7 +135,7 @@ router.get("/audits/stats", requireAuth, requireRole("manager", "supervisor"), a
     .innerJoin(assetsTable, eq(auditsTable.assetId, assetsTable.id))
     .where(eq(auditItemsTable.result, "fail"))
     .groupBy(assetsTable.gardenType)
-    .orderBy(desc(sql`count(*)`));
+    .orderBy(desc(sql`count(*)`)));
 
   res.json({ teamScores, criterionFails, specificationFails });
 });
@@ -151,7 +151,7 @@ router.get("/audits", requireAuth, async (req, res) => {
   }
   // administrator / manager / supervisor: no filter — see everything
 
-  const rows = await db
+  const rows = await executeWithCircuitBreaker(() => db
     .select({
       id:           auditsTable.id,
       assetId:          auditsTable.assetId,
@@ -173,7 +173,7 @@ router.get("/audits", requireAuth, async (req, res) => {
     .leftJoin(usersTable, eq(auditsTable.auditorId, usersTable.id))
     .where(conditions.length > 0 ? and(...conditions) : undefined)
     .orderBy(desc(auditsTable.conductedAt))
-    .limit(500);
+    .limit(500));
   res.json({ data: rows });
 });
 
@@ -191,7 +191,7 @@ router.get("/audits/:id", requireAuth, async (req, res) => {
 router.post("/audits", requireAuth, requireRole("manager", "supervisor"), async (req, res) => {
   const { assetId, teamId, conductedAt, notes, auditType } = req.body as Record<string, string>;
   if (!assetId) { res.status(400).json({ error: "assetId required" }); return; }
-  const [created] = await db
+  const [created] = await executeWithCircuitBreaker(() => db
     .insert(auditsTable)
     .values({
       assetId,
@@ -202,7 +202,7 @@ router.post("/audits", requireAuth, requireRole("manager", "supervisor"), async 
       notes: notes ?? null,
       auditType: (auditType as any) ?? null,
     })
-    .returning();
+    .returning());
   await auditLog({ tableName: "audits", recordId: created.id, action: "INSERT", changedById: req.auth?.userId ?? null, newData: created as Record<string, unknown>, ipAddress: req.ip ?? null });
   res.status(201).json(created);
 });
@@ -212,7 +212,7 @@ router.patch("/audits/:id", requireAuth, requireRole("manager", "supervisor"), a
   const id = String(req.params.id);
   const access = await assertAuditTeamAccess(id, req.auth!.role, req.auth!.teamId, req.auth!.userId);
   if ("error" in access) { res.status(access.status).json({ error: access.error }); return; }
-  const [before] = await db.select().from(auditsTable).where(eq(auditsTable.id, id)).limit(1);
+  const [before] = await executeWithCircuitBreaker(() => db.select().from(auditsTable).where(eq(auditsTable.id, id)).limit(1));
   if (!before) { res.status(404).json({ error: "Audit not found" }); return; }
   const { teamId, conductedAt, overallScore, status, notes, auditType } = req.body as Record<string, any>;
   const updateData: Record<string, unknown> = { updatedAt: new Date() };
@@ -222,7 +222,7 @@ router.patch("/audits/:id", requireAuth, requireRole("manager", "supervisor"), a
   if (status !== undefined) updateData.status = status;
   if (notes !== undefined) updateData.notes = notes;
   if (auditType !== undefined) updateData.auditType = auditType;
-  const [updated] = await db.update(auditsTable).set(updateData).where(eq(auditsTable.id, id)).returning();
+  const [updated] = await executeWithCircuitBreaker(() => db.update(auditsTable).set(updateData).where(eq(auditsTable.id, id)).returning());
   await auditLog({ tableName: "audits", recordId: id, action: "UPDATE", changedById: req.auth?.userId ?? null, oldData: before as Record<string, unknown>, newData: updated as Record<string, unknown>, ipAddress: req.ip ?? null });
   res.json(updated);
 });
@@ -232,8 +232,8 @@ router.delete("/audits/:id", requireAuth, requireRole("manager", "supervisor"), 
   const id = String(req.params.id);
   const access = await assertAuditTeamAccess(id, req.auth!.role, req.auth!.teamId, req.auth!.userId);
   if ("error" in access) { res.status(access.status).json({ error: access.error }); return; }
-  await db.delete(auditItemsTable).where(eq(auditItemsTable.auditId, id)); // cascade
-  await db.delete(auditsTable).where(eq(auditsTable.id, id));
+  await executeWithCircuitBreaker(() => db.delete(auditItemsTable).where(eq(auditItemsTable.auditId, id))); // cascade
+  await executeWithCircuitBreaker(() => db.delete(auditsTable).where(eq(auditsTable.id, id)));
   res.status(204).end();
 });
 
@@ -242,7 +242,7 @@ router.put("/audits/:id/responses", requireAuth, requireRole("manager", "supervi
   const auditId = String(req.params.id);
   const access = await assertAuditTeamAccess(auditId, req.auth!.role, req.auth!.teamId, req.auth!.userId);
   if ("error" in access) { res.status(access.status).json({ error: access.error }); return; }
-  const [audit] = await db.select().from(auditsTable).where(eq(auditsTable.id, auditId)).limit(1);
+  const [audit] = await executeWithCircuitBreaker(() => db.select().from(auditsTable).where(eq(auditsTable.id, auditId)).limit(1));
   if (!audit) { res.status(404).json({ error: "Audit not found" }); return; }
 
   const { responses } = req.body as { responses: Array<{ criterion: string; result: string; notes?: string; failLat?: number; failLng?: number; pestPlantsPresent?: string[] }> };
@@ -250,11 +250,11 @@ router.put("/audits/:id/responses", requireAuth, requireRole("manager", "supervi
 
   // Upsert each response
   for (const r of responses) {
-    const existing = await db
+    const existing = await executeWithCircuitBreaker(() => db
       .select()
       .from(auditItemsTable)
       .where(and(eq(auditItemsTable.auditId, auditId), eq(auditItemsTable.criterion, r.criterion)))
-      .limit(1);
+      .limit(1));
 
     const itemData = {
       result: r.result as "pass" | "fail" | "na",
@@ -266,25 +266,25 @@ router.put("/audits/:id/responses", requireAuth, requireRole("manager", "supervi
     };
 
     if (existing.length) {
-      await db.update(auditItemsTable).set(itemData).where(eq(auditItemsTable.id, existing[0].id));
+      await executeWithCircuitBreaker(() => db.update(auditItemsTable).set(itemData).where(eq(auditItemsTable.id, existing[0].id)));
     } else {
-      await db.insert(auditItemsTable).values({ auditId, criterion: r.criterion, ...itemData });
+      await executeWithCircuitBreaker(() => db.insert(auditItemsTable).values({ auditId, criterion: r.criterion, ...itemData }));
     }
   }
 
   // Recalculate score
-  const allItems = await db.select().from(auditItemsTable).where(eq(auditItemsTable.auditId, auditId));
+  const allItems = await executeWithCircuitBreaker(() => db.select().from(auditItemsTable).where(eq(auditItemsTable.auditId, auditId)));
   const score = calcScore(allItems);
   const newStatus = score === null ? "pending" : score >= 80 ? "passed" : "failed";
-  await db.update(auditsTable).set({ overallScore: score !== null ? String(score) : null, status: newStatus, updatedAt: new Date() }).where(eq(auditsTable.id, auditId));
+  await executeWithCircuitBreaker(() => db.update(auditsTable).set({ overallScore: score !== null ? String(score) : null, status: newStatus, updatedAt: new Date() }).where(eq(auditsTable.id, auditId)));
 
   const detail = await buildAuditDetail(auditId);
 
   // Link to weekly quota once the audit is fully scored (passed or failed)
   // Uses auditorId from the audit record — not the caller — so it correctly
   // attributes the completion to the supervisor who created the audit.
-  const [freshAudit] = await db.select({ assetId: auditsTable.assetId, auditorId: auditsTable.auditorId, status: auditsTable.status })
-    .from(auditsTable).where(eq(auditsTable.id, auditId)).limit(1);
+  const [freshAudit] = await executeWithCircuitBreaker(() => db.select({ assetId: auditsTable.assetId, auditorId: auditsTable.auditorId, status: auditsTable.status })
+    .from(auditsTable).where(eq(auditsTable.id, auditId)).limit(1));
   if (freshAudit && (freshAudit.status === "passed" || freshAudit.status === "failed")) {
     linkQuotaItemIfMatches(freshAudit.assetId, freshAudit.auditorId, auditId).catch((err: unknown) => {
       console.error("[quota-link] Failed to link quota item for audit", auditId, err);
@@ -303,13 +303,13 @@ router.get("/audits/:id/items/:itemId/photos", requireAuth, async (req, res) => 
   if ("error" in access) { res.status(access.status).json({ error: access.error }); return; }
 
   // Verify the item belongs to the referenced audit (prevents cross-audit ID enumeration)
-  const [item] = await db.select({ id: auditItemsTable.id })
+  const [item] = await executeWithCircuitBreaker(() => db.select({ id: auditItemsTable.id })
     .from(auditItemsTable)
     .where(and(eq(auditItemsTable.id, itemId), eq(auditItemsTable.auditId, auditId)))
-    .limit(1);
+    .limit(1));
   if (!item) { res.status(404).json({ error: "Audit item not found" }); return; }
 
-  const photos = await db.select().from(auditPhotosTable).where(eq(auditPhotosTable.auditItemId, itemId));
+  const photos = await executeWithCircuitBreaker(() => db.select().from(auditPhotosTable).where(eq(auditPhotosTable.auditItemId, itemId)));
   res.json({ data: photos });
 });
 
@@ -330,11 +330,11 @@ router.post(
     if ("error" in access) { res.status(access.status).json({ error: access.error }); return; }
 
     // Ensure the audit item exists
-    const existing = await db.select().from(auditItemsTable).where(and(eq(auditItemsTable.id, itemId), eq(auditItemsTable.auditId, auditId))).limit(1);
+    const existing = await executeWithCircuitBreaker(() => db.select().from(auditItemsTable).where(and(eq(auditItemsTable.id, itemId), eq(auditItemsTable.auditId, auditId))).limit(1));
     if (!existing.length) { res.status(404).json({ error: "Audit item not found" }); return; }
 
     const blobUrl = await uploadPhotoToGCS(req.file.buffer, req.file.mimetype, req.file.originalname);
-    const [photo] = await db.insert(auditPhotosTable).values({ auditItemId: itemId, uploadedBy: userId, blobUrl }).returning();
+    const [photo] = await executeWithCircuitBreaker(() => db.insert(auditPhotosTable).values({ auditItemId: itemId, uploadedBy: userId, blobUrl }).returning());
     res.status(201).json(photo);
   },
 );
@@ -350,16 +350,16 @@ router.delete("/audits/:id/items/:itemId/photos/:photoId", requireAuth, async (r
   if ("error" in access) { res.status(access.status).json({ error: access.error }); return; }
 
   // Verify item belongs to this audit before operating on its photos
-  const [item] = await db.select({ id: auditItemsTable.id })
+  const [item] = await executeWithCircuitBreaker(() => db.select({ id: auditItemsTable.id })
     .from(auditItemsTable)
     .where(and(eq(auditItemsTable.id, itemId), eq(auditItemsTable.auditId, auditId)))
-    .limit(1);
+    .limit(1));
   if (!item) { res.status(404).json({ error: "Audit item not found" }); return; }
 
   // Delete only if the photo actually belongs to this item (prevents cross-hierarchy tampering)
-  await db.delete(auditPhotosTable).where(
+  await executeWithCircuitBreaker(() => db.delete(auditPhotosTable).where(
     and(eq(auditPhotosTable.id, photoId), eq(auditPhotosTable.auditItemId, itemId)),
-  );
+  ));
   res.status(204).end();
 });
 

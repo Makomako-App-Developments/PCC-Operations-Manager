@@ -2,7 +2,7 @@ import { Router } from "express";
 import multer from "multer";
 import path from "path";
 import { randomUUID } from "crypto";
-import { db, jobPhotosTable, jobsTable, mulchingRecordsTable, reactiveJobsTable } from "@workspace/db";
+import { db, jobPhotosTable, jobsTable, mulchingRecordsTable, reactiveJobsTable, executeWithCircuitBreaker } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { requireAuth } from "../middlewares/auth";
 import { objectStorageClient } from "../lib/objectStorage";
@@ -56,9 +56,9 @@ async function uploadToGCS(
 
 /** Resolve whether :id belongs to a regular job or a mulching record. */
 async function resolveJobKind(id: string): Promise<"job" | "mulching" | "unknown"> {
-  const [job] = await db.select({ id: jobsTable.id }).from(jobsTable).where(eq(jobsTable.id, id)).limit(1);
+  const [job] = await executeWithCircuitBreaker(() => db.select({ id: jobsTable.id }).from(jobsTable).where(eq(jobsTable.id, id)).limit(1));
   if (job) return "job";
-  const [mr] = await db.select({ id: mulchingRecordsTable.id }).from(mulchingRecordsTable).where(eq(mulchingRecordsTable.id, id)).limit(1);
+  const [mr] = await executeWithCircuitBreaker(() => db.select({ id: mulchingRecordsTable.id }).from(mulchingRecordsTable).where(eq(mulchingRecordsTable.id, id)).limit(1));
   if (mr) return "mulching";
   return "unknown";
 }
@@ -74,12 +74,12 @@ router.get("/jobs/:id/photos", requireAuth, async (req, res) => {
   if (!isPrivilegedRole(req.auth!.role)) {
     const callerTeamId = req.auth!.teamId;
     if (kind === "job") {
-      const [job] = await db.select({ teamId: jobsTable.teamId, isAllTeams: jobsTable.isAllTeams }).from(jobsTable).where(eq(jobsTable.id, id)).limit(1);
+      const [job] = await executeWithCircuitBreaker(() => db.select({ teamId: jobsTable.teamId, isAllTeams: jobsTable.isAllTeams }).from(jobsTable).where(eq(jobsTable.id, id)).limit(1));
       if (job && !job.isAllTeams && job.teamId !== callerTeamId) {
         res.status(403).json({ error: "Forbidden" }); return;
       }
     } else if (kind === "mulching") {
-      const [mr] = await db.select({ assignedTeamId: mulchingRecordsTable.assignedTeamId }).from(mulchingRecordsTable).where(eq(mulchingRecordsTable.id, id)).limit(1);
+      const [mr] = await executeWithCircuitBreaker(() => db.select({ assignedTeamId: mulchingRecordsTable.assignedTeamId }).from(mulchingRecordsTable).where(eq(mulchingRecordsTable.id, id)).limit(1));
       if (mr && mr.assignedTeamId !== callerTeamId) {
         res.status(403).json({ error: "Forbidden" }); return;
       }
@@ -88,9 +88,9 @@ router.get("/jobs/:id/photos", requireAuth, async (req, res) => {
 
   let photos;
   if (kind === "mulching") {
-    photos = await db.select().from(jobPhotosTable).where(eq(jobPhotosTable.mulchingRecordId, id));
+    photos = await executeWithCircuitBreaker(() => db.select().from(jobPhotosTable).where(eq(jobPhotosTable.mulchingRecordId, id)));
   } else {
-    photos = await db.select().from(jobPhotosTable).where(eq(jobPhotosTable.jobId, id));
+    photos = await executeWithCircuitBreaker(() => db.select().from(jobPhotosTable).where(eq(jobPhotosTable.jobId, id)));
   }
 
   res.json({ data: photos });
@@ -113,12 +113,12 @@ router.post(
     if (!isPrivilegedRole(req.auth!.role)) {
       const callerTeamId = req.auth!.teamId;
       if (kind === "job") {
-        const [job] = await db.select({ teamId: jobsTable.teamId, isAllTeams: jobsTable.isAllTeams }).from(jobsTable).where(eq(jobsTable.id, id)).limit(1);
+        const [job] = await executeWithCircuitBreaker(() => db.select({ teamId: jobsTable.teamId, isAllTeams: jobsTable.isAllTeams }).from(jobsTable).where(eq(jobsTable.id, id)).limit(1));
         if (job && !job.isAllTeams && job.teamId !== callerTeamId) {
           res.status(403).json({ error: "Forbidden" }); return;
         }
       } else if (kind === "mulching") {
-        const [mr] = await db.select({ assignedTeamId: mulchingRecordsTable.assignedTeamId }).from(mulchingRecordsTable).where(eq(mulchingRecordsTable.id, id)).limit(1);
+        const [mr] = await executeWithCircuitBreaker(() => db.select({ assignedTeamId: mulchingRecordsTable.assignedTeamId }).from(mulchingRecordsTable).where(eq(mulchingRecordsTable.id, id)).limit(1));
         if (mr && mr.assignedTeamId !== callerTeamId) {
           res.status(403).json({ error: "Forbidden" }); return;
         }
@@ -131,7 +131,7 @@ router.post(
       ? { mulchingRecordId: id, uploadedBy: userId, blobUrl, caption }
       : { jobId: id, uploadedBy: userId, blobUrl, caption };
 
-    const [photo] = await db.insert(jobPhotosTable).values(values).returning();
+    const [photo] = await executeWithCircuitBreaker(() => db.insert(jobPhotosTable).values(values).returning());
     res.status(201).json(photo);
   },
 );
@@ -141,7 +141,7 @@ router.post(
 // GET /api/reactive-jobs/:id/photos
 router.get("/reactive-jobs/:id/photos", requireAuth, async (req, res) => {
   const id = String(req.params.id);
-  const [rj] = await db.select({ id: reactiveJobsTable.id, assignedTeamId: reactiveJobsTable.assignedTeamId }).from(reactiveJobsTable).where(eq(reactiveJobsTable.id, id)).limit(1);
+  const [rj] = await executeWithCircuitBreaker(() => db.select({ id: reactiveJobsTable.id, assignedTeamId: reactiveJobsTable.assignedTeamId }).from(reactiveJobsTable).where(eq(reactiveJobsTable.id, id)).limit(1));
   if (!rj) { res.status(404).json({ error: "Reactive job not found" }); return; }
 
   if (!isPrivilegedRole(req.auth!.role)) {
@@ -151,7 +151,7 @@ router.get("/reactive-jobs/:id/photos", requireAuth, async (req, res) => {
     }
   }
 
-  const photos = await db.select().from(jobPhotosTable).where(eq(jobPhotosTable.reactiveJobId, id));
+  const photos = await executeWithCircuitBreaker(() => db.select().from(jobPhotosTable).where(eq(jobPhotosTable.reactiveJobId, id)));
   res.json({ data: photos });
 });
 
@@ -166,7 +166,7 @@ router.post(
     const userId = req.auth?.userId;
     if (!userId) { res.status(401).json({ error: "Unauthorised" }); return; }
 
-    const [rj] = await db.select({ id: reactiveJobsTable.id, assignedTeamId: reactiveJobsTable.assignedTeamId }).from(reactiveJobsTable).where(eq(reactiveJobsTable.id, id)).limit(1);
+    const [rj] = await executeWithCircuitBreaker(() => db.select({ id: reactiveJobsTable.id, assignedTeamId: reactiveJobsTable.assignedTeamId }).from(reactiveJobsTable).where(eq(reactiveJobsTable.id, id)).limit(1));
     if (!rj) { res.status(404).json({ error: "Reactive job not found" }); return; }
 
     if (!isPrivilegedRole(req.auth!.role)) {
@@ -179,10 +179,10 @@ router.post(
     const blobUrl = await uploadToGCS(req.file.buffer, req.file.mimetype, req.file.originalname);
     const caption = typeof req.body.caption === "string" ? req.body.caption : null;
 
-    const [photo] = await db
+    const [photo] = await executeWithCircuitBreaker(() => db
       .insert(jobPhotosTable)
       .values({ reactiveJobId: id, uploadedBy: userId, blobUrl, caption })
-      .returning();
+      .returning());
 
     res.status(201).json(photo);
   },

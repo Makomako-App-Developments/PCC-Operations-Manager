@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { db, plantPaletteTable } from "@workspace/db";
+import { db, plantPaletteTable, executeWithCircuitBreaker } from "@workspace/db";
 import { asc, eq } from "drizzle-orm";
 import { requireAuth, requireRole } from "../middlewares/auth";
 import { z } from "zod";
@@ -8,10 +8,10 @@ const router = Router();
 
 // GET /api/plant-palette
 router.get("/plant-palette", requireAuth, async (_req, res) => {
-  const plants = await db
+  const plants = await executeWithCircuitBreaker(() => db
     .select()
     .from(plantPaletteTable)
-    .orderBy(asc(plantPaletteTable.plantType), asc(plantPaletteTable.botanicalName));
+    .orderBy(asc(plantPaletteTable.plantType), asc(plantPaletteTable.botanicalName)));
   res.json(plants);
 });
 
@@ -24,7 +24,7 @@ const bodySchema = z.object({
 router.post("/plant-palette", requireAuth, requireRole("manager"), async (req, res) => {
   const parsed = bodySchema.safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: "Invalid body" }); return; }
-  const [row] = await db.insert(plantPaletteTable).values(parsed.data).returning();
+  const [row] = await executeWithCircuitBreaker(() => db.insert(plantPaletteTable).values(parsed.data).returning());
   res.status(201).json(row);
 });
 
@@ -33,11 +33,11 @@ router.patch("/plant-palette/:id", requireAuth, requireRole("manager"), async (r
   const { id } = req.params;
   const parsed = bodySchema.partial().safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: "Invalid body" }); return; }
-  const [row] = await db
+  const [row] = await executeWithCircuitBreaker(() => db
     .update(plantPaletteTable)
     .set(parsed.data)
     .where(eq(plantPaletteTable.id, id))
-    .returning();
+    .returning());
   if (!row) { res.status(404).json({ error: "Not found" }); return; }
   res.json(row);
 });
@@ -45,7 +45,7 @@ router.patch("/plant-palette/:id", requireAuth, requireRole("manager"), async (r
 // DELETE /api/plant-palette/:id
 router.delete("/plant-palette/:id", requireAuth, requireRole("manager"), async (req, res) => {
   const { id } = req.params;
-  await db.delete(plantPaletteTable).where(eq(plantPaletteTable.id, id));
+  await executeWithCircuitBreaker(() => db.delete(plantPaletteTable).where(eq(plantPaletteTable.id, id)));
   res.status(204).send();
 });
 

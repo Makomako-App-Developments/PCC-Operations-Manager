@@ -2,7 +2,7 @@ import { Router } from "express";
 import {
   db, assetsTable, jobsTable, teamMembersTable, teamAvailabilityTable,
   systemSettingsTable, jobTeamCompletionsTable, infillJobsTable, mulchingRecordsTable,
-  reactiveJobsTable, teamsTable,
+  reactiveJobsTable, teamsTable, executeWithCircuitBreaker,
 } from "@workspace/db";
 import { eq, and, gte, lte, lt, inArray, sql, notInArray, isNull } from "drizzle-orm";
 import { z } from "zod";
@@ -65,10 +65,10 @@ async function buildTeamNonWorkingDays(
   fromDate: string,
   toDate: string,
 ): Promise<Set<string>> {
-  const members = await db
+  const members = await executeWithCircuitBreaker(() => db
     .select({ personName: teamMembersTable.personName })
     .from(teamMembersTable)
-    .where(eq(teamMembersTable.teamId, teamId));
+    .where(eq(teamMembersTable.teamId, teamId)));
 
   const personNames = members.map(m => m.personName).filter(Boolean) as string[];
   if (personNames.length === 0) return new Set();
@@ -120,7 +120,7 @@ async function buildAbsenceMap(
 ): Promise<Map<string, Set<string>>> {
   if (allPersonNames.length === 0) return new Map();
 
-  const availRows = await db
+  const availRows = await executeWithCircuitBreaker(() => db
     .select()
     .from(teamAvailabilityTable)
     .where(
@@ -129,7 +129,7 @@ async function buildAbsenceMap(
         lte(teamAvailabilityTable.date, toDate),
         inArray(teamAvailabilityTable.personName, allPersonNames),
       ),
-    );
+    ));
 
   const countMap = new Map<string, Map<string, number>>();
   for (const row of availRows) {
@@ -196,14 +196,14 @@ router.post(
     }
 
     // Load system settings
-    const [settings] = await db.select().from(systemSettingsTable).limit(1);
+    const [settings] = await executeWithCircuitBreaker(() => db.select().from(systemSettingsTable).limit(1));
     const productiveTimeMins = settings?.productiveTimeMins ?? 390;
     const standardCrewSize   = settings?.standardCrewSize   ?? 2;
 
     // ── Clear existing pending scheduled jobs in the range before regenerating ─
     // Completed and skipped jobs are preserved; only pending/in-progress ones
     // are wiped so the new geosequence-first algorithm can place them cleanly.
-    await db
+    await executeWithCircuitBreaker(() => db
       .delete(jobsTable)
       .where(
         and(
@@ -213,13 +213,13 @@ router.post(
           inArray(jobsTable.status, ["pending", "in_progress"]),
           ...(teamId ? [eq(jobsTable.teamId, teamId)] : []),
         ),
-      );
+      ));
 
     // ── Carry forward pending jobs from the flex window before fromDate ────────
     // If a job was scheduled before fromDate and is still pending (not started),
     // delete it so the scheduler places it fresh in the new range.
     // in_progress jobs (crew has started) are left untouched.
-    await db
+    await executeWithCircuitBreaker(() => db
       .delete(jobsTable)
       .where(
         and(
@@ -229,10 +229,10 @@ router.post(
           eq(jobsTable.status, "pending"),
           ...(teamId ? [eq(jobsTable.teamId, teamId)] : []),
         ),
-      );
+      ));
 
     // Load assets in geosequence order (routeOrder ASC, nulls last)
-    const assets = await db
+    const assets = await executeWithCircuitBreaker(() => db
       .select()
       .from(assetsTable)
       .where(
@@ -240,10 +240,10 @@ router.post(
           ? and(eq(assetsTable.isActive, true), eq(assetsTable.teamId, teamId))
           : eq(assetsTable.isActive, true),
       )
-      .orderBy(sql`${assetsTable.routeOrder} NULLS LAST`, assetsTable.name);
+      .orderBy(sql`${assetsTable.routeOrder} NULLS LAST`, assetsTable.name));
 
     // Load team membership
-    const allMembers = await db.select().from(teamMembersTable);
+    const allMembers = await executeWithCircuitBreaker(() => db.select().from(teamMembersTable));
     const membersByTeam = new Map<string, string[]>();
     for (const m of allMembers) {
       if (!membersByTeam.has(m.teamId)) membersByTeam.set(m.teamId, []);
@@ -254,7 +254,7 @@ router.post(
     const absenceMap = await buildAbsenceMap(fromDate, toDate, allPersonNames);
 
     // Pre-load all non-completed jobs in range to initialise minutesUsed
-    const existingInRange = await db
+    const existingInRange = await executeWithCircuitBreaker(() => db
       .select({
         teamId:            jobsTable.teamId,
         scheduledDate:     sql<string>`to_char(${jobsTable.scheduledDate}, 'YYYY-MM-DD')`,
@@ -270,7 +270,7 @@ router.post(
           notInArray(jobsTable.status, ["completed", "skipped"]),
           ...(teamId ? [eq(jobsTable.teamId, teamId)] : []),
         ),
-      );
+      ));
 
     const minutesUsed = new Map<string, Map<string, number>>();
     for (const j of existingInRange) {
@@ -339,7 +339,7 @@ router.post(
     // ── Step 3: Check DB for already-placed jobs in this run's range ─────────
     // Track which (assetId, dueDate cycle) already has a job so we skip them.
     // We use the nearest natural due date to the existing job's scheduled date.
-    const existingJobDates = await db
+    const existingJobDates = await executeWithCircuitBreaker(() => db
       .select({
         assetId:       jobsTable.assetId,
         scheduledDate: sql<string>`to_char(${jobsTable.scheduledDate}, 'YYYY-MM-DD')`,
@@ -356,7 +356,7 @@ router.post(
           notInArray(jobsTable.status, ["completed", "skipped"]),
           ...(teamId ? [eq(jobsTable.teamId, teamId)] : []),
         ),
-      );
+      ));
 
     // Map assetId → set of scheduledDate strings that already exist
     const existingByAsset = new Map<string, Set<string>>();
@@ -556,10 +556,10 @@ router.post(
       const { estimatedTimeMins, crewStatus } = calcCrewAdjustment(
         tid, j.scheduledDate, membersByTeam, absenceMap, asset.serviceTimeMins, standardCrewSize,
       );
-      await db
+      await executeWithCircuitBreaker(() => db
         .update(jobsTable)
         .set({ estimatedTimeMins, crewStatus, updatedAt: new Date() })
-        .where(eq(jobsTable.id, j.id));
+        .where(eq(jobsTable.id, j.id)));
       jobsRefreshed++;
     }
 
@@ -570,7 +570,7 @@ router.post(
     const INSERT_BATCH_SIZE = 1000;
     for (let i = 0; i < insertRows.length; i += INSERT_BATCH_SIZE) {
       const batch = insertRows.slice(i, i + INSERT_BATCH_SIZE);
-      await db.insert(jobsTable).values(batch);
+      await executeWithCircuitBreaker(() => db.insert(jobsTable).values(batch));
     }
 
     res.json({ jobsCreated, jobsRefreshed, jobsSpilled, fromDate, toDate });
@@ -606,7 +606,7 @@ router.get(
     const weekStart = mondayOf(week);
     const weekEnd   = addDays(weekStart, 6);
 
-    const [settings] = await db.select().from(systemSettingsTable).limit(1);
+    const [settings] = await executeWithCircuitBreaker(() => db.select().from(systemSettingsTable).limit(1));
 
     const condition = and(
       gte(jobsTable.scheduledDate, weekStart),
@@ -614,7 +614,7 @@ router.get(
       ...(teamId ? [eq(assetsTable.teamId, teamId)] : []),
     );
 
-    const rows = await db
+    const rows = await executeWithCircuitBreaker(() => db
       .select({
         id:                jobsTable.id,
         assetId:           jobsTable.assetId,
@@ -650,13 +650,13 @@ router.get(
         jobsTable.scheduledDate,
         sql`${assetsTable.routeOrder} NULLS LAST`,
         assetsTable.name,
-      );
+      ));
 
     // Fetch per-team sign-off records for All Teams jobs
     const allTeamsJobIds = rows.filter(r => r.isAllTeams).map(r => r.id);
     const completionsByJobId = new Map<string, { teamId: string; completedAt: Date; actualTimeMins: number | null }[]>();
     if (allTeamsJobIds.length > 0) {
-      const completions = await db
+      const completions = await executeWithCircuitBreaker(() => db
         .select({
           jobId:          jobTeamCompletionsTable.jobId,
           teamId:         jobTeamCompletionsTable.teamId,
@@ -664,7 +664,7 @@ router.get(
           actualTimeMins: jobTeamCompletionsTable.actualTimeMins,
         })
         .from(jobTeamCompletionsTable)
-        .where(inArray(jobTeamCompletionsTable.jobId, allTeamsJobIds));
+        .where(inArray(jobTeamCompletionsTable.jobId, allTeamsJobIds)));
       for (const c of completions) {
         if (!completionsByJobId.has(c.jobId)) completionsByJobId.set(c.jobId, []);
         completionsByJobId.get(c.jobId)!.push({ teamId: c.teamId, completedAt: c.completedAt, actualTimeMins: c.actualTimeMins });
@@ -692,7 +692,7 @@ router.get(
       ...(teamId ? [eq(infillJobsTable.assignedTeamId, teamId)] : []),
     );
 
-    const infillRows = await db
+    const infillRows = await executeWithCircuitBreaker(() => db
       .select({
         id:             infillJobsTable.id,
         assetId:        infillJobsTable.assetId,
@@ -721,7 +721,7 @@ router.get(
         infillJobsTable.plannedDate,
         sql`${assetsTable.routeOrder} NULLS LAST`,
         assetsTable.name,
-      );
+      ));
 
     // Map infill statuses to the standard job status vocabulary the mobile app uses
     const infillStatusMap: Record<string, string> = {
@@ -771,7 +771,7 @@ router.get(
       ...(teamId ? [eq(mulchingRecordsTable.assignedTeamId, teamId)] : []),
     );
 
-    const mulchRows = await db
+    const mulchRows = await executeWithCircuitBreaker(() => db
       .select({
         id:             mulchingRecordsTable.id,
         assetId:        mulchingRecordsTable.assetId,
@@ -803,7 +803,7 @@ router.get(
         mulchingRecordsTable.scheduledDate,
         sql`${assetsTable.routeOrder} NULLS LAST`,
         assetsTable.name,
-      );
+      ));
 
     const mulchStatusMap: Record<string, string> = {
       scheduled: "pending",
@@ -845,7 +845,7 @@ router.get(
       dayMap.get(mr.scheduledDate)?.push(mapped as any);
     }
     // ── Merge reactive (unscheduled) jobs into day buckets ────────────────────
-    const reactiveWeekRows = await db
+    const reactiveWeekRows = await executeWithCircuitBreaker(() => db
       .select({
         id:                reactiveJobsTable.id,
         assetId:           reactiveJobsTable.assetId,
@@ -883,7 +883,7 @@ router.get(
         reactiveJobsTable.scheduledDate,
         sql`${assetsTable.routeOrder} NULLS LAST`,
         assetsTable.name,
-      );
+      ));
 
     const reactiveStatusMap: Record<string, string> = {
       raised:      "pending",
@@ -981,7 +981,7 @@ router.get(
       teamId = callerTeamId;
     }
 
-    const rows = await db
+    const rows = await executeWithCircuitBreaker(() => db
       .select({
         jobId:             jobsTable.id,
         scheduledDate:     sql<string>`to_char(${jobsTable.scheduledDate}, 'YYYY-MM-DD')`,
@@ -1013,7 +1013,7 @@ router.get(
         sql`${assetsTable.routeOrder} NULLS LAST`,
         assetsTable.name,
         jobsTable.scheduledDate,
-      );
+      ));
 
     type RangeJob = {
       id: string; scheduledDate: string; status: string; jobType: string;
@@ -1045,7 +1045,7 @@ router.get(
     }
 
     // ── Merge mulching records into the Gantt range ───────────────────────────
-    const mulchRows = await db
+    const mulchRows = await executeWithCircuitBreaker(() => db
       .select({
         id:              mulchingRecordsTable.id,
         assetId:         mulchingRecordsTable.assetId,
@@ -1078,7 +1078,7 @@ router.get(
         sql`${assetsTable.routeOrder} NULLS LAST`,
         assetsTable.name,
         mulchingRecordsTable.scheduledDate,
-      );
+      ));
 
     const mulchStatusMap: Record<string, string> = {
       scheduled: "pending",
@@ -1108,7 +1108,7 @@ router.get(
       });
     }
     // ── Merge infill planting jobs into the Gantt range ──────────────────────
-    const infillRows = await db
+    const infillRows = await executeWithCircuitBreaker(() => db
       .select({
         id:              infillJobsTable.id,
         assetId:         infillJobsTable.assetId,
@@ -1139,7 +1139,7 @@ router.get(
         sql`${assetsTable.routeOrder} NULLS LAST`,
         assetsTable.name,
         infillJobsTable.plannedDate,
-      );
+      ));
 
     for (const ir of infillRows) {
       if (!assetMap.has(ir.assetId)) {
@@ -1164,7 +1164,7 @@ router.get(
     // ── Merge reactive (unscheduled) jobs into the Gantt range ───────────────
     // Only jobs linked to an asset appear here (Gantt is asset-centric).
     // Non-asset reactive jobs are visible in the Day / Week views.
-    const reactiveRangeRows = await db
+    const reactiveRangeRows = await executeWithCircuitBreaker(() => db
       .select({
         id:                reactiveJobsTable.id,
         assetId:           reactiveJobsTable.assetId,
@@ -1196,7 +1196,7 @@ router.get(
         sql`${assetsTable.routeOrder} NULLS LAST`,
         assetsTable.name,
         reactiveJobsTable.scheduledDate,
-      );
+      ));
 
     const reactiveRangeStatusMap: Record<string, string> = {
       raised:      "pending",
@@ -1258,11 +1258,11 @@ router.get(
       }
     }
 
-    const [settings] = await db.select().from(systemSettingsTable).limit(1);
+    const [settings] = await executeWithCircuitBreaker(() => db.select().from(systemSettingsTable).limit(1));
     const productiveTimeMins = settings?.productiveTimeMins ?? 390;
 
     // Detailed job list (for display — regular maintenance only)
-    const jobs = await db
+    const jobs = await executeWithCircuitBreaker(() => db
       .select({
         id:                jobsTable.id,
         status:            jobsTable.status,
@@ -1285,7 +1285,7 @@ router.get(
           notInArray(jobsTable.status, ["completed", "skipped"]),
         ),
       )
-      .orderBy(sql`${assetsTable.routeOrder} NULLS LAST`, assetsTable.name);
+      .orderBy(sql`${assetsTable.routeOrder} NULLS LAST`, assetsTable.name));
 
     // Total minutes across ALL active job types (maintenance + infill + mulching)
     const { computeTotalScheduledMins: computeTotal } = await import("../lib/day-capacity");
@@ -1299,7 +1299,7 @@ router.get(
 
     // Count pending scheduled (regular maintenance) jobs on or after this date for the team.
     // This is what the push-forward endpoint would shift if triggered.
-    const [pendingCountRow] = await db
+    const [pendingCountRow] = await executeWithCircuitBreaker(() => db
       .select({ count: sql<number>`count(*)::int` })
       .from(jobsTable)
       .where(
@@ -1309,7 +1309,7 @@ router.get(
           eq(jobsTable.status, "pending"),
           eq(jobsTable.jobType, "scheduled"),
         ),
-      );
+      ));
     const pendingScheduledFromCount = pendingCountRow?.count ?? 0;
 
     res.json({
@@ -1379,11 +1379,11 @@ router.post(
       // Resolve insertion routeOrder from the asset being inserted (first day only)
       let insertionRouteOrder: number | null = null;
       if (insertionAssetId) {
-        const [asset] = await db
+        const [asset] = await executeWithCircuitBreaker(() => db
           .select({ routeOrder: assetsTable.routeOrder })
           .from(assetsTable)
           .where(eq(assetsTable.id, insertionAssetId))
-          .limit(1);
+          .limit(1));
         insertionRouteOrder = asset?.routeOrder ?? null;
       }
 
@@ -1402,7 +1402,7 @@ router.post(
 
       for (let iter = 0; iter < CASCADE_LIMIT; iter++) {
         // Query pending scheduled jobs on currentDate in geosequence order
-        const dateJobs = await db
+        const dateJobs = await executeWithCircuitBreaker(() => db
           .select({
             id:               jobsTable.id,
             routeOrder:       assetsTable.routeOrder,
@@ -1419,7 +1419,7 @@ router.post(
               eq(jobsTable.jobType, "scheduled"),
             ),
           )
-          .orderBy(sql`${assetsTable.routeOrder} NULLS LAST`, assetsTable.name);
+          .orderBy(sql`${assetsTable.routeOrder} NULLS LAST`, assetsTable.name));
 
         if (dateJobs.length === 0) break;
 
@@ -1444,16 +1444,16 @@ router.post(
         if (toMove.length === 0) break;
 
         const nextDate = addWorkingDays(currentDate, 1, nonWorkingDays);
-        await db
+        await executeWithCircuitBreaker(() => db
           .update(jobsTable)
           .set({ scheduledDate: nextDate, updatedAt: new Date() })
-          .where(inArray(jobsTable.id, toMove));
+          .where(inArray(jobsTable.id, toMove)));
 
         totalAffected += toMove.length;
         latestToDate = nextDate;
 
         // Check if the receiving day is now over capacity (cascade condition)
-        const nextDayRows = await db
+        const nextDayRows = await executeWithCircuitBreaker(() => db
           .select({
             estimatedTimeMins: jobsTable.estimatedTimeMins,
             serviceTimeMins:   assetsTable.serviceTimeMins,
@@ -1466,7 +1466,7 @@ router.post(
               sql`to_char(${jobsTable.scheduledDate}, 'YYYY-MM-DD') = ${nextDate}`,
               eq(jobsTable.status, "pending"),
             ),
-          );
+          ));
 
         const nextDayTotal = nextDayRows.reduce(
           (s, j) => s + (j.estimatedTimeMins ?? j.serviceTimeMins ?? 0), 0,
@@ -1492,7 +1492,7 @@ router.post(
     }
 
     // Only shift pending scheduled (regular maintenance) jobs for this team on or after fromDate.
-    const pendingJobs = await db
+    const pendingJobs = await executeWithCircuitBreaker(() => db
       .select({
         id:            jobsTable.id,
         scheduledDate: sql<string>`to_char(${jobsTable.scheduledDate}, 'YYYY-MM-DD')`,
@@ -1505,7 +1505,7 @@ router.post(
           eq(jobsTable.status, "pending"),
           eq(jobsTable.jobType, "scheduled"),
         ),
-      );
+      ));
 
     if (pendingJobs.length === 0) {
       res.json({ affectedCount: 0, fromDate, toDate: fromDate });
@@ -1549,10 +1549,10 @@ router.post(
       byDate.get(newDate)!.push(id);
     }
     for (const [newDate, ids] of byDate) {
-      await db
+      await executeWithCircuitBreaker(() => db
         .update(jobsTable)
         .set({ scheduledDate: newDate, updatedAt: new Date() })
-        .where(inArray(jobsTable.id, ids));
+        .where(inArray(jobsTable.id, ids)));
     }
 
     const newDates = updates.map(u => u.newDate).sort();
@@ -1630,7 +1630,7 @@ router.post(
       // assessmentDate is required by the DB schema; use today as a placeholder
       // since this is a schedule-first (not assess-first) flow.
       const today = new Date().toISOString().slice(0, 10);
-      const [created] = await db
+      const [created] = await executeWithCircuitBreaker(() => db
         .insert(infillJobsTable)
         .values({
           assetId,
@@ -1642,11 +1642,11 @@ router.post(
           status:          "scheduled",
           assessedById:    req.auth!.userId,
         })
-        .returning();
+        .returning());
 
       res.status(201).json({ jobType: "infill", ...created });
     } else {
-      const [created] = await db
+      const [created] = await executeWithCircuitBreaker(() => db
         .insert(mulchingRecordsTable)
         .values({
           assetId,
@@ -1656,7 +1656,7 @@ router.post(
           notes:          notes ?? null,
           status:         "scheduled",
         })
-        .returning();
+        .returning());
 
       res.status(201).json({ jobType: "mulch", ...created });
     }
@@ -1697,7 +1697,7 @@ router.post(
     const { membersByTeam, absenceMap } = await buildAbsenceDataForTeamDate(teamId, date);
 
     // Load pending scheduled jobs for this team on this date in geosequence order
-    const pendingJobs = await db
+    const pendingJobs = await executeWithCircuitBreaker(() => db
       .select({
         id:              jobsTable.id,
         assetId:         jobsTable.assetId,
@@ -1713,16 +1713,16 @@ router.post(
           eq(jobsTable.jobType, "scheduled"),
         ),
       )
-      .orderBy(sql`${assetsTable.routeOrder} NULLS LAST`, assetsTable.name);
+      .orderBy(sql`${assetsTable.routeOrder} NULLS LAST`, assetsTable.name));
 
     if (pendingJobs.length === 0) {
       return res.json({ jobsOnDate: 0, jobsSpilled: 0 });
     }
 
     // Delete them so we can re-insert with updated placement
-    await db
+    await executeWithCircuitBreaker(() => db
       .delete(jobsTable)
-      .where(inArray(jobsTable.id, pendingJobs.map(j => j.id)));
+      .where(inArray(jobsTable.id, pendingJobs.map(j => j.id))));
 
     // Pre-compute the next SPILL_HORIZON working days so overflow can be placed
     // on the first future day that has enough remaining capacity.
@@ -1735,7 +1735,7 @@ router.post(
     }
 
     // Load existing pending/in-progress load on all candidate days in one query
-    const futureRows = await db
+    const futureRows = await executeWithCircuitBreaker(() => db
       .select({
         scheduledDate:     sql<string>`to_char(${jobsTable.scheduledDate}, 'YYYY-MM-DD')`,
         estimatedTimeMins: jobsTable.estimatedTimeMins,
@@ -1749,7 +1749,7 @@ router.post(
           inArray(jobsTable.scheduledDate, spillCandidates),
           inArray(jobsTable.status, ["pending", "in_progress"]),
         ),
-      );
+      ));
 
     // Build per-day existing load map
     const existingLoad = new Map<string, number>();
@@ -1838,7 +1838,7 @@ router.post(
     }
 
     if (insertRows.length > 0) {
-      await db.insert(jobsTable).values(insertRows);
+      await executeWithCircuitBreaker(() => db.insert(jobsTable).values(insertRows));
     }
 
     res.json({ jobsOnDate, jobsSpilled });
@@ -1876,7 +1876,7 @@ router.get(
     }
 
     // Query assets
-    const assets = await db.select({
+    const assets = await executeWithCircuitBreaker(() => db.select({
       id:              assetsTable.id,
       name:            assetsTable.name,
       description:     assetsTable.description,
@@ -1889,10 +1889,10 @@ router.get(
         sql`${assetsTable.isActive} = true`,
         teamId ? eq(assetsTable.teamId, teamId) : sql`true`,
       ))
-      .orderBy(assetsTable.routeOrder, assetsTable.name);
+      .orderBy(assetsTable.routeOrder, assetsTable.name));
 
     // Query jobs in range
-    const jobs = await db.select({
+    const jobs = await executeWithCircuitBreaker(() => db.select({
       assetId:       jobsTable.assetId,
       scheduledDate: jobsTable.scheduledDate,
       status:        jobsTable.status,
@@ -1902,7 +1902,7 @@ router.get(
         lte(jobsTable.scheduledDate, to),
         teamId ? eq(jobsTable.teamId, teamId) : sql`true`,
         inArray(jobsTable.status, ["pending", "in_progress", "completed"]),
-      ));
+      )));
 
     // assetId → date → status
     const jobMap = new Map<string, Map<string, string>>();
@@ -2101,7 +2101,7 @@ router.get(
     // ── Stream ─────────────────────────────────────────────────────────────
     let teamName = "All-Teams";
     if (teamId) {
-      const [t] = await db.select({ name: teamsTable.name }).from(teamsTable).where(eq(teamsTable.id, teamId)).limit(1);
+      const [t] = await executeWithCircuitBreaker(() => db.select({ name: teamsTable.name }).from(teamsTable).where(eq(teamsTable.id, teamId)).limit(1));
       if (t) teamName = t.name.replace(/\s+/g, "-");
     }
     const filename = `Schedule-Gantt-${teamName}-${from}.xlsx`;

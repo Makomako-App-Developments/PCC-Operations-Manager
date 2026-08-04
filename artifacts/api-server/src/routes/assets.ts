@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { db, assetsTable, insertAssetSchema, auditLogTable, usersTable } from "@workspace/db";
+import { db, assetsTable, insertAssetSchema, auditLogTable, usersTable, executeWithCircuitBreaker } from "@workspace/db";
 import { and, eq, ilike, or, sql, desc } from "drizzle-orm";
 import { z } from "zod";
 import { requireAuth, requireRole } from "../middlewares/auth";
@@ -62,17 +62,17 @@ router.get("/assets", requireAuth, validateQuery(listQuerySchema), async (req, r
   ];
   const where = and(...conditions);
 
-  const rows = await db
+  const rows = await executeWithCircuitBreaker(() => db
     .select()
     .from(assetsTable)
     .where(where)
     .limit(limit)
-    .offset(offset);
+    .offset(offset));
 
-  const [{ count }] = await db
+  const [{ count }] = await executeWithCircuitBreaker(() => db
     .select({ count: sql<number>`count(*)` })
     .from(assetsTable)
-    .where(where);
+    .where(where));
 
   res.json({ data: rows, total: Number(count), page, limit });
 });
@@ -83,7 +83,7 @@ router.get("/assets/by-team-route", requireAuth, async (req, res) => {
   const teamId = req.query.teamId as string | undefined;
   if (!teamId) { res.status(400).json({ error: "teamId required" }); return; }
 
-  const rows = await db
+  const rows = await executeWithCircuitBreaker(() => db
     .select({
       id:         assetsTable.id,
       name:       assetsTable.name,
@@ -95,7 +95,7 @@ router.get("/assets/by-team-route", requireAuth, async (req, res) => {
     })
     .from(assetsTable)
     .where(and(eq(assetsTable.teamId, teamId), eq(assetsTable.isActive, true)))
-    .orderBy(sql`${assetsTable.routeOrder} NULLS LAST`, assetsTable.name);
+    .orderBy(sql`${assetsTable.routeOrder} NULLS LAST`, assetsTable.name));
 
   res.json(rows);
 });
@@ -103,7 +103,7 @@ router.get("/assets/by-team-route", requireAuth, async (req, res) => {
 // GET /api/assets/:id
 router.get("/assets/:id", requireAuth, async (req, res) => {
   const id = String(req.params.id);
-  const [asset] = await db.select().from(assetsTable).where(eq(assetsTable.id, id)).limit(1);
+  const [asset] = await executeWithCircuitBreaker(() => db.select().from(assetsTable).where(eq(assetsTable.id, id)).limit(1));
   if (!asset) { res.status(404).json({ error: "Asset not found" }); return; }
   res.json(asset);
 });
@@ -126,7 +126,7 @@ router.post("/assets", requireAuth, requireRole("manager", "supervisor"), async 
       res.status(400).json({ error: "Validation error", issues: parsed.error.issues });
       return;
     }
-    const [created] = await db.insert(assetsTable).values(parsed.data as any).returning();
+    const [created] = await executeWithCircuitBreaker(() => db.insert(assetsTable).values(parsed.data as any).returning());
     await auditLog({ tableName: "assets", recordId: created.id, action: "INSERT", changedById: req.auth?.userId ?? null, newData: created as Record<string, unknown>, ipAddress: req.ip ?? null });
     res.status(201).json(created);
   } catch (err) {
@@ -152,7 +152,7 @@ router.patch("/assets/route-order", requireAuth, requireRole("manager", "supervi
     const ids    = updates.map(u => u.id);
     const orders = updates.map(u => u.routeOrder);
 
-    await db.execute(sql`
+    await executeWithCircuitBreaker(() => db.execute(sql`
       UPDATE assets
       SET route_order = v.ord,
           updated_at  = NOW()
@@ -161,7 +161,7 @@ router.patch("/assets/route-order", requireAuth, requireRole("manager", "supervi
                unnest(${sql.raw(`ARRAY[${orders.join(",")}]::int[]`)})                   AS ord
       ) v
       WHERE assets.id = v.id
-    `);
+    `));
 
     res.json({ updated: updates.length });
   } catch (err) {
@@ -174,13 +174,13 @@ router.patch("/assets/route-order", requireAuth, requireRole("manager", "supervi
 router.patch("/assets/:id", requireAuth, requireRole("manager", "supervisor"), async (req, res) => {
   try {
     const id = String(req.params.id);
-    const [before] = await db.select().from(assetsTable).where(eq(assetsTable.id, id)).limit(1);
+    const [before] = await executeWithCircuitBreaker(() => db.select().from(assetsTable).where(eq(assetsTable.id, id)).limit(1));
     if (!before) { res.status(404).json({ error: "Asset not found" }); return; }
-    const [updated] = await db
+    const [updated] = await executeWithCircuitBreaker(() => db
       .update(assetsTable)
       .set({ ...req.body, updatedAt: new Date() })
       .where(eq(assetsTable.id, id))
-      .returning();
+      .returning());
     await auditLog({ tableName: "assets", recordId: id, action: "UPDATE", changedById: req.auth?.userId ?? null, oldData: before as Record<string, unknown>, newData: updated as Record<string, unknown>, ipAddress: req.ip ?? null });
     res.json(updated);
   } catch (err) {
@@ -193,7 +193,7 @@ router.patch("/assets/:id", requireAuth, requireRole("manager", "supervisor"), a
 router.get("/assets/:id/history", requireAuth, async (req, res) => {
   const id = String(req.params.id);
 
-  const entries = await db
+  const entries = await executeWithCircuitBreaker(() => db
     .select({
       id:            auditLogTable.id,
       action:        auditLogTable.action,
@@ -209,7 +209,7 @@ router.get("/assets/:id/history", requireAuth, async (req, res) => {
       eq(auditLogTable.recordId,  id),
     ))
     .orderBy(desc(auditLogTable.changedAt))
-    .limit(100);
+    .limit(100));
 
   const result = entries.map(entry => ({
     id:            entry.id,
@@ -231,12 +231,12 @@ router.get("/assets/:id/history", requireAuth, async (req, res) => {
 router.delete("/assets/:id", requireAuth, requireRole("manager"), async (req, res) => {
   try {
     const id = String(req.params.id);
-    const [before] = await db.select().from(assetsTable).where(eq(assetsTable.id, id)).limit(1);
-    const [updated] = await db
+    const [before] = await executeWithCircuitBreaker(() => db.select().from(assetsTable).where(eq(assetsTable.id, id)).limit(1));
+    const [updated] = await executeWithCircuitBreaker(() => db
       .update(assetsTable)
       .set({ isActive: false, updatedAt: new Date() })
       .where(eq(assetsTable.id, id))
-      .returning();
+      .returning());
     if (!updated) { res.status(404).json({ error: "Asset not found" }); return; }
     await auditLog({ tableName: "assets", recordId: id, action: "DELETE", changedById: req.auth?.userId ?? null, oldData: before as Record<string, unknown>, newData: updated as Record<string, unknown>, ipAddress: req.ip ?? null });
     res.json({ ok: true });

@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { db, auditsTable, auditWeeklyQuotasTable, auditQuotaItemsTable, jobsTable, assetsTable, systemSettingsTable } from "@workspace/db";
+import { db, auditsTable, auditWeeklyQuotasTable, auditQuotaItemsTable, jobsTable, assetsTable, systemSettingsTable, executeWithCircuitBreaker } from "@workspace/db";
 import { eq, and, sql, isNull } from "drizzle-orm";
 import { requireAuth, requireRole } from "../middlewares/auth";
 
@@ -42,7 +42,7 @@ async function samplePool(
   // Use a CTE to first deduplicate by asset (picking one random job per asset
   // via DISTINCT ON ordered by random()), then draw a true SQL random sample
   // from the deduplicated set — no JS-level shuffling or manual LIMIT tricks.
-  const result = await db.execute<SampleRow>(sql`
+  const result = await executeWithCircuitBreaker(() => db.execute<SampleRow>(sql`
     WITH deduped AS (
       SELECT DISTINCT ON (j.asset_id)
         j.asset_id,
@@ -59,7 +59,7 @@ async function samplePool(
     FROM   deduped
     ORDER BY random()
     LIMIT  ${limit}
-  `);
+  `));
 
   return result.rows.map((r) => ({
     assetId:     r.asset_id,
@@ -71,7 +71,7 @@ async function samplePool(
 async function buildOrLoadQuota(supervisorId: string, weekStart: Date) {
   const weekStartStr = toDateStr(weekStart);
 
-  const [existing] = await db
+  const [existing] = await executeWithCircuitBreaker(() => db
     .select()
     .from(auditWeeklyQuotasTable)
     .where(
@@ -80,7 +80,7 @@ async function buildOrLoadQuota(supervisorId: string, weekStart: Date) {
         eq(auditWeeklyQuotasTable.weekStart, weekStartStr),
       ),
     )
-    .limit(1);
+    .limit(1));
 
   if (existing) {
     // Auto-refresh on Wednesday: the Monday pool only contains Friday's jobs
@@ -101,15 +101,15 @@ async function generateQuota(supervisorId: string, weekStartStr: string) {
   const weekStart = new Date(weekStartStr + "T00:00:00Z");
 
   // Read configurable quota targets from system settings
-  const [sysSettings] = await db.select({
+  const [sysSettings] = await executeWithCircuitBreaker(() => db.select({
     cwTarget: systemSettingsTable.auditQuotaCompletedWorksCount,
     obTarget: systemSettingsTable.auditQuotaOutcomesBasedCount,
-  }).from(systemSettingsTable).limit(1);
+  }).from(systemSettingsTable).limit(1));
   const CW_TARGET = sysSettings?.cwTarget ?? 15;
   const OB_TARGET = sysSettings?.obTarget ?? 5;
 
   // Find or create the quota record for this supervisor+week
-  let [quota] = await db
+  let [quota] = await executeWithCircuitBreaker(() => db
     .select()
     .from(auditWeeklyQuotasTable)
     .where(
@@ -118,33 +118,33 @@ async function generateQuota(supervisorId: string, weekStartStr: string) {
         eq(auditWeeklyQuotasTable.weekStart, weekStartStr),
       ),
     )
-    .limit(1);
+    .limit(1));
 
   if (quota) {
     // Preserve completed items — only delete pending (unlinked) ones
-    await db
+    await executeWithCircuitBreaker(() => db
       .delete(auditQuotaItemsTable)
       .where(
         and(
           eq(auditQuotaItemsTable.quotaId, quota.id),
           isNull(auditQuotaItemsTable.auditId),
         ),
-      );
+      ));
     // Refresh the generatedAt timestamp
-    await db
+    await executeWithCircuitBreaker(() => db
       .update(auditWeeklyQuotasTable)
       .set({ generatedAt: new Date() })
-      .where(eq(auditWeeklyQuotasTable.id, quota.id));
+      .where(eq(auditWeeklyQuotasTable.id, quota.id)));
   } else {
-    const [inserted] = await db
+    const [inserted] = await executeWithCircuitBreaker(() => db
       .insert(auditWeeklyQuotasTable)
       .values({ supervisorId, weekStart: weekStartStr })
-      .returning();
+      .returning());
     quota = inserted;
   }
 
   // Determine how many of each type are already completed (to avoid over-sampling)
-  const existingCompleted = await db
+  const existingCompleted = await executeWithCircuitBreaker(() => db
     .select()
     .from(auditQuotaItemsTable)
     .where(
@@ -152,7 +152,7 @@ async function generateQuota(supervisorId: string, weekStartStr: string) {
         eq(auditQuotaItemsTable.quotaId, quota.id),
         sql`${auditQuotaItemsTable.auditId} IS NOT NULL`,
       ),
-    );
+    ));
   const cwDone = existingCompleted.filter((i) => i.auditType === "completed-works").length;
   const obDone = existingCompleted.filter((i) => i.auditType === "outcomes-based").length;
 
@@ -182,22 +182,22 @@ async function generateQuota(supervisorId: string, weekStartStr: string) {
   ];
 
   if (items.length > 0) {
-    await db.insert(auditQuotaItemsTable).values(items);
+    await executeWithCircuitBreaker(() => db.insert(auditQuotaItemsTable).values(items));
   }
 
   return loadQuotaDetail(quota.id);
 }
 
 async function loadQuotaDetail(quotaId: string) {
-  const [quota] = await db
+  const [quota] = await executeWithCircuitBreaker(() => db
     .select()
     .from(auditWeeklyQuotasTable)
     .where(eq(auditWeeklyQuotasTable.id, quotaId))
-    .limit(1);
+    .limit(1));
 
   if (!quota) return null;
 
-  const items = await db
+  const items = await executeWithCircuitBreaker(() => db
     .select({
       id:          auditQuotaItemsTable.id,
       assetId:     auditQuotaItemsTable.assetId,
@@ -211,7 +211,7 @@ async function loadQuotaDetail(quotaId: string) {
     })
     .from(auditQuotaItemsTable)
     .leftJoin(assetsTable, eq(auditQuotaItemsTable.assetId, assetsTable.id))
-    .where(eq(auditQuotaItemsTable.quotaId, quotaId));
+    .where(eq(auditQuotaItemsTable.quotaId, quotaId)));
 
   const cwItems = items.filter((i) => i.auditType === "completed-works");
   const obItems = items.filter((i) => i.auditType === "outcomes-based");
@@ -298,7 +298,7 @@ export async function linkQuotaItemIfMatches(assetId: string, auditorId: string,
   const weekStart = getISOWeekStart(new Date());
   const weekStartStr = toDateStr(weekStart);
 
-  const [quota] = await db
+  const [quota] = await executeWithCircuitBreaker(() => db
     .select({ id: auditWeeklyQuotasTable.id })
     .from(auditWeeklyQuotasTable)
     .where(
@@ -307,11 +307,11 @@ export async function linkQuotaItemIfMatches(assetId: string, auditorId: string,
         eq(auditWeeklyQuotasTable.weekStart, weekStartStr),
       ),
     )
-    .limit(1);
+    .limit(1));
 
   if (!quota) return;
 
-  await db
+  await executeWithCircuitBreaker(() => db
     .update(auditQuotaItemsTable)
     .set({ auditId })
     .where(
@@ -320,7 +320,7 @@ export async function linkQuotaItemIfMatches(assetId: string, auditorId: string,
         eq(auditQuotaItemsTable.assetId, assetId),
         isNull(auditQuotaItemsTable.auditId),
       ),
-    );
+    ));
 }
 
 export default router;

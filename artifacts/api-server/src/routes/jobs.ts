@@ -1,6 +1,6 @@
 import { Router } from "express";
 import path from "path";
-import { db, jobsTable, reactiveJobsTable, insertJobSchema, insertReactiveJobSchema, assetsTable, teamsTable, usersTable, jobTeamCompletionsTable, jobTaskSkipReasonsTable, mulchingRecordsTable, jobPhotosTable } from "@workspace/db";
+import { db, executeWithCircuitBreaker, jobsTable, reactiveJobsTable, insertJobSchema, insertReactiveJobSchema, assetsTable, teamsTable, usersTable, jobTeamCompletionsTable, jobTaskSkipReasonsTable, mulchingRecordsTable, jobPhotosTable } from "@workspace/db";
 import { eq, and, inArray, or, gte, lte, ilike, desc } from "drizzle-orm";
 import { z } from "zod";
 import { requireAuth, requireRole } from "../middlewares/auth";
@@ -68,12 +68,12 @@ router.get("/jobs", requireAuth, validateQuery(jobQuerySchema), async (req, res)
     }
   }
 
-  const rows = await db
+  const rows = await executeWithCircuitBreaker(() => db
     .select()
     .from(jobsTable)
     .where(conditions.length > 0 ? and(...conditions) : undefined)
     .limit(limit)
-    .offset(offset);
+    .offset(offset));
   res.json({ data: rows, page, limit });
 });
 
@@ -114,7 +114,7 @@ router.get("/completed-works", requireAuth, validateQuery(completedWorksQuerySch
 
   const offset = (q.page - 1) * q.limit;
 
-  const rows = await db
+  const rows = await executeWithCircuitBreaker(() => db
     .select({
       id:               jobsTable.id,
       jobType:          jobsTable.jobType,
@@ -141,7 +141,7 @@ router.get("/completed-works", requireAuth, validateQuery(completedWorksQuerySch
     .where(and(...conditions))
     .orderBy(desc(jobsTable.scheduledDate))
     .limit(q.limit)
-    .offset(offset);
+    .offset(offset));
 
   res.json({ data: rows, page: q.page, limit: q.limit });
 });
@@ -150,7 +150,7 @@ router.get("/completed-works", requireAuth, validateQuery(completedWorksQuerySch
 router.get("/jobs/:id/pdf", requireAuth, async (req, res) => {
   const id = String(req.params.id);
 
-  const [row] = await db
+  const [row] = await executeWithCircuitBreaker(() => db
     .select({
       id:               jobsTable.id,
       jobType:          jobsTable.jobType,
@@ -176,7 +176,7 @@ router.get("/jobs/:id/pdf", requireAuth, async (req, res) => {
     .leftJoin(assetsTable, eq(jobsTable.assetId, assetsTable.id))
     .leftJoin(teamsTable, eq(jobsTable.teamId, teamsTable.id))
     .where(and(eq(jobsTable.id, id), eq(jobsTable.status, "completed")))
-    .limit(1);
+    .limit(1));
 
   if (!row) { res.status(404).json({ error: "Completed job not found" }); return; }
 
@@ -189,10 +189,10 @@ router.get("/jobs/:id/pdf", requireAuth, async (req, res) => {
   }
 
   // Fetch photos
-  const photos = await db
+  const photos = await executeWithCircuitBreaker(() => db
     .select({ id: jobPhotosTable.id, blobUrl: jobPhotosTable.blobUrl, caption: jobPhotosTable.caption })
     .from(jobPhotosTable)
-    .where(eq(jobPhotosTable.jobId, id));
+    .where(eq(jobPhotosTable.jobId, id)));
 
   // Download image buffers from GCS (images only, skip docs/PDFs)
   const IMAGE_EXTS = /\.(jpe?g|png|webp|gif)$/i;
@@ -404,7 +404,7 @@ router.get("/jobs/:id/pdf", requireAuth, async (req, res) => {
 // Falls through to mulching_records when the id is not in the jobs table.
 router.get("/jobs/:id", requireAuth, async (req, res) => {
   const id = String(req.params.id);
-  const [job] = await db.select().from(jobsTable).where(eq(jobsTable.id, id)).limit(1);
+  const [job] = await executeWithCircuitBreaker(() => db.select().from(jobsTable).where(eq(jobsTable.id, id)).limit(1));
   if (job) {
     if (!isPrivilegedRole(req.auth!.role)) {
       const callerTeamId = req.auth!.teamId;
@@ -416,7 +416,7 @@ router.get("/jobs/:id", requireAuth, async (req, res) => {
   }
 
   // Fallback: check mulching_records
-  const [mr] = await db
+  const [mr] = await executeWithCircuitBreaker(() => db
     .select({
       id:                mulchingRecordsTable.id,
       assetId:           mulchingRecordsTable.assetId,
@@ -442,7 +442,7 @@ router.get("/jobs/:id", requireAuth, async (req, res) => {
     .from(mulchingRecordsTable)
     .innerJoin(assetsTable, eq(mulchingRecordsTable.assetId, assetsTable.id))
     .where(eq(mulchingRecordsTable.id, id))
-    .limit(1);
+    .limit(1));
 
   if (!mr) { res.status(404).json({ error: "Job not found" }); return; }
 
@@ -498,11 +498,11 @@ router.post(
       // Estimate the job's time contribution (estimatedTimeMins or asset's serviceTimeMins)
       let newJobMins = (jobData.estimatedTimeMins as number | null | undefined) ?? 0;
       if (!newJobMins && jobData.assetId) {
-        const [asset] = await db
+        const [asset] = await executeWithCircuitBreaker(() => db
           .select({ serviceTimeMins: assetsTable.serviceTimeMins })
           .from(assetsTable)
           .where(eq(assetsTable.id, jobData.assetId as string))
-          .limit(1);
+          .limit(1));
         newJobMins = asset?.serviceTimeMins ?? 0;
       }
 
@@ -517,7 +517,7 @@ router.post(
       }
     }
 
-    const [created] = await db.insert(jobsTable).values(jobData as any).returning();
+    const [created] = await executeWithCircuitBreaker(() => db.insert(jobsTable).values(jobData as any).returning());
     await auditLog({
       tableName: "jobs", recordId: created.id, action: "INSERT",
       changedById: req.auth?.userId ?? null, newData: created as Record<string, unknown>,
@@ -526,11 +526,11 @@ router.post(
 
     // Send push notification to assigned crew
     if (created.assignedUserId || created.teamId || created.isAllTeams) {
-      const [asset] = await db
+      const [asset] = await executeWithCircuitBreaker(() => db
         .select({ name: assetsTable.name })
         .from(assetsTable)
         .where(eq(assetsTable.id, created.assetId))
-        .limit(1);
+        .limit(1));
       const assetName = asset?.name ?? "a site";
       const dateStr = typeof created.scheduledDate === "string"
         ? created.scheduledDate
@@ -561,15 +561,15 @@ router.post(
 // When a job is marked as "skipped", automatically reschedule it at the next occurrence.
 router.patch("/jobs/:id", requireAuth, async (req, res) => {
   const id = String(req.params.id);
-  const [before] = await db.select().from(jobsTable).where(eq(jobsTable.id, id)).limit(1);
+  const [before] = await executeWithCircuitBreaker(() => db.select().from(jobsTable).where(eq(jobsTable.id, id)).limit(1));
 
   // Fallback: if the ID belongs to a mulching record, handle completion there
   if (!before) {
-    const [mr] = await db
+    const [mr] = await executeWithCircuitBreaker(() => db
       .select()
       .from(mulchingRecordsTable)
       .where(eq(mulchingRecordsTable.id, id))
-      .limit(1);
+      .limit(1));
 
     if (!mr) { res.status(404).json({ error: "Job not found" }); return; }
 
@@ -594,11 +594,11 @@ router.patch("/jobs/:id", requireAuth, async (req, res) => {
       mulchUpdates.status = "scheduled";
     }
 
-    const [updated] = await db
+    const [updated] = await executeWithCircuitBreaker(() => db
       .update(mulchingRecordsTable)
       .set(mulchUpdates)
       .where(eq(mulchingRecordsTable.id, id))
-      .returning();
+      .returning());
 
     await auditLog({
       tableName: "mulching_records", recordId: id, action: "UPDATE",
@@ -680,11 +680,11 @@ router.patch("/jobs/:id", requireAuth, async (req, res) => {
     }
   }
 
-  const [updated] = await db
+  const [updated] = await executeWithCircuitBreaker(() => db
     .update(jobsTable)
     .set({ ...patch, updatedAt: new Date() })
     .where(eq(jobsTable.id, id))
-    .returning();
+    .returning());
 
   await auditLog({
     tableName: "jobs", recordId: id, action: "UPDATE",
@@ -698,11 +698,11 @@ router.patch("/jobs/:id", requireAuth, async (req, res) => {
   const newAssignedUserId = updated.assignedUserId ?? null;
   const oldAssignedUserId = before.assignedUserId ?? null;
   if (newAssignedUserId && newAssignedUserId !== oldAssignedUserId) {
-    const [asset] = await db
+    const [asset] = await executeWithCircuitBreaker(() => db
       .select({ name: assetsTable.name })
       .from(assetsTable)
       .where(eq(assetsTable.id, updated.assetId))
-      .limit(1);
+      .limit(1));
     const assetName = asset?.name ?? "a site";
     const dateStr = typeof updated.scheduledDate === "string"
       ? updated.scheduledDate
@@ -721,11 +721,11 @@ router.patch("/jobs/:id", requireAuth, async (req, res) => {
   // When a job is skipped, create a new pending job at the next scheduled occurrence.
   // Skip reschedule for reactive job types — those are one-off.
   if (patch.status === "skipped" && before.status !== "skipped" && before.jobType === "scheduled") {
-    const [asset] = await db
+    const [asset] = await executeWithCircuitBreaker(() => db
       .select({ frequency: assetsTable.frequency, teamId: assetsTable.teamId })
       .from(assetsTable)
       .where(eq(assetsTable.id, before.assetId))
-      .limit(1);
+      .limit(1));
 
     if (asset) {
       const intervalDays  = FREQ_DAYS[asset.frequency] ?? 28;
@@ -735,7 +735,7 @@ router.patch("/jobs/:id", requireAuth, async (req, res) => {
       const nextDate = addDays(scheduledDate, intervalDays);
 
       // Only create if no job already exists for this asset on that date
-      const [existing] = await db
+      const [existing] = await executeWithCircuitBreaker(() => db
         .select({ id: jobsTable.id })
         .from(jobsTable)
         .where(
@@ -745,10 +745,10 @@ router.patch("/jobs/:id", requireAuth, async (req, res) => {
             eq(jobsTable.jobType, "scheduled"),
           ),
         )
-        .limit(1);
+        .limit(1));
 
       if (!existing) {
-        const [rescheduled] = await db
+        const [rescheduled] = await executeWithCircuitBreaker(() => db
           .insert(jobsTable)
           .values({
             assetId:           before.assetId,
@@ -761,7 +761,7 @@ router.patch("/jobs/:id", requireAuth, async (req, res) => {
             estimatedTimeMins: before.estimatedTimeMins ?? undefined,
             notes:             `Rescheduled from ${scheduledDate} (skipped)`,
           })
-          .returning();
+          .returning());
 
         await auditLog({
           tableName: "jobs", recordId: rescheduled.id, action: "INSERT",
@@ -784,7 +784,7 @@ router.get("/jobs/:id/task-skip-reasons", requireAuth, async (req, res) => {
   const id = String(req.params.id);
 
   // Authorization: verify the caller can read this job
-  const [job] = await db.select({ teamId: jobsTable.teamId, isAllTeams: jobsTable.isAllTeams }).from(jobsTable).where(eq(jobsTable.id, id)).limit(1);
+  const [job] = await executeWithCircuitBreaker(() => db.select({ teamId: jobsTable.teamId, isAllTeams: jobsTable.isAllTeams }).from(jobsTable).where(eq(jobsTable.id, id)).limit(1));
   if (!job) { res.status(404).json({ error: "Job not found" }); return; }
   if (!isPrivilegedRole(req.auth!.role)) {
     const callerTeamId = req.auth!.teamId;
@@ -793,11 +793,11 @@ router.get("/jobs/:id/task-skip-reasons", requireAuth, async (req, res) => {
     }
   }
 
-  const rows = await db
+  const rows = await executeWithCircuitBreaker(() => db
     .select()
     .from(jobTaskSkipReasonsTable)
     .where(eq(jobTaskSkipReasonsTable.jobId, id))
-    .orderBy(jobTaskSkipReasonsTable.taskIndex);
+    .orderBy(jobTaskSkipReasonsTable.taskIndex));
   res.json({ data: rows });
 });
 
@@ -806,7 +806,7 @@ router.post("/jobs/:id/task-skip-reasons", requireAuth, async (req, res) => {
   const id = String(req.params.id);
 
   // Authorization: verify the caller can act on this job
-  const [job] = await db.select({ teamId: jobsTable.teamId, isAllTeams: jobsTable.isAllTeams }).from(jobsTable).where(eq(jobsTable.id, id)).limit(1);
+  const [job] = await executeWithCircuitBreaker(() => db.select({ teamId: jobsTable.teamId, isAllTeams: jobsTable.isAllTeams }).from(jobsTable).where(eq(jobsTable.id, id)).limit(1));
   if (!job) { res.status(404).json({ error: "Job not found" }); return; }
   if (!isPrivilegedRole(req.auth!.role)) {
     const callerTeamId = req.auth!.teamId;
@@ -824,10 +824,10 @@ router.post("/jobs/:id/task-skip-reasons", requireAuth, async (req, res) => {
     res.status(400).json({ error: "taskIndex, taskLabel and reason are required" });
     return;
   }
-  const [created] = await db
+  const [created] = await executeWithCircuitBreaker(() => db
     .insert(jobTaskSkipReasonsTable)
     .values({ jobId: id, taskIndex, taskLabel, reason, createdById: req.auth!.userId })
-    .returning();
+    .returning());
   res.status(201).json(created);
 });
 
@@ -837,17 +837,17 @@ router.post("/jobs/:id/team-complete", requireAuth, async (req, res) => {
   const userId = req.auth!.userId;
   const { actualTimeMins, notes } = req.body as { actualTimeMins?: number; notes?: string };
 
-  const [job] = await db.select().from(jobsTable).where(eq(jobsTable.id, id)).limit(1);
+  const [job] = await executeWithCircuitBreaker(() => db.select().from(jobsTable).where(eq(jobsTable.id, id)).limit(1));
   if (!job)            { res.status(404).json({ error: "Job not found" }); return; }
   if (!job.isAllTeams) { res.status(400).json({ error: "Not an All Teams job" }); return; }
 
   // Authorization: teamId is always derived from the DB — callers can only sign off their own
   // team's participation; the caller must have a team assignment to participate.
-  const [userRow] = await db
+  const [userRow] = await executeWithCircuitBreaker(() => db
     .select({ teamId: usersTable.teamId })
     .from(usersTable)
     .where(eq(usersTable.id, userId))
-    .limit(1);
+    .limit(1));
   if (!userRow?.teamId) {
     res.status(403).json({ error: "Forbidden: user has no team assigned" }); return;
   }
@@ -858,39 +858,39 @@ router.post("/jobs/:id/team-complete", requireAuth, async (req, res) => {
     res.status(403).json({ error: "Forbidden" }); return;
   }
 
-  const [existing] = await db
+  const [existing] = await executeWithCircuitBreaker(() => db
     .select({ id: jobTeamCompletionsTable.id })
     .from(jobTeamCompletionsTable)
     .where(and(eq(jobTeamCompletionsTable.jobId, id), eq(jobTeamCompletionsTable.teamId, teamId)))
-    .limit(1);
+    .limit(1));
 
   let completion;
   if (existing) {
-    [completion] = await db
+    [completion] = await executeWithCircuitBreaker(() => db
       .update(jobTeamCompletionsTable)
       .set({ actualTimeMins: actualTimeMins ?? null, notes: notes ?? null, completedAt: new Date(), completedById: userId })
       .where(and(eq(jobTeamCompletionsTable.jobId, id), eq(jobTeamCompletionsTable.teamId, teamId)))
-      .returning();
+      .returning());
   } else {
-    [completion] = await db
+    [completion] = await executeWithCircuitBreaker(() => db
       .insert(jobTeamCompletionsTable)
       .values({ jobId: id, teamId, actualTimeMins: actualTimeMins ?? null, notes: notes ?? null, completedById: userId })
-      .returning();
+      .returning());
   }
 
   if (job.status === "pending") {
-    await db.update(jobsTable).set({ status: "in_progress", startedAt: new Date(), updatedAt: new Date() }).where(eq(jobsTable.id, id));
+    await executeWithCircuitBreaker(() => db.update(jobsTable).set({ status: "in_progress", startedAt: new Date(), updatedAt: new Date() }).where(eq(jobsTable.id, id)));
   }
 
-  const allTeams  = await db.select({ id: teamsTable.id }).from(teamsTable);
-  const allSigned = await db.select({ teamId: jobTeamCompletionsTable.teamId }).from(jobTeamCompletionsTable).where(eq(jobTeamCompletionsTable.jobId, id));
+  const allTeams  = await executeWithCircuitBreaker(() => db.select({ id: teamsTable.id }).from(teamsTable));
+  const allSigned = await executeWithCircuitBreaker(() => db.select({ teamId: jobTeamCompletionsTable.teamId }).from(jobTeamCompletionsTable).where(eq(jobTeamCompletionsTable.jobId, id)));
   const signedIds = new Set(allSigned.map(r => r.teamId));
   const allDone   = allTeams.every(t => signedIds.has(t.id));
 
   if (allDone) {
-    await db.update(jobsTable)
+    await executeWithCircuitBreaker(() => db.update(jobsTable)
       .set({ status: "completed", completedAt: new Date(), updatedAt: new Date() })
-      .where(eq(jobsTable.id, id));
+      .where(eq(jobsTable.id, id)));
   }
 
   res.json({ completion, allDone, signedCount: signedIds.size, totalTeams: allTeams.length });
@@ -920,7 +920,7 @@ router.get("/reactive-jobs", requireAuth, async (req, res) => {
       conditions.push(inArray(reactiveJobsTable.status, statuses as any[]));
     }
   }
-  const rows = await db
+  const rows = await executeWithCircuitBreaker(() => db
     .select({
       ...reactiveJobsTable,
       raisedByName: usersTable.name,
@@ -930,7 +930,7 @@ router.get("/reactive-jobs", requireAuth, async (req, res) => {
     .leftJoin(usersTable, eq(reactiveJobsTable.raisedById, usersTable.id))
     .leftJoin(assetsTable, eq(reactiveJobsTable.assetId, assetsTable.id))
     .where(conditions.length > 0 ? and(...conditions) : undefined)
-    .limit(5000);
+    .limit(5000));
   res.json({ data: rows });
 });
 
@@ -958,10 +958,10 @@ router.post("/reactive-jobs", requireAuth, validateBody(insertReactiveJobSchema.
     ? { assignedTeamId, assignedUserId, scheduledDate, estimatedTimeMins, priority }
     : {};
 
-  const [created] = await db
+  const [created] = await executeWithCircuitBreaker(() => db
     .insert(reactiveJobsTable)
     .values({ ...allowedBody, ...privilegedFields, status: "raised", raisedById: req.auth!.userId, origin })
-    .returning();
+    .returning());
   await auditLog({
     tableName: "reactive_jobs", recordId: created.id, action: "INSERT",
     changedById: req.auth?.userId ?? null, newData: created as Record<string, unknown>,
@@ -971,11 +971,11 @@ router.post("/reactive-jobs", requireAuth, validateBody(insertReactiveJobSchema.
   if (created.assignedTeamId) {
     let assetName = "a site";
     if (created.assetId) {
-      const [asset] = await db
+      const [asset] = await executeWithCircuitBreaker(() => db
         .select({ name: assetsTable.name })
         .from(assetsTable)
         .where(eq(assetsTable.id, created.assetId))
-        .limit(1);
+        .limit(1));
       assetName = asset?.name ?? "a site";
     }
     const priority = created.priority ?? "medium";
@@ -993,7 +993,7 @@ router.post("/reactive-jobs", requireAuth, validateBody(insertReactiveJobSchema.
 // GET /api/reactive-jobs/:id
 router.get("/reactive-jobs/:id", requireAuth, async (req, res) => {
   const id = String(req.params.id);
-  const [row] = await db
+  const [row] = await executeWithCircuitBreaker(() => db
     .select({
       ...reactiveJobsTable,
       raisedByName: usersTable.name,
@@ -1003,7 +1003,7 @@ router.get("/reactive-jobs/:id", requireAuth, async (req, res) => {
     .leftJoin(usersTable, eq(reactiveJobsTable.raisedById, usersTable.id))
     .leftJoin(assetsTable, eq(reactiveJobsTable.assetId, assetsTable.id))
     .where(eq(reactiveJobsTable.id, id))
-    .limit(1);
+    .limit(1));
   if (!row) { res.status(404).json({ error: "Reactive job not found" }); return; }
 
   // Authorization: non-privileged users may only read reactive jobs assigned to their team
@@ -1020,7 +1020,7 @@ router.get("/reactive-jobs/:id", requireAuth, async (req, res) => {
 // PATCH /api/reactive-jobs/:id
 router.patch("/reactive-jobs/:id", requireAuth, async (req, res) => {
   const id = String(req.params.id);
-  const [before] = await db.select().from(reactiveJobsTable).where(eq(reactiveJobsTable.id, id)).limit(1);
+  const [before] = await executeWithCircuitBreaker(() => db.select().from(reactiveJobsTable).where(eq(reactiveJobsTable.id, id)).limit(1));
   if (!before) { res.status(404).json({ error: "Reactive job not found" }); return; }
 
   // Authorization: non-privileged users may only update reactive jobs assigned to their team
@@ -1059,11 +1059,11 @@ router.patch("/reactive-jobs/:id", requireAuth, async (req, res) => {
     patch[key] = val;
   }
 
-  const [updated] = await db
+  const [updated] = await executeWithCircuitBreaker(() => db
     .update(reactiveJobsTable)
     .set({ ...patch, updatedAt: new Date() })
     .where(eq(reactiveJobsTable.id, id))
-    .returning();
+    .returning());
   await auditLog({
     tableName: "reactive_jobs", recordId: id, action: "UPDATE",
     changedById: req.auth?.userId ?? null,

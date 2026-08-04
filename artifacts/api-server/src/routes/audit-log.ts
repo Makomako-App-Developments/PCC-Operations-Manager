@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { db, auditLogTable, usersTable } from "@workspace/db";
+import { db, auditLogTable, usersTable, executeWithCircuitBreaker } from "@workspace/db";
 import { eq, and, gte, lte, desc } from "drizzle-orm";
 import { z } from "zod";
 import { requireAuth, requireRole } from "../middlewares/auth";
@@ -51,7 +51,7 @@ router.get(
 
     const where = conditions.length > 0 ? and(...conditions) : undefined;
 
-    const rows = await db
+    const rows = await executeWithCircuitBreaker(() => db
       .select({
         id:            auditLogTable.id,
         tableName:     auditLogTable.tableName,
@@ -69,7 +69,7 @@ router.get(
       .where(where)
       .orderBy(desc(auditLogTable.changedAt))
       .limit(limit)
-      .offset(offset);
+      .offset(offset));
 
     const sanitized = rows.map(row => {
       if (row.tableName !== "users") return row;
@@ -107,7 +107,7 @@ router.get(
     if (from) conditions.push(gte(auditLogTable.changedAt, new Date(from)));
     if (to)   conditions.push(lte(auditLogTable.changedAt, new Date(to)));
 
-    const rows = await db
+    const rows = await executeWithCircuitBreaker(() => db
       .select({
         id:            auditLogTable.id,
         action:        auditLogTable.action,
@@ -121,7 +121,7 @@ router.get(
       .where(and(...conditions))
       .orderBy(desc(auditLogTable.changedAt))
       .limit(teamId ? 200 : limit)
-      .offset(teamId ? 0 : offset);
+      .offset(teamId ? 0 : offset));
 
     // Post-filter by teamId (stored in newData JSON) when requested
     const allRows = teamId

@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { db, teamAvailabilityTable, teamMembersTable, reactiveJobsTable, usersTable } from "@workspace/db";
+import { db, teamAvailabilityTable, teamMembersTable, reactiveJobsTable, usersTable, executeWithCircuitBreaker } from "@workspace/db";
 import { and, eq, gte, lte, inArray } from "drizzle-orm";
 import { notifySupervisors } from "../lib/push-notifications";
 import { z } from "zod";
@@ -28,11 +28,11 @@ const deleteSchema = z.object({
 });
 
 async function getTeamIdForPerson(personName: string): Promise<string | null> {
-  const [row] = await db
+  const [row] = await executeWithCircuitBreaker(() => db
     .select({ teamId: teamMembersTable.teamId })
     .from(teamMembersTable)
     .where(eq(teamMembersTable.personName, personName))
-    .limit(1);
+    .limit(1));
   return row?.teamId ?? null;
 }
 
@@ -48,7 +48,7 @@ router.get(
     const end   = new Date(start);
     end.setDate(end.getDate() + 6);
 
-    const rows = await db
+    const rows = await executeWithCircuitBreaker(() => db
       .select()
       .from(teamAvailabilityTable)
       .where(
@@ -56,7 +56,7 @@ router.get(
           gte(teamAvailabilityTable.date, weekStart),
           lte(teamAvailabilityTable.date, end.toISOString().slice(0, 10)),
         ),
-      );
+      ));
 
     res.json(rows);
   },
@@ -72,7 +72,7 @@ router.put(
     const { personName, date, hour, status, skipSpill } = res.locals.body as z.infer<typeof upsertSchema>;
 
     if (status === "available") {
-      await db
+      await executeWithCircuitBreaker(() => db
         .delete(teamAvailabilityTable)
         .where(
           and(
@@ -80,9 +80,9 @@ router.put(
             eq(teamAvailabilityTable.date, date),
             eq(teamAvailabilityTable.hour, hour),
           ),
-        );
+        ));
     } else {
-      await db
+      await executeWithCircuitBreaker(() => db
         .insert(teamAvailabilityTable)
         .values({ personName, date, hour, status })
         .onConflictDoUpdate({
@@ -92,7 +92,7 @@ router.put(
             teamAvailabilityTable.hour,
           ],
           set: { status, updatedAt: new Date() },
-        });
+        }));
     }
 
     // Auto-refresh crew status on pending jobs for this person's team on this date
@@ -128,14 +128,14 @@ router.put(
     // and will be left stranded now that they're unavailable.
     let strandedJobs: { id: string; issueType: string; description: string }[] = [];
     if (status !== "available") {
-      const [user] = await db
+      const [user] = await executeWithCircuitBreaker(() => db
         .select({ id: usersTable.id })
         .from(usersTable)
         .where(eq(usersTable.name, personName))
-        .limit(1);
+        .limit(1));
 
       if (user) {
-        strandedJobs = await db
+        strandedJobs = await executeWithCircuitBreaker(() => db
           .select({
             id:          reactiveJobsTable.id,
             issueType:   reactiveJobsTable.issueType,
@@ -148,7 +148,7 @@ router.put(
               eq(reactiveJobsTable.scheduledDate, date),
               inArray(reactiveJobsTable.status, ["raised", "assigned", "in_progress"]),
             ),
-          );
+          ));
 
         if (strandedJobs.length > 0) {
           void notifySupervisors({

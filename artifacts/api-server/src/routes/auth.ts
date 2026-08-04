@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { randomBytes } from "crypto";
-import { db, usersTable } from "@workspace/db";
+import { db, usersTable, executeWithCircuitBreaker } from "@workspace/db";
 import { eq, sql } from "drizzle-orm";
 import { z } from "zod";
 import { verifyPassword, hashPassword } from "../lib/password";
@@ -23,7 +23,7 @@ const handoffCodes = new Map<string, HandoffEntry>();
 // Requires an authenticated session (cookie or bearer). Issues a one-time
 // code that the field-ops surface can exchange for a fresh access token.
 router.post("/auth/handoff/create", requireAuth, async (req, res) => {
-  const [user] = await db.select().from(usersTable).where(eq(usersTable.id, req.auth!.userId)).limit(1);
+  const [user] = await executeWithCircuitBreaker(() => db.select().from(usersTable).where(eq(usersTable.id, req.auth!.userId)).limit(1));
   if (!user || !user.isActive) {
     res.status(403).json({ error: "Account disabled" });
     return;
@@ -73,7 +73,7 @@ const loginSchema = z.object({
 // POST /api/auth/login
 router.post("/auth/login", validateBody(loginSchema), async (req, res) => {
   const { email, password } = req.body;
-  const [user] = await db.select().from(usersTable).where(sql`lower(${usersTable.email}) = lower(${email})`).limit(1);
+  const [user] = await executeWithCircuitBreaker(() => db.select().from(usersTable).where(sql`lower(${usersTable.email}) = lower(${email})`).limit(1));
 
   if (!user || !(await verifyPassword(password, user.passwordHash))) {
     res.status(401).json({ error: "Invalid email or password" });
@@ -120,7 +120,7 @@ router.post("/auth/refresh", async (req, res) => {
     return;
   }
   // Check user still active
-  const [user] = await db.select().from(usersTable).where(eq(usersTable.id, payload.userId)).limit(1);
+  const [user] = await executeWithCircuitBreaker(() => db.select().from(usersTable).where(eq(usersTable.id, payload.userId)).limit(1));
   if (!user || !user.isActive) {
     res.status(403).json({ error: "Account disabled" });
     return;
@@ -143,7 +143,7 @@ router.post("/auth/logout", (_req, res) => {
 
 // GET /api/auth/me
 router.get("/auth/me", requireAuth, async (req, res) => {
-  const [user] = await db.select().from(usersTable).where(eq(usersTable.id, req.auth!.userId)).limit(1);
+  const [user] = await executeWithCircuitBreaker(() => db.select().from(usersTable).where(eq(usersTable.id, req.auth!.userId)).limit(1));
   if (!user) { res.status(404).json({ error: "User not found" }); return; }
   const { passwordHash: _, ...safe } = user;
   res.json(safe);

@@ -1,6 +1,6 @@
 import { Router } from "express";
 import bcrypt from "bcryptjs";
-import { db, usersTable } from "@workspace/db";
+import { db, usersTable, executeWithCircuitBreaker } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { z } from "zod";
 import { requireAuth, requireRole } from "../middlewares/auth";
@@ -46,10 +46,10 @@ router.get(
   requireAuth,
   requireRole("administrator", "manager", "supervisor"),
   async (_req, res) => {
-    const users = await db
+    const users = await executeWithCircuitBreaker(() => db
       .select(SAFE_COLS)
       .from(usersTable)
-      .orderBy(usersTable.name);
+      .orderBy(usersTable.name));
     res.json({ data: users, total: users.length });
   },
 );
@@ -68,10 +68,10 @@ router.post(
       return;
     }
     const passwordHash = await bcrypt.hash(password, 12);
-    const [user] = await db
+    const [user] = await executeWithCircuitBreaker(() => db
       .insert(usersTable)
       .values({ ...rest, passwordHash, isActive: true })
-      .returning(SAFE_COLS);
+      .returning(SAFE_COLS));
     await auditLog({
       tableName: "users",
       recordId: user.id,
@@ -92,11 +92,11 @@ router.patch(
   validateBody(updateUserSchema),
   async (req, res) => {
     const id = String(req.params.id);
-    const [before] = await db
+    const [before] = await executeWithCircuitBreaker(() => db
       .select(SAFE_COLS)
       .from(usersTable)
       .where(eq(usersTable.id, id))
-      .limit(1);
+      .limit(1));
     if (!before) {
       res.status(404).json({ error: "User not found" });
       return;
@@ -117,11 +117,11 @@ router.patch(
     if (password) {
       updates.passwordHash = await bcrypt.hash(password, 12);
     }
-    const [updated] = await db
+    const [updated] = await executeWithCircuitBreaker(() => db
       .update(usersTable)
       .set(updates)
       .where(eq(usersTable.id, id))
-      .returning(SAFE_COLS);
+      .returning(SAFE_COLS));
     await auditLog({
       tableName: "users",
       recordId: id,
@@ -144,10 +144,10 @@ router.put("/users/me/push-token", requireAuth, validateBody(pushTokenSchema), a
   const userId = req.auth!.userId;
   const { token } = req.body as z.infer<typeof pushTokenSchema>;
 
-  await db
+  await executeWithCircuitBreaker(() => db
     .update(usersTable)
     .set({ expoPushToken: token ?? null, updatedAt: new Date() })
-    .where(eq(usersTable.id, userId));
+    .where(eq(usersTable.id, userId)));
 
   res.json({ ok: true });
 });
@@ -161,10 +161,10 @@ router.put("/users/me/notifications", requireAuth, validateBody(notificationsSch
   const userId = req.auth!.userId;
   const { enabled } = req.body as z.infer<typeof notificationsSchema>;
 
-  await db
+  await executeWithCircuitBreaker(() => db
     .update(usersTable)
     .set({ pushNotificationsEnabled: enabled, updatedAt: new Date() })
-    .where(eq(usersTable.id, userId));
+    .where(eq(usersTable.id, userId)));
 
   res.json({ ok: true, enabled });
 });

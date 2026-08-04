@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { db, auditLogTable, usersTable, assetsTable, reactiveJobsTable, teamsTable } from "@workspace/db";
+import { db, auditLogTable, usersTable, assetsTable, reactiveJobsTable, teamsTable, executeWithCircuitBreaker } from "@workspace/db";
 import { and, eq, gte, lte, desc, sql, inArray, isNotNull } from "drizzle-orm";
 import { z } from "zod";
 import { requireAuth, requireRole } from "../middlewares/auth";
@@ -55,12 +55,12 @@ router.get(
     if (to)   conditions.push(lte(auditLogTable.changedAt, new Date(to)));
     const where = and(...conditions);
 
-    const [{ count }] = await db
+    const [{ count }] = await executeWithCircuitBreaker(() => db
       .select({ count: sql<number>`count(*)` })
       .from(auditLogTable)
-      .where(where);
+      .where(where));
 
-    const rows = await db
+    const rows = await executeWithCircuitBreaker(() => db
       .select({
         id:            auditLogTable.id,
         recordId:      auditLogTable.recordId,
@@ -75,14 +75,14 @@ router.get(
       .where(where)
       .orderBy(desc(auditLogTable.changedAt))
       .limit(limit)
-      .offset(offset);
+      .offset(offset));
 
     const assetIds = [...new Set(rows.map(r => r.recordId).filter(Boolean))] as string[];
     const assets = assetIds.length > 0
-      ? await db
+      ? await executeWithCircuitBreaker(() => db
           .select({ id: assetsTable.id, name: assetsTable.name })
           .from(assetsTable)
-          .where(inArray(assetsTable.id, assetIds))
+          .where(inArray(assetsTable.id, assetIds)))
       : [];
     const assetMap = new Map(assets.map(a => [a.id, a]));
 
@@ -124,7 +124,7 @@ router.get(
     if (from) conditions.push(gte(reactiveJobsTable.raisedAt, new Date(from)));
     if (to)   conditions.push(lte(reactiveJobsTable.raisedAt, new Date(to)));
 
-    const rows = await db
+    const rows = await executeWithCircuitBreaker(() => db
       .select({
         month:    sql<string>`to_char(${reactiveJobsTable.raisedAt}, 'YYYY-MM')`,
         teamName: teamsTable.name,
@@ -134,7 +134,7 @@ router.get(
       .innerJoin(teamsTable, eq(reactiveJobsTable.assignedTeamId, teamsTable.id))
       .where(and(...conditions))
       .groupBy(sql`to_char(${reactiveJobsTable.raisedAt}, 'YYYY-MM')`, teamsTable.name)
-      .orderBy(sql`to_char(${reactiveJobsTable.raisedAt}, 'YYYY-MM')`, teamsTable.name);
+      .orderBy(sql`to_char(${reactiveJobsTable.raisedAt}, 'YYYY-MM')`, teamsTable.name));
 
     res.json({ rows });
   },

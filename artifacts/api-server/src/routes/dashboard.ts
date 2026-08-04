@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { db, assetsTable, jobsTable, reactiveJobsTable, teamsTable, auditsTable, auditItemsTable } from "@workspace/db";
+import { db, assetsTable, jobsTable, reactiveJobsTable, teamsTable, auditsTable, auditItemsTable, executeWithCircuitBreaker } from "@workspace/db";
 import { eq, and, gte, lte, sql, count } from "drizzle-orm";
 import { requireAuth } from "../middlewares/auth";
 
@@ -18,16 +18,16 @@ router.get("/dashboard/summary", requireAuth, async (_req, res) => {
 
   const fmt = (d: Date) => d.toISOString().slice(0, 10);
 
-  const [totalRow] = await db
+  const [totalRow] = await executeWithCircuitBreaker(() => db
     .select({ count: count() })
-    .from(assetsTable);
+    .from(assetsTable));
 
-  const [activeRow] = await db
+  const [activeRow] = await executeWithCircuitBreaker(() => db
     .select({ count: count() })
     .from(assetsTable)
-    .where(eq(assetsTable.isActive, true));
+    .where(eq(assetsTable.isActive, true)));
 
-  const [weekJobsRow] = await db
+  const [weekJobsRow] = await executeWithCircuitBreaker(() => db
     .select({ count: count() })
     .from(jobsTable)
     .where(
@@ -35,9 +35,9 @@ router.get("/dashboard/summary", requireAuth, async (_req, res) => {
         gte(jobsTable.scheduledDate, fmt(weekStart)),
         lte(jobsTable.scheduledDate, fmt(weekEnd)),
       ),
-    );
+    ));
 
-  const [completedRow] = await db
+  const [completedRow] = await executeWithCircuitBreaker(() => db
     .select({ count: count() })
     .from(jobsTable)
     .where(
@@ -46,30 +46,30 @@ router.get("/dashboard/summary", requireAuth, async (_req, res) => {
         lte(jobsTable.scheduledDate, fmt(weekEnd)),
         eq(jobsTable.status, "completed"),
       ),
-    );
+    ));
 
-  const [overdueRow] = await db
+  const [overdueRow] = await executeWithCircuitBreaker(() => db
     .select({ count: count() })
     .from(jobsTable)
-    .where(eq(jobsTable.status, "overdue"));
+    .where(eq(jobsTable.status, "overdue")));
 
-  const [reactiveRow] = await db
+  const [reactiveRow] = await executeWithCircuitBreaker(() => db
     .select({ count: count() })
     .from(reactiveJobsTable)
     .where(
       sql`${reactiveJobsTable.status} NOT IN ('completed', 'cancelled')`,
-    );
+    ));
 
-  const assetsByTypeRows = await db
+  const assetsByTypeRows = await executeWithCircuitBreaker(() => db
     .select({
       gardenType: assetsTable.gardenType,
       count: count(),
     })
     .from(assetsTable)
     .where(eq(assetsTable.isActive, true))
-    .groupBy(assetsTable.gardenType);
+    .groupBy(assetsTable.gardenType));
 
-  const teamSummaryRows = await db
+  const teamSummaryRows = await executeWithCircuitBreaker(() => db
     .select({
       teamId:   teamsTable.id,
       teamName: teamsTable.name,
@@ -83,9 +83,9 @@ router.get("/dashboard/summary", requireAuth, async (_req, res) => {
         lte(jobsTable.scheduledDate, fmt(weekEnd)),
       ),
     )
-    .groupBy(teamsTable.id, teamsTable.name);
+    .groupBy(teamsTable.id, teamsTable.name));
 
-  const completedByTeamRows = await db
+  const completedByTeamRows = await executeWithCircuitBreaker(() => db
     .select({
       teamId: teamsTable.id,
       completedCount: count(),
@@ -99,13 +99,13 @@ router.get("/dashboard/summary", requireAuth, async (_req, res) => {
         eq(jobsTable.status, "completed"),
       ),
     )
-    .groupBy(teamsTable.id);
+    .groupBy(teamsTable.id));
 
   const completedMap = new Map(completedByTeamRows.map((r) => [r.teamId, r.completedCount]));
 
   // Pest plant sightings — all time, dashboard filters by period client-side
   // Source 1: audit items where plant_pests KPI was failed
-  const auditSightingRows = await db
+  const auditSightingRows = await executeWithCircuitBreaker(() => db
     .select({
       itemId:            auditItemsTable.id,
       assetId:           auditsTable.assetId,
@@ -117,10 +117,10 @@ router.get("/dashboard/summary", requireAuth, async (_req, res) => {
     .innerJoin(auditsTable, eq(auditItemsTable.auditId, auditsTable.id))
     .innerJoin(assetsTable, eq(auditsTable.assetId, assetsTable.id))
     .where(and(eq(auditItemsTable.criterion, "plant_pests"), eq(auditItemsTable.result, "fail")))
-    .orderBy(sql`${auditsTable.conductedAt} desc`);
+    .orderBy(sql`${auditsTable.conductedAt} desc`));
 
   // Source 2: reactive jobs of type pest_plant_sighting from field workers
-  const reactiveSightingRows = await db
+  const reactiveSightingRows = await executeWithCircuitBreaker(() => db
     .select({
       itemId:            reactiveJobsTable.id,
       assetId:           reactiveJobsTable.assetId,
@@ -131,7 +131,7 @@ router.get("/dashboard/summary", requireAuth, async (_req, res) => {
     .from(reactiveJobsTable)
     .innerJoin(assetsTable, eq(reactiveJobsTable.assetId, assetsTable.id))
     .where(eq(reactiveJobsTable.issueType, "pest_plant_sighting"))
-    .orderBy(sql`${reactiveJobsTable.raisedAt} desc`);
+    .orderBy(sql`${reactiveJobsTable.raisedAt} desc`));
 
   const pestSightingRows = [...auditSightingRows, ...reactiveSightingRows];
 
