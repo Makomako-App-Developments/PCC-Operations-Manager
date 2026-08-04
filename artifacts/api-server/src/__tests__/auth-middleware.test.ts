@@ -5,7 +5,7 @@ import type { Request, Response, NextFunction } from "express";
 vi.mock("jsonwebtoken", () => ({
   default: {
     verify: vi.fn((token: string, _secret: string) => {
-      if (token === "valid-token") return { userId: "user-1", role: "manager" };
+      if (token === "valid-token") return { userId: "user-1", role: "manager", tokenType: "access" };
       throw new Error("invalid");
     }),
   },
