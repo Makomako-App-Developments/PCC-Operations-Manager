@@ -234,4 +234,35 @@ describe("checkDayCapacity — loud failure on sub-query error", () => {
     // Only 4 calls: system-settings + 3 from computeTotalScheduledMins; pending-count not reached
     expect(mockExecuteWithCircuitBreaker).toHaveBeenCalledTimes(4);
   });
+
+  it("rejects when computeTotalScheduledMins's regular-jobs query fails during checkDayCapacity", async () => {
+    // Call order in checkDayCapacity:
+    //   call 1: system-settings → resolves
+    //   call 2: regular-jobs (inside computeTotalScheduledMins) → FAILS
+    mockExecuteWithCircuitBreaker
+      .mockResolvedValueOnce([{ productiveTimeMins: 390 }]) // system-settings
+      .mockRejectedValueOnce(SUB_ERROR);                    // regular-jobs → fails
+
+    const { checkDayCapacity } = await import("../lib/day-capacity");
+
+    await expect(checkDayCapacity(TEAM_ID, DATE, 60)).rejects.toThrow(SUB_ERROR);
+  });
+
+  it("emits structured warn with jobType 'regular-jobs' when regular-jobs fails inside checkDayCapacity", async () => {
+    // Same setup: system-settings succeeds, then regular-jobs (inside computeTotalScheduledMins) fails.
+    // The structured warn must say "regular-jobs", NOT "system-settings", proving the rejection
+    // propagates all the way up through checkDayCapacity rather than being absorbed.
+    mockExecuteWithCircuitBreaker
+      .mockResolvedValueOnce([{ productiveTimeMins: 390 }]) // system-settings
+      .mockRejectedValueOnce(SUB_ERROR);                    // regular-jobs → fails
+
+    const { checkDayCapacity } = await import("../lib/day-capacity");
+
+    await expect(checkDayCapacity(TEAM_ID, DATE, 60)).rejects.toThrow();
+
+    expect(warnSpy).toHaveBeenCalledOnce();
+    const [message, meta] = warnSpy.mock.calls[0] as [string, Record<string, unknown>];
+    expect(message).toContain("sub-query failed");
+    expect(meta).toMatchObject({ jobType: "regular-jobs", teamId: TEAM_ID, date: DATE });
+  });
 });
