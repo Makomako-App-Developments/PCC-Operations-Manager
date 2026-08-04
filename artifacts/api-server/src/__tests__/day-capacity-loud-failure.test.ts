@@ -144,3 +144,94 @@ describe("computeTotalScheduledMins — loud failure on sub-query error", () => 
     expect(warnSpy).not.toHaveBeenCalled();
   });
 });
+
+// ── checkDayCapacity loud failure tests ───────────────────────────────────────
+
+describe("checkDayCapacity — loud failure on sub-query error", () => {
+  let warnSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    warnSpy.mockRestore();
+  });
+
+  it("rejects when the system-settings query fails", async () => {
+    // system-settings is the 1st executeWithCircuitBreaker call in checkDayCapacity
+    mockExecuteWithCircuitBreaker.mockRejectedValueOnce(SUB_ERROR);
+
+    const { checkDayCapacity } = await import("../lib/day-capacity");
+
+    await expect(checkDayCapacity(TEAM_ID, DATE, 60)).rejects.toThrow(SUB_ERROR);
+  });
+
+  it("emits a structured warn with jobType/teamId/date when system-settings fails", async () => {
+    mockExecuteWithCircuitBreaker.mockRejectedValueOnce(SUB_ERROR);
+
+    const { checkDayCapacity } = await import("../lib/day-capacity");
+
+    await expect(checkDayCapacity(TEAM_ID, DATE, 60)).rejects.toThrow();
+
+    expect(warnSpy).toHaveBeenCalledOnce();
+    const [message, meta] = warnSpy.mock.calls[0] as [string, Record<string, unknown>];
+    expect(message).toContain("sub-query failed");
+    expect(meta).toMatchObject({ jobType: "system-settings", teamId: TEAM_ID, date: DATE });
+  });
+
+  it("rejects when the pending-count query fails", async () => {
+    // Call order in checkDayCapacity when capacity is exceeded:
+    //   call 1: system-settings   → resolves with low productiveTimeMins
+    //   calls 2-4: computeTotalScheduledMins (regular-jobs, infill-jobs, mulching-records)
+    //   call 5: pending-count → rejects
+    //
+    // To ensure capacity IS exceeded: productiveTimeMins=100, each sub-query returns
+    // 60 mins → totalScheduledMins=180; newJobMins=50 → newTotal=230 > 100.
+    mockExecuteWithCircuitBreaker
+      .mockResolvedValueOnce([{ productiveTimeMins: 100 }]) // system-settings
+      .mockResolvedValueOnce([{ mins: 60 }])               // regular-jobs
+      .mockResolvedValueOnce([{ mins: 60 }])               // infill-jobs
+      .mockResolvedValueOnce([{ mins: 60 }])               // mulching-records
+      .mockRejectedValueOnce(SUB_ERROR);                   // pending-count → fails
+
+    const { checkDayCapacity } = await import("../lib/day-capacity");
+
+    await expect(checkDayCapacity(TEAM_ID, DATE, 50)).rejects.toThrow(SUB_ERROR);
+  });
+
+  it("emits a structured warn with jobType/teamId/date when pending-count fails", async () => {
+    mockExecuteWithCircuitBreaker
+      .mockResolvedValueOnce([{ productiveTimeMins: 100 }])
+      .mockResolvedValueOnce([{ mins: 60 }])
+      .mockResolvedValueOnce([{ mins: 60 }])
+      .mockResolvedValueOnce([{ mins: 60 }])
+      .mockRejectedValueOnce(SUB_ERROR);
+
+    const { checkDayCapacity } = await import("../lib/day-capacity");
+
+    await expect(checkDayCapacity(TEAM_ID, DATE, 50)).rejects.toThrow();
+
+    expect(warnSpy).toHaveBeenCalledOnce();
+    const [message, meta] = warnSpy.mock.calls[0] as [string, Record<string, unknown>];
+    expect(message).toContain("sub-query failed");
+    expect(meta).toMatchObject({ jobType: "pending-count", teamId: TEAM_ID, date: DATE });
+  });
+
+  it("returns null when capacity is not exceeded — pending-count never called", async () => {
+    // productiveTimeMins=390 (default), totalScheduledMins=0, newJobMins=30 → no conflict
+    mockExecuteWithCircuitBreaker
+      .mockResolvedValueOnce([])               // system-settings → no row, uses default 390
+      .mockResolvedValue([]);                  // all computeTotalScheduledMins sub-queries
+
+    const { checkDayCapacity } = await import("../lib/day-capacity");
+
+    const result = await checkDayCapacity(TEAM_ID, DATE, 30);
+
+    expect(result).toBeNull();
+    expect(warnSpy).not.toHaveBeenCalled();
+    // Only 4 calls: system-settings + 3 from computeTotalScheduledMins; pending-count not reached
+    expect(mockExecuteWithCircuitBreaker).toHaveBeenCalledTimes(4);
+  });
+});

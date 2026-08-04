@@ -118,8 +118,10 @@ export async function checkDayCapacity(
   date: string,
   newJobMins: number,
 ): Promise<DayCapacityResult | null> {
-  const [settings] = await executeWithCircuitBreaker(() =>
-    db.select().from(systemSettingsTable).limit(1),
+  const [settings] = await queryJobTypeMins("system-settings", teamId, date, () =>
+    executeWithCircuitBreaker(() =>
+      db.select().from(systemSettingsTable).limit(1),
+    ),
   );
   const productiveTimeMins = settings?.productiveTimeMins ?? 390;
 
@@ -130,18 +132,20 @@ export async function checkDayCapacity(
 
   // Count pending regular maintenance jobs on/after this date that
   // push-forward would shift.
-  const [pendingCountRow] = await executeWithCircuitBreaker(() =>
-    db
-      .select({ count: sql<number>`count(*)::int` })
-      .from(jobsTable)
-      .where(
-        and(
-          eq(jobsTable.teamId, teamId),
-          gte(jobsTable.scheduledDate, date),
-          eq(jobsTable.status, "pending"),
-          eq(jobsTable.jobType, "scheduled"),
+  const [pendingCountRow] = await queryJobTypeMins("pending-count", teamId, date, () =>
+    executeWithCircuitBreaker(() =>
+      db
+        .select({ count: sql<number>`count(*)::int` })
+        .from(jobsTable)
+        .where(
+          and(
+            eq(jobsTable.teamId, teamId),
+            gte(jobsTable.scheduledDate, date),
+            eq(jobsTable.status, "pending"),
+            eq(jobsTable.jobType, "scheduled"),
+          ),
         ),
-      ),
+    ),
   );
 
   return {
