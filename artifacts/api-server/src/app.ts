@@ -10,6 +10,7 @@ import router from "./routes";
 import { initSentry, Sentry } from "./lib/sentry";
 import { objectStorageClient } from "./lib/objectStorage";
 import { requireAuth } from "./middlewares/auth";
+import { dbCircuitBreakerMiddleware } from "./middlewares/dbCircuitBreaker";
 import {
   db,
   jobPhotosTable,
@@ -67,6 +68,14 @@ const authLimiter = rateLimit({
 
 app.use("/api", generalLimiter);
 app.use("/api/auth", authLimiter);
+
+// ── DB circuit-breaker guard ──────────────────────────────────────────────────
+// Fast-fails any DB-bound request with 503 when the circuit breaker is OPEN
+// or HALF_OPEN, instead of letting each request hang for connectionTimeoutMillis
+// (5 s). Registered here — before ALL /api route handlers (including the
+// uploads proxy below) — so no DB-bound handler can bypass it. Health routes
+// are excluded because they ARE the probes that close the circuit.
+app.use("/api", dbCircuitBreakerMiddleware);
 
 // ── Photo/upload serving — proxy from GCS object storage ─────────────────────
 // blobUrl format stored in DB: /api/uploads/uploads/<uuid>.<ext>
