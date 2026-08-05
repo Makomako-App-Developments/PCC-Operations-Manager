@@ -178,7 +178,7 @@ describe("computeTotalScheduledMins — asymmetric empty-array result (silent un
     warnSpy.mockRestore();
   });
 
-  it("returns only the two non-zero sub-query totals when regular-jobs silently resolves with []", async () => {
+  it("returns only the two non-zero sub-query totals when regular-jobs silently resolves with [] AND emits a structured warn", async () => {
     // regular-jobs silently returns [] (0 mins) — as if a middleware swallowed an error.
     // infill-jobs returns 45 mins, mulching-records returns 30 mins.
     // Expected: 0 + 45 + 30 = 75  (NOT 0, NOT the full 75+regularMins).
@@ -191,14 +191,21 @@ describe("computeTotalScheduledMins — asymmetric empty-array result (silent un
 
     const result = await computeTotalScheduledMins(TEAM_ID, DATE);
 
-    // The function does NOT throw — the silent empty array is not detectable at
-    // this layer.  The total reflects only the two sub-queries that returned data.
+    // The function does NOT throw, but the asymmetry IS now detectable:
+    // one sub-query returned [] while two others returned rows, so a
+    // structured warn is emitted to make the under-count operator-visible.
     expect(result).toBe(75);
-    // No warning is emitted because no sub-query rejected.
-    expect(warnSpy).not.toHaveBeenCalled();
+    expect(warnSpy).toHaveBeenCalledOnce();
+    const [message, meta] = warnSpy.mock.calls[0] as [string, Record<string, unknown>];
+    expect(message).toContain("possible silent middleware failure");
+    expect(meta).toMatchObject({
+      teamId: TEAM_ID,
+      date: DATE,
+      emptySubQueries: ["regular-jobs"],
+    });
   });
 
-  it("returns only the two non-zero sub-query totals when infill-jobs silently resolves with []", async () => {
+  it("returns only the two non-zero sub-query totals when infill-jobs silently resolves with [] AND emits a structured warn", async () => {
     // regular-jobs returns 60 mins, infill-jobs silently returns [], mulching-records returns 50 mins.
     // Expected: 60 + 0 + 50 = 110.
     mockExecuteWithCircuitBreaker
@@ -211,10 +218,17 @@ describe("computeTotalScheduledMins — asymmetric empty-array result (silent un
     const result = await computeTotalScheduledMins(TEAM_ID, DATE);
 
     expect(result).toBe(110);
-    expect(warnSpy).not.toHaveBeenCalled();
+    expect(warnSpy).toHaveBeenCalledOnce();
+    const [message, meta] = warnSpy.mock.calls[0] as [string, Record<string, unknown>];
+    expect(message).toContain("possible silent middleware failure");
+    expect(meta).toMatchObject({
+      teamId: TEAM_ID,
+      date: DATE,
+      emptySubQueries: ["infill-jobs"],
+    });
   });
 
-  it("returns only the two non-zero sub-query totals when mulching-records silently resolves with []", async () => {
+  it("returns only the two non-zero sub-query totals when mulching-records silently resolves with [] AND emits a structured warn", async () => {
     // regular-jobs returns 80 mins, infill-jobs returns 40 mins, mulching-records silently returns [].
     // Expected: 80 + 40 + 0 = 120.
     mockExecuteWithCircuitBreaker
@@ -227,10 +241,17 @@ describe("computeTotalScheduledMins — asymmetric empty-array result (silent un
     const result = await computeTotalScheduledMins(TEAM_ID, DATE);
 
     expect(result).toBe(120);
-    expect(warnSpy).not.toHaveBeenCalled();
+    expect(warnSpy).toHaveBeenCalledOnce();
+    const [message, meta] = warnSpy.mock.calls[0] as [string, Record<string, unknown>];
+    expect(message).toContain("possible silent middleware failure");
+    expect(meta).toMatchObject({
+      teamId: TEAM_ID,
+      date: DATE,
+      emptySubQueries: ["mulching-records"],
+    });
   });
 
-  it("does NOT return zero even when two sub-queries silently resolve with [] and one returns data", async () => {
+  it("does NOT return zero even when two sub-queries silently resolve with [] and one returns data AND emits a structured warn", async () => {
     // Worst-case partial failure: two sub-queries silently return [].
     // Only mulching-records returns 90 mins.  Total must be 90, never 0.
     mockExecuteWithCircuitBreaker
@@ -245,7 +266,15 @@ describe("computeTotalScheduledMins — asymmetric empty-array result (silent un
     // Result is non-zero — the one live sub-query still contributes.
     expect(result).toBe(90);
     expect(result).toBeGreaterThan(0);
-    expect(warnSpy).not.toHaveBeenCalled();
+    // Asymmetry still detected: two sub-queries empty, one non-empty → warn emitted.
+    expect(warnSpy).toHaveBeenCalledOnce();
+    const [message, meta] = warnSpy.mock.calls[0] as [string, Record<string, unknown>];
+    expect(message).toContain("possible silent middleware failure");
+    expect(meta).toMatchObject({
+      teamId: TEAM_ID,
+      date: DATE,
+      emptySubQueries: expect.arrayContaining(["regular-jobs", "infill-jobs"]),
+    });
   });
 });
 

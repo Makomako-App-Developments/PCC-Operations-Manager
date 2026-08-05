@@ -116,6 +116,28 @@ export async function computeTotalScheduledMins(
     ),
   ]);
 
+  // ── Silent empty-array guard ────────────────────────────────────────────────
+  // If a DB middleware layer swallows an error and resolves with [] instead of
+  // rejecting, queryJobTypeMins will NOT throw — so the check above cannot catch
+  // it. We detect the failure by looking for asymmetry: if at least one
+  // sub-query returned rows but another returned zero rows, the empty result is
+  // suspicious and likely indicates a silent failure rather than a genuinely
+  // empty schedule. Warn loudly so the under-count is operator-visible.
+  const rowCounts = [
+    { jobType: "regular-jobs",     count: regularRows.length },
+    { jobType: "infill-jobs",      count: infillRows.length  },
+    { jobType: "mulching-records", count: mulchRows.length   },
+  ];
+  const anyNonEmpty = rowCounts.some((r) => r.count > 0);
+  const emptyTypes  = rowCounts.filter((r) => r.count === 0).map((r) => r.jobType);
+
+  if (anyNonEmpty && emptyTypes.length > 0) {
+    console.warn(
+      `[day-capacity] sub-query returned empty results while other sub-queries returned data — possible silent middleware failure; capacity may be under-counted`,
+      { teamId, date, emptySubQueries: emptyTypes, nonEmptySubQueries: rowCounts.filter((r) => r.count > 0).map((r) => r.jobType) },
+    );
+  }
+
   const total =
     regularRows.reduce((s, r) => s + Number(r.mins), 0) +
     infillRows.reduce((s, r)  => s + Number(r.mins), 0) +
