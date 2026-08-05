@@ -346,6 +346,81 @@ describe("day-capacity CB integration — mulching-records timeout", () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
+// No module-level memoisation — consecutive calls with different DB states
+// must return different results.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("day-capacity — no module-level memoisation", () => {
+  let warnSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    warnSpy.mockRestore();
+  });
+
+  it("two consecutive calls with different DB states return different totals — proving no caching", async () => {
+    // First DB snapshot: each of the three sub-queries returns 60 mins → total = 180.
+    currentDb = makeSelectiveDb(new Map([
+      [0, [{ mins: 60 }]], // regular-jobs
+      [1, [{ mins: 60 }]], // infill-jobs
+      [2, [{ mins: 60 }]], // mulching-records
+    ]));
+
+    const { computeTotalScheduledMins } = await import("../lib/day-capacity");
+    const firstResult = await computeTotalScheduledMins(TEAM_ID, DATE);
+
+    // Swap to a second DB snapshot: each sub-query now returns 30 mins → total = 90.
+    // A module-level or TTL cache would return 180 again, failing this assertion.
+    currentDb = makeSelectiveDb(new Map([
+      [0, [{ mins: 30 }]], // regular-jobs
+      [1, [{ mins: 30 }]], // infill-jobs
+      [2, [{ mins: 30 }]], // mulching-records
+    ]));
+
+    const secondResult = await computeTotalScheduledMins(TEAM_ID, DATE);
+
+    expect(firstResult).toBe(180);
+    expect(secondResult).toBe(90);
+    // Redundant but explicit: the two results MUST differ.
+    expect(firstResult).not.toBe(secondResult);
+  });
+
+  it("checkDayCapacity with different DB states between calls returns different conflict outcomes — no caching", async () => {
+    // First DB snapshot: large scheduled load (300 mins) → adding 120 mins exceeds 390 limit.
+    currentDb = makeSelectiveDb(new Map([
+      [0, [{ productiveTimeMins: 390 }]], // system-settings
+      [1, [{ mins: 100 }]],              // regular-jobs
+      [2, [{ mins: 100 }]],              // infill-jobs
+      [3, [{ mins: 100 }]],              // mulching-records
+      // pending-count (call 4) uses [] default — resolves with count 0
+    ]));
+
+    const { checkDayCapacity } = await import("../lib/day-capacity");
+    const conflictResult = await checkDayCapacity(TEAM_ID, DATE, 120);
+
+    // First call: 300 + 120 = 420 > 390 → should detect a conflict.
+    expect(conflictResult).not.toBeNull();
+    expect(conflictResult!.totalScheduledMins).toBe(300);
+
+    // Swap to a second DB snapshot: no scheduled load → same 120 mins fits easily.
+    currentDb = makeSelectiveDb(new Map([
+      [0, [{ productiveTimeMins: 390 }]], // system-settings
+      // calls 1-3: default [] → 0 mins each
+    ]));
+
+    const noConflictResult = await checkDayCapacity(TEAM_ID, DATE, 120);
+
+    // Second call: 0 + 120 = 120 ≤ 390 → no conflict.
+    // A stale cache returning the first result would wrongly report a conflict here.
+    expect(noConflictResult).toBeNull();
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Happy path — all sub-queries succeed
 // ─────────────────────────────────────────────────────────────────────────────
 
