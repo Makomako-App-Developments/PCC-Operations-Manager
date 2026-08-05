@@ -145,6 +145,110 @@ describe("computeTotalScheduledMins — loud failure on sub-query error", () => 
   });
 });
 
+// ── Silent empty-array under-count tests ──────────────────────────────────────
+//
+// RISK DOCUMENTATION — silent driver-level swallow
+// -------------------------------------------------
+// Some DB middleware layers (e.g. a custom error-handling wrapper, an ORM
+// plugin, or a connection-pool interceptor) may catch an internal error and
+// resolve with [] instead of rejecting.  If that happens to one of the three
+// sub-queries inside computeTotalScheduledMins, the function will NOT throw —
+// it will resolve with a total that silently omits the affected job type.
+//
+// This is a "silent under-count": the caller receives a number that looks
+// plausible but is lower than the true scheduled load, which could cause the
+// scheduler to over-commit capacity.
+//
+// The tests below confirm the arithmetic when one sub-query resolves with []
+// while the other two return real rows.  The expected total is the sum of the
+// two non-zero sub-queries.  Future contributors who modify the summing logic
+// or introduce a new middleware layer should ensure this class of failure
+// remains detectable (e.g. by asserting a minimum plausible total or by
+// validating that no sub-query returns an unexpectedly empty array).
+
+describe("computeTotalScheduledMins — asymmetric empty-array result (silent under-count detection)", () => {
+  let warnSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    warnSpy.mockRestore();
+  });
+
+  it("returns only the two non-zero sub-query totals when regular-jobs silently resolves with []", async () => {
+    // regular-jobs silently returns [] (0 mins) — as if a middleware swallowed an error.
+    // infill-jobs returns 45 mins, mulching-records returns 30 mins.
+    // Expected: 0 + 45 + 30 = 75  (NOT 0, NOT the full 75+regularMins).
+    mockExecuteWithCircuitBreaker
+      .mockResolvedValueOnce([])                // regular-jobs → silently empty
+      .mockResolvedValueOnce([{ mins: 45 }])   // infill-jobs  → 45 mins
+      .mockResolvedValueOnce([{ mins: 30 }]);  // mulching-records → 30 mins
+
+    const { computeTotalScheduledMins } = await import("../lib/day-capacity");
+
+    const result = await computeTotalScheduledMins(TEAM_ID, DATE);
+
+    // The function does NOT throw — the silent empty array is not detectable at
+    // this layer.  The total reflects only the two sub-queries that returned data.
+    expect(result).toBe(75);
+    // No warning is emitted because no sub-query rejected.
+    expect(warnSpy).not.toHaveBeenCalled();
+  });
+
+  it("returns only the two non-zero sub-query totals when infill-jobs silently resolves with []", async () => {
+    // regular-jobs returns 60 mins, infill-jobs silently returns [], mulching-records returns 50 mins.
+    // Expected: 60 + 0 + 50 = 110.
+    mockExecuteWithCircuitBreaker
+      .mockResolvedValueOnce([{ mins: 60 }])   // regular-jobs     → 60 mins
+      .mockResolvedValueOnce([])               // infill-jobs      → silently empty
+      .mockResolvedValueOnce([{ mins: 50 }]); // mulching-records → 50 mins
+
+    const { computeTotalScheduledMins } = await import("../lib/day-capacity");
+
+    const result = await computeTotalScheduledMins(TEAM_ID, DATE);
+
+    expect(result).toBe(110);
+    expect(warnSpy).not.toHaveBeenCalled();
+  });
+
+  it("returns only the two non-zero sub-query totals when mulching-records silently resolves with []", async () => {
+    // regular-jobs returns 80 mins, infill-jobs returns 40 mins, mulching-records silently returns [].
+    // Expected: 80 + 40 + 0 = 120.
+    mockExecuteWithCircuitBreaker
+      .mockResolvedValueOnce([{ mins: 80 }])   // regular-jobs     → 80 mins
+      .mockResolvedValueOnce([{ mins: 40 }])   // infill-jobs      → 40 mins
+      .mockResolvedValueOnce([]);              // mulching-records → silently empty
+
+    const { computeTotalScheduledMins } = await import("../lib/day-capacity");
+
+    const result = await computeTotalScheduledMins(TEAM_ID, DATE);
+
+    expect(result).toBe(120);
+    expect(warnSpy).not.toHaveBeenCalled();
+  });
+
+  it("does NOT return zero even when two sub-queries silently resolve with [] and one returns data", async () => {
+    // Worst-case partial failure: two sub-queries silently return [].
+    // Only mulching-records returns 90 mins.  Total must be 90, never 0.
+    mockExecuteWithCircuitBreaker
+      .mockResolvedValueOnce([])               // regular-jobs     → silently empty
+      .mockResolvedValueOnce([])               // infill-jobs      → silently empty
+      .mockResolvedValueOnce([{ mins: 90 }]); // mulching-records → 90 mins
+
+    const { computeTotalScheduledMins } = await import("../lib/day-capacity");
+
+    const result = await computeTotalScheduledMins(TEAM_ID, DATE);
+
+    // Result is non-zero — the one live sub-query still contributes.
+    expect(result).toBe(90);
+    expect(result).toBeGreaterThan(0);
+    expect(warnSpy).not.toHaveBeenCalled();
+  });
+});
+
 // ── checkDayCapacity loud failure tests ───────────────────────────────────────
 
 describe("checkDayCapacity — loud failure on sub-query error", () => {
