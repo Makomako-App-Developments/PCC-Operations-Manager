@@ -41,6 +41,24 @@ async function queryJobTypeMins<T>(
   }
 }
 
+/**
+ * CACHING NOTE — circuit-breaker recovery safety
+ * ------------------------------------------------
+ * This function performs NO caching of its own. Every invocation issues three
+ * parallel DB queries (regular jobs, infill jobs, mulching records) directly
+ * through `executeWithCircuitBreaker`. There is no in-process Map, TTL cache,
+ * or memoisation layer sitting in front of these queries.
+ *
+ * Consequence: when the circuit breaker transitions OPEN → HALF_OPEN → CLOSED
+ * after a DB outage, the very next call to this function automatically reads
+ * live data from Postgres. No explicit cache-invalidation step is required on
+ * `recordSuccess()` or any other circuit-breaker state-change event.
+ *
+ * If a caching layer is ever introduced here (e.g. a per-request Map or a
+ * module-level TTL cache), it MUST be invalidated — or keyed so that it cannot
+ * survive across circuit-breaker trips — to prevent a stale low total from
+ * causing the scheduler to over-commit capacity after DB recovery.
+ */
 export async function computeTotalScheduledMins(
   teamId: string,
   date: string,
