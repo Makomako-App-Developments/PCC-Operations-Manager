@@ -1289,7 +1289,7 @@ router.get(
 
     // Total minutes across ALL active job types (maintenance + infill + mulching)
     const { computeTotalScheduledMins: computeTotal } = await import("../lib/day-capacity");
-    const totalMins = await computeTotal(teamId, date);
+    const { total: totalMins, capacityDataReliable } = await computeTotal(teamId, date);
 
     // Check if the entire team is absent on this date — if so, effective capacity = 0
     const { membersByTeam: mtMap, absenceMap: abMap } = await buildAbsenceDataForTeamDate(teamId, date);
@@ -1320,6 +1320,7 @@ router.get(
       utilizationPct:     allAbsent ? 9999 : Math.round((totalMins / productiveTimeMins) * 100),
       jobs,
       pendingScheduledFromCount,
+      capacityDataReliable,
     });
   },
 );

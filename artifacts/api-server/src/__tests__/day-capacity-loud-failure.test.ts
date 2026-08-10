@@ -140,7 +140,8 @@ describe("computeTotalScheduledMins — loud failure on sub-query error", () => 
     const result = await computeTotalScheduledMins(TEAM_ID, DATE);
 
     // 3 sub-queries × 60 mins each
-    expect(result).toBe(180);
+    expect(result.total).toBe(180);
+    expect(result.capacityDataReliable).toBe(true);
     expect(warnSpy).not.toHaveBeenCalled();
   });
 });
@@ -194,7 +195,8 @@ describe("computeTotalScheduledMins — asymmetric empty-array result (silent un
     // The function does NOT throw, but the asymmetry IS now detectable:
     // one sub-query returned [] while two others returned rows, so a
     // structured warn is emitted to make the under-count operator-visible.
-    expect(result).toBe(75);
+    expect(result.total).toBe(75);
+    expect(result.capacityDataReliable).toBe(false);
     expect(warnSpy).toHaveBeenCalledOnce();
     const [message, meta] = warnSpy.mock.calls[0] as [string, Record<string, unknown>];
     expect(message).toContain("possible silent middleware failure");
@@ -217,7 +219,8 @@ describe("computeTotalScheduledMins — asymmetric empty-array result (silent un
 
     const result = await computeTotalScheduledMins(TEAM_ID, DATE);
 
-    expect(result).toBe(110);
+    expect(result.total).toBe(110);
+    expect(result.capacityDataReliable).toBe(false);
     expect(warnSpy).toHaveBeenCalledOnce();
     const [message, meta] = warnSpy.mock.calls[0] as [string, Record<string, unknown>];
     expect(message).toContain("possible silent middleware failure");
@@ -240,7 +243,8 @@ describe("computeTotalScheduledMins — asymmetric empty-array result (silent un
 
     const result = await computeTotalScheduledMins(TEAM_ID, DATE);
 
-    expect(result).toBe(120);
+    expect(result.total).toBe(120);
+    expect(result.capacityDataReliable).toBe(false);
     expect(warnSpy).toHaveBeenCalledOnce();
     const [message, meta] = warnSpy.mock.calls[0] as [string, Record<string, unknown>];
     expect(message).toContain("possible silent middleware failure");
@@ -264,8 +268,9 @@ describe("computeTotalScheduledMins — asymmetric empty-array result (silent un
     const result = await computeTotalScheduledMins(TEAM_ID, DATE);
 
     // Result is non-zero — the one live sub-query still contributes.
-    expect(result).toBe(90);
-    expect(result).toBeGreaterThan(0);
+    expect(result.total).toBe(90);
+    expect(result.total).toBeGreaterThan(0);
+    expect(result.capacityDataReliable).toBe(false);
     // Asymmetry still detected: two sub-queries empty, one non-empty → warn emitted.
     expect(warnSpy).toHaveBeenCalledOnce();
     const [message, meta] = warnSpy.mock.calls[0] as [string, Record<string, unknown>];

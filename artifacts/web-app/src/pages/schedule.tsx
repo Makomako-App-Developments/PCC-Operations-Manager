@@ -2301,6 +2301,17 @@ export default function Schedule() {
             </DialogHeader>
 
             <div className="space-y-4 py-1">
+              {/* Under-count reliability warning */}
+              {pushCapacity.capacityDataReliable === false && (
+                <div className="flex items-start gap-2 rounded-lg border border-yellow-300 bg-yellow-50 px-3 py-2.5">
+                  <AlertTriangle className="w-4 h-4 text-yellow-600 mt-0.5 flex-shrink-0" />
+                  <p className="text-xs text-yellow-800">
+                    <span className="font-semibold">Scheduled minutes may be under-counted.</span>{" "}
+                    One or more capacity sub-queries returned no data while others returned results — capacity figures should be treated as approximate.
+                  </p>
+                </div>
+              )}
+
               {/* Capacity bar */}
               <div className="bg-gray-50 rounded-xl p-4 space-y-3">
                 <div className="flex justify-between items-center text-sm">
@@ -2902,6 +2913,17 @@ export default function Schedule() {
           {/* ── Step 2: Capacity Impact ── */}
           {urgentStep === 2 && dayCapacity && (
             <div className="space-y-4 py-2">
+              {/* Under-count reliability warning */}
+              {dayCapacity.capacityDataReliable === false && (
+                <div className="flex items-start gap-2 rounded-lg border border-yellow-300 bg-yellow-50 px-3 py-2.5">
+                  <AlertTriangle className="w-4 h-4 text-yellow-600 mt-0.5 flex-shrink-0" />
+                  <p className="text-xs text-yellow-800">
+                    <span className="font-semibold">Scheduled minutes may be under-counted.</span>{" "}
+                    One or more capacity sub-queries returned no data while others returned results — capacity figures should be treated as approximate.
+                  </p>
+                </div>
+              )}
+
               {/* Capacity bar */}
               {(() => {
                 const cap   = dayCapacity.productiveTimeMins as number;

@@ -164,6 +164,28 @@ export default function Dashboard() {
     return m;
   }, [teamsData]);
 
+  // Fetch today's day-capacity for every team so we can surface a dashboard-level
+  // warning when `capacityDataReliable` is false (silent sub-query under-count).
+  const todayStr = format(today, "yyyy-MM-dd");
+  const { data: todayCapacityData } = useQuery<any[]>({
+    queryKey: ["/api/schedule/day-capacity/all-teams", todayStr, (teamsData ?? []).map(t => t.id).join(",")],
+    enabled: !!teamsData && teamsData.length > 0,
+    queryFn: async () => {
+      const results = await Promise.all(
+        (teamsData ?? []).map((t: any) =>
+          fetch(`/api/schedule/day-capacity?teamId=${t.id}&date=${todayStr}`, { credentials: "include" })
+            .then(r => r.ok ? r.json() : null)
+            .catch(() => null)
+        )
+      );
+      return results.filter(Boolean);
+    },
+  });
+  const unreliableCapacityTeams = useMemo(
+    () => (todayCapacityData ?? []).filter((c: any) => c.capacityDataReliable === false),
+    [todayCapacityData]
+  );
+
   const { data: draftMulchData }    = useQuery({
     queryKey: ["/api/mulching-records", "draft"],
     queryFn: () => fetch("/api/mulching-records?status=draft", { credentials: "include" }).then(r => r.json()),
@@ -273,6 +295,21 @@ export default function Dashboard() {
       </header>
 
       <div className="flex-1 overflow-y-auto px-8 py-6 space-y-6">
+
+        {/* ── Capacity under-count warning ── */}
+        {unreliableCapacityTeams.length > 0 && (
+          <div className="flex items-start gap-3 rounded-xl border border-yellow-300 bg-yellow-50 px-4 py-3">
+            <AlertTriangle className="w-4 h-4 text-yellow-600 mt-0.5 flex-shrink-0" />
+            <div>
+              <p className="text-sm font-semibold text-yellow-800">Capacity figures may be under-counted today</p>
+              <p className="text-xs text-yellow-700 mt-0.5">
+                One or more scheduled-minutes sub-queries returned no data while others returned results for{" "}
+                {unreliableCapacityTeams.map((c: any) => c.teamId).join(", ") ? "the affected team(s)" : "a team"}.
+                This is a possible silent data-layer failure — treat today's capacity figures as approximate and check server logs.
+              </p>
+            </div>
+          </div>
+        )}
 
         {/* ── Stat Cards ── */}
         <div>

@@ -12,6 +12,10 @@ export interface DayCapacityResult {
   pendingScheduledFromCount: number;
   date: string;
   teamId: string;
+  /** False when the asymmetry guard fired — one or more sub-queries returned
+   *  empty results while others returned data, suggesting a silent middleware
+   *  failure that may have under-counted scheduled minutes. */
+  capacityDataReliable: boolean;
 }
 
 /**
@@ -62,7 +66,7 @@ async function queryJobTypeMins<T>(
 export async function computeTotalScheduledMins(
   teamId: string,
   date: string,
-): Promise<number> {
+): Promise<{ total: number; capacityDataReliable: boolean }> {
   const [regularRows, infillRows, mulchRows] = await Promise.all([
     // Regular maintenance + reactive + contingency jobs
     queryJobTypeMins("regular-jobs", teamId, date, () =>
@@ -131,7 +135,9 @@ export async function computeTotalScheduledMins(
   const anyNonEmpty = rowCounts.some((r) => r.count > 0);
   const emptyTypes  = rowCounts.filter((r) => r.count === 0).map((r) => r.jobType);
 
-  if (anyNonEmpty && emptyTypes.length > 0) {
+  const capacityDataReliable = !(anyNonEmpty && emptyTypes.length > 0);
+
+  if (!capacityDataReliable) {
     console.warn(
       `[day-capacity] sub-query returned empty results while other sub-queries returned data — possible silent middleware failure; capacity may be under-counted`,
       { teamId, date, emptySubQueries: emptyTypes, nonEmptySubQueries: rowCounts.filter((r) => r.count > 0).map((r) => r.jobType) },
@@ -143,7 +149,7 @@ export async function computeTotalScheduledMins(
     infillRows.reduce((s, r)  => s + Number(r.mins), 0) +
     mulchRows.reduce((s, r)   => s + Number(r.mins), 0);
 
-  return total;
+  return { total, capacityDataReliable };
 }
 
 /**
@@ -165,7 +171,7 @@ export async function checkDayCapacity(
   );
   const productiveTimeMins = settings?.productiveTimeMins ?? 390;
 
-  const totalScheduledMins = await computeTotalScheduledMins(teamId, date);
+  const { total: totalScheduledMins, capacityDataReliable } = await computeTotalScheduledMins(teamId, date);
   const newTotal = totalScheduledMins + newJobMins;
 
   if (newTotal <= productiveTimeMins) return null;
@@ -196,5 +202,6 @@ export async function checkDayCapacity(
     newJobMins,
     shortfallMins: newTotal - productiveTimeMins,
     pendingScheduledFromCount: pendingCountRow?.count ?? 0,
+    capacityDataReliable,
   };
 }

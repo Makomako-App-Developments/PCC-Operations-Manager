@@ -383,10 +383,10 @@ describe("day-capacity — no module-level memoisation", () => {
 
     const secondResult = await computeTotalScheduledMins(TEAM_ID, DATE);
 
-    expect(firstResult).toBe(180);
-    expect(secondResult).toBe(90);
+    expect(firstResult.total).toBe(180);
+    expect(secondResult.total).toBe(90);
     // Redundant but explicit: the two results MUST differ.
-    expect(firstResult).not.toBe(secondResult);
+    expect(firstResult.total).not.toBe(secondResult.total);
   });
 
   it("checkDayCapacity with different DB states between calls returns different conflict outcomes — no caching", async () => {
