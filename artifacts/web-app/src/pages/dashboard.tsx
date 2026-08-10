@@ -300,14 +300,10 @@ export default function Dashboard() {
         {unreliableCapacityTeams.length > 0 && (
           <div className="flex items-start gap-3 rounded-xl border border-yellow-300 bg-yellow-50 px-4 py-3">
             <AlertTriangle className="w-4 h-4 text-yellow-600 mt-0.5 flex-shrink-0" />
-            <div>
-              <p className="text-sm font-semibold text-yellow-800">Capacity figures may be under-counted today</p>
-              <p className="text-xs text-yellow-700 mt-0.5">
-                One or more scheduled-minutes sub-queries returned no data while others returned results for{" "}
-                {unreliableCapacityTeams.map((c: any) => c.teamId).join(", ") ? "the affected team(s)" : "a team"}.
-                This is a possible silent data-layer failure — treat today's capacity figures as approximate and check server logs.
-              </p>
-            </div>
+            <p className="text-xs text-yellow-800">
+              <span className="font-semibold">Scheduled minutes may be under-counted.</span>{" "}
+              One or more capacity sub-queries returned no data while others returned results — capacity figures should be treated as approximate.
+            </p>
           </div>
         )}
 
