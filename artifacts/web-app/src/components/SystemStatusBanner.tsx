@@ -27,10 +27,21 @@ function useDbHealth() {
   });
 }
 
+function formatDuration(ms: number): string {
+  const totalSeconds = Math.floor(ms / 1000);
+  if (totalSeconds < 60) return `${totalSeconds}s`;
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return seconds > 0 ? `${minutes}m ${seconds}s` : `${minutes}m`;
+}
+
 /**
  * Renders a full-width banner at the top of the page when the database
  * circuit breaker is OPEN or HALF_OPEN. Auto-dismisses when the circuit
  * returns to CLOSED (polled every 15 s).
+ *
+ * The outage duration is read from the live /health response only — it is
+ * never cached, so it is always cleared the moment the circuit closes.
  *
  * Mount this once inside Layout so it is visible on every page.
  */
@@ -42,6 +53,11 @@ export function SystemStatusBanner() {
 
   const cbState = data?.cbState;
   const isUnhealthy = cbState === "OPEN" || cbState === "HALF_OPEN";
+
+  // Only read duration from the current live response. When cbState is CLOSED
+  // the server omits timeSinceOpenMs, so this is always undefined — no stale
+  // value can leak into the UI.
+  const outrageDurationMs = isUnhealthy ? data?.timeSinceOpenMs : undefined;
 
   useEffect(() => {
     if (isUnhealthy) {
@@ -77,6 +93,11 @@ export function SystemStatusBanner() {
   const recoveringMsg =
     cbState === "HALF_OPEN" ? " Checking if the connection is back…" : "";
 
+  const durationLabel =
+    outrageDurationMs !== undefined
+      ? ` Outage duration: ${formatDuration(outrageDurationMs)}.`
+      : "";
+
   return (
     <div
       role="alert"
@@ -87,6 +108,7 @@ export function SystemStatusBanner() {
       <span className="flex-1">
         The system is temporarily unavailable — a database connection issue has
         been detected. Some features may not respond correctly.
+        {durationLabel}
         {recoveringMsg}
       </span>
       <RefreshCw className="w-3.5 h-3.5 flex-shrink-0 opacity-70 animate-spin" />
