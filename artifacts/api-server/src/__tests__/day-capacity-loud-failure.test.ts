@@ -283,6 +283,86 @@ describe("computeTotalScheduledMins — asymmetric empty-array result (silent un
   });
 });
 
+// ── All-sub-queries-empty blind spot — known limitation ───────────────────────
+//
+// KNOWN LIMITATION: asymmetry guard cannot detect a full-silent-empty event
+// ---------------------------------------------------------------------------
+// The asymmetry guard detects silent under-counts by comparing sub-query row
+// counts: if at least ONE sub-query returned rows but ANOTHER returned [], the
+// discrepancy is flagged and capacityDataReliable is set to false.
+//
+// However, if ALL THREE sub-queries silently resolve with [] on a day when the
+// team genuinely has scheduled work, there is no asymmetry to detect.  The
+// guard returns capacityDataReliable: true and total: 0 — a false "fully free"
+// signal that would let the scheduler over-commit capacity.
+//
+// This scenario requires a middleware layer that swallows ALL queries for a
+// given team/date simultaneously — a narrower failure mode than a single-query
+// swallow.  It is documented here (rather than guarded against) because:
+//   1. Adding a cross-reference "job-count" query introduces a fourth DB round
+//      trip on every capacity check and would need its own failure handling.
+//   2. The circuit breaker already handles hard DB outages (where all queries
+//      reject rather than silently resolve with []).
+//   3. A middleware layer that swallows all results for a specific team+date
+//      combination is an extremely narrow and unusual failure mode.
+//
+// If this risk is ever re-assessed and a cross-reference query IS added,
+// update these tests to assert capacityDataReliable: false for the all-empty
+// case.
+
+describe("computeTotalScheduledMins — all-sub-queries-empty blind spot (known limitation)", () => {
+  let warnSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    warnSpy.mockRestore();
+  });
+
+  it("returns total:0 and capacityDataReliable:true when ALL three sub-queries silently return [] — asymmetry guard is blind to this case", async () => {
+    // All three sub-queries silently return [] (e.g. a middleware layer swallows
+    // errors for this specific team+date combination).  There is no asymmetry,
+    // so the current guard cannot detect the failure.
+    //
+    // This test documents the known blind spot:
+    //   - capacityDataReliable is true  (guard did not fire — no asymmetry)
+    //   - total is 0                    (all rows silently missing)
+    //   - no warn is emitted            (nothing to flag)
+    //
+    // A caller that receives { total: 0, capacityDataReliable: true } on a day
+    // the team has a full schedule will incorrectly believe the team is free.
+    // See the comment block above this describe for the risk assessment.
+    mockExecuteWithCircuitBreaker.mockResolvedValue([]); // all sub-queries → silently empty
+
+    const { computeTotalScheduledMins } = await import("../lib/day-capacity");
+
+    const result = await computeTotalScheduledMins(TEAM_ID, DATE);
+
+    // KNOWN BLIND SPOT: guard returns "reliable" even though data may be wrong.
+    expect(result.total).toBe(0);
+    expect(result.capacityDataReliable).toBe(true);
+    // No warn is emitted — there is no asymmetry for the guard to detect.
+    expect(warnSpy).not.toHaveBeenCalled();
+  });
+
+  it("resolves (does not throw) when all three sub-queries silently return [] — the all-empty case is not a thrown error", async () => {
+    // Confirm the function resolves rather than rejects, distinguishing this
+    // silent failure mode from an explicit rejection (which IS caught by
+    // queryJobTypeMins and logged with a structured warn + rethrow).
+    mockExecuteWithCircuitBreaker.mockResolvedValue([]);
+
+    const { computeTotalScheduledMins } = await import("../lib/day-capacity");
+
+    await expect(computeTotalScheduledMins(TEAM_ID, DATE)).resolves.toMatchObject({
+      total: 0,
+      capacityDataReliable: true,
+    });
+  });
+});
+
 // ── checkDayCapacity loud failure tests ───────────────────────────────────────
 
 describe("checkDayCapacity — loud failure on sub-query error", () => {
