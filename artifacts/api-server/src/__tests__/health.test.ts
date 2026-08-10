@@ -138,6 +138,73 @@ describe("GET /health/ready — circuit breaker openedAt timestamp", () => {
   });
 });
 
+describe("GET /health — combined status", () => {
+  beforeEach(async () => {
+    vi.resetAllMocks();
+    const { executeWithCircuitBreaker } = vi.mocked(await import("@workspace/db"));
+    executeWithCircuitBreaker.mockImplementation(
+      async (fn: () => Promise<unknown>) => fn(),
+    );
+  });
+
+  it("returns 200 with version, uptimeMs, dbLatencyMs when db is up", async () => {
+    const { db, dbCircuitBreaker } = vi.mocked(await import("@workspace/db"));
+    vi.mocked(db.execute).mockResolvedValueOnce([] as never);
+    dbCircuitBreaker.getState.mockReturnValue("CLOSED");
+
+    const res = await request(buildApp()).get("/health");
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ status: "ok" });
+    expect(typeof res.body.uptimeMs).toBe("number");
+    expect(typeof res.body.dbLatencyMs).toBe("number");
+    expect(res.body).not.toHaveProperty("openedAt");
+    expect(res.body).not.toHaveProperty("timeSinceOpenMs");
+  });
+
+  it("returns 503 with openedAt (ISO string) and timeSinceOpenMs (number) when circuit breaker is open", async () => {
+    const openedAtMs = Date.now() - 8000; // opened 8 seconds ago
+    const { executeWithCircuitBreaker, dbCircuitBreaker } = vi.mocked(
+      await import("@workspace/db"),
+    );
+    executeWithCircuitBreaker.mockRejectedValueOnce(
+      Object.assign(
+        new Error("Circuit breaker OPEN — database is temporarily unavailable"),
+        { code: "CIRCUIT_OPEN" },
+      ) as never,
+    );
+    dbCircuitBreaker.getState.mockReturnValue("OPEN");
+    dbCircuitBreaker.getOpenedAt.mockReturnValue(openedAtMs);
+
+    const res = await request(buildApp()).get("/health");
+    expect(res.status).toBe(503);
+    expect(res.body).toMatchObject({ status: "degraded", db: "unreachable" });
+
+    // openedAt must be a valid ISO 8601 string
+    expect(typeof res.body.openedAt).toBe("string");
+    expect(() => new Date(res.body.openedAt)).not.toThrow();
+    expect(new Date(res.body.openedAt).toISOString()).toBe(res.body.openedAt);
+
+    // timeSinceOpenMs must be a non-negative number
+    expect(typeof res.body.timeSinceOpenMs).toBe("number");
+    expect(res.body.timeSinceOpenMs).toBeGreaterThanOrEqual(0);
+  });
+
+  it("returns 503 without openedAt or timeSinceOpenMs when getOpenedAt() is null", async () => {
+    const { db, dbCircuitBreaker } = vi.mocked(await import("@workspace/db"));
+    vi.mocked(db.execute).mockRejectedValueOnce(
+      new Error("connection refused") as never,
+    );
+    dbCircuitBreaker.getState.mockReturnValue("CLOSED");
+    dbCircuitBreaker.getOpenedAt.mockReturnValue(null);
+
+    const res = await request(buildApp()).get("/health");
+    expect(res.status).toBe(503);
+    expect(res.body).toMatchObject({ status: "degraded" });
+    expect(res.body).not.toHaveProperty("openedAt");
+    expect(res.body).not.toHaveProperty("timeSinceOpenMs");
+  });
+});
+
 describe("GET /healthz", () => {
   it("returns legacy 200 ok", async () => {
     const res = await request(buildApp()).get("/healthz");

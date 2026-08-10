@@ -66,11 +66,18 @@ router.get("/health", async (_req, res) => {
       cbState: dbCircuitBreaker.getState(),
     });
   } catch {
+    const cbState = dbCircuitBreaker.getState();
+    const openedAt = dbCircuitBreaker.getOpenedAt();
+    const timeSinceOpenMs = openedAt != null ? Date.now() - openedAt : undefined;
     res.status(503).json({
       status: "degraded",
       uptimeMs,
       db: "unreachable",
-      cbState: dbCircuitBreaker.getState(),
+      cbState,
+      ...(openedAt != null && {
+        openedAt: new Date(openedAt).toISOString(),
+        timeSinceOpenMs,
+      }),
     });
   }
 });
