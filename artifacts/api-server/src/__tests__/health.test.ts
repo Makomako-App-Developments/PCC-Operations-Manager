@@ -138,6 +138,42 @@ describe("GET /health/ready — circuit breaker openedAt timestamp", () => {
   });
 });
 
+describe("GET /health/ready — HALF_OPEN state", () => {
+  beforeEach(async () => {
+    vi.resetAllMocks();
+    const { executeWithCircuitBreaker } = vi.mocked(await import("@workspace/db"));
+    executeWithCircuitBreaker.mockImplementation(
+      async (fn: () => Promise<unknown>) => fn(),
+    );
+  });
+
+  it("includes openedAt (ISO string) and timeSinceOpenMs (number) when cbState=HALF_OPEN and getOpenedAt() returns a timestamp", async () => {
+    const openedAtMs = Date.now() - 12000; // opened 12 seconds ago
+    const { executeWithCircuitBreaker, dbCircuitBreaker } = vi.mocked(
+      await import("@workspace/db"),
+    );
+    // In HALF_OPEN the probe is let through, but the DB still fails
+    executeWithCircuitBreaker.mockRejectedValueOnce(
+      new Error("connection refused") as never,
+    );
+    dbCircuitBreaker.getState.mockReturnValue("HALF_OPEN");
+    dbCircuitBreaker.getOpenedAt.mockReturnValue(openedAtMs);
+
+    const res = await request(buildApp()).get("/health/ready");
+    expect(res.status).toBe(503);
+    expect(res.body).toMatchObject({ status: "not_ready", cbState: "HALF_OPEN" });
+
+    // openedAt must be a valid ISO 8601 string
+    expect(typeof res.body.openedAt).toBe("string");
+    expect(() => new Date(res.body.openedAt)).not.toThrow();
+    expect(new Date(res.body.openedAt).toISOString()).toBe(res.body.openedAt);
+
+    // timeSinceOpenMs must be a non-negative number
+    expect(typeof res.body.timeSinceOpenMs).toBe("number");
+    expect(res.body.timeSinceOpenMs).toBeGreaterThanOrEqual(0);
+  });
+});
+
 describe("GET /health — combined status", () => {
   beforeEach(async () => {
     vi.resetAllMocks();
@@ -202,6 +238,32 @@ describe("GET /health — combined status", () => {
     expect(res.body).toMatchObject({ status: "degraded" });
     expect(res.body).not.toHaveProperty("openedAt");
     expect(res.body).not.toHaveProperty("timeSinceOpenMs");
+  });
+
+  it("returns 503 with openedAt (ISO string) and timeSinceOpenMs (number) when circuit breaker is HALF_OPEN", async () => {
+    const openedAtMs = Date.now() - 15000; // opened 15 seconds ago
+    const { executeWithCircuitBreaker, dbCircuitBreaker } = vi.mocked(
+      await import("@workspace/db"),
+    );
+    // In HALF_OPEN the probe is let through, but the DB still fails
+    executeWithCircuitBreaker.mockRejectedValueOnce(
+      new Error("connection refused") as never,
+    );
+    dbCircuitBreaker.getState.mockReturnValue("HALF_OPEN");
+    dbCircuitBreaker.getOpenedAt.mockReturnValue(openedAtMs);
+
+    const res = await request(buildApp()).get("/health");
+    expect(res.status).toBe(503);
+    expect(res.body).toMatchObject({ status: "degraded", db: "unreachable", cbState: "HALF_OPEN" });
+
+    // openedAt must be a valid ISO 8601 string
+    expect(typeof res.body.openedAt).toBe("string");
+    expect(() => new Date(res.body.openedAt)).not.toThrow();
+    expect(new Date(res.body.openedAt).toISOString()).toBe(res.body.openedAt);
+
+    // timeSinceOpenMs must be a non-negative number
+    expect(typeof res.body.timeSinceOpenMs).toBe("number");
+    expect(res.body.timeSinceOpenMs).toBeGreaterThanOrEqual(0);
   });
 });
 
