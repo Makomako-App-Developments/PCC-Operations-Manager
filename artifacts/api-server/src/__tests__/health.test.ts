@@ -12,6 +12,7 @@ vi.mock("@workspace/db", () => ({
   },
   dbCircuitBreaker: {
     getState: vi.fn().mockReturnValue("CLOSED"),
+    getOpenedAt: vi.fn().mockReturnValue(null),
   },
   executeWithCircuitBreaker: vi.fn().mockImplementation(
     async (fn: () => Promise<unknown>) => fn(),
