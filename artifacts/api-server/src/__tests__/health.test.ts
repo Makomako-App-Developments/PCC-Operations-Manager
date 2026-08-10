@@ -83,6 +83,61 @@ describe("GET /health/ready", () => {
   });
 });
 
+describe("GET /health/ready — circuit breaker openedAt timestamp", () => {
+  beforeEach(async () => {
+    vi.resetAllMocks();
+    // Restore passthrough after resetAllMocks clears the implementation.
+    const { executeWithCircuitBreaker } = vi.mocked(await import("@workspace/db"));
+    executeWithCircuitBreaker.mockImplementation(
+      async (fn: () => Promise<unknown>) => fn(),
+    );
+  });
+
+  it("includes openedAt (ISO string) and timeSinceOpenMs (number) when getOpenedAt() returns a timestamp", async () => {
+    const openedAtMs = Date.now() - 5000; // opened 5 seconds ago
+    const { executeWithCircuitBreaker, dbCircuitBreaker } = vi.mocked(
+      await import("@workspace/db"),
+    );
+    // Simulate the circuit breaker fast-failing
+    executeWithCircuitBreaker.mockRejectedValueOnce(
+      Object.assign(
+        new Error("Circuit breaker OPEN — database is temporarily unavailable"),
+        { code: "CIRCUIT_OPEN" },
+      ) as never,
+    );
+    dbCircuitBreaker.getState.mockReturnValue("OPEN");
+    dbCircuitBreaker.getOpenedAt.mockReturnValue(openedAtMs);
+
+    const res = await request(buildApp()).get("/health/ready");
+    expect(res.status).toBe(503);
+    expect(res.body).toMatchObject({ status: "not_ready" });
+
+    // openedAt must be a valid ISO 8601 string
+    expect(typeof res.body.openedAt).toBe("string");
+    expect(() => new Date(res.body.openedAt)).not.toThrow();
+    expect(new Date(res.body.openedAt).toISOString()).toBe(res.body.openedAt);
+
+    // timeSinceOpenMs must be a non-negative number
+    expect(typeof res.body.timeSinceOpenMs).toBe("number");
+    expect(res.body.timeSinceOpenMs).toBeGreaterThanOrEqual(0);
+  });
+
+  it("omits openedAt and timeSinceOpenMs when getOpenedAt() returns null (breaker CLOSED)", async () => {
+    const { db, dbCircuitBreaker } = vi.mocked(await import("@workspace/db"));
+    vi.mocked(db.execute).mockRejectedValueOnce(
+      new Error("connection refused") as never,
+    );
+    dbCircuitBreaker.getState.mockReturnValue("CLOSED");
+    dbCircuitBreaker.getOpenedAt.mockReturnValue(null);
+
+    const res = await request(buildApp()).get("/health/ready");
+    expect(res.status).toBe(503);
+    expect(res.body).toMatchObject({ status: "not_ready" });
+    expect(res.body).not.toHaveProperty("openedAt");
+    expect(res.body).not.toHaveProperty("timeSinceOpenMs");
+  });
+});
+
 describe("GET /healthz", () => {
   it("returns legacy 200 ok", async () => {
     const res = await request(buildApp()).get("/healthz");
