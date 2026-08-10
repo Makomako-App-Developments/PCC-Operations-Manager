@@ -80,6 +80,17 @@ export type CbState = "CLOSED" | "OPEN" | "HALF_OPEN";
 
 export const CB_FAILURE_THRESHOLD = 3;
 export const CB_RECOVERY_TIMEOUT_MS = 15_000;
+/**
+ * Maximum time a HALF_OPEN probe may be in-flight before it is considered
+ * abandoned. If the caller that acquired the probe never calls
+ * recordSuccess / recordFailure (e.g. due to a request-level timeout or an
+ * unhandled rejection), probeInFlight would otherwise stay true forever,
+ * permanently blocking recovery. After this window the next caller may start
+ * a fresh probe. Set to twice connectionTimeoutMillis (2 × 5 s = 10 s) so
+ * legitimate slow probes still have plenty of room, but a truly lost probe
+ * does not block recovery for more than one extra recovery cycle.
+ */
+export const CB_PROBE_TIMEOUT_MS = 10_000;
 
 export class DbCircuitBreaker {
   private state: CbState = "CLOSED";
@@ -89,6 +100,16 @@ export class DbCircuitBreaker {
   private openedAt: number | null = null;
   /** True while the single HALF_OPEN probe is in-flight. */
   private probeInFlight = false;
+  /** Epoch ms when the current probe was started; 0 when no probe is in-flight. */
+  private probeStartedAt = 0;
+  /**
+   * Monotonically increasing generation counter. Incremented each time a new
+   * HALF_OPEN probe is admitted (including when a timed-out probe is replaced).
+   * Callers capture this value after tryAcquire() and supply it to
+   * recordSuccess / recordFailure so that a stale, abandoned probe that
+   * eventually settles cannot mutate the state of its replacement.
+   */
+  private probeGeneration = 0;
   private readonly clock: () => number;
 
   /** @param clock — injectable clock; defaults to Date.now for production. */
@@ -117,16 +138,37 @@ export class DbCircuitBreaker {
   }
 
   /**
+   * Returns the generation token of the probe that was most recently admitted
+   * in HALF_OPEN state. Callers MUST read this immediately after a successful
+   * tryAcquire() (no await in between — JS is single-threaded so the two
+   * synchronous calls are atomic) and pass the token to recordSuccess /
+   * recordFailure so that a late-settling abandoned probe cannot corrupt the
+   * state of its replacement.
+   *
+   * Returns 0 when no HALF_OPEN probe has ever been issued (i.e. the breaker
+   * has never left CLOSED) — callers in CLOSED state may pass any value or
+   * omit the argument entirely.
+   */
+  getProbeGeneration(): number {
+    return this.probeGeneration;
+  }
+
+  /**
    * Atomically decides whether a call should be allowed through.
    *
-   * Returns `true`  → caller may proceed.
+   * Returns `true`  → caller may proceed; immediately call getProbeGeneration()
+   *                   to capture the ownership token (required in HALF_OPEN).
    * Returns `false` → caller must fast-fail (circuit is blocking).
    *
    * CLOSED    → always true.
    * OPEN      → always false.
-   * HALF_OPEN → true for the FIRST caller only (sets probeInFlight).
-   *             All other concurrent callers return false until the probe
-   *             settles and `recordSuccess` / `recordFailure` is called.
+   * HALF_OPEN → true for the FIRST caller only (sets probeInFlight, bumps
+   *             probeGeneration). All other concurrent callers return false
+   *             until the probe settles. If the in-flight probe has exceeded
+   *             CB_PROBE_TIMEOUT_MS without settling, it is treated as
+   *             abandoned and the next caller may take a fresh probe (the
+   *             generation is bumped again so the stale probe's eventual
+   *             settlement is ignored).
    */
   tryAcquire(): boolean {
     const state = this.getState();
@@ -135,12 +177,50 @@ export class DbCircuitBreaker {
     // HALF_OPEN: serialise probes — only one in-flight at a time.
     if (!this.probeInFlight) {
       this.probeInFlight = true;
+      this.probeStartedAt = this.clock();
+      this.probeGeneration++;
+      return true;
+    }
+    // If the in-flight probe has been running longer than CB_PROBE_TIMEOUT_MS,
+    // treat it as abandoned (e.g. the caller timed out without ever settling
+    // the probe). Bump the generation so the stale probe's eventual
+    // recordSuccess / recordFailure is silently discarded, then admit a fresh
+    // probe so recovery is not permanently blocked.
+    if (this.clock() - this.probeStartedAt >= CB_PROBE_TIMEOUT_MS) {
+      this.probeStartedAt = this.clock();
+      this.probeGeneration++;
       return true;
     }
     return false;
   }
 
-  recordSuccess(): void {
+  /**
+   * Record that the most recent database call succeeded.
+   *
+   * @param probeGeneration — the generation token returned by
+   *   getProbeGeneration() immediately after tryAcquire(). When supplied in
+   *   HALF_OPEN state, the settlement is only applied if the token matches the
+   *   current active generation; a stale token (from an abandoned probe that
+   *   finally resolved) is silently discarded. Omitting the argument (or
+   *   passing undefined) bypasses the generation check — acceptable for CLOSED
+   *   state or unit tests that drive the state machine directly.
+   */
+  recordSuccess(probeGeneration?: number): void {
+    // Ignore settlements from stale (abandoned) probes regardless of current
+    // state. The generation check is intentionally state-agnostic: a stale
+    // probe that fires *after* its replacement has already settled (moving the
+    // breaker to CLOSED or OPEN) must not corrupt the new state — for example,
+    // a stale success must not close a freshly-reopened breaker, and a stale
+    // failure must not accumulate towards a reopen threshold after the breaker
+    // has already been recovered. Omitting the argument (undefined) bypasses
+    // the check for callers that do not hold a generation token (e.g. CLOSED-
+    // state calls or direct unit-test invocations).
+    if (
+      probeGeneration !== undefined &&
+      probeGeneration !== this.probeGeneration
+    ) {
+      return;
+    }
     this.probeInFlight = false;
     this.consecutiveFailures = 0;
     if (this.state !== "CLOSED") {
@@ -156,7 +236,21 @@ export class DbCircuitBreaker {
     this.openedAt = null;
   }
 
-  recordFailure(): void {
+  /**
+   * Record that the most recent database call failed.
+   *
+   * @param probeGeneration — same ownership token as for recordSuccess().
+   *   Stale tokens in HALF_OPEN state are silently discarded so an abandoned
+   *   probe cannot re-open the circuit after its replacement succeeds.
+   */
+  recordFailure(probeGeneration?: number): void {
+    // Same state-agnostic stale-probe guard as recordSuccess — see comment there.
+    if (
+      probeGeneration !== undefined &&
+      probeGeneration !== this.probeGeneration
+    ) {
+      return;
+    }
     this.probeInFlight = false;
     this.consecutiveFailures++;
     this.lastFailureAt = this.clock();
@@ -205,12 +299,17 @@ export async function executeWithCircuitBreaker<T>(
       { code: "CIRCUIT_OPEN" },
     );
   }
+  // Capture the probe generation token synchronously (no await between tryAcquire
+  // and this read — JS single-threaded guarantee makes this atomic). The token
+  // is passed to recordSuccess / recordFailure so that a stale, abandoned probe
+  // that eventually settles cannot corrupt the state of its replacement.
+  const gen = dbCircuitBreaker.getProbeGeneration();
   try {
     const result = await fn();
-    dbCircuitBreaker.recordSuccess();
+    dbCircuitBreaker.recordSuccess(gen);
     return result;
   } catch (err) {
-    dbCircuitBreaker.recordFailure();
+    dbCircuitBreaker.recordFailure(gen);
     throw err;
   }
 }

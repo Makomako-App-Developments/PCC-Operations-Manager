@@ -14,6 +14,7 @@ import {
   DbCircuitBreaker,
   CB_FAILURE_THRESHOLD,
   CB_RECOVERY_TIMEOUT_MS,
+  CB_PROBE_TIMEOUT_MS,
 } from "./index.js";
 
 // ---------------------------------------------------------------------------
@@ -237,12 +238,15 @@ describe("executeWithCircuitBreaker (via DbCircuitBreaker instance)", () => {
         { code: "CIRCUIT_OPEN" },
       );
     }
+    // Capture the generation token synchronously so stale probes cannot
+    // corrupt the replacement probe's state.
+    const gen = cb.getProbeGeneration();
     try {
       const result = await fn();
-      cb.recordSuccess();
+      cb.recordSuccess(gen);
       return result;
     } catch (err) {
-      cb.recordFailure();
+      cb.recordFailure(gen);
       throw err;
     }
   }
@@ -358,12 +362,13 @@ describe("DbCircuitBreaker — HALF_OPEN slow probe timing", () => {
         { code: "CIRCUIT_OPEN" },
       );
     }
+    const gen = cb.getProbeGeneration();
     try {
       const result = await fn();
-      cb.recordSuccess();
+      cb.recordSuccess(gen);
       return result;
     } catch (err) {
-      cb.recordFailure();
+      cb.recordFailure(gen);
       throw err;
     }
   }
@@ -458,5 +463,289 @@ describe("DbCircuitBreaker — HALF_OPEN slow probe timing", () => {
     expect(cb.getState()).toBe("HALF_OPEN");
     expect(cb.tryAcquire()).toBe(true);
     expect(cb.tryAcquire()).toBe(false); // but only one
+  });
+});
+
+// ---------------------------------------------------------------------------
+// HALF_OPEN probe-timeout / abandoned-probe safety
+// ---------------------------------------------------------------------------
+
+describe("DbCircuitBreaker — abandoned probe safety (CB_PROBE_TIMEOUT_MS)", () => {
+  it("a probe that is acquired but never settled does not block recovery forever", () => {
+    const clock = makeClock();
+    const cb = new DbCircuitBreaker(clock.fn);
+    failN(cb, CB_FAILURE_THRESHOLD);
+    clock.tick(CB_RECOVERY_TIMEOUT_MS);
+    expect(cb.getState()).toBe("HALF_OPEN");
+
+    // Acquire the probe but deliberately never call recordSuccess/recordFailure.
+    expect(cb.tryAcquire()).toBe(true); // probe is now in-flight
+
+    // Immediately, a concurrent caller is blocked.
+    expect(cb.tryAcquire()).toBe(false);
+    expect(cb.getState()).toBe("HALF_OPEN");
+
+    // Advance time past the probe timeout (still within the same HALF_OPEN
+    // window — we have NOT advanced past another CB_RECOVERY_TIMEOUT_MS).
+    clock.tick(CB_PROBE_TIMEOUT_MS);
+
+    // After the probe timeout, a new caller should be able to start a fresh
+    // probe even though the original probe was never settled.
+    expect(cb.tryAcquire()).toBe(true); // fresh probe allowed
+    // But only one at a time — the replacement probe is now in-flight.
+    expect(cb.tryAcquire()).toBe(false);
+  });
+
+  it("fresh probe after timeout can close the breaker normally on success", () => {
+    const clock = makeClock();
+    const cb = new DbCircuitBreaker(clock.fn);
+    failN(cb, CB_FAILURE_THRESHOLD);
+    clock.tick(CB_RECOVERY_TIMEOUT_MS);
+    expect(cb.getState()).toBe("HALF_OPEN");
+
+    // Acquire and leak the first probe.
+    cb.tryAcquire();
+
+    // Advance past the probe timeout.
+    clock.tick(CB_PROBE_TIMEOUT_MS);
+
+    // Start a fresh probe.
+    expect(cb.tryAcquire()).toBe(true);
+
+    // Settle it successfully.
+    cb.recordSuccess();
+    expect(cb.getState()).toBe("CLOSED");
+
+    // Breaker is fully open for normal traffic again.
+    expect(cb.tryAcquire()).toBe(true);
+    expect(cb.tryAcquire()).toBe(true);
+  });
+
+  it("fresh probe after timeout re-opens on failure and allows next recovery cycle", () => {
+    const clock = makeClock();
+    const cb = new DbCircuitBreaker(clock.fn);
+    failN(cb, CB_FAILURE_THRESHOLD);
+    clock.tick(CB_RECOVERY_TIMEOUT_MS);
+    expect(cb.getState()).toBe("HALF_OPEN");
+
+    // Acquire and leak the first probe.
+    cb.tryAcquire();
+
+    // Advance past the probe timeout.
+    clock.tick(CB_PROBE_TIMEOUT_MS);
+
+    // Start a fresh probe and fail it.
+    expect(cb.tryAcquire()).toBe(true);
+    cb.recordFailure();
+    expect(cb.getState()).toBe("OPEN");
+
+    // Recovery window must restart — should not be in HALF_OPEN yet.
+    clock.tick(CB_RECOVERY_TIMEOUT_MS - 1);
+    expect(cb.getState()).toBe("OPEN");
+
+    // After the full window, a single fresh probe is allowed.
+    clock.tick(1);
+    expect(cb.getState()).toBe("HALF_OPEN");
+    expect(cb.tryAcquire()).toBe(true);
+    expect(cb.tryAcquire()).toBe(false);
+  });
+
+  it("multiple sequential abandoned probes each get a new window after CB_PROBE_TIMEOUT_MS", () => {
+    const clock = makeClock();
+    const cb = new DbCircuitBreaker(clock.fn);
+    failN(cb, CB_FAILURE_THRESHOLD);
+    clock.tick(CB_RECOVERY_TIMEOUT_MS);
+    expect(cb.getState()).toBe("HALF_OPEN");
+
+    // First abandoned probe.
+    expect(cb.tryAcquire()).toBe(true);
+    expect(cb.tryAcquire()).toBe(false);
+
+    // Advance past the first probe timeout → second probe allowed.
+    clock.tick(CB_PROBE_TIMEOUT_MS);
+    expect(cb.tryAcquire()).toBe(true);
+    expect(cb.tryAcquire()).toBe(false);
+
+    // Advance past the second probe timeout → third probe allowed.
+    clock.tick(CB_PROBE_TIMEOUT_MS);
+    expect(cb.tryAcquire()).toBe(true);
+    expect(cb.tryAcquire()).toBe(false);
+
+    // Finally settle it — breaker should close.
+    cb.recordSuccess();
+    expect(cb.getState()).toBe("CLOSED");
+  });
+
+  it("a probe that times out mid-flight does not count as a failure (no state change to OPEN)", () => {
+    const clock = makeClock();
+    const cb = new DbCircuitBreaker(clock.fn);
+    failN(cb, CB_FAILURE_THRESHOLD);
+    clock.tick(CB_RECOVERY_TIMEOUT_MS);
+    expect(cb.getState()).toBe("HALF_OPEN");
+
+    // Acquire and leak the probe — no recordFailure is called.
+    cb.tryAcquire();
+
+    // Advance past probe timeout.
+    clock.tick(CB_PROBE_TIMEOUT_MS);
+
+    // The breaker must still be HALF_OPEN (not OPEN — no failure was recorded).
+    expect(cb.getState()).toBe("HALF_OPEN");
+  });
+
+  // --- Generation-based ownership: late-settling stale probes ---
+
+  it("late recordSuccess from a stale probe is ignored after its replacement is admitted", () => {
+    const clock = makeClock();
+    const cb = new DbCircuitBreaker(clock.fn);
+    failN(cb, CB_FAILURE_THRESHOLD);
+    clock.tick(CB_RECOVERY_TIMEOUT_MS);
+    expect(cb.getState()).toBe("HALF_OPEN");
+
+    // Probe A is acquired; capture its generation token.
+    expect(cb.tryAcquire()).toBe(true);
+    const genA = cb.getProbeGeneration();
+
+    // Probe A times out — probe B is now the active probe.
+    clock.tick(CB_PROBE_TIMEOUT_MS);
+    expect(cb.tryAcquire()).toBe(true);
+    const genB = cb.getProbeGeneration();
+    expect(genB).toBeGreaterThan(genA); // generation advanced
+
+    // Probe A's callback finally fires with a success — must be a no-op.
+    cb.recordSuccess(genA);
+    // Breaker must still be HALF_OPEN (probe B is in-flight, not closed yet).
+    expect(cb.getState()).toBe("HALF_OPEN");
+
+    // Probe B succeeds — now the breaker should close.
+    cb.recordSuccess(genB);
+    expect(cb.getState()).toBe("CLOSED");
+  });
+
+  it("late recordFailure from a stale probe is ignored — replacement probe can still close the breaker", () => {
+    const clock = makeClock();
+    const cb = new DbCircuitBreaker(clock.fn);
+    failN(cb, CB_FAILURE_THRESHOLD);
+    clock.tick(CB_RECOVERY_TIMEOUT_MS);
+    expect(cb.getState()).toBe("HALF_OPEN");
+
+    // Probe A is acquired.
+    expect(cb.tryAcquire()).toBe(true);
+    const genA = cb.getProbeGeneration();
+
+    // Probe A times out — probe B is now active.
+    clock.tick(CB_PROBE_TIMEOUT_MS);
+    expect(cb.tryAcquire()).toBe(true);
+    const genB = cb.getProbeGeneration();
+
+    // Probe A's callback fires a failure — must be ignored so it cannot
+    // reopen the circuit or clear probe B's in-flight reservation.
+    cb.recordFailure(genA);
+    // Breaker must still be HALF_OPEN, not OPEN.
+    expect(cb.getState()).toBe("HALF_OPEN");
+    // Probe B's slot must still be reserved (second concurrent call blocked).
+    expect(cb.tryAcquire()).toBe(false);
+
+    // Probe B succeeds — the breaker should now close.
+    cb.recordSuccess(genB);
+    expect(cb.getState()).toBe("CLOSED");
+  });
+
+  it("late recordSuccess from stale probe cannot open traffic while replacement probe is still in-flight", () => {
+    const clock = makeClock();
+    const cb = new DbCircuitBreaker(clock.fn);
+    failN(cb, CB_FAILURE_THRESHOLD);
+    clock.tick(CB_RECOVERY_TIMEOUT_MS);
+    expect(cb.getState()).toBe("HALF_OPEN");
+
+    // Probe A acquired.
+    expect(cb.tryAcquire()).toBe(true);
+    const genA = cb.getProbeGeneration();
+
+    // Probe A times out; probe B acquired.
+    clock.tick(CB_PROBE_TIMEOUT_MS);
+    expect(cb.tryAcquire()).toBe(true);
+    const genB = cb.getProbeGeneration();
+
+    // Probe A fires success — must not close the breaker (probe B still active).
+    cb.recordSuccess(genA);
+    // A spurious CLOSED here would allow unbounded callers while probe B
+    // is still outstanding, defeating single-probe recovery semantics.
+    expect(cb.getState()).toBe("HALF_OPEN");
+    // The single-probe gate for B must still be enforced.
+    expect(cb.tryAcquire()).toBe(false);
+
+    // Only when probe B settles should the breaker properly close.
+    cb.recordSuccess(genB);
+    expect(cb.getState()).toBe("CLOSED");
+    // Now all callers are freely admitted.
+    expect(cb.tryAcquire()).toBe(true);
+    expect(cb.tryAcquire()).toBe(true);
+  });
+
+  it("stale success after replacement probe fails and reopens cannot spuriously close the breaker", () => {
+    // Scenario: probe A times out, probe B is admitted, B fails (reopening the
+    // breaker to OPEN), then A's late success arrives. The breaker must remain
+    // OPEN — a stale success must not undo the failure recorded by B.
+    const clock = makeClock();
+    const cb = new DbCircuitBreaker(clock.fn);
+    failN(cb, CB_FAILURE_THRESHOLD);
+    clock.tick(CB_RECOVERY_TIMEOUT_MS);
+    expect(cb.getState()).toBe("HALF_OPEN");
+
+    // Probe A acquired.
+    expect(cb.tryAcquire()).toBe(true);
+    const genA = cb.getProbeGeneration();
+
+    // Probe A times out; probe B acquired.
+    clock.tick(CB_PROBE_TIMEOUT_MS);
+    expect(cb.tryAcquire()).toBe(true);
+    const genB = cb.getProbeGeneration();
+
+    // Probe B fails — breaker reopens.
+    cb.recordFailure(genB);
+    expect(cb.getState()).toBe("OPEN");
+
+    // Probe A's late success fires — must be silently discarded.
+    cb.recordSuccess(genA);
+    // Breaker must remain OPEN.
+    expect(cb.getState()).toBe("OPEN");
+    // No requests should slip through.
+    expect(cb.tryAcquire()).toBe(false);
+  });
+
+  it("stale failure(s) after replacement probe succeeds cannot accumulate failures or reopen", () => {
+    // Scenario: probe A times out, probe B is admitted, B succeeds (closing the
+    // breaker to CLOSED), then A's late failure arrives. The stale failure must
+    // not increment the consecutive-failure counter or reopen the circuit.
+    const clock = makeClock();
+    const cb = new DbCircuitBreaker(clock.fn);
+    failN(cb, CB_FAILURE_THRESHOLD);
+    clock.tick(CB_RECOVERY_TIMEOUT_MS);
+    expect(cb.getState()).toBe("HALF_OPEN");
+
+    // Probe A acquired.
+    expect(cb.tryAcquire()).toBe(true);
+    const genA = cb.getProbeGeneration();
+
+    // Probe A times out; probe B acquired.
+    clock.tick(CB_PROBE_TIMEOUT_MS);
+    expect(cb.tryAcquire()).toBe(true);
+    const genB = cb.getProbeGeneration();
+
+    // Probe B succeeds — breaker closes.
+    cb.recordSuccess(genB);
+    expect(cb.getState()).toBe("CLOSED");
+
+    // Multiple late failures from probe A arrive — none must count towards
+    // reopening the breaker (they should all be discarded).
+    for (let i = 0; i < CB_FAILURE_THRESHOLD; i++) {
+      cb.recordFailure(genA);
+    }
+    // Breaker must remain CLOSED.
+    expect(cb.getState()).toBe("CLOSED");
+    // Normal traffic must still flow freely.
+    expect(cb.tryAcquire()).toBe(true);
+    expect(cb.tryAcquire()).toBe(true);
   });
 });
