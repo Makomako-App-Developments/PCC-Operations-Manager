@@ -327,3 +327,136 @@ describe("executeWithCircuitBreaker (via DbCircuitBreaker instance)", () => {
     expect(cb.getState()).toBe("OPEN");
   });
 });
+
+// ---------------------------------------------------------------------------
+// HALF_OPEN slow-probe timing
+// ---------------------------------------------------------------------------
+
+describe("DbCircuitBreaker — HALF_OPEN slow probe timing", () => {
+  /**
+   * A deferred helper that lets us hold a promise open for as long as we
+   * want, then resolve or reject it from outside.
+   */
+  function deferred<T = void>() {
+    let resolve!: (value: T) => void;
+    let reject!: (reason: unknown) => void;
+    const promise = new Promise<T>((res, rej) => {
+      resolve = res;
+      reject = rej;
+    });
+    return { promise, resolve, reject };
+  }
+
+  /** Mirror of execWith defined above. */
+  async function execWith<T>(
+    cb: DbCircuitBreaker,
+    fn: () => Promise<T>,
+  ): Promise<T> {
+    if (!cb.tryAcquire()) {
+      throw Object.assign(
+        new Error("Circuit breaker OPEN — database is temporarily unavailable"),
+        { code: "CIRCUIT_OPEN" },
+      );
+    }
+    try {
+      const result = await fn();
+      cb.recordSuccess();
+      return result;
+    } catch (err) {
+      cb.recordFailure();
+      throw err;
+    }
+  }
+
+  it("concurrent requests fast-fail while a slow probe is still in-flight", async () => {
+    const clock = makeClock();
+    const cb = new DbCircuitBreaker(clock.fn);
+    failN(cb, CB_FAILURE_THRESHOLD);
+    clock.tick(CB_RECOVERY_TIMEOUT_MS);
+    expect(cb.getState()).toBe("HALF_OPEN");
+
+    // Start a slow probe that won't resolve immediately.
+    const probe = deferred<string>();
+    const probeResult = execWith(cb, () => probe.promise);
+
+    // While the probe is in-flight the breaker is still HALF_OPEN.
+    expect(cb.getState()).toBe("HALF_OPEN");
+
+    // Any concurrent request must fast-fail with CIRCUIT_OPEN.
+    const concurrent = await Promise.allSettled(
+      Array.from({ length: 4 }, () => execWith(cb, async () => "should-not-run")),
+    );
+    const circuitOpen = concurrent.filter(
+      (r) =>
+        r.status === "rejected" &&
+        (r.reason as { code?: string }).code === "CIRCUIT_OPEN",
+    );
+    expect(circuitOpen).toHaveLength(4);
+
+    // Breaker must still be HALF_OPEN — the slow probe hasn't settled yet.
+    expect(cb.getState()).toBe("HALF_OPEN");
+
+    // Now let the probe succeed.
+    probe.resolve("slow-ok");
+    await expect(probeResult).resolves.toBe("slow-ok");
+
+    // Breaker must now be CLOSED.
+    expect(cb.getState()).toBe("CLOSED");
+  });
+
+  it("a slow-but-successful probe closes the breaker correctly", async () => {
+    const clock = makeClock();
+    const cb = new DbCircuitBreaker(clock.fn);
+    failN(cb, CB_FAILURE_THRESHOLD);
+    clock.tick(CB_RECOVERY_TIMEOUT_MS);
+    expect(cb.getState()).toBe("HALF_OPEN");
+
+    const probe = deferred<string>();
+
+    // Launch the probe — it is now in-flight.
+    const probeResult = execWith(cb, () => probe.promise);
+
+    // Breaker remains HALF_OPEN throughout the wait.
+    expect(cb.getState()).toBe("HALF_OPEN");
+
+    // Settle the probe after an arbitrary delay (simulated by just resolving
+    // whenever we like — real time is irrelevant for this state-machine test).
+    probe.resolve("recovered");
+    await expect(probeResult).resolves.toBe("recovered");
+
+    // The breaker must be CLOSED and must accept new requests freely.
+    expect(cb.getState()).toBe("CLOSED");
+    expect(cb.tryAcquire()).toBe(true);
+    expect(cb.tryAcquire()).toBe(true);
+  });
+
+  it("a slow-but-failing probe re-opens the breaker and blocks further callers", async () => {
+    const clock = makeClock();
+    const cb = new DbCircuitBreaker(clock.fn);
+    failN(cb, CB_FAILURE_THRESHOLD);
+    clock.tick(CB_RECOVERY_TIMEOUT_MS);
+    expect(cb.getState()).toBe("HALF_OPEN");
+
+    const probe = deferred<string>();
+    const probeResult = execWith(cb, () => probe.promise);
+
+    // Probe is in-flight; breaker stays HALF_OPEN.
+    expect(cb.getState()).toBe("HALF_OPEN");
+
+    // Let the probe fail (DB still sluggish / refusing).
+    probe.reject(connRefused());
+    await expect(probeResult).rejects.toMatchObject({ code: "ECONNREFUSED" });
+
+    // Breaker must be OPEN again.
+    expect(cb.getState()).toBe("OPEN");
+
+    // No further caller should get through.
+    expect(cb.tryAcquire()).toBe(false);
+
+    // After another full recovery window it should allow a fresh probe.
+    clock.tick(CB_RECOVERY_TIMEOUT_MS);
+    expect(cb.getState()).toBe("HALF_OPEN");
+    expect(cb.tryAcquire()).toBe(true);
+    expect(cb.tryAcquire()).toBe(false); // but only one
+  });
+});
