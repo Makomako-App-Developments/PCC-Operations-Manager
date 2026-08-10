@@ -1043,6 +1043,7 @@ export default function TeamPage() {
     mutationFn: saveAvailability,
     onSuccess: (data, variables) => {
       qc.invalidateQueries({ queryKey: ["team-avail", weekStart] });
+      qc.invalidateQueries({ queryKey: ["day-capacity-reliable", variables.date] });
 
       // Auto-spill toast
       if (data.spilledCount > 0) {
@@ -1081,6 +1082,30 @@ export default function TeamPage() {
 
   const dayDate = toDateStr(addDays(weekMon, activeDay));
 
+  // Unique non-null teamIds represented in the current people list
+  const uniqueTeamIds = useMemo(
+    () => [...new Set(PEOPLE.map(p => p.teamId).filter((id): id is string => id !== null))],
+    [PEOPLE],
+  );
+
+  // Reliability query — re-runs whenever the active day changes; invalidated after any save/replan.
+  // Returns true when ANY visible team's capacity figures should be treated as approximate.
+  const { data: capacityUnreliable = false } = useQuery<boolean>({
+    queryKey: ["day-capacity-reliable", dayDate],
+    queryFn: async () => {
+      if (uniqueTeamIds.length === 0) return false;
+      const results = await Promise.all(
+        uniqueTeamIds.map(teamId =>
+          fetch(`/api/schedule/day-capacity?teamId=${teamId}&date=${dayDate}`, { credentials: "include" })
+            .then(r => r.ok ? r.json() : null) as Promise<{ capacityDataReliable?: boolean } | null>,
+        ),
+      );
+      return results.some(r => r !== null && r.capacityDataReliable === false);
+    },
+    enabled: activeTab === "availability" && uniqueTeamIds.length > 0,
+    staleTime: 30_000,
+  });
+
   const handleSave = (personName: string, hour: number, status: Status) => {
     mutation.mutate({ personName, date: dayDate, hour, status });
   };
@@ -1108,6 +1133,9 @@ export default function TeamPage() {
           `/api/schedule/day-capacity?teamId=${person.teamId}&date=${dayDate}`,
           { credentials: "include" },
         ).then(r => r.ok ? r.json() : null) as { utilizationPct: number } | null;
+
+        // Invalidate the reliability query so the banner reflects the new state
+        qc.invalidateQueries({ queryKey: ["day-capacity-reliable", dayDate] });
 
         if (cap && cap.utilizationPct > 100) {
           // Auto-spill: call replan-day which handles geosequence + multi-day overflow
@@ -1165,6 +1193,9 @@ export default function TeamPage() {
         { credentials: "include" },
       );
       const cap = capRes.ok ? (await capRes.json() as { utilizationPct: number }) : null;
+
+      // Invalidate the reliability query so the banner reflects the post-replan state
+      qc.invalidateQueries({ queryKey: ["day-capacity-reliable", capacityWarning.date] });
 
       if (!cap || cap.utilizationPct <= 100) {
         setReplanSuccess(true);
@@ -1366,6 +1397,17 @@ export default function TeamPage() {
                   )}
                   {replanLoading ? "Re-planning…" : "Re-plan this day"}
                 </Button>
+              </div>
+            )}
+
+            {/* Under-count warning banner */}
+            {capacityUnreliable && (
+              <div className="flex items-start gap-2 rounded-xl border border-yellow-300 bg-yellow-50 px-5 py-3">
+                <AlertTriangle className="w-4 h-4 text-yellow-600 mt-0.5 flex-shrink-0" />
+                <p className="text-xs text-yellow-800">
+                  <span className="font-semibold">Scheduled minutes may be under-counted.</span>{" "}
+                  One or more capacity sub-queries returned no data while others returned results — capacity figures should be treated as approximate.
+                </p>
               </div>
             )}
 
