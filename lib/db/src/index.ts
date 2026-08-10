@@ -187,7 +187,18 @@ export class DbCircuitBreaker {
     // recordSuccess / recordFailure is silently discarded, then admit a fresh
     // probe so recovery is not permanently blocked.
     if (this.clock() - this.probeStartedAt >= CB_PROBE_TIMEOUT_MS) {
-      this.probeStartedAt = this.clock();
+      const now = this.clock();
+      const probeAgeMs = now - this.probeStartedAt;
+      console.warn(
+        JSON.stringify({
+          event: "db_circuit_breaker_probe_abandoned",
+          message: `HALF_OPEN probe abandoned after ${probeAgeMs} ms — admitting fresh probe`,
+          probeAgeMs,
+          probeStartedAt: new Date(this.probeStartedAt).toISOString(),
+          timestamp: new Date(now).toISOString(),
+        }),
+      );
+      this.probeStartedAt = now;
       this.probeGeneration++;
       return true;
     }
