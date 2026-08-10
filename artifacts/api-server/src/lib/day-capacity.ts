@@ -135,7 +135,7 @@ export async function computeTotalScheduledMins(
   const anyNonEmpty = rowCounts.some((r) => r.count > 0);
   const emptyTypes  = rowCounts.filter((r) => r.count === 0).map((r) => r.jobType);
 
-  const capacityDataReliable = !(anyNonEmpty && emptyTypes.length > 0);
+  let capacityDataReliable = !(anyNonEmpty && emptyTypes.length > 0);
 
   if (!capacityDataReliable) {
     console.warn(
@@ -148,6 +148,54 @@ export async function computeTotalScheduledMins(
     regularRows.reduce((s, r) => s + Number(r.mins), 0) +
     infillRows.reduce((s, r)  => s + Number(r.mins), 0) +
     mulchRows.reduce((s, r)   => s + Number(r.mins), 0);
+
+  // ── Full-silent-empty cross-reference guard ─────────────────────────────────
+  // The asymmetry guard above is blind when ALL THREE sub-queries silently
+  // return [] — there is no asymmetry to detect, so it returns
+  // { total: 0, capacityDataReliable: true }, which looks like a free day.
+  //
+  // To close this gap, when all three row arrays are empty (zero rows returned,
+  // not merely zero minutes — jobs can legitimately have null/0 estimatedMins
+  // and still produce rows) we issue a lightweight COUNT query across all three
+  // job tables. If the count is > 0 the day is NOT genuinely empty, so
+  // capacityDataReliable is set to false and a structured warn is emitted to
+  // make the silent failure operator-visible.
+  const allRowArraysEmpty =
+    regularRows.length === 0 && infillRows.length === 0 && mulchRows.length === 0;
+
+  if (allRowArraysEmpty && capacityDataReliable) {
+    const [countRow] = await queryJobTypeMins("total-job-count", teamId, date, () =>
+      executeWithCircuitBreaker(() =>
+        db
+          .select({
+            totalCount: sql<number>`(
+              (SELECT count(*) FROM ${jobsTable}
+                WHERE ${eq(jobsTable.teamId, teamId)}
+                  AND ${eq(jobsTable.scheduledDate, date)}
+                  AND ${notInArray(jobsTable.status, ["completed", "skipped"])})
+              + (SELECT count(*) FROM ${infillJobsTable}
+                WHERE ${eq(infillJobsTable.assignedTeamId, teamId)}
+                  AND ${eq(infillJobsTable.plannedDate, date)}
+                  AND ${notInArray(infillJobsTable.status, ["completed", "cancelled"])})
+              + (SELECT count(*) FROM ${mulchingRecordsTable}
+                WHERE ${eq(mulchingRecordsTable.assignedTeamId, teamId)}
+                  AND ${eq(mulchingRecordsTable.scheduledDate, date)}
+                  AND ${notInArray(mulchingRecordsTable.status, ["completed", "not_required"])})
+            )`,
+          })
+          .from(sql`(VALUES (1)) AS _dummy(v)`),
+      ),
+    );
+
+    const crossRefCount = Number(countRow?.totalCount ?? 0);
+    if (crossRefCount > 0) {
+      capacityDataReliable = false;
+      console.warn(
+        `[day-capacity] all sub-queries returned empty results but cross-reference count is ${crossRefCount} — possible full-silent-empty middleware failure; capacity may be severely under-counted`,
+        { teamId, date, crossRefCount },
+      );
+    }
+  }
 
   return { total, capacityDataReliable };
 }
@@ -173,6 +221,24 @@ export async function checkDayCapacity(
 
   const { total: totalScheduledMins, capacityDataReliable } = await computeTotalScheduledMins(teamId, date);
   const newTotal = totalScheduledMins + newJobMins;
+
+  // Fail closed: if the capacity data is unreliable (asymmetry guard or
+  // cross-reference guard fired), NEVER return null (which signals "safe to
+  // schedule"). Return a conflict result immediately so callers block
+  // scheduling rather than proceeding on data that may be severely
+  // under-counted due to a silent middleware failure.
+  if (!capacityDataReliable) {
+    return {
+      date,
+      teamId,
+      productiveTimeMins,
+      totalScheduledMins,
+      newJobMins,
+      shortfallMins: Math.max(0, newTotal - productiveTimeMins),
+      pendingScheduledFromCount: 0,
+      capacityDataReliable: false,
+    };
+  }
 
   if (newTotal <= productiveTimeMins) return null;
 

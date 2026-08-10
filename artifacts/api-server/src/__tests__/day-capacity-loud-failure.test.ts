@@ -283,34 +283,18 @@ describe("computeTotalScheduledMins — asymmetric empty-array result (silent un
   });
 });
 
-// ── All-sub-queries-empty blind spot — known limitation ───────────────────────
+// ── Full-silent-empty cross-reference guard tests ─────────────────────────────
 //
-// KNOWN LIMITATION: asymmetry guard cannot detect a full-silent-empty event
-// ---------------------------------------------------------------------------
-// The asymmetry guard detects silent under-counts by comparing sub-query row
-// counts: if at least ONE sub-query returned rows but ANOTHER returned [], the
-// discrepancy is flagged and capacityDataReliable is set to false.
+// When ALL THREE sub-queries silently resolve with [] (no asymmetry to detect),
+// a lightweight total-job-count query is issued as a cross-reference.  If that
+// count is > 0 the day is not genuinely empty, so capacityDataReliable is set
+// to false and a structured warn is emitted.
 //
-// However, if ALL THREE sub-queries silently resolve with [] on a day when the
-// team genuinely has scheduled work, there is no asymmetry to detect.  The
-// guard returns capacityDataReliable: true and total: 0 — a false "fully free"
-// signal that would let the scheduler over-commit capacity.
-//
-// This scenario requires a middleware layer that swallows ALL queries for a
-// given team/date simultaneously — a narrower failure mode than a single-query
-// swallow.  It is documented here (rather than guarded against) because:
-//   1. Adding a cross-reference "job-count" query introduces a fourth DB round
-//      trip on every capacity check and would need its own failure handling.
-//   2. The circuit breaker already handles hard DB outages (where all queries
-//      reject rather than silently resolve with []).
-//   3. A middleware layer that swallows all results for a specific team+date
-//      combination is an extremely narrow and unusual failure mode.
-//
-// If this risk is ever re-assessed and a cross-reference query IS added,
-// update these tests to assert capacityDataReliable: false for the all-empty
-// case.
+// Call order when total === 0:
+//   calls 1-3: regular-jobs, infill-jobs, mulching-records (all resolve [])
+//   call 4:    total-job-count (cross-reference COUNT query)
 
-describe("computeTotalScheduledMins — all-sub-queries-empty blind spot (known limitation)", () => {
+describe("computeTotalScheduledMins — full-silent-empty cross-reference guard", () => {
   let warnSpy: ReturnType<typeof vi.spyOn>;
 
   beforeEach(() => {
@@ -322,44 +306,90 @@ describe("computeTotalScheduledMins — all-sub-queries-empty blind spot (known 
     warnSpy.mockRestore();
   });
 
-  it("returns total:0 and capacityDataReliable:true when ALL three sub-queries silently return [] — asymmetry guard is blind to this case", async () => {
-    // All three sub-queries silently return [] (e.g. a middleware layer swallows
-    // errors for this specific team+date combination).  There is no asymmetry,
-    // so the current guard cannot detect the failure.
-    //
-    // This test documents the known blind spot:
-    //   - capacityDataReliable is true  (guard did not fire — no asymmetry)
-    //   - total is 0                    (all rows silently missing)
-    //   - no warn is emitted            (nothing to flag)
-    //
-    // A caller that receives { total: 0, capacityDataReliable: true } on a day
-    // the team has a full schedule will incorrectly believe the team is free.
-    // See the comment block above this describe for the risk assessment.
-    mockExecuteWithCircuitBreaker.mockResolvedValue([]); // all sub-queries → silently empty
+  it("returns capacityDataReliable:false and emits a warn when all three sub-queries silently return [] but the cross-reference count is > 0", async () => {
+    // All three main sub-queries silently return [] — no asymmetry for the
+    // first guard to catch.  The cross-reference count query reveals 4 active
+    // jobs, proving the day is not genuinely empty.
+    mockExecuteWithCircuitBreaker
+      .mockResolvedValueOnce([])                    // regular-jobs     → silently empty
+      .mockResolvedValueOnce([])                    // infill-jobs      → silently empty
+      .mockResolvedValueOnce([])                    // mulching-records → silently empty
+      .mockResolvedValueOnce([{ totalCount: 4 }]);  // total-job-count  → 4 active jobs
 
     const { computeTotalScheduledMins } = await import("../lib/day-capacity");
 
     const result = await computeTotalScheduledMins(TEAM_ID, DATE);
 
-    // KNOWN BLIND SPOT: guard returns "reliable" even though data may be wrong.
     expect(result.total).toBe(0);
-    expect(result.capacityDataReliable).toBe(true);
-    // No warn is emitted — there is no asymmetry for the guard to detect.
-    expect(warnSpy).not.toHaveBeenCalled();
+    expect(result.capacityDataReliable).toBe(false);
+    expect(warnSpy).toHaveBeenCalledOnce();
+    const [message, meta] = warnSpy.mock.calls[0] as [string, Record<string, unknown>];
+    expect(message).toContain("full-silent-empty");
+    expect(meta).toMatchObject({ teamId: TEAM_ID, date: DATE, crossRefCount: 4 });
   });
 
-  it("resolves (does not throw) when all three sub-queries silently return [] — the all-empty case is not a thrown error", async () => {
-    // Confirm the function resolves rather than rejects, distinguishing this
-    // silent failure mode from an explicit rejection (which IS caught by
-    // queryJobTypeMins and logged with a structured warn + rethrow).
-    mockExecuteWithCircuitBreaker.mockResolvedValue([]);
+  it("resolves (does not throw) even when the cross-reference reveals a full-silent-empty failure", async () => {
+    mockExecuteWithCircuitBreaker
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([{ totalCount: 4 }]);
 
     const { computeTotalScheduledMins } = await import("../lib/day-capacity");
 
     await expect(computeTotalScheduledMins(TEAM_ID, DATE)).resolves.toMatchObject({
       total: 0,
-      capacityDataReliable: true,
+      capacityDataReliable: false,
     });
+  });
+
+  it("returns capacityDataReliable:true and emits no warn when all sub-queries return [] AND the cross-reference count is 0 — genuinely empty day", async () => {
+    // All queries return [] including the count — the day genuinely has no
+    // active jobs.  The cross-reference confirms this, so the result is reliable.
+    mockExecuteWithCircuitBreaker
+      .mockResolvedValueOnce([])                    // regular-jobs     → empty (no jobs)
+      .mockResolvedValueOnce([])                    // infill-jobs      → empty
+      .mockResolvedValueOnce([])                    // mulching-records → empty
+      .mockResolvedValueOnce([{ totalCount: 0 }]);  // total-job-count  → confirms truly empty
+
+    const { computeTotalScheduledMins } = await import("../lib/day-capacity");
+
+    const result = await computeTotalScheduledMins(TEAM_ID, DATE);
+
+    expect(result.total).toBe(0);
+    expect(result.capacityDataReliable).toBe(true);
+    expect(warnSpy).not.toHaveBeenCalled();
+  });
+
+  it("does NOT issue the cross-reference count query when the three sub-queries return rows — even if all minutes are zero", async () => {
+    // The guard triggers on empty ROW ARRAYS, not on a zero minute total.
+    // Jobs with null/0 estimatedMins legitimately produce rows with mins:0.
+    // Those rows prove data was received — no cross-reference is needed.
+    mockExecuteWithCircuitBreaker.mockResolvedValue([{ mins: 0 }]);
+
+    const { computeTotalScheduledMins } = await import("../lib/day-capacity");
+
+    const result = await computeTotalScheduledMins(TEAM_ID, DATE);
+
+    expect(result.total).toBe(0); // all mins are 0, but rows WERE returned
+    expect(result.capacityDataReliable).toBe(true);
+    // Cross-reference query must NOT have been called — rows were returned
+    expect(mockExecuteWithCircuitBreaker).toHaveBeenCalledTimes(3);
+    expect(warnSpy).not.toHaveBeenCalled();
+  });
+
+  it("does NOT issue the cross-reference count query when sub-queries return non-zero rows — normal data path", async () => {
+    // Baseline: non-zero minute rows, guard is skipped, only 3 calls issued.
+    mockExecuteWithCircuitBreaker.mockResolvedValue([{ mins: 60 }]);
+
+    const { computeTotalScheduledMins } = await import("../lib/day-capacity");
+
+    const result = await computeTotalScheduledMins(TEAM_ID, DATE);
+
+    expect(result.total).toBe(180); // 3 sub-queries × 60 mins
+    expect(result.capacityDataReliable).toBe(true);
+    expect(mockExecuteWithCircuitBreaker).toHaveBeenCalledTimes(3);
+    expect(warnSpy).not.toHaveBeenCalled();
   });
 });
 
@@ -449,8 +479,9 @@ describe("checkDayCapacity — loud failure on sub-query error", () => {
 
     expect(result).toBeNull();
     expect(warnSpy).not.toHaveBeenCalled();
-    // Only 4 calls: system-settings + 3 from computeTotalScheduledMins; pending-count not reached
-    expect(mockExecuteWithCircuitBreaker).toHaveBeenCalledTimes(4);
+    // 5 calls: system-settings + 3 from computeTotalScheduledMins + total-job-count
+    // cross-reference (issued because the summed total is 0); pending-count not reached
+    expect(mockExecuteWithCircuitBreaker).toHaveBeenCalledTimes(5);
   });
 
   it("rejects when computeTotalScheduledMins's regular-jobs query fails during checkDayCapacity", async () => {
@@ -482,5 +513,114 @@ describe("checkDayCapacity — loud failure on sub-query error", () => {
     const [message, meta] = warnSpy.mock.calls[0] as [string, Record<string, unknown>];
     expect(message).toContain("sub-query failed");
     expect(meta).toMatchObject({ jobType: "regular-jobs", teamId: TEAM_ID, date: DATE });
+  });
+});
+
+// ── checkDayCapacity — cross-reference guard (fail-closed) tests ──────────────
+//
+// When all three sub-queries silently return [] and the cross-reference count
+// reveals active jobs exist, checkDayCapacity MUST return a conflict result
+// (not null) so callers block scheduling rather than over-committing.
+//
+// Call order when total === 0:
+//   call 1: system-settings
+//   calls 2-4: regular-jobs, infill-jobs, mulching-records (all [])
+//   call 5: total-job-count cross-reference
+//   (pending-count is never reached when !capacityDataReliable)
+
+describe("checkDayCapacity — fail-closed when cross-reference guard fires", () => {
+  let warnSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    warnSpy.mockRestore();
+  });
+
+  it("returns a non-null conflict with capacityDataReliable:false when all sub-queries are silently empty but cross-reference count is > 0", async () => {
+    // All three main sub-queries silently return [] — total = 0.
+    // Cross-reference count reveals 5 active jobs → should NOT let the job through.
+    mockExecuteWithCircuitBreaker
+      .mockResolvedValueOnce([])                    // system-settings → default 390 mins
+      .mockResolvedValueOnce([])                    // regular-jobs     → silently empty
+      .mockResolvedValueOnce([])                    // infill-jobs      → silently empty
+      .mockResolvedValueOnce([])                    // mulching-records → silently empty
+      .mockResolvedValueOnce([{ totalCount: 5 }]);  // total-job-count  → 5 active jobs
+
+    const { checkDayCapacity } = await import("../lib/day-capacity");
+
+    const result = await checkDayCapacity(TEAM_ID, DATE, 60);
+
+    // Must NOT return null — null would mean "go ahead and schedule"
+    expect(result).not.toBeNull();
+    expect(result?.capacityDataReliable).toBe(false);
+    expect(result?.totalScheduledMins).toBe(0);
+    expect(result?.newJobMins).toBe(60);
+    // pending-count query must NOT have been issued
+    expect(mockExecuteWithCircuitBreaker).toHaveBeenCalledTimes(5);
+  });
+
+  it("does not call the pending-count query when failing closed due to unreliable data", async () => {
+    // Even when the new job would push the team over capacity if real data existed,
+    // the pending-count query must not run — it's only meaningful for a real conflict.
+    mockExecuteWithCircuitBreaker
+      .mockResolvedValueOnce([{ productiveTimeMins: 100 }]) // system-settings → low capacity
+      .mockResolvedValueOnce([])                            // regular-jobs     → silently empty
+      .mockResolvedValueOnce([])                            // infill-jobs      → silently empty
+      .mockResolvedValueOnce([])                            // mulching-records → silently empty
+      .mockResolvedValueOnce([{ totalCount: 3 }]);          // cross-reference  → 3 jobs found
+
+    const { checkDayCapacity } = await import("../lib/day-capacity");
+
+    const result = await checkDayCapacity(TEAM_ID, DATE, 200);
+
+    expect(result).not.toBeNull();
+    expect(result?.capacityDataReliable).toBe(false);
+    // Exactly 5 calls: system-settings + 3 sub-queries + cross-reference.
+    // No 6th call for pending-count.
+    expect(mockExecuteWithCircuitBreaker).toHaveBeenCalledTimes(5);
+  });
+
+  it("returns null when all sub-queries and the cross-reference count all return [] — genuinely empty day", async () => {
+    // Cross-reference also returns 0 → day truly has no jobs → scheduling is safe.
+    mockExecuteWithCircuitBreaker
+      .mockResolvedValueOnce([])                    // system-settings → default 390 mins
+      .mockResolvedValueOnce([])                    // regular-jobs     → empty (no jobs)
+      .mockResolvedValueOnce([])                    // infill-jobs      → empty
+      .mockResolvedValueOnce([])                    // mulching-records → empty
+      .mockResolvedValueOnce([{ totalCount: 0 }]);  // total-job-count  → confirms truly empty
+
+    const { checkDayCapacity } = await import("../lib/day-capacity");
+
+    const result = await checkDayCapacity(TEAM_ID, DATE, 60);
+
+    // Genuinely empty day — null means no conflict, scheduling proceeds normally
+    expect(result).toBeNull();
+    expect(warnSpy).not.toHaveBeenCalled();
+  });
+
+  it("returns null (no false positive) when sub-queries return rows with zero minutes — valid null/0 estimatedMins case", async () => {
+    // Jobs with null/0 estimatedMins legitimately produce rows with mins:0.
+    // The guard fires on empty ROW ARRAYS, not on zero total minutes.
+    // Returning rows (even with 0 mins) proves data was received — no 503 should be emitted.
+    mockExecuteWithCircuitBreaker
+      .mockResolvedValueOnce([])              // system-settings → default 390 mins
+      .mockResolvedValueOnce([{ mins: 0 }])  // regular-jobs     → 1 row, 0 mins
+      .mockResolvedValueOnce([{ mins: 0 }])  // infill-jobs      → 1 row, 0 mins
+      .mockResolvedValueOnce([{ mins: 0 }]); // mulching-records → 1 row, 0 mins
+    // NO 5th call — cross-reference must not be issued when rows were returned
+
+    const { checkDayCapacity } = await import("../lib/day-capacity");
+
+    const result = await checkDayCapacity(TEAM_ID, DATE, 30);
+
+    // total=0, newTotal=30, productiveTimeMins=390 → no conflict
+    expect(result).toBeNull();
+    expect(warnSpy).not.toHaveBeenCalled();
+    // Only 4 calls: system-settings + 3 sub-queries; cross-reference skipped
+    expect(mockExecuteWithCircuitBreaker).toHaveBeenCalledTimes(4);
   });
 });

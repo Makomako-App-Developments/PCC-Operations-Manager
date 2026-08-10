@@ -509,6 +509,16 @@ router.post(
       if (newJobMins > 0) {
         const conflict = await checkDayCapacity(teamId, scheduledDate, newJobMins);
         if (conflict) {
+          if (!conflict.capacityDataReliable) {
+            // Capacity data is unreliable (silent middleware failure detected).
+            // Return 503 so the caller knows this is a data-quality block, not
+            // a genuine over-capacity condition.
+            res.status(503).json({
+              error: "Capacity data is temporarily unreliable — scheduling blocked to prevent over-commitment",
+              capacity: conflict,
+            });
+            return;
+          }
           // Use 409 Conflict so existing consumers that rely on response.ok
           // treat this as an error (false) rather than a silent success.
           res.status(409).json({ capacityConflict: true, capacity: conflict });
