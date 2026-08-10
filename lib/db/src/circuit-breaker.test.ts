@@ -748,4 +748,101 @@ describe("DbCircuitBreaker — abandoned probe safety (CB_PROBE_TIMEOUT_MS)", ()
     expect(cb.tryAcquire()).toBe(true);
     expect(cb.tryAcquire()).toBe(true);
   });
+
+  // ---------------------------------------------------------------------------
+  // End-to-end: executeWithCircuitBreaker wrapper with a late-rejecting probe
+  // ---------------------------------------------------------------------------
+
+  it("a timed-out probe that later rejects does not reopen the breaker — stale recordFailure is discarded", async () => {
+    /**
+     * Integration-level proof that execWith's catch block cannot corrupt the
+     * breaker when the abandoned probe eventually rejects.
+     *
+     * Sequence:
+     *   1. Probe A is launched via execWith with a controllable deferred
+     *      promise (simulating a slow DB call).
+     *   2. Clock advances past CB_PROBE_TIMEOUT_MS — the breaker treats A
+     *      as abandoned and allows a replacement probe.
+     *   3. Probe B (replacement) succeeds via execWith → breaker closes.
+     *   4. Probe A's deferred is now rejected — execWith's catch block fires
+     *      and calls recordFailure(genA). Since genA is stale, the call must
+     *      be silently discarded.
+     *   5. Breaker must remain CLOSED and admit normal traffic.
+     */
+
+    function deferred<T = void>() {
+      let resolve!: (value: T) => void;
+      let reject!: (reason: unknown) => void;
+      const promise = new Promise<T>((res, rej) => {
+        resolve = res;
+        reject = rej;
+      });
+      return { promise, resolve, reject };
+    }
+
+    /** Local mirror of executeWithCircuitBreaker bound to an injected breaker. */
+    async function execWith<T>(
+      cb: DbCircuitBreaker,
+      fn: () => Promise<T>,
+    ): Promise<T> {
+      if (!cb.tryAcquire()) {
+        throw Object.assign(
+          new Error("Circuit breaker OPEN — database is temporarily unavailable"),
+          { code: "CIRCUIT_OPEN" },
+        );
+      }
+      const gen = cb.getProbeGeneration();
+      try {
+        const result = await fn();
+        cb.recordSuccess(gen);
+        return result;
+      } catch (err) {
+        cb.recordFailure(gen);
+        throw err;
+      }
+    }
+
+    const clock = makeClock();
+    const cb = new DbCircuitBreaker(clock.fn);
+
+    // Trip the breaker, then advance into HALF_OPEN.
+    failN(cb, CB_FAILURE_THRESHOLD);
+    clock.tick(CB_RECOVERY_TIMEOUT_MS);
+    expect(cb.getState()).toBe("HALF_OPEN");
+
+    // Step 1: Launch probe A with a controllable deferred promise.
+    const probeA = deferred<string>();
+    // Track whether the execWith wrapper for A has settled (i.e. catch fired).
+    let probeAHandled = false;
+    const probeAResult = execWith(cb, () => probeA.promise).then(
+      () => { probeAHandled = true; },
+      () => { probeAHandled = true; }, // catch fires here → recordFailure(genA) runs
+    );
+
+    // Probe A is now in-flight; breaker stays HALF_OPEN.
+    expect(cb.getState()).toBe("HALF_OPEN");
+
+    // Step 2: Advance past the probe timeout — A is now considered abandoned.
+    clock.tick(CB_PROBE_TIMEOUT_MS);
+    // Breaker stays HALF_OPEN (no failure recorded — A just hasn't settled yet).
+    expect(cb.getState()).toBe("HALF_OPEN");
+
+    // Step 3: Probe B (replacement) is admitted and succeeds — breaker closes.
+    const resultB = await execWith(cb, async () => "recovered");
+    expect(resultB).toBe("recovered");
+    expect(cb.getState()).toBe("CLOSED");
+
+    // Step 4: Now reject probe A's deferred.  execWith's catch block fires,
+    // calling recordFailure(genA) — but genA is stale and must be discarded.
+    probeA.reject(connRefused());
+    await probeAResult; // wait for the wrapper's catch to complete
+    expect(probeAHandled).toBe(true); // confirms catch actually ran
+
+    // Step 5: Breaker must remain CLOSED despite the stale recordFailure.
+    expect(cb.getState()).toBe("CLOSED");
+
+    // Normal traffic must flow freely.
+    expect(cb.tryAcquire()).toBe(true);
+    expect(cb.tryAcquire()).toBe(true);
+  });
 });
