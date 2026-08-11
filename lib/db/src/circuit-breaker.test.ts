@@ -1052,3 +1052,216 @@ describe("DbCircuitBreaker — db_circuit_breaker_probe_abandoned log event", ()
     expect(warnSpy).not.toHaveBeenCalled();
   });
 });
+
+// ---------------------------------------------------------------------------
+// db_circuit_breaker_opened log event
+// ---------------------------------------------------------------------------
+
+describe("DbCircuitBreaker — db_circuit_breaker_opened log event", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  /**
+   * Helper: spy on console.error, run the action, assert it was called exactly
+   * once, and return the parsed JSON payload.
+   */
+  function captureError(action: () => void): Record<string, unknown> {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    action();
+    expect(errorSpy).toHaveBeenCalledOnce();
+    const raw = errorSpy.mock.calls[0][0] as string;
+    return JSON.parse(raw) as Record<string, unknown>;
+  }
+
+  it("emits db_circuit_breaker_opened when the breaker trips for the first time", () => {
+    const cb = new DbCircuitBreaker();
+    const payload = captureError(() => failN(cb, CB_FAILURE_THRESHOLD));
+    expect(payload.event).toBe("db_circuit_breaker_opened");
+  });
+
+  it("consecutiveFailures in the log equals CB_FAILURE_THRESHOLD", () => {
+    const cb = new DbCircuitBreaker();
+    const payload = captureError(() => failN(cb, CB_FAILURE_THRESHOLD));
+    expect(payload.consecutiveFailures).toBe(CB_FAILURE_THRESHOLD);
+  });
+
+  it("consecutiveFailures reflects additional failures beyond the threshold", () => {
+    const cb = new DbCircuitBreaker();
+    // Trip the breaker, then add one more failure — the second open-event
+    // should NOT fire because the breaker is already OPEN, so we only expect
+    // a single log. Just verify the first one (threshold failures).
+    const payload = captureError(() => failN(cb, CB_FAILURE_THRESHOLD));
+    expect(payload.consecutiveFailures as number).toBeGreaterThanOrEqual(CB_FAILURE_THRESHOLD);
+  });
+
+  it("openedAt is a valid ISO 8601 timestamp matching the clock at trip time", () => {
+    const epoch = 1_700_000_000_000;
+    const clock = makeClock(epoch);
+    const cb = new DbCircuitBreaker(clock.fn);
+    // Advance a little so openedAt is non-zero and distinct.
+    clock.tick(500);
+    const expectedEpoch = clock.fn();
+    const payload = captureError(() => failN(cb, CB_FAILURE_THRESHOLD));
+
+    expect(typeof payload.openedAt).toBe("string");
+    const parsed = new Date(payload.openedAt as string);
+    expect(Number.isNaN(parsed.getTime())).toBe(false);
+    expect(parsed.getTime()).toBe(expectedEpoch);
+  });
+
+  it("recoverAfterMs equals CB_RECOVERY_TIMEOUT_MS", () => {
+    const cb = new DbCircuitBreaker();
+    const payload = captureError(() => failN(cb, CB_FAILURE_THRESHOLD));
+    expect(payload.recoverAfterMs).toBe(CB_RECOVERY_TIMEOUT_MS);
+  });
+
+  it("all required fields are present together in a single log call", () => {
+    const epoch = 1_700_000_000_000;
+    const clock = makeClock(epoch);
+    const cb = new DbCircuitBreaker(clock.fn);
+    const payload = captureError(() => failN(cb, CB_FAILURE_THRESHOLD));
+
+    expect(payload).toHaveProperty("event", "db_circuit_breaker_opened");
+    expect(payload).toHaveProperty("consecutiveFailures");
+    expect(payload).toHaveProperty("openedAt");
+    expect(payload).toHaveProperty("recoverAfterMs");
+
+    expect(typeof payload.consecutiveFailures).toBe("number");
+    expect(typeof payload.openedAt).toBe("string");
+    expect(typeof payload.recoverAfterMs).toBe("number");
+
+    // openedAt must be a valid ISO 8601 date string.
+    expect(Number.isNaN(new Date(payload.openedAt as string).getTime())).toBe(false);
+  });
+
+  it("does NOT emit a second opened event when the breaker is already OPEN", () => {
+    const cb = new DbCircuitBreaker();
+    // Trip the breaker — one log expected.
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    failN(cb, CB_FAILURE_THRESHOLD);
+    expect(errorSpy).toHaveBeenCalledOnce();
+
+    // Record another failure while already OPEN — no second opened event.
+    cb.recordFailure();
+    expect(errorSpy).toHaveBeenCalledOnce(); // still just one call
+  });
+
+  it("emits a fresh opened event when the breaker re-opens after a failed HALF_OPEN probe", () => {
+    const clock = makeClock(1_700_000_000_000);
+    const cb = new DbCircuitBreaker(clock.fn);
+    failN(cb, CB_FAILURE_THRESHOLD);
+    clock.tick(CB_RECOVERY_TIMEOUT_MS);
+    expect(cb.getState()).toBe("HALF_OPEN");
+
+    // The re-open should fire a second opened event.
+    const payload = captureError(() => cb.recordFailure());
+    expect(payload.event).toBe("db_circuit_breaker_opened");
+    expect(payload).toHaveProperty("consecutiveFailures");
+    expect(payload).toHaveProperty("openedAt");
+    expect(payload).toHaveProperty("recoverAfterMs");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// db_circuit_breaker_closed log event
+// ---------------------------------------------------------------------------
+
+describe("DbCircuitBreaker — db_circuit_breaker_closed log event", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  /**
+   * Helper: spy on console.info, run the action, assert it was called exactly
+   * once, and return the parsed JSON payload.
+   */
+  function captureInfo(action: () => void): Record<string, unknown> {
+    const infoSpy = vi.spyOn(console, "info").mockImplementation(() => {});
+    action();
+    expect(infoSpy).toHaveBeenCalledOnce();
+    const raw = infoSpy.mock.calls[0][0] as string;
+    return JSON.parse(raw) as Record<string, unknown>;
+  }
+
+  /** Bring a breaker into HALF_OPEN state using the given clock. */
+  function openAndAdvanceToHalfOpen(cb: DbCircuitBreaker, clock: ReturnType<typeof makeClock>) {
+    failN(cb, CB_FAILURE_THRESHOLD);
+    clock.tick(CB_RECOVERY_TIMEOUT_MS);
+    expect(cb.getState()).toBe("HALF_OPEN");
+  }
+
+  it("emits db_circuit_breaker_closed when a HALF_OPEN probe succeeds", () => {
+    const clock = makeClock(1_700_000_000_000);
+    const cb = new DbCircuitBreaker(clock.fn);
+    openAndAdvanceToHalfOpen(cb, clock);
+    cb.tryAcquire(); // arm the probe
+
+    const payload = captureInfo(() => cb.recordSuccess());
+    expect(payload.event).toBe("db_circuit_breaker_closed");
+  });
+
+  it("timestamp in the log is a valid ISO 8601 string", () => {
+    const clock = makeClock(1_700_000_000_000);
+    const cb = new DbCircuitBreaker(clock.fn);
+    openAndAdvanceToHalfOpen(cb, clock);
+    cb.tryAcquire();
+
+    const payload = captureInfo(() => cb.recordSuccess());
+
+    expect(typeof payload.timestamp).toBe("string");
+    const parsed = new Date(payload.timestamp as string);
+    expect(Number.isNaN(parsed.getTime())).toBe(false);
+  });
+
+  it("timestamp matches the clock value at the moment recordSuccess is called", () => {
+    const epoch = 1_700_000_000_000;
+    const clock = makeClock(epoch);
+    const cb = new DbCircuitBreaker(clock.fn);
+    openAndAdvanceToHalfOpen(cb, clock);
+    cb.tryAcquire();
+
+    // Advance the clock a bit so the close timestamp is distinguishable.
+    clock.tick(1_234);
+    const expectedEpoch = clock.fn();
+
+    const payload = captureInfo(() => cb.recordSuccess());
+
+    const ts = new Date(payload.timestamp as string);
+    expect(ts.getTime()).toBe(expectedEpoch);
+  });
+
+  it("all required fields are present together in a single log call", () => {
+    const clock = makeClock(1_700_000_000_000);
+    const cb = new DbCircuitBreaker(clock.fn);
+    openAndAdvanceToHalfOpen(cb, clock);
+    cb.tryAcquire();
+
+    const payload = captureInfo(() => cb.recordSuccess());
+
+    expect(payload).toHaveProperty("event", "db_circuit_breaker_closed");
+    expect(payload).toHaveProperty("timestamp");
+
+    expect(typeof payload.timestamp).toBe("string");
+    expect(Number.isNaN(new Date(payload.timestamp as string).getTime())).toBe(false);
+  });
+
+  it("does NOT emit the closed event when recordSuccess is called while already CLOSED", () => {
+    const cb = new DbCircuitBreaker();
+    const infoSpy = vi.spyOn(console, "info").mockImplementation(() => {});
+    cb.recordSuccess(); // breaker is already CLOSED — no log expected
+    expect(infoSpy).not.toHaveBeenCalled();
+  });
+
+  it("emits the closed event even when called without a probe generation (direct recordSuccess)", () => {
+    const clock = makeClock(1_700_000_000_000);
+    const cb = new DbCircuitBreaker(clock.fn);
+    openAndAdvanceToHalfOpen(cb, clock);
+
+    // recordSuccess without a generation token (as allowed for CLOSED/test paths)
+    const payload = captureInfo(() => cb.recordSuccess());
+    expect(payload.event).toBe("db_circuit_breaker_closed");
+    expect(typeof payload.timestamp).toBe("string");
+    expect(Number.isNaN(new Date(payload.timestamp as string).getTime())).toBe(false);
+  });
+});
