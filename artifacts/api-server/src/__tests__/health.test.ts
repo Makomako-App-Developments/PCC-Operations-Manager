@@ -267,6 +267,70 @@ describe("GET /health — combined status", () => {
   });
 });
 
+describe("GET /health/circuit-breaker", () => {
+  beforeEach(async () => {
+    vi.resetAllMocks();
+  });
+
+  it("returns 200 with state=CLOSED and null openedAt when breaker is closed", async () => {
+    const { dbCircuitBreaker } = vi.mocked(await import("@workspace/db"));
+    dbCircuitBreaker.getState.mockReturnValue("CLOSED");
+    dbCircuitBreaker.getOpenedAt.mockReturnValue(null);
+
+    const res = await request(buildApp()).get("/health/circuit-breaker");
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ state: "CLOSED", openedAt: null, openDurationMs: null });
+  });
+
+  it("returns 200 with state=OPEN and valid openedAt/openDurationMs when breaker is open", async () => {
+    const openedAtMs = Date.now() - 7000;
+    const { dbCircuitBreaker } = vi.mocked(await import("@workspace/db"));
+    dbCircuitBreaker.getState.mockReturnValue("OPEN");
+    dbCircuitBreaker.getOpenedAt.mockReturnValue(openedAtMs);
+
+    const res = await request(buildApp()).get("/health/circuit-breaker");
+    expect(res.status).toBe(200);
+    expect(res.body.state).toBe("OPEN");
+
+    // openedAt must be a valid ISO 8601 string matching the epoch value
+    expect(typeof res.body.openedAt).toBe("string");
+    expect(new Date(res.body.openedAt).toISOString()).toBe(res.body.openedAt);
+    expect(new Date(res.body.openedAt).getTime()).toBe(openedAtMs);
+
+    // openDurationMs must be a non-negative number
+    expect(typeof res.body.openDurationMs).toBe("number");
+    expect(res.body.openDurationMs).toBeGreaterThanOrEqual(0);
+  });
+
+  it("returns 200 with state=HALF_OPEN and valid openedAt/openDurationMs when breaker is half-open", async () => {
+    const openedAtMs = Date.now() - 15000;
+    const { dbCircuitBreaker } = vi.mocked(await import("@workspace/db"));
+    dbCircuitBreaker.getState.mockReturnValue("HALF_OPEN");
+    dbCircuitBreaker.getOpenedAt.mockReturnValue(openedAtMs);
+
+    const res = await request(buildApp()).get("/health/circuit-breaker");
+    expect(res.status).toBe(200);
+    expect(res.body.state).toBe("HALF_OPEN");
+
+    // openedAt must be a valid ISO 8601 string
+    expect(typeof res.body.openedAt).toBe("string");
+    expect(new Date(res.body.openedAt).toISOString()).toBe(res.body.openedAt);
+
+    // openDurationMs must be a non-negative number
+    expect(typeof res.body.openDurationMs).toBe("number");
+    expect(res.body.openDurationMs).toBeGreaterThanOrEqual(0);
+  });
+
+  it("never fires db.execute — no DB query is issued", async () => {
+    const { db, dbCircuitBreaker } = vi.mocked(await import("@workspace/db"));
+    dbCircuitBreaker.getState.mockReturnValue("CLOSED");
+    dbCircuitBreaker.getOpenedAt.mockReturnValue(null);
+
+    await request(buildApp()).get("/health/circuit-breaker");
+    expect(db.execute).not.toHaveBeenCalled();
+  });
+});
+
 describe("GET /healthz", () => {
   it("returns legacy 200 ok", async () => {
     const res = await request(buildApp()).get("/healthz");

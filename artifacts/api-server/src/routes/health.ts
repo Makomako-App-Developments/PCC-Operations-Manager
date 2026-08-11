@@ -50,6 +50,24 @@ router.get("/health/ready", async (_req, res) => {
   }
 });
 
+// GET /api/health/circuit-breaker — read-only circuit breaker state (no DB query)
+//
+// Returns the current state of dbCircuitBreaker without issuing any SELECT or
+// pool connection — safe to poll at high frequency without adding DB load.
+// Always returns 200; the payload carries the state signal.
+//
+// Response shape:
+//   { state: "CLOSED"|"OPEN"|"HALF_OPEN", openedAt: string|null, openDurationMs: number|null }
+router.get("/health/circuit-breaker", (_req, res) => {
+  const state = dbCircuitBreaker.getState();
+  const openedAtMs = dbCircuitBreaker.getOpenedAt();
+  res.json({
+    state,
+    openedAt: openedAtMs != null ? new Date(openedAtMs).toISOString() : null,
+    openDurationMs: openedAtMs != null ? Date.now() - openedAtMs : null,
+  });
+});
+
 // GET /api/health — combined status (version, uptime, db)
 router.get("/health", async (_req, res) => {
   const uptimeMs = Date.now() - startTime;
