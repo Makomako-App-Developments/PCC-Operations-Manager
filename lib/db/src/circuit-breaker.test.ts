@@ -9,7 +9,7 @@
  * The module-level `dbCircuitBreaker` singleton is NOT used here — each
  * test constructs its own instance so state cannot leak between tests.
  */
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, afterEach } from "vitest";
 import {
   DbCircuitBreaker,
   CB_FAILURE_THRESHOLD,
@@ -844,5 +844,211 @@ describe("DbCircuitBreaker — abandoned probe safety (CB_PROBE_TIMEOUT_MS)", ()
     // Normal traffic must flow freely.
     expect(cb.tryAcquire()).toBe(true);
     expect(cb.tryAcquire()).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// db_circuit_breaker_probe_abandoned log event
+// ---------------------------------------------------------------------------
+
+describe("DbCircuitBreaker — db_circuit_breaker_probe_abandoned log event", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  /**
+   * Helper: parse the first JSON payload emitted to console.warn after the
+   * action is run.  Returns the parsed object (throws if warn was not called
+   * or the payload is not valid JSON).
+   */
+  function captureWarn(action: () => void): Record<string, unknown> {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    action();
+    expect(warnSpy).toHaveBeenCalledOnce();
+    const raw = warnSpy.mock.calls[0][0] as string;
+    return JSON.parse(raw) as Record<string, unknown>;
+  }
+
+  it("emits the db_circuit_breaker_probe_abandoned event when the next tryAcquire detects a timed-out probe", () => {
+    const clock = makeClock(1_000_000); // non-zero epoch so ISO dates are realistic
+    const cb = new DbCircuitBreaker(clock.fn);
+    failN(cb, CB_FAILURE_THRESHOLD);
+    clock.tick(CB_RECOVERY_TIMEOUT_MS);
+    expect(cb.getState()).toBe("HALF_OPEN");
+
+    // Start a probe — it will never be settled (simulates an abandoned caller).
+    expect(cb.tryAcquire()).toBe(true);
+
+    // Advance time past the probe timeout.
+    clock.tick(CB_PROBE_TIMEOUT_MS);
+
+    // The next tryAcquire() should detect the stale probe and emit the warning.
+    const payload = captureWarn(() => cb.tryAcquire());
+
+    expect(payload.event).toBe("db_circuit_breaker_probe_abandoned");
+  });
+
+  it("probeAgeMs in the log is >= CB_PROBE_TIMEOUT_MS", () => {
+    const clock = makeClock(1_000_000);
+    const cb = new DbCircuitBreaker(clock.fn);
+    failN(cb, CB_FAILURE_THRESHOLD);
+    clock.tick(CB_RECOVERY_TIMEOUT_MS);
+
+    cb.tryAcquire(); // probe in-flight, never settled
+
+    // Advance exactly to the timeout boundary.
+    clock.tick(CB_PROBE_TIMEOUT_MS);
+
+    const payload = captureWarn(() => cb.tryAcquire());
+
+    expect(typeof payload.probeAgeMs).toBe("number");
+    expect(payload.probeAgeMs as number).toBeGreaterThanOrEqual(CB_PROBE_TIMEOUT_MS);
+  });
+
+  it("probeAgeMs reflects extra elapsed time beyond the timeout", () => {
+    const clock = makeClock(1_000_000);
+    const cb = new DbCircuitBreaker(clock.fn);
+    failN(cb, CB_FAILURE_THRESHOLD);
+    clock.tick(CB_RECOVERY_TIMEOUT_MS);
+
+    cb.tryAcquire(); // probe in-flight
+
+    const extra = 2_500;
+    clock.tick(CB_PROBE_TIMEOUT_MS + extra);
+
+    const payload = captureWarn(() => cb.tryAcquire());
+
+    expect(payload.probeAgeMs as number).toBeGreaterThanOrEqual(CB_PROBE_TIMEOUT_MS + extra);
+  });
+
+  it("probeStartedAt is a valid ISO 8601 timestamp", () => {
+    const startEpoch = 1_700_000_000_000; // a realistic ms epoch
+    const clock = makeClock(startEpoch);
+    const cb = new DbCircuitBreaker(clock.fn);
+    failN(cb, CB_FAILURE_THRESHOLD);
+    clock.tick(CB_RECOVERY_TIMEOUT_MS);
+
+    // The probe starts right as we enter HALF_OPEN.
+    const probeStartWallMs = clock.fn();
+    cb.tryAcquire(); // probe in-flight at probeStartWallMs + 0 (clock hasn't ticked yet)
+
+    clock.tick(CB_PROBE_TIMEOUT_MS);
+
+    const payload = captureWarn(() => cb.tryAcquire());
+
+    // Must be a string
+    expect(typeof payload.probeStartedAt).toBe("string");
+
+    // Must be parseable as a valid date
+    const parsed = new Date(payload.probeStartedAt as string);
+    expect(Number.isNaN(parsed.getTime())).toBe(false);
+
+    // Must round-trip: the epoch recorded by the breaker should match
+    // the clock value at the moment tryAcquire() set probeStartedAt.
+    expect(parsed.getTime()).toBe(probeStartWallMs);
+  });
+
+  it("timestamp in the log is a valid ISO 8601 string at or after probeStartedAt", () => {
+    const clock = makeClock(1_700_000_000_000);
+    const cb = new DbCircuitBreaker(clock.fn);
+    failN(cb, CB_FAILURE_THRESHOLD);
+    clock.tick(CB_RECOVERY_TIMEOUT_MS);
+
+    cb.tryAcquire(); // probe starts
+
+    clock.tick(CB_PROBE_TIMEOUT_MS);
+
+    const payload = captureWarn(() => cb.tryAcquire());
+
+    expect(typeof payload.timestamp).toBe("string");
+
+    const ts = new Date(payload.timestamp as string);
+    expect(Number.isNaN(ts.getTime())).toBe(false);
+
+    const probeStart = new Date(payload.probeStartedAt as string);
+    // timestamp must be at or after probeStartedAt
+    expect(ts.getTime()).toBeGreaterThanOrEqual(probeStart.getTime());
+  });
+
+  it("all three required fields (event, probeAgeMs, probeStartedAt, timestamp) are present together", () => {
+    const clock = makeClock(1_700_000_000_000);
+    const cb = new DbCircuitBreaker(clock.fn);
+    failN(cb, CB_FAILURE_THRESHOLD);
+    clock.tick(CB_RECOVERY_TIMEOUT_MS);
+
+    cb.tryAcquire();
+    clock.tick(CB_PROBE_TIMEOUT_MS);
+
+    const payload = captureWarn(() => cb.tryAcquire());
+
+    // All four fields must be present in a single log call
+    expect(payload).toHaveProperty("event", "db_circuit_breaker_probe_abandoned");
+    expect(payload).toHaveProperty("probeAgeMs");
+    expect(payload).toHaveProperty("probeStartedAt");
+    expect(payload).toHaveProperty("timestamp");
+
+    // Numeric and string types
+    expect(typeof payload.probeAgeMs).toBe("number");
+    expect(typeof payload.probeStartedAt).toBe("string");
+    expect(typeof payload.timestamp).toBe("string");
+
+    // Both date strings must be valid ISO 8601
+    expect(Number.isNaN(new Date(payload.probeStartedAt as string).getTime())).toBe(false);
+    expect(Number.isNaN(new Date(payload.timestamp as string).getTime())).toBe(false);
+  });
+
+  it("each successive abandoned probe emits its own log with updated probeAgeMs", () => {
+    const clock = makeClock(1_000_000);
+    const cb = new DbCircuitBreaker(clock.fn);
+    failN(cb, CB_FAILURE_THRESHOLD);
+    clock.tick(CB_RECOVERY_TIMEOUT_MS);
+
+    // First abandoned probe.
+    cb.tryAcquire();
+    clock.tick(CB_PROBE_TIMEOUT_MS);
+
+    // Capture first abandonment log with its own spy, then restore before the second.
+    const spy1 = vi.spyOn(console, "warn").mockImplementation(() => {});
+    cb.tryAcquire(); // triggers first abandon log; second probe now in-flight
+    expect(spy1).toHaveBeenCalledOnce();
+    const payload1 = JSON.parse(spy1.mock.calls[0][0] as string) as Record<string, unknown>;
+    spy1.mockRestore();
+
+    // Second probe is now in-flight — abandon it too.
+    clock.tick(CB_PROBE_TIMEOUT_MS + 1_000);
+
+    // Capture second abandonment log with a fresh spy.
+    const spy2 = vi.spyOn(console, "warn").mockImplementation(() => {});
+    cb.tryAcquire(); // triggers second abandon log
+    expect(spy2).toHaveBeenCalledOnce();
+    const payload2 = JSON.parse(spy2.mock.calls[0][0] as string) as Record<string, unknown>;
+    spy2.mockRestore();
+
+    expect(payload1.event).toBe("db_circuit_breaker_probe_abandoned");
+    expect(payload2.event).toBe("db_circuit_breaker_probe_abandoned");
+
+    // The second abandonment age must be >= the second probe's timeout
+    // (and in practice larger because the extra 1 000 ms was added).
+    expect(payload2.probeAgeMs as number).toBeGreaterThanOrEqual(CB_PROBE_TIMEOUT_MS + 1_000);
+
+    // probeStartedAt values must differ between the two events.
+    expect(payload1.probeStartedAt).not.toBe(payload2.probeStartedAt);
+  });
+
+  it("the warn is NOT emitted when the probe is within CB_PROBE_TIMEOUT_MS", () => {
+    const clock = makeClock(1_000_000);
+    const cb = new DbCircuitBreaker(clock.fn);
+    failN(cb, CB_FAILURE_THRESHOLD);
+    clock.tick(CB_RECOVERY_TIMEOUT_MS);
+
+    cb.tryAcquire(); // probe in-flight
+
+    // Advance, but stay strictly inside the timeout window.
+    clock.tick(CB_PROBE_TIMEOUT_MS - 1);
+
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    // Concurrent caller must be blocked (not abandoned-log path).
+    expect(cb.tryAcquire()).toBe(false);
+    expect(warnSpy).not.toHaveBeenCalled();
   });
 });
