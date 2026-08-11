@@ -1265,3 +1265,145 @@ describe("DbCircuitBreaker — db_circuit_breaker_closed log event", () => {
     expect(Number.isNaN(new Date(payload.timestamp as string).getTime())).toBe(false);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Log payload contract snapshots
+//
+// These tests assert the COMPLETE shape of each structured log payload in a
+// single toMatchObject call. Any field rename, removal, or type change that
+// downstream alerting rules depend on will immediately fail here.
+//
+// Fields that are fixed strings are matched exactly.
+// Fields that are dynamic (timestamps, counts) are matched by type/pattern.
+//
+// ISO 8601 pattern used throughout:
+//   /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}.\d{3}Z$/
+// ---------------------------------------------------------------------------
+
+const ISO_8601 = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
+
+describe("Log payload contract snapshots — full field shape", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  // -------------------------------------------------------------------------
+  // event: db_circuit_breaker_opened
+  //
+  // Emitted via console.error when consecutiveFailures reaches CB_FAILURE_THRESHOLD
+  // and the breaker was not already OPEN.
+  //
+  // Downstream consumers parse:
+  //   event              — alert routing key (exact string match)
+  //   message            — human-readable (contains "Circuit breaker OPEN")
+  //   consecutiveFailures — numeric gauge for dashboards
+  //   openedAt           — ISO 8601 timestamp for time-since-open calculations
+  //   recoverAfterMs     — informs alert suppression window duration
+  // -------------------------------------------------------------------------
+  it("db_circuit_breaker_opened — complete payload shape", () => {
+    const epoch = 1_700_000_000_000;
+    const clock = makeClock(epoch);
+    const cb = new DbCircuitBreaker(clock.fn);
+
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    failN(cb, CB_FAILURE_THRESHOLD);
+    expect(errorSpy).toHaveBeenCalledOnce();
+
+    const payload = JSON.parse(errorSpy.mock.calls[0][0] as string) as Record<string, unknown>;
+
+    expect(payload).toMatchObject({
+      event: "db_circuit_breaker_opened",
+      message: expect.stringContaining("Circuit breaker OPEN"),
+      consecutiveFailures: expect.any(Number),
+      openedAt: expect.stringMatching(ISO_8601),
+      recoverAfterMs: expect.any(Number),
+    });
+
+    // Confirm no extra keys are silently present (keeps the contract explicit).
+    expect(Object.keys(payload).sort()).toEqual(
+      ["consecutiveFailures", "event", "message", "openedAt", "recoverAfterMs"].sort(),
+    );
+  });
+
+  // -------------------------------------------------------------------------
+  // event: db_circuit_breaker_closed
+  //
+  // Emitted via console.info when recordSuccess transitions the breaker out of
+  // OPEN or HALF_OPEN (i.e. not when already CLOSED).
+  //
+  // Downstream consumers parse:
+  //   event     — alert resolution key (exact string match)
+  //   message   — human-readable (exact fixed string)
+  //   timestamp — ISO 8601 timestamp for recovery-time calculations
+  // -------------------------------------------------------------------------
+  it("db_circuit_breaker_closed — complete payload shape", () => {
+    const epoch = 1_700_000_000_000;
+    const clock = makeClock(epoch);
+    const cb = new DbCircuitBreaker(clock.fn);
+    failN(cb, CB_FAILURE_THRESHOLD);
+    clock.tick(CB_RECOVERY_TIMEOUT_MS);
+    expect(cb.getState()).toBe("HALF_OPEN");
+    cb.tryAcquire(); // arm the probe
+
+    const infoSpy = vi.spyOn(console, "info").mockImplementation(() => {});
+    cb.recordSuccess();
+    expect(infoSpy).toHaveBeenCalledOnce();
+
+    const payload = JSON.parse(infoSpy.mock.calls[0][0] as string) as Record<string, unknown>;
+
+    expect(payload).toMatchObject({
+      event: "db_circuit_breaker_closed",
+      message: "Circuit breaker CLOSED — database recovered",
+      timestamp: expect.stringMatching(ISO_8601),
+    });
+
+    // Confirm no extra keys are silently present.
+    expect(Object.keys(payload).sort()).toEqual(
+      ["event", "message", "timestamp"].sort(),
+    );
+  });
+
+  // -------------------------------------------------------------------------
+  // event: db_circuit_breaker_probe_abandoned
+  //
+  // Emitted via console.warn when tryAcquire detects that the in-flight
+  // HALF_OPEN probe has exceeded CB_PROBE_TIMEOUT_MS without settling.
+  //
+  // Downstream consumers parse:
+  //   event          — alert routing key (exact string match)
+  //   message        — human-readable (contains "HALF_OPEN probe abandoned")
+  //   probeAgeMs     — numeric gauge; how long the stale probe was outstanding
+  //   probeStartedAt — ISO 8601 timestamp; when the abandoned probe was started
+  //   timestamp      — ISO 8601 timestamp; when the abandonment was detected
+  // -------------------------------------------------------------------------
+  it("db_circuit_breaker_probe_abandoned — complete payload shape", () => {
+    const epoch = 1_700_000_000_000;
+    const clock = makeClock(epoch);
+    const cb = new DbCircuitBreaker(clock.fn);
+    failN(cb, CB_FAILURE_THRESHOLD);
+    clock.tick(CB_RECOVERY_TIMEOUT_MS);
+    expect(cb.getState()).toBe("HALF_OPEN");
+
+    cb.tryAcquire(); // start a probe that is never settled
+    clock.tick(CB_PROBE_TIMEOUT_MS); // advance past the abandonment threshold
+
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    cb.tryAcquire(); // triggers the abandonment log
+    expect(warnSpy).toHaveBeenCalledOnce();
+
+    const payload = JSON.parse(warnSpy.mock.calls[0][0] as string) as Record<string, unknown>;
+
+    expect(payload).toMatchObject({
+      event: "db_circuit_breaker_probe_abandoned",
+      message: expect.stringContaining("HALF_OPEN probe abandoned"),
+      probeAgeMs: expect.any(Number),
+      probeStartedAt: expect.stringMatching(ISO_8601),
+      timestamp: expect.stringMatching(ISO_8601),
+    });
+
+    // Confirm no extra keys are silently present.
+    expect(Object.keys(payload).sort()).toEqual(
+      ["event", "message", "probeAgeMs", "probeStartedAt", "timestamp"].sort(),
+    );
+  });
+});
