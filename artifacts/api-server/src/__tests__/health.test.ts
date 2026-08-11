@@ -331,6 +331,152 @@ describe("GET /health/circuit-breaker", () => {
   });
 });
 
+describe("GET /health/circuit-breaker — concurrent load: no DB calls", () => {
+  /**
+   * The /health/circuit-breaker handler must never touch the DB pool regardless
+   * of breaker state. We verify this two ways per state:
+   *
+   *   1. Direct: assert db.execute was not called after N concurrent requests.
+   *   2. Indirect (latency proxy): mock db.execute to take 5 000 ms, then assert
+   *      all N responses arrive well within that window. If any request secretly
+   *      called db.execute the batch would stall near 5 s; completing well under
+   *      that proves the route skips the pool entirely. Using an aggregate bound
+   *      avoids the per-request timer jitter inherent in Supertest/in-process tests.
+   */
+  const CONCURRENCY = 20;
+  // A DB call would take DB_MOCK_DELAY_MS; batch must finish well below this.
+  const DB_MOCK_DELAY_MS = 5_000;
+  const BATCH_DEADLINE_MS = 1_000;
+
+  beforeEach(async () => {
+    vi.resetAllMocks();
+    // Make db.execute deliberately slow so any accidental call blows the deadline.
+    const { db } = vi.mocked(await import("@workspace/db"));
+    db.execute.mockImplementation(
+      () => new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error("should not have been called")), DB_MOCK_DELAY_MS),
+      ),
+    );
+  });
+
+  // ── CLOSED ────────────────────────────────────────────────────────────────
+
+  it("CLOSED: none of N concurrent requests call db.execute", async () => {
+    const { db, dbCircuitBreaker } = vi.mocked(await import("@workspace/db"));
+    dbCircuitBreaker.getState.mockReturnValue("CLOSED");
+    dbCircuitBreaker.getOpenedAt.mockReturnValue(null);
+
+    const app = buildApp();
+    const responses = await Promise.all(
+      Array.from({ length: CONCURRENCY }, () =>
+        request(app).get("/health/circuit-breaker"),
+      ),
+    );
+
+    expect(db.execute).not.toHaveBeenCalled();
+    for (const res of responses) {
+      expect(res.status).toBe(200);
+      expect(res.body.state).toBe("CLOSED");
+    }
+  });
+
+  it("CLOSED: all N concurrent responses complete well before a DB call would finish", async () => {
+    const { dbCircuitBreaker } = vi.mocked(await import("@workspace/db"));
+    dbCircuitBreaker.getState.mockReturnValue("CLOSED");
+    dbCircuitBreaker.getOpenedAt.mockReturnValue(null);
+
+    const app = buildApp();
+    const t0 = Date.now();
+    await Promise.all(
+      Array.from({ length: CONCURRENCY }, () =>
+        request(app).get("/health/circuit-breaker"),
+      ),
+    );
+    // If any request touched db.execute it would add ~DB_MOCK_DELAY_MS
+    expect(Date.now() - t0).toBeLessThan(BATCH_DEADLINE_MS);
+  });
+
+  // ── OPEN ──────────────────────────────────────────────────────────────────
+
+  it("OPEN: none of N concurrent requests call db.execute", async () => {
+    const openedAtMs = Date.now() - 8_000;
+    const { db, dbCircuitBreaker } = vi.mocked(await import("@workspace/db"));
+    dbCircuitBreaker.getState.mockReturnValue("OPEN");
+    dbCircuitBreaker.getOpenedAt.mockReturnValue(openedAtMs);
+
+    const app = buildApp();
+    const responses = await Promise.all(
+      Array.from({ length: CONCURRENCY }, () =>
+        request(app).get("/health/circuit-breaker"),
+      ),
+    );
+
+    expect(db.execute).not.toHaveBeenCalled();
+    for (const res of responses) {
+      expect(res.status).toBe(200);
+      expect(res.body.state).toBe("OPEN");
+      expect(typeof res.body.openedAt).toBe("string");
+      expect(typeof res.body.openDurationMs).toBe("number");
+    }
+  });
+
+  it("OPEN: all N concurrent responses complete well before a DB call would finish", async () => {
+    const openedAtMs = Date.now() - 8_000;
+    const { dbCircuitBreaker } = vi.mocked(await import("@workspace/db"));
+    dbCircuitBreaker.getState.mockReturnValue("OPEN");
+    dbCircuitBreaker.getOpenedAt.mockReturnValue(openedAtMs);
+
+    const app = buildApp();
+    const t0 = Date.now();
+    await Promise.all(
+      Array.from({ length: CONCURRENCY }, () =>
+        request(app).get("/health/circuit-breaker"),
+      ),
+    );
+    expect(Date.now() - t0).toBeLessThan(BATCH_DEADLINE_MS);
+  });
+
+  // ── HALF_OPEN ─────────────────────────────────────────────────────────────
+
+  it("HALF_OPEN: none of N concurrent requests call db.execute", async () => {
+    const openedAtMs = Date.now() - 15_000;
+    const { db, dbCircuitBreaker } = vi.mocked(await import("@workspace/db"));
+    dbCircuitBreaker.getState.mockReturnValue("HALF_OPEN");
+    dbCircuitBreaker.getOpenedAt.mockReturnValue(openedAtMs);
+
+    const app = buildApp();
+    const responses = await Promise.all(
+      Array.from({ length: CONCURRENCY }, () =>
+        request(app).get("/health/circuit-breaker"),
+      ),
+    );
+
+    expect(db.execute).not.toHaveBeenCalled();
+    for (const res of responses) {
+      expect(res.status).toBe(200);
+      expect(res.body.state).toBe("HALF_OPEN");
+      expect(typeof res.body.openedAt).toBe("string");
+      expect(typeof res.body.openDurationMs).toBe("number");
+    }
+  });
+
+  it("HALF_OPEN: all N concurrent responses complete well before a DB call would finish", async () => {
+    const openedAtMs = Date.now() - 15_000;
+    const { dbCircuitBreaker } = vi.mocked(await import("@workspace/db"));
+    dbCircuitBreaker.getState.mockReturnValue("HALF_OPEN");
+    dbCircuitBreaker.getOpenedAt.mockReturnValue(openedAtMs);
+
+    const app = buildApp();
+    const t0 = Date.now();
+    await Promise.all(
+      Array.from({ length: CONCURRENCY }, () =>
+        request(app).get("/health/circuit-breaker"),
+      ),
+    );
+    expect(Date.now() - t0).toBeLessThan(BATCH_DEADLINE_MS);
+  });
+});
+
 describe("GET /healthz", () => {
   it("returns legacy 200 ok", async () => {
     const res = await request(buildApp()).get("/healthz");
