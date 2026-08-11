@@ -1,6 +1,7 @@
 import { Router, type IRouter } from "express";
 import { db, dbCircuitBreaker, executeWithCircuitBreaker } from "@workspace/db";
 import { sql } from "drizzle-orm";
+import circuitBreakerRouter from "./health-circuit-breaker";
 
 const router: IRouter = Router();
 const startTime = Date.now();
@@ -50,23 +51,12 @@ router.get("/health/ready", async (_req, res) => {
   }
 });
 
-// GET /api/health/circuit-breaker — read-only circuit breaker state (no DB query)
+// GET /api/health/circuit-breaker — mounted from ./health-circuit-breaker
 //
-// Returns the current state of dbCircuitBreaker without issuing any SELECT or
-// pool connection — safe to poll at high frequency without adding DB load.
-// Always returns 200; the payload carries the state signal.
-//
-// Response shape:
-//   { state: "CLOSED"|"OPEN"|"HALF_OPEN", openedAt: string|null, openDurationMs: number|null }
-router.get("/health/circuit-breaker", (_req, res) => {
-  const state = dbCircuitBreaker.getState();
-  const openedAtMs = dbCircuitBreaker.getOpenedAt();
-  res.json({
-    state,
-    openedAt: openedAtMs != null ? new Date(openedAtMs).toISOString() : null,
-    openDurationMs: openedAtMs != null ? Date.now() - openedAtMs : null,
-  });
-});
+// Kept in its own module so the handler is structurally isolated from `db`:
+// there is no `db` import in that file, making an accidental db.execute() call
+// a compile-time error rather than a runtime/test-only catch.
+router.use(circuitBreakerRouter);
 
 // GET /api/health — combined status (version, uptime, db)
 router.get("/health", async (_req, res) => {

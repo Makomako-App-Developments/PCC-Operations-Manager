@@ -2,6 +2,11 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import request from "supertest";
 import express from "express";
 import healthRouter from "../routes/health";
+// Circuit-breaker handler lives in its own file that does NOT import `db`.
+// Importing it directly here makes the structural isolation explicit in tests:
+// if someone accidentally adds a `db` import to health-circuit-breaker.ts the
+// build breaks before tests even run.
+import circuitBreakerRouter from "../routes/health-circuit-breaker";
 
 // Mock the db module so tests run without a real database.
 // executeWithCircuitBreaker is a transparent passthrough here — circuit-breaker
@@ -22,6 +27,14 @@ vi.mock("@workspace/db", () => ({
 function buildApp() {
   const app = express();
   app.use(healthRouter);
+  return app;
+}
+
+// Mounts only the circuit-breaker router — proves the endpoint works without
+// any of the DB-aware routes in health.ts being present.
+function buildCbApp() {
+  const app = express();
+  app.use(circuitBreakerRouter);
   return app;
 }
 
@@ -268,6 +281,9 @@ describe("GET /health — combined status", () => {
 });
 
 describe("GET /health/circuit-breaker", () => {
+  // Uses buildCbApp() — mounts only the circuit-breaker router, which lives in
+  // its own file with no `db` import. This exercises the route in isolation and
+  // validates the structural constraint: the handler works without db in scope.
   beforeEach(async () => {
     vi.resetAllMocks();
   });
@@ -277,7 +293,7 @@ describe("GET /health/circuit-breaker", () => {
     dbCircuitBreaker.getState.mockReturnValue("CLOSED");
     dbCircuitBreaker.getOpenedAt.mockReturnValue(null);
 
-    const res = await request(buildApp()).get("/health/circuit-breaker");
+    const res = await request(buildCbApp()).get("/health/circuit-breaker");
     expect(res.status).toBe(200);
     expect(res.body).toMatchObject({ state: "CLOSED", openedAt: null, openDurationMs: null });
   });
@@ -288,7 +304,7 @@ describe("GET /health/circuit-breaker", () => {
     dbCircuitBreaker.getState.mockReturnValue("OPEN");
     dbCircuitBreaker.getOpenedAt.mockReturnValue(openedAtMs);
 
-    const res = await request(buildApp()).get("/health/circuit-breaker");
+    const res = await request(buildCbApp()).get("/health/circuit-breaker");
     expect(res.status).toBe(200);
     expect(res.body.state).toBe("OPEN");
 
@@ -308,7 +324,7 @@ describe("GET /health/circuit-breaker", () => {
     dbCircuitBreaker.getState.mockReturnValue("HALF_OPEN");
     dbCircuitBreaker.getOpenedAt.mockReturnValue(openedAtMs);
 
-    const res = await request(buildApp()).get("/health/circuit-breaker");
+    const res = await request(buildCbApp()).get("/health/circuit-breaker");
     expect(res.status).toBe(200);
     expect(res.body.state).toBe("HALF_OPEN");
 
@@ -326,7 +342,7 @@ describe("GET /health/circuit-breaker", () => {
     dbCircuitBreaker.getState.mockReturnValue("CLOSED");
     dbCircuitBreaker.getOpenedAt.mockReturnValue(null);
 
-    await request(buildApp()).get("/health/circuit-breaker");
+    await request(buildCbApp()).get("/health/circuit-breaker");
     expect(db.execute).not.toHaveBeenCalled();
   });
 });
@@ -342,6 +358,9 @@ describe("GET /health/circuit-breaker — concurrent load: no DB calls", () => {
    *      called db.execute the batch would stall near 5 s; completing well under
    *      that proves the route skips the pool entirely. Using an aggregate bound
    *      avoids the per-request timer jitter inherent in Supertest/in-process tests.
+   *
+   * Uses buildCbApp() — only the circuit-breaker router, imported from its own
+   * module with no `db` import — so structural isolation is exercised too.
    */
   const CONCURRENCY = 20;
   // A DB call would take DB_MOCK_DELAY_MS; batch must finish well below this.
@@ -366,7 +385,7 @@ describe("GET /health/circuit-breaker — concurrent load: no DB calls", () => {
     dbCircuitBreaker.getState.mockReturnValue("CLOSED");
     dbCircuitBreaker.getOpenedAt.mockReturnValue(null);
 
-    const app = buildApp();
+    const app = buildCbApp();
     const responses = await Promise.all(
       Array.from({ length: CONCURRENCY }, () =>
         request(app).get("/health/circuit-breaker"),
@@ -385,7 +404,7 @@ describe("GET /health/circuit-breaker — concurrent load: no DB calls", () => {
     dbCircuitBreaker.getState.mockReturnValue("CLOSED");
     dbCircuitBreaker.getOpenedAt.mockReturnValue(null);
 
-    const app = buildApp();
+    const app = buildCbApp();
     const t0 = Date.now();
     await Promise.all(
       Array.from({ length: CONCURRENCY }, () =>
@@ -404,7 +423,7 @@ describe("GET /health/circuit-breaker — concurrent load: no DB calls", () => {
     dbCircuitBreaker.getState.mockReturnValue("OPEN");
     dbCircuitBreaker.getOpenedAt.mockReturnValue(openedAtMs);
 
-    const app = buildApp();
+    const app = buildCbApp();
     const responses = await Promise.all(
       Array.from({ length: CONCURRENCY }, () =>
         request(app).get("/health/circuit-breaker"),
@@ -426,7 +445,7 @@ describe("GET /health/circuit-breaker — concurrent load: no DB calls", () => {
     dbCircuitBreaker.getState.mockReturnValue("OPEN");
     dbCircuitBreaker.getOpenedAt.mockReturnValue(openedAtMs);
 
-    const app = buildApp();
+    const app = buildCbApp();
     const t0 = Date.now();
     await Promise.all(
       Array.from({ length: CONCURRENCY }, () =>
@@ -444,7 +463,7 @@ describe("GET /health/circuit-breaker — concurrent load: no DB calls", () => {
     dbCircuitBreaker.getState.mockReturnValue("HALF_OPEN");
     dbCircuitBreaker.getOpenedAt.mockReturnValue(openedAtMs);
 
-    const app = buildApp();
+    const app = buildCbApp();
     const responses = await Promise.all(
       Array.from({ length: CONCURRENCY }, () =>
         request(app).get("/health/circuit-breaker"),
@@ -466,7 +485,7 @@ describe("GET /health/circuit-breaker — concurrent load: no DB calls", () => {
     dbCircuitBreaker.getState.mockReturnValue("HALF_OPEN");
     dbCircuitBreaker.getOpenedAt.mockReturnValue(openedAtMs);
 
-    const app = buildApp();
+    const app = buildCbApp();
     const t0 = Date.now();
     await Promise.all(
       Array.from({ length: CONCURRENCY }, () =>
