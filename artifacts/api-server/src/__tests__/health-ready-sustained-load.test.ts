@@ -40,6 +40,11 @@ import { describe, it, expect, vi, beforeAll, afterAll } from "vitest";
 import express from "express";
 import { createServer, type Server } from "node:http";
 import healthRouter from "../routes/health";
+import {
+  executeWithCircuitBreaker,
+  dbCircuitBreaker,
+  db,
+} from "@workspace/db";
 
 // ── Module-level mock ─────────────────────────────────────────────────────────
 //
@@ -221,6 +226,9 @@ function startBackgroundLoad(): { stop: () => Promise<void> } {
   };
 }
 
+// Silence the unused-import lint warning — the symbols are used via vi.mocked().
+void db;
+
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
 describe(
@@ -295,6 +303,108 @@ describe(
         );
       },
       (BATCH_COUNT + 2) * BATCH_INTERVAL_MS * 2,
+    );
+  },
+);
+
+describe(
+  "GET /health/ready — first-success latency after mock switches to CLOSED under sustained outage load",
+  () => {
+    it(
+      `first 200 response arrives within one BATCH_INTERVAL_MS (${BATCH_INTERVAL_MS}ms) of the mock switching to CLOSED while ${BG_CONCURRENCY} background requests are still failing`,
+      async () => {
+        // Start background failing load BEFORE the switch so that the event
+        // loop is already under the same timer/rejection pressure as the
+        // sustained-partition tests above.  The mock is still OPEN (rejecting)
+        // at this point — the background loops will start accumulating failure
+        // pressure immediately.
+        const bg = startBackgroundLoad();
+
+        let firstSuccessLatencyMs: number | null = null;
+
+        try {
+          // Let the background pressure build for one BATCH_INTERVAL_MS before
+          // flipping the mock, matching the realistic scenario where a DB
+          // outage has been ongoing and the first healthy probe finally arrives.
+          await new Promise<void>((resolve) =>
+            setTimeout(resolve, BATCH_INTERVAL_MS),
+          );
+
+          // Switch the module-level mock from OPEN (rejecting) to CLOSED
+          // (resolving) while the background loops are still running.
+          // vi.mocked re-targets the already-installed spy so the change takes
+          // effect immediately for all new invocations without touching the
+          // module factory.
+          vi.mocked(dbCircuitBreaker.getState).mockReturnValue("CLOSED");
+          vi.mocked(dbCircuitBreaker.getOpenedAt).mockReturnValue(null);
+          vi.mocked(executeWithCircuitBreaker).mockImplementation(
+            async (fn) => fn(),
+          );
+
+          // Record the instant the mock flipped — this is time zero for the
+          // first-success latency assertion.
+          const switchTime = performance.now();
+
+          // Poll /health/ready until a 200 is observed or the outer deadline
+          // expires.  The outer deadline is intentionally generous (2 ×
+          // BATCH_INTERVAL_MS) so a legitimately fast recovery isn't blocked
+          // by scheduling jitter, while still bounding the test runtime.  The
+          // background loops are still firing rejecting requests during this
+          // window, maintaining the event-loop contention.
+          const POLL_DEADLINE_MS = BATCH_INTERVAL_MS * 2;
+          const POLL_INTERVAL_MS = 10;
+
+          while (performance.now() - switchTime < POLL_DEADLINE_MS) {
+            const res = await fetch(`${baseUrl}/health/ready`);
+            const elapsed = performance.now() - switchTime;
+
+            if (res.status === 200) {
+              firstSuccessLatencyMs = elapsed;
+              // Drain the body to release the TCP connection before breaking.
+              await res.json().catch(() => {});
+              break;
+            }
+
+            // Drain non-200 body before the next poll so sockets are not held.
+            await res.json().catch(() => {});
+            await new Promise<void>((resolve) =>
+              setTimeout(resolve, POLL_INTERVAL_MS),
+            );
+          }
+        } finally {
+          // Restore the mock to the OPEN/rejecting state before stopping the
+          // background loops so they drain cleanly against the original mock.
+          vi.mocked(dbCircuitBreaker.getState).mockReturnValue("OPEN");
+          vi.mocked(dbCircuitBreaker.getOpenedAt).mockReturnValue(
+            Date.now() - 30_000,
+          );
+          vi.mocked(executeWithCircuitBreaker).mockImplementation(
+            () =>
+              new Promise<never>((_, reject) =>
+                setTimeout(
+                  () => reject(new Error("circuit open — DB unavailable")),
+                  CB_REJECT_DELAY_MS,
+                ),
+              ),
+          );
+
+          await bg.stop();
+        }
+
+        // The route must have responded 200 at least once within the polling
+        // window.
+        expect(firstSuccessLatencyMs).not.toBeNull();
+
+        // Core assertion: the first healthy response must appear within one
+        // BATCH_INTERVAL_MS of the mock flip — even while the event loop is
+        // still under sustained outage-pressure from the background loops.
+        // A recovery regression that delays the first success by several
+        // seconds would violate this.
+        expect(firstSuccessLatencyMs!).toBeLessThan(BATCH_INTERVAL_MS);
+      },
+      // Wall-clock budget: one BATCH_INTERVAL_MS warm-up + 2 × BATCH_INTERVAL_MS
+      // polling window + background drain + overhead.
+      BATCH_INTERVAL_MS * 6,
     );
   },
 );
