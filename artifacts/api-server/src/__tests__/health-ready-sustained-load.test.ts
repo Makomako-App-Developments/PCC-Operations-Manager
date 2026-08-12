@@ -226,6 +226,15 @@ function startBackgroundLoad(): { stop: () => Promise<void> } {
   };
 }
 
+/**
+ * Delay for the HALF_OPEN probe to resolve (ms).
+ *
+ * Long enough to guarantee concurrent requests land while the probe is still
+ * in flight (so the fast-fail branch is exercised), but short enough that the
+ * overall test stays well within its wall-clock budget.
+ */
+const HALF_OPEN_PROBE_DELAY_MS = 60;
+
 // Silence the unused-import lint warning — the symbols are used via vi.mocked().
 void db;
 
@@ -303,6 +312,145 @@ describe(
         );
       },
       (BATCH_COUNT + 2) * BATCH_INTERVAL_MS * 2,
+    );
+  },
+);
+
+describe(
+  "GET /health/ready — HALF_OPEN→CLOSED recovery under concurrent request pressure",
+  () => {
+    it(
+      `one probe resolves after ${HALF_OPEN_PROBE_DELAY_MS}ms; concurrent requests fast-fail with 503 while probe is in flight; all requests after probe succeed with 200 { status: "ready" }; p99 after transition stays below ${P99_DEADLINE_MS}ms`,
+      async () => {
+        // ── HALF_OPEN mock setup ─────────────────────────────────────────────
+        //
+        // Simulates a circuit breaker in HALF_OPEN state:
+        //   - The first executeWithCircuitBreaker call is the probe: it resolves
+        //     after HALF_OPEN_PROBE_DELAY_MS, then transitions state to CLOSED.
+        //   - Any concurrent call that arrives while the probe is in flight
+        //     fast-fails immediately (rejects), mirroring the real breaker's
+        //     "only one probe through" contract.
+        //   - After the probe settles, all subsequent calls are forwarded to fn()
+        //     as in the CLOSED state.
+        let probeInFlight = false;
+        let probeSettled = false;
+
+        vi.mocked(dbCircuitBreaker.getState).mockReturnValue("HALF_OPEN");
+        vi.mocked(dbCircuitBreaker.getOpenedAt).mockReturnValue(
+          Date.now() - 5_000,
+        );
+        vi.mocked(executeWithCircuitBreaker).mockImplementation(async (fn) => {
+          if (probeSettled) {
+            // Breaker is now CLOSED — forward all calls to the real fn.
+            return fn();
+          }
+          if (!probeInFlight) {
+            // First call: this is the probe.
+            probeInFlight = true;
+            await new Promise<void>((resolve) =>
+              setTimeout(resolve, HALF_OPEN_PROBE_DELAY_MS),
+            );
+            // Probe succeeded — transition to CLOSED.
+            probeSettled = true;
+            vi.mocked(dbCircuitBreaker.getState).mockReturnValue("CLOSED");
+            vi.mocked(dbCircuitBreaker.getOpenedAt).mockReturnValue(null);
+            return fn();
+          }
+          // Concurrent call while probe is in flight: fast-fail immediately.
+          throw new Error("half-open — probe in flight, request fast-failed");
+        });
+
+        try {
+          // ── Phase 1: HALF_OPEN — fire a batch while the probe is in flight ─
+          //
+          // All BATCH_CONCURRENCY requests start concurrently.  The first to
+          // reach executeWithCircuitBreaker becomes the probe (resolves after
+          // HALF_OPEN_PROBE_DELAY_MS); the rest hit the fast-fail branch and
+          // return 503 immediately.  At least one request must return 200
+          // (the probe itself).
+
+          const phase1 = await fireBatch();
+
+          // Exactly one request must have been the probe (200 { status: "ready" }).
+          // More than one 200 would mean concurrent calls were forwarded to fn()
+          // instead of fast-failing — breaking the HALF_OPEN isolation contract.
+          const successCount = phase1.statuses.filter((s) => s === 200).length;
+          expect(successCount).toBe(1);
+
+          // The remaining BATCH_CONCURRENCY-1 requests must have fast-failed: they
+          // must all be 503 with { status: "not_ready", cbState: "HALF_OPEN" }.
+          // A regression that queues concurrent requests until the probe resolves
+          // (and then returns 200 for them too) would fail the successCount check
+          // above; a regression that returns a non-503 error code or omits cbState
+          // fails here.
+          const fastFailCount = phase1.statuses.filter((s) => s === 503).length;
+          expect(fastFailCount).toBeGreaterThanOrEqual(1);
+          expect(fastFailCount).toBe(BATCH_CONCURRENCY - 1);
+
+          for (let i = 0; i < BATCH_CONCURRENCY; i++) {
+            if (phase1.statuses[i] === 503) {
+              const body = phase1.bodies[i];
+              expect(body).not.toBeNull();
+              expect(body.status).toBe("not_ready");
+              // cbState must be "HALF_OPEN" at the time the fast-fail was caught —
+              // not "OPEN" (wrong state) or "CLOSED" (probe already settled before catch).
+              expect(body.cbState).toBe("HALF_OPEN");
+              // openedAt and timeSinceOpenMs must be present because getOpenedAt
+              // returns a non-null timestamp in HALF_OPEN state.
+              expect(typeof body.openedAt).toBe("string");
+              expect(typeof body.timeSinceOpenMs).toBe("number");
+            }
+          }
+
+          // Probe has now settled — state must be CLOSED.
+          expect(dbCircuitBreaker.getState()).toBe("CLOSED");
+
+          // ── Phase 2: CLOSED — fire another batch after the transition ──────
+          //
+          // All subsequent requests must return 200 { status: "ready" } because
+          // executeWithCircuitBreaker now forwards directly to fn().
+
+          const phase2 = await fireBatch();
+
+          for (const status of phase2.statuses) {
+            expect(status).toBe(200);
+          }
+          for (const body of phase2.bodies) {
+            expect(body).not.toBeNull();
+            expect(body.status).toBe("ready");
+            expect(body.cbState).toBe("CLOSED");
+          }
+
+          // ── Phase 3: p99 after transition stays fast ───────────────────────
+          //
+          // The post-transition batch should be well below P99_DEADLINE_MS —
+          // there is no mock delay in the CLOSED path (db.execute resolves
+          // immediately via the module-level mock).
+
+          const phase3p99 = p99(phase2.latencies);
+          expect(phase3p99).toBeLessThan(P99_DEADLINE_MS);
+        } finally {
+          // Restore the module-level mock to OPEN/rejecting so later tests
+          // in the file that depend on OPEN state are not affected.
+          probeInFlight = false;
+          probeSettled = false;
+          vi.mocked(dbCircuitBreaker.getState).mockReturnValue("OPEN");
+          vi.mocked(dbCircuitBreaker.getOpenedAt).mockReturnValue(
+            Date.now() - 30_000,
+          );
+          vi.mocked(executeWithCircuitBreaker).mockImplementation(
+            () =>
+              new Promise<never>((_, reject) =>
+                setTimeout(
+                  () => reject(new Error("circuit open — DB unavailable")),
+                  CB_REJECT_DELAY_MS,
+                ),
+              ),
+          );
+        }
+      },
+      // Wall-clock budget: probe delay + two batch round-trips + overhead.
+      HALF_OPEN_PROBE_DELAY_MS * 10 + BATCH_INTERVAL_MS * 2,
     );
   },
 );
