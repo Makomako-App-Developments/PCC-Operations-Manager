@@ -18,6 +18,11 @@ import { EmptyState } from "@/components/EmptyState";
 import { JobCard } from "@/components/JobCard";
 import { useAuth } from "@/context/auth";
 import { useColors } from "@/hooks/useColors";
+import {
+  computeDoneToday,
+  computePendingToday,
+  computeTodayJobs,
+} from "@/lib/todayJobsLogic";
 
 // ─── Date helpers ─────────────────────────────────────────────────────────────
 
@@ -227,20 +232,12 @@ export default function TodayScreen() {
     return map;
   }, [thisWeek, nextWeek, week3]);
 
-  // Carry forward any pending/in-progress jobs from past dates into today
-  const overdueJobs = useMemo(() => {
-    const result: Job[] = [];
-    for (const [date, jobs] of dayMap.entries()) {
-      if (date < TODAY) {
-        result.push(...jobs.filter(
-          (j) => j.status === "pending" || j.status === "in_progress",
-        ));
-      }
-    }
-    return result;
-  }, [dayMap]);
-
-  const todayJobs = [...overdueJobs, ...(dayMap.get(TODAY) ?? [])];
+  // Carry forward any pending/in-progress jobs from past dates into today.
+  // Logic lives in lib/todayJobsLogic.ts so it can be unit-tested independently.
+  const todayJobs = useMemo(
+    () => computeTodayJobs(dayMap as Map<string, Job[]>, TODAY),
+    [dayMap],
+  );
   const day1Jobs  = dayMap.get(DAY1)  ?? [];
   const day2Jobs  = dayMap.get(DAY2)  ?? [];
   const day3Jobs  = dayMap.get(DAY3)  ?? [];
@@ -248,12 +245,8 @@ export default function TodayScreen() {
 
   const allVisibleJobs = [...todayJobs, ...day1Jobs, ...day2Jobs, ...day3Jobs, ...day4Jobs];
 
-  const pendingToday = todayJobs.filter(
-    (j) => j.status === "pending" || j.status === "in_progress" || j.status === "paused" || j.status === "overdue",
-  );
-  const doneToday = todayJobs.filter(
-    (j) => j.status === "completed" || j.status === "skipped",
-  );
+  const pendingToday = computePendingToday(todayJobs);
+  const doneToday    = computeDoneToday(todayJobs);
 
   const topPad    = insets.top;
   const bottomPad = insets.bottom + (Platform.OS === "web" ? 84 : 160);
