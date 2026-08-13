@@ -10,7 +10,37 @@ import { count } from "drizzle-orm";
  * still has a value ≥ 1 — meaning the patch hasn't run yet.
  * Safe to call on every startup; exits immediately if already applied.
  */
+/**
+ * Idempotent DDL patch: adds skip-review columns to the jobs table.
+ * Uses IF NOT EXISTS so it is safe to run on every startup against any DB —
+ * fresh install, production upgrade, or CI.  The enum type is also created
+ * only when absent, avoiding duplicate-type errors on re-deployment.
+ */
+async function ensureSkipReviewColumns() {
+  try {
+    await db.execute(sql`
+      DO $$
+      BEGIN
+        IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'skip_review_outcome') THEN
+          CREATE TYPE skip_review_outcome AS ENUM ('accepted', 'rejected');
+        END IF;
+      END$$;
+    `);
+    await db.execute(sql`
+      ALTER TABLE jobs
+        ADD COLUMN IF NOT EXISTS skip_reviewed_at      timestamp,
+        ADD COLUMN IF NOT EXISTS skip_reviewed_by_id   uuid REFERENCES users(id),
+        ADD COLUMN IF NOT EXISTS skip_review_outcome   skip_review_outcome,
+        ADD COLUMN IF NOT EXISTS skip_review_notes     text;
+    `);
+    console.log("[startup-patch] skip-review columns ensured.");
+  } catch (err) {
+    console.error("[startup-patch] ensureSkipReviewColumns failed (non-fatal):", err);
+  }
+}
+
 export async function runStartupPatches() {
+  await ensureSkipReviewColumns();
   try {
     const check = await db.execute<{ area_m2: string }>(sql`
       SELECT area_m2 FROM assets

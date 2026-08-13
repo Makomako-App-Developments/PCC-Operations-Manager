@@ -260,6 +260,55 @@ export interface JobUpdate {
   notes?: string;
 }
 
+export type SkipReviewOutcome =
+  (typeof SkipReviewOutcome)[keyof typeof SkipReviewOutcome];
+
+export const SkipReviewOutcome = {
+  accepted: "accepted",
+  rejected: "rejected",
+} as const;
+
+export interface SkipReviewRequest {
+  outcome: SkipReviewOutcome;
+  notes?: string;
+}
+
+export interface TaskSkipReason {
+  id: string;
+  jobId: string;
+  taskIndex: number;
+  taskLabel: string;
+  reason: string;
+  createdById?: string | null;
+  createdAt: string;
+}
+
+export interface SkippedJob {
+  id: string;
+  assetId: string;
+  jobType: JobType;
+  status: JobStatus;
+  teamId?: string | null;
+  scheduledDate: string;
+  skipReason?: string | null;
+  notes?: string | null;
+  skipReviewedAt?: string | null;
+  skipReviewedById?: string | null;
+  skipReviewOutcome?: SkipReviewOutcome | null;
+  skipReviewNotes?: string | null;
+  reviewerName?: string | null;
+  reviewerInitials?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  taskSkipReasons: TaskSkipReason[];
+}
+
+export interface SkippedJobListResponse {
+  data: SkippedJob[];
+  page: number;
+  limit: number;
+}
+
 export interface JobListResponse {
   data: Job[];
   page: number;
@@ -734,6 +783,27 @@ export type ListAuditLogParams = {
   limit?: number;
   offset?: number;
 };
+
+export type ListSkippedJobsParams = {
+  teamId?: string;
+  from?: string;
+  to?: string;
+  reviewed?: ListSkippedJobsReviewed;
+  page?: number;
+  /**
+   * @maximum 500
+   */
+  limit?: number;
+};
+
+export type ListSkippedJobsReviewed =
+  (typeof ListSkippedJobsReviewed)[keyof typeof ListSkippedJobsReviewed];
+
+export const ListSkippedJobsReviewed = {
+  yes: "yes",
+  no: "no",
+  all: "all",
+} as const;
 
 export type UploadJobPhotoBody = {
   photo: Blob;

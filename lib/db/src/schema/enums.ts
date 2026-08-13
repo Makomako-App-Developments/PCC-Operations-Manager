@@ -97,6 +97,8 @@ export const availabilityStatusEnum = pgEnum("availability_status", [
   "unpaid_leave",
 ]);
 
+export const skipReviewOutcomeEnum = pgEnum("skip_review_outcome", ["accepted", "rejected"]);
+
 export const crewStatusEnum = pgEnum("crew_status", [
   "full",
   "reduced",

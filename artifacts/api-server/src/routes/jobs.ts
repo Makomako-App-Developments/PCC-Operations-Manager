@@ -1,7 +1,7 @@
 import { Router } from "express";
 import path from "path";
-import { db, executeWithCircuitBreaker, jobsTable, reactiveJobsTable, insertJobSchema, insertReactiveJobSchema, assetsTable, teamsTable, usersTable, jobTeamCompletionsTable, jobTaskSkipReasonsTable, mulchingRecordsTable, jobPhotosTable } from "@workspace/db";
-import { eq, and, inArray, or, gte, lte, ilike, desc } from "drizzle-orm";
+import { db, executeWithCircuitBreaker, jobsTable, reactiveJobsTable, insertJobSchema, insertReactiveJobSchema, assetsTable, teamsTable, usersTable, jobTeamCompletionsTable, jobTaskSkipReasonsTable, mulchingRecordsTable, jobPhotosTable, auditLogTable } from "@workspace/db";
+import { eq, and, inArray, or, gte, lte, ilike, desc, sql } from "drizzle-orm";
 import { z } from "zod";
 import { requireAuth, requireRole } from "../middlewares/auth";
 import { validateBody, validateQuery } from "../middlewares/validate";
@@ -41,6 +41,81 @@ function addDays(dateStr: string, days: number): string {
   d.setUTCDate(d.getUTCDate() + days);
   return d.toISOString().slice(0, 10);
 }
+
+// GET /api/jobs/skips — dedicated skipped-jobs review list (managers/admins only)
+// Must be declared BEFORE /jobs/:id to avoid route shadowing.
+const skipsQuerySchema = z.object({
+  teamId: z.string().uuid().optional(),
+  from:   z.string().optional(),
+  to:     z.string().optional(),
+  reviewed: z.enum(["yes", "no", "all"]).default("all"),
+  page:   z.coerce.number().int().min(1).default(1),
+  limit:  z.coerce.number().int().min(1).max(500).default(100),
+});
+
+router.get("/jobs/skips", requireAuth, requireRole("administrator", "manager"), validateQuery(skipsQuerySchema), async (req, res) => {
+  const { teamId, from, to, reviewed, page, limit } = res.locals.query as z.infer<typeof skipsQuerySchema>;
+  const offset = (page - 1) * limit;
+
+  const conditions: ReturnType<typeof eq>[] = [eq(jobsTable.status, "skipped") as any];
+  if (teamId) conditions.push(or(eq(jobsTable.teamId, teamId), eq(jobsTable.isAllTeams, true)) as any);
+  if (from)   conditions.push(gte(jobsTable.scheduledDate, from) as any);
+  if (to)     conditions.push(lte(jobsTable.scheduledDate, to) as any);
+  if (reviewed === "yes") conditions.push(sql`${jobsTable.skipReviewedAt} IS NOT NULL` as any);
+  if (reviewed === "no")  conditions.push(sql`${jobsTable.skipReviewedAt} IS NULL` as any);
+
+  const jobs = await executeWithCircuitBreaker(() => db
+    .select({
+      id:                jobsTable.id,
+      assetId:           jobsTable.assetId,
+      jobType:           jobsTable.jobType,
+      status:            jobsTable.status,
+      teamId:            jobsTable.teamId,
+      scheduledDate:     jobsTable.scheduledDate,
+      skipReason:        jobsTable.skipReason,
+      notes:             jobsTable.notes,
+      skipReviewedAt:    jobsTable.skipReviewedAt,
+      skipReviewedById:  jobsTable.skipReviewedById,
+      skipReviewOutcome: jobsTable.skipReviewOutcome,
+      skipReviewNotes:   jobsTable.skipReviewNotes,
+      createdAt:         jobsTable.createdAt,
+      updatedAt:         jobsTable.updatedAt,
+      // reviewer info
+      reviewerName:      usersTable.name,
+      reviewerInitials:  usersTable.initials,
+    })
+    .from(jobsTable)
+    .leftJoin(usersTable, eq(jobsTable.skipReviewedById, usersTable.id))
+    .where(and(...conditions))
+    // unreviewed first, then most recent
+    .orderBy(sql`${jobsTable.skipReviewedAt} IS NOT NULL`, desc(jobsTable.scheduledDate))
+    .limit(limit)
+    .offset(offset));
+
+  // Fetch per-task skip reasons for all returned jobs
+  const jobIds = jobs.map(j => j.id);
+  const taskSkipReasons = jobIds.length > 0
+    ? await executeWithCircuitBreaker(() => db
+        .select()
+        .from(jobTaskSkipReasonsTable)
+        .where(inArray(jobTaskSkipReasonsTable.jobId, jobIds))
+        .orderBy(jobTaskSkipReasonsTable.jobId, jobTaskSkipReasonsTable.taskIndex))
+    : [];
+
+  // Group task skip reasons by jobId
+  const reasonsByJob = new Map<string, typeof taskSkipReasons>();
+  for (const r of taskSkipReasons) {
+    if (!reasonsByJob.has(r.jobId)) reasonsByJob.set(r.jobId, []);
+    reasonsByJob.get(r.jobId)!.push(r);
+  }
+
+  const data = jobs.map(j => ({
+    ...j,
+    taskSkipReasons: reasonsByJob.get(j.id) ?? [],
+  }));
+
+  res.json({ data, page, limit });
+});
 
 // GET /api/jobs
 router.get("/jobs", requireAuth, validateQuery(jobQuerySchema), async (req, res) => {
@@ -652,6 +727,13 @@ router.patch("/jobs/:id", requireAuth, async (req, res) => {
     }
   }
 
+  // Skip-review fields are managed exclusively by POST /api/jobs/:id/skip-review.
+  // Strip them unconditionally so no role can bypass the dedicated endpoint.
+  delete patch.skipReviewedAt;
+  delete patch.skipReviewedById;
+  delete patch.skipReviewOutcome;
+  delete patch.skipReviewNotes;
+
   // Never trust client-supplied timestamps — server owns these
   delete patch.startedAt;
   delete patch.completedAt;
@@ -784,6 +866,79 @@ router.patch("/jobs/:id", requireAuth, async (req, res) => {
         return;
       }
     }
+  }
+
+  res.json(updated);
+});
+
+// POST /api/jobs/:id/skip-review — manager accepts or rejects a skip reason (manager/admin only)
+router.post("/jobs/:id/skip-review", requireAuth, requireRole("administrator", "manager"), async (req, res) => {
+  const id = String(req.params.id);
+
+  const [job] = await executeWithCircuitBreaker(() => db
+    .select()
+    .from(jobsTable)
+    .where(eq(jobsTable.id, id))
+    .limit(1));
+
+  if (!job) { res.status(404).json({ error: "Job not found" }); return; }
+  if (job.status !== "skipped") {
+    res.status(409).json({ error: "Job is not in skipped status" }); return;
+  }
+
+  const { outcome, notes } = req.body as { outcome?: string; notes?: string };
+  if (outcome !== "accepted" && outcome !== "rejected") {
+    res.status(400).json({ error: "outcome must be 'accepted' or 'rejected'" }); return;
+  }
+
+  const now     = new Date();
+  const callerId = req.auth!.userId;
+  const ip      = req.ip ?? null;
+
+  // Atomically update the job AND write the audit record in one transaction.
+  // The WHERE clause includes status = 'skipped' to guard against a concurrent
+  // status change between our pre-flight read and this write — if the job was
+  // changed to non-skipped between those two moments, returning() will be empty.
+  // If either the update or the audit insert fails, the whole transaction rolls back.
+  let updated: typeof job | undefined;
+  try {
+    updated = await executeWithCircuitBreaker(() => db.transaction(async tx => {
+      const [row] = await tx
+        .update(jobsTable)
+        .set({
+          skipReviewedAt:    now,
+          skipReviewedById:  callerId,
+          skipReviewOutcome: outcome,
+          skipReviewNotes:   notes ?? null,
+          updatedAt:         now,
+        })
+        .where(and(eq(jobsTable.id, id), eq(jobsTable.status, "skipped")))
+        .returning();
+
+      if (!row) {
+        // Status changed between read and write — throw to abort the transaction
+        const err: NodeJS.ErrnoException = new Error("Job is no longer in skipped status");
+        (err as any).statusCode = 409;
+        throw err;
+      }
+
+      await tx.insert(auditLogTable).values({
+        tableName:   "jobs",
+        recordId:    id,
+        action:      "UPDATE",
+        changedById: callerId,
+        oldData:     job as Record<string, unknown>,
+        newData:     row  as Record<string, unknown>,
+        ipAddress:   ip,
+      });
+
+      return row;
+    }));
+  } catch (err: any) {
+    if (err?.statusCode === 409) {
+      res.status(409).json({ error: err.message }); return;
+    }
+    throw err;
   }
 
   res.json(updated);

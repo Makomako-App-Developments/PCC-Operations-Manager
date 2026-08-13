@@ -1228,6 +1228,109 @@ export const UpdateUserResponse = zod.object({
 });
 
 /**
+ * @summary List skipped jobs for manager review
+ */
+export const listSkippedJobsQueryReviewedDefault = `all`;
+export const listSkippedJobsQueryPageDefault = 1;
+export const listSkippedJobsQueryLimitDefault = 100;
+export const listSkippedJobsQueryLimitMax = 500;
+
+export const ListSkippedJobsQueryParams = zod.object({
+  teamId: zod.coerce.string().uuid().optional(),
+  from: zod.date().optional(),
+  to: zod.date().optional(),
+  reviewed: zod
+    .enum(["yes", "no", "all"])
+    .default(listSkippedJobsQueryReviewedDefault),
+  page: zod.coerce.number().default(listSkippedJobsQueryPageDefault),
+  limit: zod.coerce
+    .number()
+    .max(listSkippedJobsQueryLimitMax)
+    .default(listSkippedJobsQueryLimitDefault),
+});
+
+export const ListSkippedJobsResponse = zod.object({
+  data: zod.array(
+    zod.object({
+      id: zod.string().uuid(),
+      assetId: zod.string().uuid(),
+      jobType: zod.enum([
+        "scheduled",
+        "reactive",
+        "mulching",
+        "infill_planting",
+      ]),
+      status: zod.enum([
+        "pending",
+        "in_progress",
+        "completed",
+        "skipped",
+        "overdue",
+      ]),
+      teamId: zod.string().uuid().nullish(),
+      scheduledDate: zod.date(),
+      skipReason: zod.string().nullish(),
+      notes: zod.string().nullish(),
+      skipReviewedAt: zod.date().nullish(),
+      skipReviewedById: zod.string().uuid().nullish(),
+      skipReviewOutcome: zod.enum(["accepted", "rejected"]).nullish(),
+      skipReviewNotes: zod.string().nullish(),
+      reviewerName: zod.string().nullish(),
+      reviewerInitials: zod.string().nullish(),
+      createdAt: zod.date(),
+      updatedAt: zod.date(),
+      taskSkipReasons: zod.array(
+        zod.object({
+          id: zod.string().uuid(),
+          jobId: zod.string().uuid(),
+          taskIndex: zod.number(),
+          taskLabel: zod.string(),
+          reason: zod.string(),
+          createdById: zod.string().uuid().nullish(),
+          createdAt: zod.date(),
+        }),
+      ),
+    }),
+  ),
+  page: zod.number(),
+  limit: zod.number(),
+});
+
+/**
+ * @summary Accept or reject a skipped job's reason (manager only)
+ */
+export const ReviewSkippedJobParams = zod.object({
+  id: zod.coerce.string().uuid(),
+});
+
+export const ReviewSkippedJobBody = zod.object({
+  outcome: zod.enum(["accepted", "rejected"]),
+  notes: zod.string().optional(),
+});
+
+export const ReviewSkippedJobResponse = zod.object({
+  id: zod.string().uuid(),
+  assetId: zod.string().uuid(),
+  jobType: zod.enum(["scheduled", "reactive", "mulching", "infill_planting"]),
+  status: zod.enum([
+    "pending",
+    "in_progress",
+    "completed",
+    "skipped",
+    "overdue",
+  ]),
+  teamId: zod.string().uuid().nullish(),
+  assignedUserId: zod.string().uuid().nullish(),
+  scheduledDate: zod.date(),
+  startedAt: zod.date().nullish(),
+  completedAt: zod.date().nullish(),
+  actualTimeMins: zod.number().nullish(),
+  notes: zod.string().nullish(),
+  createdAt: zod.date(),
+  updatedAt: zod.date(),
+});
+
+/**
  * @summary List photo evidence for a job
  */
 export const ListJobPhotosParams = zod.object({

@@ -915,6 +915,67 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
 
+  # ─── Skip Review ─────────────────────────────────────────────────────────────
+  /jobs/skips:
+    get:
+      operationId: listSkippedJobs
+      tags: [jobs]
+      summary: List skipped jobs for manager review
+      parameters:
+        - name: teamId
+          in: query
+          schema: { type: string, format: uuid }
+        - name: from
+          in: query
+          schema: { type: string, format: date }
+        - name: to
+          in: query
+          schema: { type: string, format: date }
+        - name: reviewed
+          in: query
+          schema: { type: string, enum: [yes, no, all], default: all }
+        - name: page
+          in: query
+          schema: { type: integer, default: 1 }
+        - name: limit
+          in: query
+          schema: { type: integer, default: 100, maximum: 500 }
+      responses:
+        "200":
+          description: Skipped jobs with task-skip reasons and reviewer info
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SkippedJobListResponse"
+
+  /jobs/{id}/skip-review:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    post:
+      operationId: reviewSkippedJob
+      tags: [jobs]
+      summary: Accept or reject a skipped job's reason (manager only)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SkipReviewRequest"
+      responses:
+        "200":
+          description: Updated job with review fields
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Job"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: Job is not in skipped status
+
   # ─── Job Photos ──────────────────────────────────────────────────────────────
   /jobs/{id}/photos:
     parameters:
@@ -1265,6 +1326,65 @@ components:
         completedAt:    { type: string, format: date-time }
         actualTimeMins: { type: integer }
         notes:          { type: string }
+
+    SkipReviewOutcome:
+      type: string
+      enum: [accepted, rejected]
+
+    SkipReviewRequest:
+      type: object
+      properties:
+        outcome:
+          $ref: "#/components/schemas/SkipReviewOutcome"
+        notes: { type: string }
+      required: [outcome]
+
+    TaskSkipReason:
+      type: object
+      properties:
+        id:          { type: string, format: uuid }
+        jobId:       { type: string, format: uuid }
+        taskIndex:   { type: integer }
+        taskLabel:   { type: string }
+        reason:      { type: string }
+        createdById: { type: string, format: uuid, nullable: true }
+        createdAt:   { type: string, format: date-time }
+      required: [id, jobId, taskIndex, taskLabel, reason, createdAt]
+
+    SkippedJob:
+      type: object
+      properties:
+        id:                { type: string, format: uuid }
+        assetId:           { type: string, format: uuid }
+        jobType:
+          $ref: "#/components/schemas/JobType"
+        status:
+          $ref: "#/components/schemas/JobStatus"
+        teamId:            { type: string, format: uuid, nullable: true }
+        scheduledDate:     { type: string, format: date }
+        skipReason:        { type: string, nullable: true }
+        notes:             { type: string, nullable: true }
+        skipReviewedAt:    { type: string, format: date-time, nullable: true }
+        skipReviewedById:  { type: string, format: uuid, nullable: true }
+        skipReviewOutcome:
+          allOf:
+            - $ref: "#/components/schemas/SkipReviewOutcome"
+          nullable: true
+        skipReviewNotes:   { type: string, nullable: true }
+        reviewerName:      { type: string, nullable: true }
+        reviewerInitials:  { type: string, nullable: true }
+        createdAt:         { type: string, format: date-time }
+        updatedAt:         { type: string, format: date-time }
+        taskSkipReasons:   { type: array, items: { $ref: "#/components/schemas/TaskSkipReason" } }
+      required: [id, assetId, jobType, status, scheduledDate, createdAt, updatedAt, taskSkipReasons]
+
+    SkippedJobListResponse:
+      type: object
+      properties:
+        data:  { type: array, items: { $ref: "#/components/schemas/SkippedJob" } }
+        page:  { type: integer }
+        limit: { type: integer }
+      required: [data, page, limit]
 
     JobListResponse:
       type: object

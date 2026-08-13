@@ -3,7 +3,7 @@ import {
 } from "drizzle-orm/pg-core";
 import { createInsertSchema, createSelectSchema } from "drizzle-zod";
 import { z } from "zod/v4";
-import { jobTypeEnum, jobStatusEnum, reactivePriorityEnum, reactiveJobStatusEnum, crewStatusEnum, reactiveJobOriginEnum } from "./enums";
+import { jobTypeEnum, jobStatusEnum, reactivePriorityEnum, reactiveJobStatusEnum, crewStatusEnum, reactiveJobOriginEnum, skipReviewOutcomeEnum } from "./enums";
 import { assetsTable } from "./assets";
 import { teamsTable } from "./teams";
 import { usersTable } from "./users";
@@ -32,6 +32,11 @@ export const jobsTable = pgTable("jobs", {
   pestsAndDiseases:   text("pests_and_diseases"),
   plantHealthVigor:   text("plant_health_vigor"),
   generalComments:    text("general_comments"),
+  // Manager skip review
+  skipReviewedAt:     timestamp("skip_reviewed_at"),
+  skipReviewedById:   uuid("skip_reviewed_by_id").references(() => usersTable.id),
+  skipReviewOutcome:  skipReviewOutcomeEnum("skip_review_outcome"),
+  skipReviewNotes:    text("skip_review_notes"),
   createdAt:          timestamp("created_at").notNull().defaultNow(),
   updatedAt:          timestamp("updated_at").notNull().defaultNow(),
 }, (t) => [
@@ -41,6 +46,7 @@ export const jobsTable = pgTable("jobs", {
   index("jobs_scheduled_date_idx").on(t.scheduledDate),
   index("jobs_assigned_user_id_idx").on(t.assignedUserId),
   index("jobs_is_all_teams_idx").on(t.isAllTeams),
+  index("jobs_skip_review_outcome_idx").on(t.skipReviewOutcome),
 ]);
 
 // Per-team sign-off records for "All Teams" collaborative jobs

@@ -49,6 +49,7 @@ import type {
   ListInfillOrdersParams,
   ListJobsParams,
   ListMulchingRecordsParams,
+  ListSkippedJobsParams,
   LoginRequest,
   LoginResponse,
   MulchingRecord,
@@ -65,6 +66,8 @@ import type {
   ScheduleGenerateBody,
   ScheduleGenerateResult,
   ScheduleWeekResponse,
+  SkipReviewRequest,
+  SkippedJobListResponse,
   Team,
   TeamCreate,
   UnauthorisedResponse,
@@ -3879,6 +3882,187 @@ export const useUpdateUser = <
   TContext
 > => {
   return useMutation(getUpdateUserMutationOptions(options));
+};
+
+/**
+ * @summary List skipped jobs for manager review
+ */
+export const getListSkippedJobsUrl = (params?: ListSkippedJobsParams) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/jobs/skips?${stringifiedParams}`
+    : `/api/jobs/skips`;
+};
+
+export const listSkippedJobs = async (
+  params?: ListSkippedJobsParams,
+  options?: RequestInit,
+): Promise<SkippedJobListResponse> => {
+  return customFetch<SkippedJobListResponse>(getListSkippedJobsUrl(params), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getListSkippedJobsQueryKey = (params?: ListSkippedJobsParams) => {
+  return [`/api/jobs/skips`, ...(params ? [params] : [])] as const;
+};
+
+export const getListSkippedJobsQueryOptions = <
+  TData = Awaited<ReturnType<typeof listSkippedJobs>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: ListSkippedJobsParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listSkippedJobs>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getListSkippedJobsQueryKey(params);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof listSkippedJobs>>> = ({
+    signal,
+  }) => listSkippedJobs(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listSkippedJobs>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListSkippedJobsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listSkippedJobs>>
+>;
+export type ListSkippedJobsQueryError = ErrorType<unknown>;
+
+/**
+ * @summary List skipped jobs for manager review
+ */
+
+export function useListSkippedJobs<
+  TData = Awaited<ReturnType<typeof listSkippedJobs>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: ListSkippedJobsParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listSkippedJobs>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListSkippedJobsQueryOptions(params, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Accept or reject a skipped job's reason (manager only)
+ */
+export const getReviewSkippedJobUrl = (id: string) => {
+  return `/api/jobs/${id}/skip-review`;
+};
+
+export const reviewSkippedJob = async (
+  id: string,
+  skipReviewRequest: SkipReviewRequest,
+  options?: RequestInit,
+): Promise<Job> => {
+  return customFetch<Job>(getReviewSkippedJobUrl(id), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(skipReviewRequest),
+  });
+};
+
+export const getReviewSkippedJobMutationOptions = <
+  TError = ErrorType<NotFoundResponse | void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof reviewSkippedJob>>,
+    TError,
+    { id: string; data: BodyType<SkipReviewRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof reviewSkippedJob>>,
+  TError,
+  { id: string; data: BodyType<SkipReviewRequest> },
+  TContext
+> => {
+  const mutationKey = ["reviewSkippedJob"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof reviewSkippedJob>>,
+    { id: string; data: BodyType<SkipReviewRequest> }
+  > = (props) => {
+    const { id, data } = props ?? {};
+
+    return reviewSkippedJob(id, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type ReviewSkippedJobMutationResult = NonNullable<
+  Awaited<ReturnType<typeof reviewSkippedJob>>
+>;
+export type ReviewSkippedJobMutationBody = BodyType<SkipReviewRequest>;
+export type ReviewSkippedJobMutationError = ErrorType<NotFoundResponse | void>;
+
+/**
+ * @summary Accept or reject a skipped job's reason (manager only)
+ */
+export const useReviewSkippedJob = <
+  TError = ErrorType<NotFoundResponse | void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof reviewSkippedJob>>,
+    TError,
+    { id: string; data: BodyType<SkipReviewRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof reviewSkippedJob>>,
+  TError,
+  { id: string; data: BodyType<SkipReviewRequest> },
+  TContext
+> => {
+  return useMutation(getReviewSkippedJobMutationOptions(options));
 };
 
 /**

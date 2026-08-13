@@ -490,9 +490,24 @@ export default function Dashboard() {
 
             {/* Excuses & Skips */}
             <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-              <div className="px-5 py-4 border-b">
-                <h3 className="text-sm font-bold" style={{ color: NAVY }}>Excuses & Skips</h3>
-                <p className="text-[11px] text-gray-400">Jobs not completed this {periodLabel}</p>
+              <div className="px-5 py-4 border-b flex items-center justify-between">
+                <div>
+                  <h3 className="text-sm font-bold" style={{ color: NAVY }}>Excuses & Skips</h3>
+                  <p className="text-[11px] text-gray-400">Jobs not completed this {periodLabel}</p>
+                </div>
+                <div className="flex items-center gap-2">
+                  {skippedJobs.filter((j: any) => !j.skipReviewedAt).length > 0 && (
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-50 text-amber-600 border border-amber-200">
+                      {skippedJobs.filter((j: any) => !j.skipReviewedAt).length} unreviewed
+                    </span>
+                  )}
+                  <button
+                    onClick={() => navigate("/skips")}
+                    className="text-[11px] font-semibold px-2.5 py-1 rounded-lg border border-gray-200 hover:border-[#00AECD] hover:text-[#00AECD] transition-colors"
+                  >
+                    Review all →
+                  </button>
+                </div>
               </div>
               {skippedJobs.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-10 text-gray-400">
