@@ -7,7 +7,7 @@
  *  3. A second review by a different manager overwrites the first (full two-request sequence).
  *  4. Reviewer name/initials appear in GET /api/jobs/skips response; leftJoin is executed.
  *  5. Returns 409 when a concurrent status change empties the UPDATE returning() result.
- *  6. Returns 500 when the audit log insert fails; job state is unchanged after rollback.
+ *  6. Review survives when the audit log insert fails — returns 200 and the review is committed.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import request from "supertest";
@@ -351,58 +351,43 @@ describe("POST /api/jobs/:id/skip-review", () => {
     expect(res.status).toBe(409);
   });
 
-  // ── 6. Audit log failure — staged write is NOT committed (rollback) ───────────
+  // ── 6. Audit log failure — review is STILL committed ────────────────────────
   //
-  // The transaction mock stages the update into `stagedPatch` but only commits
-  // it to `committed` when the callback returns without error.  The audit insert
-  // throws before the callback returns, so `committed` stays at its initial state.
-  // After the 500 we assert `committed` is unchanged — a meaningful rollback proof.
+  // The audit log insert is written OUTSIDE the transaction, so a failure there
+  // cannot roll back the committed review.  auditLog() swallows the error and
+  // returns false; the route returns 200 with the updated job.
+  //
+  // To simulate this: the transaction (job update) succeeds normally via
+  // updateReturning, and db.insert is made to reject — which auditLog() catches
+  // internally.  The response must be 200 and carry the review fields.
 
-  it("returns 500 when the audit insert throws; committed store stays unchanged (rollback)", async () => {
-    // Represents the durable committed DB state.
-    const committed: Record<string, unknown> = { ...skippedJob };
-
-    selectImpl = () => [{ ...committed }];
-
-    transactionImpl = async (fn) => {
-      let stagedPatch: Record<string, unknown> | null = null;
-
-      const tx: Record<string, unknown> = {
-        update: vi.fn(() => ({
-          set: vi.fn((args: Record<string, unknown>) => {
-            stagedPatch = args; // stage — not yet committed
-            return {
-              where:     vi.fn().mockReturnThis(),
-              returning: vi.fn().mockResolvedValue([{ ...committed, ...stagedPatch }]),
-            };
-          }),
-        })),
-        // Audit insert throws → fn() throws → no commit.
-        insert: vi.fn(() => ({
-          values: vi.fn().mockRejectedValue(new Error("audit constraint violation")),
-        })),
-      };
-
-      try {
-        const result = await fn(tx);
-        // Commit only on success — this line is never reached because fn() throws.
-        if (stagedPatch) Object.assign(committed, stagedPatch);
-        return result;
-      } catch (err) {
-        // Rollback: discard stagedPatch, re-throw so the route returns 500.
-        stagedPatch = null;
-        throw err;
-      }
+  it("returns 200 and commits the review even when the audit log insert throws", async () => {
+    const reviewedJob = {
+      ...skippedJob,
+      skipReviewedAt:    new Date("2026-08-13T10:00:00Z"),
+      skipReviewedById:  "manager-1",
+      skipReviewOutcome: "accepted",
+      skipReviewNotes:   "Approved",
+      updatedAt:         new Date("2026-08-13T10:00:00Z"),
     };
 
-    const res = await postSkipReview(JOB_ID, { outcome: "accepted", notes: "Approved" });
-    expect(res.status).toBe(500);
+    selectQueue     = [[skippedJob]];
+    updateReturning = [reviewedJob];
 
-    // The staged patch was never committed — durable store is unchanged.
-    expect(committed["skipReviewedById"]).toBeNull();
-    expect(committed["skipReviewOutcome"]).toBeNull();
-    expect(committed["skipReviewNotes"]).toBeNull();
-    expect(committed["skipReviewedAt"]).toBeNull();
+    // Make db.insert throw — simulates an audit constraint violation.
+    // auditLog() wraps this in try/catch, so the route must NOT propagate it.
+    const { db } = await import("@workspace/db");
+    vi.mocked(db.insert).mockImplementationOnce(() => ({
+      values: vi.fn().mockRejectedValue(new Error("audit constraint violation")),
+    }));
+
+    const res = await postSkipReview(JOB_ID, { outcome: "accepted", notes: "Approved" });
+
+    // Review committed successfully — audit failure must not cause a 500.
+    expect(res.status).toBe(200);
+    expect(res.body.skipReviewOutcome).toBe("accepted");
+    expect(res.body.skipReviewedById).toBe("manager-1");
+    expect(res.body.skipReviewNotes).toBe("Approved");
   });
 });
 

@@ -909,11 +909,10 @@ router.post("/jobs/:id/skip-review", requireAuth, requireRole("administrator", "
   const callerId = req.auth!.userId;
   const ip      = req.ip ?? null;
 
-  // Atomically update the job AND write the audit record in one transaction.
-  // The WHERE clause includes status = 'skipped' to guard against a concurrent
-  // status change between our pre-flight read and this write — if the job was
-  // changed to non-skipped between those two moments, returning() will be empty.
-  // If either the update or the audit insert fails, the whole transaction rolls back.
+  // Atomically update the job in a transaction that includes a WHERE status='skipped'
+  // guard to catch concurrent status changes between the pre-flight read and this write.
+  // The audit log is written AFTER the transaction commits so that an audit failure
+  // (e.g. constraint violation) cannot roll back and silently discard the review.
   let updated: typeof job | undefined;
   try {
     updated = await executeWithCircuitBreaker(() => db.transaction(async tx => {
@@ -936,16 +935,6 @@ router.post("/jobs/:id/skip-review", requireAuth, requireRole("administrator", "
         throw err;
       }
 
-      await tx.insert(auditLogTable).values({
-        tableName:   "jobs",
-        recordId:    id,
-        action:      "UPDATE",
-        changedById: callerId,
-        oldData:     job as Record<string, unknown>,
-        newData:     row  as Record<string, unknown>,
-        ipAddress:   ip,
-      });
-
       return row;
     }));
   } catch (err: any) {
@@ -953,6 +942,22 @@ router.post("/jobs/:id/skip-review", requireAuth, requireRole("administrator", "
       res.status(409).json({ error: err.message }); return;
     }
     throw err;
+  }
+
+  // Write the audit log outside the transaction so a logging failure cannot
+  // roll back the committed review.  auditLog() swallows its own errors and
+  // returns false — a warning is sufficient.
+  const logged = await auditLog({
+    tableName:   "jobs",
+    recordId:    id,
+    action:      "UPDATE",
+    changedById: callerId,
+    oldData:     job     as Record<string, unknown>,
+    newData:     updated as Record<string, unknown>,
+    ipAddress:   ip,
+  });
+  if (!logged) {
+    console.warn(`[skip-review] Audit log failed for job ${id}; review was already committed`);
   }
 
   res.json(updated);
