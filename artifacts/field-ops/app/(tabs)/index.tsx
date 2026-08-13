@@ -41,6 +41,8 @@ function nextWorkingDay(dateStr: string): string {
 const TODAY = localDateStr(new Date());
 const DAY1  = nextWorkingDay(TODAY);
 const DAY2  = nextWorkingDay(DAY1);
+const DAY3  = nextWorkingDay(DAY2);
+const DAY4  = nextWorkingDay(DAY3);
 
 const CALENDAR_TOMORROW = (() => {
   const d = new Date(TODAY + "T00:00:00");
@@ -204,20 +206,26 @@ export default function TodayScreen() {
   const { data: nextWeek, isLoading: loadingNext, refetch: refetchNext, isRefetching: refetchingNext } =
     useGetScheduleWeek({ week: DAY2,  ...teamParam }, queryOpts);
 
-  const isLoading   = loadingThis || loadingNext;
-  const isRefetching = refetchingThis || refetchingNext;
-  const refetch = () => { refetchThis(); refetchNext(); };
+  // DAY4 may fall in a third calendar week (e.g. Wed view: Fri ends this week,
+  // Mon–Tue are next week, Wed is the week after). Fetching by DAY4 covers that case;
+  // the API deduplicates by date so overlapping weeks are harmless.
+  const { data: week3, isLoading: loadingWeek3, refetch: refetchWeek3, isRefetching: refetchingWeek3 } =
+    useGetScheduleWeek({ week: DAY4,  ...teamParam }, queryOpts);
+
+  const isLoading   = loadingThis || loadingNext || loadingWeek3;
+  const isRefetching = refetchingThis || refetchingNext || refetchingWeek3;
+  const refetch = () => { refetchThis(); refetchNext(); refetchWeek3(); };
 
   const dayMap = useMemo(() => {
     const map = new Map<string, Job[]>();
-    for (const w of [thisWeek, nextWeek]) {
+    for (const w of [thisWeek, nextWeek, week3]) {
       if (!w?.days) continue;
       for (const d of w.days as { date: string; jobs: Job[] }[]) {
         if (!map.has(d.date)) map.set(d.date, d.jobs ?? []);
       }
     }
     return map;
-  }, [thisWeek, nextWeek]);
+  }, [thisWeek, nextWeek, week3]);
 
   // Carry forward any pending/in-progress jobs from past dates into today
   const overdueJobs = useMemo(() => {
@@ -235,8 +243,10 @@ export default function TodayScreen() {
   const todayJobs = [...overdueJobs, ...(dayMap.get(TODAY) ?? [])];
   const day1Jobs  = dayMap.get(DAY1)  ?? [];
   const day2Jobs  = dayMap.get(DAY2)  ?? [];
+  const day3Jobs  = dayMap.get(DAY3)  ?? [];
+  const day4Jobs  = dayMap.get(DAY4)  ?? [];
 
-  const allVisibleJobs = [...todayJobs, ...day1Jobs, ...day2Jobs];
+  const allVisibleJobs = [...todayJobs, ...day1Jobs, ...day2Jobs, ...day3Jobs, ...day4Jobs];
 
   const pendingToday = allVisibleJobs.filter(
     (j) => j.status === "pending" || j.status === "in_progress" || j.status === "paused" || j.status === "overdue",
@@ -248,7 +258,8 @@ export default function TodayScreen() {
   const topPad    = insets.top;
   const bottomPad = insets.bottom + (Platform.OS === "web" ? 84 : 160);
 
-  const allEmpty = todayJobs.length === 0 && day1Jobs.length === 0 && day2Jobs.length === 0;
+  const allEmpty = todayJobs.length === 0 && day1Jobs.length === 0 && day2Jobs.length === 0
+    && day3Jobs.length === 0 && day4Jobs.length === 0;
 
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>
@@ -291,7 +302,7 @@ export default function TodayScreen() {
         ) : allEmpty ? (
           <EmptyState
             icon="check-circle"
-            title="No jobs in the next 3 days"
+            title="No jobs in the next 5 days"
             subtitle="Enjoy the break or check with your supervisor."
           />
         ) : (
@@ -299,6 +310,8 @@ export default function TodayScreen() {
             <DaySection date={TODAY} jobs={todayJobs} defaultExpanded={true} />
             <DaySection date={DAY1}  jobs={day1Jobs}  defaultExpanded={false} />
             <DaySection date={DAY2}  jobs={day2Jobs}  defaultExpanded={false} />
+            <DaySection date={DAY3}  jobs={day3Jobs}  defaultExpanded={false} />
+            <DaySection date={DAY4}  jobs={day4Jobs}  defaultExpanded={false} />
           </>
         )}
       </ScrollView>
