@@ -64,33 +64,44 @@ router.get("/jobs/skips", requireAuth, requireRole("administrator", "manager"), 
   if (reviewed === "yes") conditions.push(sql`${jobsTable.skipReviewedAt} IS NOT NULL` as any);
   if (reviewed === "no")  conditions.push(sql`${jobsTable.skipReviewedAt} IS NULL` as any);
 
-  const jobs = await executeWithCircuitBreaker(() => db
-    .select({
-      id:                jobsTable.id,
-      assetId:           jobsTable.assetId,
-      jobType:           jobsTable.jobType,
-      status:            jobsTable.status,
-      teamId:            jobsTable.teamId,
-      scheduledDate:     jobsTable.scheduledDate,
-      skipReason:        jobsTable.skipReason,
-      notes:             jobsTable.notes,
-      skipReviewedAt:    jobsTable.skipReviewedAt,
-      skipReviewedById:  jobsTable.skipReviewedById,
-      skipReviewOutcome: jobsTable.skipReviewOutcome,
-      skipReviewNotes:   jobsTable.skipReviewNotes,
-      createdAt:         jobsTable.createdAt,
-      updatedAt:         jobsTable.updatedAt,
-      // reviewer info
-      reviewerName:      usersTable.name,
-      reviewerInitials:  usersTable.initials,
-    })
-    .from(jobsTable)
-    .leftJoin(usersTable, eq(jobsTable.skipReviewedById, usersTable.id))
-    .where(and(...conditions))
-    // unreviewed first, then most recent
-    .orderBy(sql`${jobsTable.skipReviewedAt} IS NOT NULL`, desc(jobsTable.scheduledDate))
-    .limit(limit)
-    .offset(offset));
+  const [countRow, jobs] = await Promise.all([
+    executeWithCircuitBreaker(() => db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(jobsTable)
+      .where(and(...conditions))
+      .then(rows => rows[0])),
+    executeWithCircuitBreaker(() => db
+      .select({
+        id:                jobsTable.id,
+        assetId:           jobsTable.assetId,
+        jobType:           jobsTable.jobType,
+        status:            jobsTable.status,
+        teamId:            jobsTable.teamId,
+        isAllTeams:        jobsTable.isAllTeams,
+        scheduledDate:     jobsTable.scheduledDate,
+        skipReason:        jobsTable.skipReason,
+        notes:             jobsTable.notes,
+        skipReviewedAt:    jobsTable.skipReviewedAt,
+        skipReviewedById:  jobsTable.skipReviewedById,
+        skipReviewOutcome: jobsTable.skipReviewOutcome,
+        skipReviewNotes:   jobsTable.skipReviewNotes,
+        createdAt:         jobsTable.createdAt,
+        updatedAt:         jobsTable.updatedAt,
+        // reviewer info
+        reviewerName:      usersTable.name,
+        reviewerInitials:  usersTable.initials,
+        // team info
+        teamName:          teamsTable.name,
+      })
+      .from(jobsTable)
+      .leftJoin(usersTable, eq(jobsTable.skipReviewedById, usersTable.id))
+      .leftJoin(teamsTable, eq(jobsTable.teamId, teamsTable.id))
+      .where(and(...conditions))
+      // unreviewed first, then most recent
+      .orderBy(sql`${jobsTable.skipReviewedAt} IS NOT NULL`, desc(jobsTable.scheduledDate))
+      .limit(limit)
+      .offset(offset)),
+  ]);
 
   // Fetch per-task skip reasons for all returned jobs
   const jobIds = jobs.map(j => j.id);
@@ -114,7 +125,7 @@ router.get("/jobs/skips", requireAuth, requireRole("administrator", "manager"), 
     taskSkipReasons: reasonsByJob.get(j.id) ?? [],
   }));
 
-  res.json({ data, page, limit });
+  res.json({ data, page, limit, total: countRow?.count ?? data.length });
 });
 
 // GET /api/jobs

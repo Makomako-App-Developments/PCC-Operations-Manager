@@ -8,7 +8,7 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell, Legend,
 } from "recharts";
-import { CheckCircle2, AlertTriangle, TrendingUp, Percent, History, BarChart2, ArrowRight, Download, Clock } from "lucide-react";
+import { CheckCircle2, AlertTriangle, TrendingUp, Percent, History, BarChart2, ArrowRight, Download, Clock, ShieldCheck } from "lucide-react";
 
 const BRAND = "#00AECD";
 const NAVY  = "#0f2a36";
@@ -450,8 +450,261 @@ function AssetChangesTab() {
   );
 }
 
+interface SkipRow {
+  id: string;
+  teamId: string | null;
+  teamName: string | null;
+  isAllTeams: boolean | null;
+  scheduledDate: string | null;
+  skipReason: string | null;
+  notes: string | null;
+  skipReviewedAt: string | null;
+  skipReviewOutcome: "accepted" | "rejected" | null;
+  skipReviewNotes: string | null;
+  reviewerName: string | null;
+}
+
+const PAGE_LIMIT = 500;
+
+function skipTeamLabel(row: SkipRow): string {
+  if (row.isAllTeams) return "All Teams";
+  return row.teamName ?? "Unassigned";
+}
+
+function SkipReviewTab() {
+  const thirtyDaysAgo = new Date();
+  thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+  const [from, setFrom]     = useState(thirtyDaysAgo.toISOString().slice(0, 10));
+  const [to,   setTo]       = useState(new Date().toISOString().slice(0, 10));
+  const [rows, setRows]     = useState<SkipRow[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError]   = useState<string | null>(null);
+
+  const buildParams = (page: number) => {
+    const p = new URLSearchParams({ reviewed: "all", limit: String(PAGE_LIMIT), page: String(page) });
+    if (from) p.set("from", from);
+    if (to)   p.set("to",   to);
+    return p;
+  };
+
+  const load = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      // Fetch page 1 to discover total
+      const r1 = await fetch(`/api/jobs/skips?${buildParams(1)}`, { credentials: "include" });
+      if (!r1.ok) throw new Error(`HTTP ${r1.status}`);
+      const json1 = await r1.json();
+      const total: number = json1.total ?? (json1.data ?? []).length;
+      let allData: SkipRow[] = json1.data ?? [];
+
+      // Fetch any remaining pages in parallel
+      if (total > PAGE_LIMIT) {
+        const pageCount = Math.ceil(total / PAGE_LIMIT);
+        const extras = await Promise.all(
+          Array.from({ length: pageCount - 1 }, (_, i) =>
+            fetch(`/api/jobs/skips?${buildParams(i + 2)}`, { credentials: "include" })
+              .then(r => r.json())
+              .then(j => j.data ?? []),
+          ),
+        );
+        for (const page of extras) allData = [...allData, ...page];
+      }
+
+      setRows(allData);
+    } catch (e: any) {
+      setError(e.message ?? "Failed to load");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => { load(); }, []);
+
+  const total      = rows.length;
+  const reviewed   = rows.filter(r => r.skipReviewedAt).length;
+  const unreviewed = total - reviewed;
+  const accepted   = rows.filter(r => r.skipReviewOutcome === "accepted").length;
+  const rejected   = rows.filter(r => r.skipReviewOutcome === "rejected").length;
+  const reviewRate = total > 0 ? Math.round((reviewed / total) * 100) : 0;
+
+  const teamNames = [...new Set(rows.map(skipTeamLabel))].sort();
+  const teamChartData = teamNames.map(name => ({
+    name,
+    Accepted:   rows.filter(r => skipTeamLabel(r) === name && r.skipReviewOutcome === "accepted").length,
+    Rejected:   rows.filter(r => skipTeamLabel(r) === name && r.skipReviewOutcome === "rejected").length,
+    Unreviewed: rows.filter(r => skipTeamLabel(r) === name && !r.skipReviewedAt).length,
+  }));
+
+  const handleExportCSV = () => {
+    const csvRows = [
+      ["Team", "Total Skipped", "Reviewed", "Unreviewed", "Accepted", "Rejected", "Review Rate"],
+      ...teamChartData.map(t => {
+        const teamTotal = t.Accepted + t.Rejected + t.Unreviewed;
+        const teamRvwd  = t.Accepted + t.Rejected;
+        const rate = teamTotal > 0 ? Math.round((teamRvwd / teamTotal) * 100) : 0;
+        return [t.name, teamTotal, teamRvwd, t.Unreviewed, t.Accepted, t.Rejected, `${rate}%`];
+      }),
+      ["Total", total, reviewed, unreviewed, accepted, rejected, `${reviewRate}%`],
+    ];
+    const csv = csvRows.map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(",")).join("\n");
+    const blob = new Blob([csv], { type: "text/csv" });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement("a");
+    a.href = url; a.download = `skip-review-summary-${from}-to-${to}.csv`; a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  return (
+    <div className="space-y-5">
+      {/* Filters */}
+      <Card className="rounded-2xl border-0 shadow-sm">
+        <CardContent className="p-5">
+          <div className="flex items-end gap-4 flex-wrap">
+            <div className="space-y-1">
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">From</p>
+              <Input type="date" value={from} onChange={e => setFrom(e.target.value)} className="text-sm w-40 h-9" />
+            </div>
+            <div className="space-y-1">
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">To</p>
+              <Input type="date" value={to}   onChange={e => setTo(e.target.value)}   className="text-sm w-40 h-9" />
+            </div>
+            <Button onClick={load} disabled={loading} size="sm" style={{ background: BRAND }} className="text-white h-9">
+              {loading ? "Loading…" : "Apply"}
+            </Button>
+            {rows.length > 0 && (
+              <Button onClick={handleExportCSV} variant="outline" size="sm" className="h-9 gap-1.5">
+                <Download className="w-3.5 h-3.5" /> Export CSV
+              </Button>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+
+      {error ? (
+        <div className="p-8 text-center text-red-500 text-sm">{error}</div>
+      ) : loading ? (
+        <div className="space-y-4">
+          <Skeleton className="w-full h-28 rounded-2xl" />
+          <Skeleton className="w-full h-64 rounded-2xl" />
+          <Skeleton className="w-full h-40 rounded-2xl" />
+        </div>
+      ) : total === 0 ? (
+        <div className="p-12 text-center text-gray-400 text-sm">No skipped jobs found in this date range.</div>
+      ) : (
+        <>
+          {/* KPI strip */}
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+            <MetricCard
+              icon={ShieldCheck}   label="Total Skipped"    value={total}
+              sub={`${from} – ${to}`}                       color="#ea580c"
+            />
+            <MetricCard
+              icon={Clock}         label="Awaiting Review"  value={unreviewed}
+              sub={`${reviewed} of ${total} reviewed`}      color="#f59e0b"
+            />
+            <MetricCard
+              icon={CheckCircle2}  label="Accepted"         value={accepted}
+              sub={reviewed > 0 ? `${Math.round((accepted / reviewed) * 100)}% of reviewed` : "none reviewed yet"}
+              color="#16a34a"
+            />
+            <MetricCard
+              icon={AlertTriangle} label="Rejected"         value={rejected}
+              sub={reviewed > 0 ? `${Math.round((rejected / reviewed) * 100)}% of reviewed` : "none reviewed yet"}
+              color="#dc2626"
+            />
+          </div>
+
+          {/* Bar chart by team */}
+          {teamChartData.length > 0 && (
+            <Card className="rounded-2xl border-0 shadow-sm">
+              <CardHeader className="pb-2 pt-5 px-6">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <CardTitle className="text-sm font-semibold text-gray-700">Skip Outcomes by Team</CardTitle>
+                    <p className="text-xs text-gray-400 mt-0.5">Accepted, rejected, and unreviewed skips per team</p>
+                  </div>
+                  <span className="text-xs text-gray-400">{reviewRate}% reviewed overall</span>
+                </div>
+              </CardHeader>
+              <CardContent className="px-2 pb-4">
+                <ResponsiveContainer width="100%" height={260}>
+                  <BarChart data={teamChartData} margin={{ top: 4, right: 24, left: 0, bottom: 4 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                    <XAxis dataKey="name" tick={{ fontSize: 11, fill: "#6b7280" }} />
+                    <YAxis tick={{ fontSize: 11, fill: "#6b7280" }} allowDecimals={false} />
+                    <Tooltip content={<CustomTooltip />} />
+                    <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 11, paddingTop: 8 }} />
+                    <Bar dataKey="Accepted"   name="Accepted"   fill="#16a34a" radius={[4,4,0,0]} maxBarSize={28} />
+                    <Bar dataKey="Rejected"   name="Rejected"   fill="#dc2626" radius={[4,4,0,0]} maxBarSize={28} />
+                    <Bar dataKey="Unreviewed" name="Unreviewed" fill="#f59e0b" radius={[4,4,0,0]} maxBarSize={28} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Team breakdown table */}
+          <Card className="rounded-2xl border-0 shadow-sm overflow-hidden">
+            <CardHeader className="pb-2 pt-5 px-6">
+              <CardTitle className="text-sm font-semibold text-gray-700">Team Breakdown</CardTitle>
+            </CardHeader>
+            <CardContent className="p-0">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b bg-gray-50 text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                    <th className="text-left px-6 py-3">Team</th>
+                    <th className="text-left px-6 py-3">Total</th>
+                    <th className="text-left px-6 py-3">Accepted</th>
+                    <th className="text-left px-6 py-3">Rejected</th>
+                    <th className="text-left px-6 py-3">Unreviewed</th>
+                    <th className="text-left px-6 py-3">Review Rate</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {teamChartData.map((t, i) => {
+                    const teamTotal = t.Accepted + t.Rejected + t.Unreviewed;
+                    const teamRvwd  = t.Accepted + t.Rejected;
+                    const rate      = teamTotal > 0 ? Math.round((teamRvwd / teamTotal) * 100) : 0;
+                    return (
+                      <tr key={t.name} className="hover:bg-gray-50">
+                        <td className="px-6 py-3.5 font-medium text-gray-900">
+                          <div className="flex items-center gap-2">
+                            <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: TEAM_COLORS[i % TEAM_COLORS.length] }} />
+                            {t.name}
+                          </div>
+                        </td>
+                        <td className="px-6 py-3.5 text-gray-700 font-semibold">{teamTotal}</td>
+                        <td className="px-6 py-3.5 font-semibold text-green-700">{t.Accepted}</td>
+                        <td className="px-6 py-3.5 font-semibold text-red-600">{t.Rejected}</td>
+                        <td className="px-6 py-3.5 font-semibold text-amber-600">{t.Unreviewed}</td>
+                        <td className="px-6 py-3.5">
+                          <div className="flex items-center gap-3">
+                            <div className="w-24 h-2 bg-gray-100 rounded-full overflow-hidden">
+                              <div
+                                className="h-full rounded-full"
+                                style={{ width: `${rate}%`, background: rate >= 80 ? "#16a34a" : rate >= 50 ? BRAND : "#dc2626" }}
+                              />
+                            </div>
+                            <span className="text-xs font-bold text-gray-700">{rate}%</span>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </CardContent>
+          </Card>
+        </>
+      )}
+    </div>
+  );
+}
+
 export default function Reports() {
-  const [tab, setTab] = useState<"performance" | "unscheduled" | "asset-changes">("performance");
+  const [tab, setTab] = useState<"performance" | "unscheduled" | "asset-changes" | "skip-reviews">("performance");
 
   const { data: summary, isLoading: loadingSummary } = useGetDashboardSummary({
     query: { queryKey: getGetDashboardSummaryQueryKey() },
@@ -507,9 +760,10 @@ export default function Reports() {
       <div className="bg-white border-b px-8 flex-shrink-0">
         <div className="flex gap-0">
           {[
-            { id: "performance",    label: "Performance",        icon: BarChart2 },
-            { id: "unscheduled",    label: "Unscheduled Work",   icon: Clock     },
-            { id: "asset-changes",  label: "Asset Changes",      icon: History   },
+            { id: "performance",    label: "Performance",        icon: BarChart2    },
+            { id: "unscheduled",    label: "Unscheduled Work",   icon: Clock        },
+            { id: "asset-changes",  label: "Asset Changes",      icon: History      },
+            { id: "skip-reviews",   label: "Skip Reviews",       icon: ShieldCheck  },
           ].map(t => (
             <button
               key={t.id}
@@ -532,6 +786,8 @@ export default function Reports() {
           <AssetChangesTab />
         ) : tab === "unscheduled" ? (
           <UnscheduledWorkTab />
+        ) : tab === "skip-reviews" ? (
+          <SkipReviewTab />
         ) : loadingSummary ? (
           <div className="space-y-6">
             {[1, 2, 3, 4].map(i => <Skeleton key={i} className="w-full h-40 rounded-2xl" />)}
