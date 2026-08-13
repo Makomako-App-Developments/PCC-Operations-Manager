@@ -583,6 +583,171 @@ describe(
 );
 
 describe(
+  "GET /health/ready — two consecutive failed HALF_OPEN probes both report cbState OPEN",
+  () => {
+    it(
+      `two sequential probe batches each fail and revert state to OPEN; both probe responses carry cbState "OPEN"; concurrent fast-fails in each window carry cbState "HALF_OPEN"`,
+      async () => {
+        // ── Two-round HALF_OPEN→OPEN mock setup ─────────────────────────────
+        //
+        // Simulates two consecutive recovery windows that both fail.  After the
+        // first probe rejects and flips state to OPEN, a second recovery window
+        // opens (state reset to HALF_OPEN) and its probe also fails.  The key
+        // risk is that the second probe's catch block reads a stale HALF_OPEN
+        // instead of the post-flip OPEN — this test guards against that.
+        //
+        // Mock contract per round:
+        //   - State starts at HALF_OPEN.
+        //   - The first executeWithCircuitBreaker call is the probe.  It waits
+        //     HALF_OPEN_PROBE_DELAY_MS, flips getState() to OPEN *before*
+        //     throwing, then throws.  The health route's catch block therefore
+        //     reads "OPEN".
+        //   - Concurrent calls that arrive while the probe is in flight fast-fail
+        //     immediately.  getState() is still "HALF_OPEN" at that point, so
+        //     their 503 bodies carry cbState "HALF_OPEN".
+        //   - After the probe settles, subsequent calls fast-fail with state OPEN.
+        //
+        // After round 1 is verified we reset the mock flags, move getState back
+        // to HALF_OPEN, and repeat the pattern for round 2.
+
+        // Round state — reset between the two windows.
+        let probeInFlight = false;
+        let probeSettled = false;
+
+        // Shared mock implementation — reads the closure variables so we can
+        // reset them between rounds without reinstalling the mock.
+        vi.mocked(dbCircuitBreaker.getOpenedAt).mockReturnValue(
+          Date.now() - 5_000,
+        );
+
+        function installHalfOpenFailMock() {
+          probeInFlight = false;
+          probeSettled = false;
+          vi.mocked(dbCircuitBreaker.getState).mockReturnValue("HALF_OPEN");
+
+          vi.mocked(executeWithCircuitBreaker).mockImplementation(async () => {
+            if (probeSettled) {
+              // Probe has already failed; breaker is back to OPEN.
+              throw new Error(
+                "circuit open — DB unavailable after failed probe",
+              );
+            }
+            if (!probeInFlight) {
+              // First call in this window: this is the probe.
+              probeInFlight = true;
+              await new Promise<void>((resolve) =>
+                setTimeout(resolve, HALF_OPEN_PROBE_DELAY_MS),
+              );
+              // Flip to OPEN *before* throwing so the catch block reads "OPEN".
+              probeSettled = true;
+              vi.mocked(dbCircuitBreaker.getState).mockReturnValue("OPEN");
+              throw new Error("probe failed — DB still unreachable");
+            }
+            // Concurrent call while probe is in flight: getState() is still
+            // "HALF_OPEN" here, so the catch block reports cbState "HALF_OPEN".
+            throw new Error("half-open — probe in flight, request fast-failed");
+          });
+        }
+
+        try {
+          // ── Round 1 ───────────────────────────────────────────────────────
+          installHalfOpenFailMock();
+
+          const round1 = await fireBatch();
+
+          // All requests must be 503 — probe failed, no 200 possible.
+          for (const status of round1.statuses) {
+            expect(status).toBe(503);
+          }
+
+          // Separate probe body (state already flipped → "OPEN") from
+          // fast-fail bodies (state still "HALF_OPEN" when they threw).
+          const round1OpenBodies = round1.bodies.filter(
+            (b) => b?.cbState === "OPEN",
+          );
+          const round1HalfOpenBodies = round1.bodies.filter(
+            (b) => b?.cbState === "HALF_OPEN",
+          );
+
+          // Exactly one probe per window.
+          expect(round1OpenBodies).toHaveLength(1);
+          expect(round1OpenBodies[0].status).toBe("not_ready");
+          expect(typeof round1OpenBodies[0].openedAt).toBe("string");
+          expect(typeof round1OpenBodies[0].timeSinceOpenMs).toBe("number");
+
+          // All other requests fast-failed while state was still HALF_OPEN.
+          expect(round1HalfOpenBodies).toHaveLength(BATCH_CONCURRENCY - 1);
+          for (const body of round1HalfOpenBodies) {
+            expect(body.status).toBe("not_ready");
+            expect(typeof body.openedAt).toBe("string");
+            expect(typeof body.timeSinceOpenMs).toBe("number");
+          }
+
+          // State must be OPEN after round 1.
+          expect(dbCircuitBreaker.getState()).toBe("OPEN");
+
+          // ── Round 2 ───────────────────────────────────────────────────────
+          //
+          // Simulate a second recovery window opening: reset flags and mock
+          // state back to HALF_OPEN, then fire another batch.
+          installHalfOpenFailMock();
+
+          const round2 = await fireBatch();
+
+          // Again all 503.
+          for (const status of round2.statuses) {
+            expect(status).toBe(503);
+          }
+
+          const round2OpenBodies = round2.bodies.filter(
+            (b) => b?.cbState === "OPEN",
+          );
+          const round2HalfOpenBodies = round2.bodies.filter(
+            (b) => b?.cbState === "HALF_OPEN",
+          );
+
+          // The second probe must also report "OPEN" — not "HALF_OPEN" (stale).
+          expect(round2OpenBodies).toHaveLength(1);
+          expect(round2OpenBodies[0].status).toBe("not_ready");
+          expect(typeof round2OpenBodies[0].openedAt).toBe("string");
+          expect(typeof round2OpenBodies[0].timeSinceOpenMs).toBe("number");
+
+          // Fast-fails in round 2 must still see "HALF_OPEN".
+          expect(round2HalfOpenBodies).toHaveLength(BATCH_CONCURRENCY - 1);
+          for (const body of round2HalfOpenBodies) {
+            expect(body.status).toBe("not_ready");
+            expect(typeof body.openedAt).toBe("string");
+            expect(typeof body.timeSinceOpenMs).toBe("number");
+          }
+
+          // State must be OPEN after round 2.
+          expect(dbCircuitBreaker.getState()).toBe("OPEN");
+        } finally {
+          // Restore the module-level mock to the OPEN/rejecting baseline.
+          probeInFlight = false;
+          probeSettled = false;
+          vi.mocked(dbCircuitBreaker.getState).mockReturnValue("OPEN");
+          vi.mocked(dbCircuitBreaker.getOpenedAt).mockReturnValue(
+            Date.now() - 30_000,
+          );
+          vi.mocked(executeWithCircuitBreaker).mockImplementation(
+            () =>
+              new Promise<never>((_, reject) =>
+                setTimeout(
+                  () => reject(new Error("circuit open — DB unavailable")),
+                  CB_REJECT_DELAY_MS,
+                ),
+              ),
+          );
+        }
+      },
+      // Wall-clock budget: two probe delays + two batch round-trips + overhead.
+      HALF_OPEN_PROBE_DELAY_MS * 10 + BATCH_INTERVAL_MS * 2,
+    );
+  },
+);
+
+describe(
   "GET /health/ready — first-success latency after mock switches to CLOSED under sustained outage load",
   () => {
     it(
