@@ -24,6 +24,11 @@ vi.mock("@workspace/db", () => ({
   ),
 }));
 
+// Mock the audit module so health tests can control the failure counter.
+vi.mock("../lib/audit", () => ({
+  getAuditFailureCount: vi.fn().mockReturnValue(0),
+}));
+
 function buildApp() {
   const app = express();
   app.use(healthRouter);
@@ -501,6 +506,61 @@ describe("GET /healthz", () => {
     const res = await request(buildApp()).get("/healthz");
     expect(res.status).toBe(200);
     expect(res.body).toMatchObject({ status: "ok" });
+  });
+});
+
+describe("GET /health — auditFailures counter", () => {
+  beforeEach(async () => {
+    vi.resetAllMocks();
+    // Restore passthrough and default healthy DB after resetAllMocks.
+    const { db, executeWithCircuitBreaker, dbCircuitBreaker } = vi.mocked(
+      await import("@workspace/db"),
+    );
+    executeWithCircuitBreaker.mockImplementation(
+      async (fn: () => Promise<unknown>) => fn(),
+    );
+    db.execute.mockResolvedValue([] as never);
+    dbCircuitBreaker.getState.mockReturnValue("CLOSED");
+    dbCircuitBreaker.getOpenedAt.mockReturnValue(null);
+  });
+
+  it("includes auditFailures: 0 in the response when no audit failures have occurred", async () => {
+    const { getAuditFailureCount } = vi.mocked(await import("../lib/audit"));
+    getAuditFailureCount.mockReturnValue(0);
+
+    const res = await request(buildApp()).get("/health");
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveProperty("auditFailures", 0);
+  });
+
+  it("includes auditFailures with the current count when failures have occurred", async () => {
+    const { getAuditFailureCount } = vi.mocked(await import("../lib/audit"));
+    getAuditFailureCount.mockReturnValue(7);
+
+    const res = await request(buildApp()).get("/health");
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveProperty("auditFailures", 7);
+  });
+
+  it("includes auditFailures in the degraded (503) response as well", async () => {
+    const { executeWithCircuitBreaker, dbCircuitBreaker, getAuditFailureCount } =
+      vi.mocked(await import("../lib/audit").then(async (audit) => {
+        const db = await import("@workspace/db");
+        return { ...db, getAuditFailureCount: audit.getAuditFailureCount };
+      }));
+    getAuditFailureCount.mockReturnValue(3);
+
+    // Make the DB call fail so we get a 503.
+    const mod = vi.mocked(await import("@workspace/db"));
+    mod.executeWithCircuitBreaker.mockRejectedValueOnce(
+      new Error("connection refused") as never,
+    );
+    mod.dbCircuitBreaker.getState.mockReturnValue("CLOSED");
+    mod.dbCircuitBreaker.getOpenedAt.mockReturnValue(null);
+
+    const res = await request(buildApp()).get("/health");
+    expect(res.status).toBe(503);
+    expect(res.body).toHaveProperty("auditFailures", 3);
   });
 });
 

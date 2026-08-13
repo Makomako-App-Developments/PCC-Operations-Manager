@@ -2,6 +2,7 @@ import { Router, type IRouter } from "express";
 import { db, dbCircuitBreaker, executeWithCircuitBreaker } from "@workspace/db";
 import { sql } from "drizzle-orm";
 import circuitBreakerRouter from "./health-circuit-breaker";
+import { getAuditFailureCount } from "../lib/audit";
 
 const router: IRouter = Router();
 const startTime = Date.now();
@@ -72,6 +73,7 @@ router.get("/health", async (_req, res) => {
       dbLatencyMs,
       nodeVersion: process.version,
       cbState: dbCircuitBreaker.getState(),
+      auditFailures: getAuditFailureCount(),
     });
   } catch {
     const cbState = dbCircuitBreaker.getState();
@@ -82,6 +84,7 @@ router.get("/health", async (_req, res) => {
       uptimeMs,
       db: "unreachable",
       cbState,
+      auditFailures: getAuditFailureCount(),
       ...(openedAt != null && {
         openedAt: new Date(openedAt).toISOString(),
         timeSinceOpenMs,

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { auditLog } from "../lib/audit";
+import { auditLog, getAuditFailureCount } from "../lib/audit";
 
 vi.mock("@workspace/db", () => ({
   db: {
@@ -85,6 +85,35 @@ describe("auditLog()", () => {
     });
 
     expect(result).toBe(false);
+  });
+
+  it("increments the failure counter each time auditLog() returns false", async () => {
+    const { db } = await import("@workspace/db");
+
+    // Arrange: two consecutive failures
+    vi.mocked(db.insert)
+      .mockReturnValueOnce({ values: vi.fn().mockRejectedValueOnce(new Error("constraint violation")) } as never)
+      .mockReturnValueOnce({ values: vi.fn().mockRejectedValueOnce(new Error("constraint violation")) } as never);
+
+    const before = getAuditFailureCount();
+
+    await auditLog({ tableName: "assets", recordId: null, action: "INSERT", changedById: null });
+    await auditLog({ tableName: "assets", recordId: null, action: "INSERT", changedById: null });
+
+    expect(getAuditFailureCount()).toBe(before + 2);
+  });
+
+  it("does not increment the failure counter when auditLog() succeeds", async () => {
+    const { db } = await import("@workspace/db");
+    vi.mocked(db.insert).mockReturnValue({
+      values: vi.fn().mockResolvedValue(undefined),
+    } as never);
+
+    const before = getAuditFailureCount();
+
+    await auditLog({ tableName: "assets", recordId: null, action: "UPDATE", changedById: null });
+
+    expect(getAuditFailureCount()).toBe(before);
   });
 
   it("persists push_forward action with schedule metadata", async () => {
