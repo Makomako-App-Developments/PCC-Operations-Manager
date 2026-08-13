@@ -111,6 +111,12 @@ router.post(
     try {
       const { species, ...jobData } = req.body as z.infer<typeof createInfillJobSchema>;
 
+      // Atomicity required: the infill job and its species-order lines must be
+      // created together — a partial insert (job with no orders, or orders with
+      // no parent job) leaves the data in an inconsistent state.  The audit log
+      // is written OUTSIDE the transaction so that a logging failure (e.g. a
+      // constraint violation on audit_log) cannot roll back the committed job
+      // and order lines. auditLog() swallows its own errors and returns false.
       const job = await executeWithCircuitBreaker(() => db.transaction(async tx => {
         const [created] = await tx.insert(infillJobsTable).values({
           ...jobData,
@@ -578,6 +584,12 @@ router.post(
     const alignedJobId   = nearestJob?.id ?? null;
     const alignedJobDate = nearestJob?.scheduledDate ?? null;
 
+    // Atomicity required: the depth reading and the linked mulching-record draft
+    // must be created (or updated) together — a reading with no corresponding
+    // draft, or a draft whose sourceReadingId points to a non-existent reading,
+    // leaves the mulch-scheduling data in an inconsistent state.  The audit log
+    // is written OUTSIDE the transaction so that a logging failure cannot roll
+    // back the committed reading and draft. auditLog() swallows its own errors.
     const result = await executeWithCircuitBreaker(() => db.transaction(async tx => {
       const [reading] = await tx
         .insert(mulchDepthReadingsTable)

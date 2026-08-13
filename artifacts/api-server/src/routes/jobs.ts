@@ -616,6 +616,10 @@ router.post(
       }
     }
 
+    // The insert and the audit log are intentionally separate operations (not
+    // wrapped in a transaction) so that an audit-log failure (e.g. a constraint
+    // violation on audit_log) cannot roll back the committed job insert.
+    // auditLog() swallows its own errors and returns false on failure.
     const [created] = await executeWithCircuitBreaker(() => db.insert(jobsTable).values(jobData as any).returning());
     await auditLog({
       tableName: "jobs", recordId: created.id, action: "INSERT",
@@ -699,6 +703,8 @@ router.patch("/jobs/:id", requireAuth, async (req, res) => {
       .where(eq(mulchingRecordsTable.id, id))
       .returning());
 
+    // Audit log is written after the update commits so that a logging failure
+    // cannot roll back the committed record change. auditLog() swallows errors.
     await auditLog({
       tableName: "mulching_records", recordId: id, action: "UPDATE",
       changedById: req.auth?.userId ?? null,
@@ -792,6 +798,8 @@ router.patch("/jobs/:id", requireAuth, async (req, res) => {
     .where(eq(jobsTable.id, id))
     .returning());
 
+  // Audit log is written after the update commits so that a logging failure
+  // cannot roll back the committed record change. auditLog() swallows errors.
   await auditLog({
     tableName: "jobs", recordId: id, action: "UPDATE",
     changedById: req.auth?.userId ?? null,
@@ -869,6 +877,8 @@ router.patch("/jobs/:id", requireAuth, async (req, res) => {
           })
           .returning());
 
+        // Audit log is written after the insert commits so that a logging
+        // failure cannot roll back the rescheduled job. auditLog() swallows errors.
         await auditLog({
           tableName: "jobs", recordId: rescheduled.id, action: "INSERT",
           changedById: req.auth?.userId ?? null,
@@ -1142,6 +1152,9 @@ router.post("/reactive-jobs", requireAuth, validateBody(insertReactiveJobSchema.
     ? { assignedTeamId, assignedUserId, scheduledDate, estimatedTimeMins, priority }
     : {};
 
+  // The insert and the audit log are intentionally separate operations (not
+  // wrapped in a transaction) so that an audit-log failure cannot roll back
+  // the committed reactive-job insert. auditLog() swallows its own errors.
   const [created] = await executeWithCircuitBreaker(() => db
     .insert(reactiveJobsTable)
     .values({ ...allowedBody, ...privilegedFields, status: "raised", raisedById: req.auth!.userId, origin })
@@ -1248,6 +1261,8 @@ router.patch("/reactive-jobs/:id", requireAuth, async (req, res) => {
     .set({ ...patch, updatedAt: new Date() })
     .where(eq(reactiveJobsTable.id, id))
     .returning());
+  // Audit log is written after the update commits so that a logging failure
+  // cannot roll back the committed record change. auditLog() swallows errors.
   await auditLog({
     tableName: "reactive_jobs", recordId: id, action: "UPDATE",
     changedById: req.auth?.userId ?? null,
