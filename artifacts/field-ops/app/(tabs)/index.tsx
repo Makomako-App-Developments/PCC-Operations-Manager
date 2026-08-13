@@ -248,10 +248,10 @@ export default function TodayScreen() {
 
   const allVisibleJobs = [...todayJobs, ...day1Jobs, ...day2Jobs, ...day3Jobs, ...day4Jobs];
 
-  const pendingToday = allVisibleJobs.filter(
+  const pendingToday = todayJobs.filter(
     (j) => j.status === "pending" || j.status === "in_progress" || j.status === "paused" || j.status === "overdue",
   );
-  const doneToday = allVisibleJobs.filter(
+  const doneToday = todayJobs.filter(
     (j) => j.status === "completed" || j.status === "skipped",
   );
 
@@ -282,7 +282,7 @@ export default function TodayScreen() {
           </View>
           <View style={[styles.statDivider, { backgroundColor: "rgba(255,255,255,0.2)" }]} />
           <View style={styles.stat}>
-            <Text style={styles.statNum}>{allVisibleJobs.length}</Text>
+            <Text style={styles.statNum}>{todayJobs.length}</Text>
             <Text style={styles.statLabel}>Total</Text>
           </View>
         </View>
