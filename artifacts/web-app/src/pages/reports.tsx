@@ -452,6 +452,8 @@ function AssetChangesTab() {
 
 interface SkipRow {
   id: string;
+  assetId: string | null;
+  assetName: string | null;
   teamId: string | null;
   teamName: string | null;
   isAllTeams: boolean | null;
@@ -538,21 +540,27 @@ function SkipReviewTab() {
   }));
 
   const handleExportCSV = () => {
+    const header = ["Date", "Garden", "Team", "Skip Reason", "Outcome", "Reviewed By", "Review Notes", "Review Date"];
     const csvRows = [
-      ["Team", "Total Skipped", "Reviewed", "Unreviewed", "Accepted", "Rejected", "Review Rate"],
-      ...teamChartData.map(t => {
-        const teamTotal = t.Accepted + t.Rejected + t.Unreviewed;
-        const teamRvwd  = t.Accepted + t.Rejected;
-        const rate = teamTotal > 0 ? Math.round((teamRvwd / teamTotal) * 100) : 0;
-        return [t.name, teamTotal, teamRvwd, t.Unreviewed, t.Accepted, t.Rejected, `${rate}%`];
-      }),
-      ["Total", total, reviewed, unreviewed, accepted, rejected, `${reviewRate}%`],
+      header,
+      ...rows.map(r => [
+        r.scheduledDate ?? "",
+        r.assetName ?? "",
+        skipTeamLabel(r),
+        r.skipReason ?? "",
+        r.skipReviewOutcome ?? "unreviewed",
+        r.reviewerName ?? "",
+        r.skipReviewNotes ?? "",
+        r.skipReviewedAt
+          ? new Date(r.skipReviewedAt).toLocaleString("en-NZ", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })
+          : "",
+      ]),
     ];
     const csv = csvRows.map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(",")).join("\n");
     const blob = new Blob([csv], { type: "text/csv" });
     const url  = URL.createObjectURL(blob);
     const a    = document.createElement("a");
-    a.href = url; a.download = `skip-review-summary-${from}-to-${to}.csv`; a.click();
+    a.href = url; a.download = `skip-records-${from}-to-${to}.csv`; a.click();
     URL.revokeObjectURL(url);
   };
 

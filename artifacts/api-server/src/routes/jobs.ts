@@ -92,10 +92,13 @@ router.get("/jobs/skips", requireAuth, requireRole("administrator", "manager"), 
         reviewerInitials:  usersTable.initials,
         // team info
         teamName:          teamsTable.name,
+        // asset info
+        assetName:         assetsTable.name,
       })
       .from(jobsTable)
       .leftJoin(usersTable, eq(jobsTable.skipReviewedById, usersTable.id))
       .leftJoin(teamsTable, eq(jobsTable.teamId, teamsTable.id))
+      .leftJoin(assetsTable, eq(jobsTable.assetId, assetsTable.id))
       .where(and(...conditions))
       // unreviewed first, then most recent
       .orderBy(sql`${jobsTable.skipReviewedAt} IS NOT NULL`, desc(jobsTable.scheduledDate))
