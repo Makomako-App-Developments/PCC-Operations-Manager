@@ -456,6 +456,133 @@ describe(
 );
 
 describe(
+  "GET /health/ready — HALF_OPEN probe fails; breaker reverts to OPEN mid-request",
+  () => {
+    it(
+      `probe rejects after ${HALF_OPEN_PROBE_DELAY_MS}ms and reverts state to OPEN; probe response has cbState "OPEN"; concurrent fast-fails during the probe window have cbState "HALF_OPEN"`,
+      async () => {
+        // ── HALF_OPEN→OPEN mock setup ────────────────────────────────────────
+        //
+        // Simulates a circuit breaker in HALF_OPEN state where the recovery
+        // probe itself fails:
+        //   - The first executeWithCircuitBreaker call is the probe.  It waits
+        //     HALF_OPEN_PROBE_DELAY_MS, then transitions getState() to "OPEN"
+        //     (as a real breaker would) and rejects.  Because the state switch
+        //     happens *before* the rejection is thrown, the health route's catch
+        //     block reads "OPEN" — not "HALF_OPEN".
+        //   - Concurrent calls that arrive while the probe is in flight fast-fail
+        //     immediately.  Their catch blocks fire while getState() still returns
+        //     "HALF_OPEN", so the 503 body must carry cbState "HALF_OPEN".
+        //
+        // This validates that /health/ready reports the *post-transition* state
+        // for the failed probe and the *pre-transition* state for concurrent
+        // fast-fails, matching the real circuit-breaker's behaviour.
+
+        let probeInFlight = false;
+        let probeSettled = false;
+
+        vi.mocked(dbCircuitBreaker.getState).mockReturnValue("HALF_OPEN");
+        vi.mocked(dbCircuitBreaker.getOpenedAt).mockReturnValue(
+          Date.now() - 5_000,
+        );
+
+        vi.mocked(executeWithCircuitBreaker).mockImplementation(async () => {
+          if (probeSettled) {
+            // Probe has already failed and breaker is back OPEN — fast-fail.
+            throw new Error("circuit open — DB unavailable after failed probe");
+          }
+          if (!probeInFlight) {
+            // First call: this is the probe.
+            probeInFlight = true;
+            await new Promise<void>((resolve) =>
+              setTimeout(resolve, HALF_OPEN_PROBE_DELAY_MS),
+            );
+            // Probe failed — transition state to OPEN *before* throwing so
+            // the health route's catch block reads the updated state.
+            probeSettled = true;
+            vi.mocked(dbCircuitBreaker.getState).mockReturnValue("OPEN");
+            // openedAt stays unchanged (still reflects when the breaker
+            // originally opened; a real breaker does not reset this on a
+            // failed recovery probe).
+            throw new Error("probe failed — DB still unreachable");
+          }
+          // Concurrent call while probe is in flight: fast-fail immediately.
+          // getState() still returns "HALF_OPEN" at this point.
+          throw new Error("half-open — probe in flight, request fast-failed");
+        });
+
+        try {
+          // ── Fire a batch that straddles the probe ────────────────────────
+          //
+          // BATCH_CONCURRENCY requests start concurrently.  The first reaches
+          // executeWithCircuitBreaker and becomes the probe (delays then rejects
+          // with state already flipped to OPEN).  The rest hit the fast-fail
+          // branch and throw immediately while state is still "HALF_OPEN".
+          // Every request in the batch ends up as a 503.
+
+          const { statuses, bodies } = await fireBatch();
+
+          // All responses must be 503 — the probe failed, so no 200 is possible.
+          for (const status of statuses) {
+            expect(status).toBe(503);
+          }
+
+          // Separate probe body from fast-fail bodies.
+          // The probe's catch block runs after the state flip → cbState "OPEN".
+          // Fast-fail catch blocks run before the flip → cbState "HALF_OPEN".
+          const openBodies = bodies.filter((b) => b?.cbState === "OPEN");
+          const halfOpenBodies = bodies.filter(
+            (b) => b?.cbState === "HALF_OPEN",
+          );
+
+          // Exactly one request was the probe; it must report "OPEN".
+          expect(openBodies).toHaveLength(1);
+          expect(openBodies[0].status).toBe("not_ready");
+          // openedAt and timeSinceOpenMs come from getOpenedAt() which is still
+          // set to the original non-null timestamp throughout.
+          expect(typeof openBodies[0].openedAt).toBe("string");
+          expect(typeof openBodies[0].timeSinceOpenMs).toBe("number");
+
+          // The remaining BATCH_CONCURRENCY-1 requests fast-failed while the
+          // probe was in flight — they must all report "HALF_OPEN".
+          expect(halfOpenBodies).toHaveLength(BATCH_CONCURRENCY - 1);
+          for (const body of halfOpenBodies) {
+            expect(body.status).toBe("not_ready");
+            // openedAt is still present because getOpenedAt() returned a
+            // non-null timestamp during HALF_OPEN.
+            expect(typeof body.openedAt).toBe("string");
+            expect(typeof body.timeSinceOpenMs).toBe("number");
+          }
+
+          // Breaker must now be OPEN after the failed probe.
+          expect(dbCircuitBreaker.getState()).toBe("OPEN");
+        } finally {
+          // Restore the module-level mock to the OPEN/rejecting baseline so
+          // subsequent tests in the file are not affected.
+          probeInFlight = false;
+          probeSettled = false;
+          vi.mocked(dbCircuitBreaker.getState).mockReturnValue("OPEN");
+          vi.mocked(dbCircuitBreaker.getOpenedAt).mockReturnValue(
+            Date.now() - 30_000,
+          );
+          vi.mocked(executeWithCircuitBreaker).mockImplementation(
+            () =>
+              new Promise<never>((_, reject) =>
+                setTimeout(
+                  () => reject(new Error("circuit open — DB unavailable")),
+                  CB_REJECT_DELAY_MS,
+                ),
+              ),
+          );
+        }
+      },
+      // Wall-clock budget: probe delay + one batch round-trip + overhead.
+      HALF_OPEN_PROBE_DELAY_MS * 10 + BATCH_INTERVAL_MS,
+    );
+  },
+);
+
+describe(
   "GET /health/ready — first-success latency after mock switches to CLOSED under sustained outage load",
   () => {
     it(
