@@ -856,6 +856,8 @@ router.get(
         issueType:         reactiveJobsTable.issueType,
         description:       reactiveJobsTable.description,
         location:          reactiveJobsTable.location,
+        locationLat:       reactiveJobsTable.locationLat,
+        locationLng:       reactiveJobsTable.locationLng,
         createdAt:         reactiveJobsTable.createdAt,
         updatedAt:         reactiveJobsTable.updatedAt,
         assetName:         assetsTable.name,
@@ -922,10 +924,57 @@ router.get(
         routeOrder:        rj.routeOrder ?? null,
         frequency:         rj.frequency ?? "reactive",
         teamCompletions:   [],
+        // Own GPS coords (not inherited from an asset) — used for geosequence slotting
+        _ownLat:           rj.locationLat ?? null,
+        _ownLng:           rj.locationLng ?? null,
       };
       dayMap.get(rj.scheduledDate)?.push(mapped as any);
     }
     // ─────────────────────────────────────────────────────────────────────────
+
+    // Assign a synthetic routeOrder to location-only reactive jobs (those with
+    // GPS coords but no assetId) so they slot next to the geographically
+    // nearest garden instead of always appearing at the end of the route.
+    function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number): number {
+      const R = 6371;
+      const dLat = (lat2 - lat1) * Math.PI / 180;
+      const dLng = (lng2 - lng1) * Math.PI / 180;
+      const a =
+        Math.sin(dLat / 2) ** 2 +
+        Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLng / 2) ** 2;
+      return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    }
+
+    for (const [, dayJobs] of dayMap.entries()) {
+      // Collect anchor points: jobs with a known routeOrder and asset lat/lng
+      const anchors = dayJobs
+        .filter((j: any) => j.routeOrder !== null && j.lat !== null && j.lng !== null)
+        .map((j: any) => ({ routeOrder: j.routeOrder as number, lat: j.lat as number, lng: j.lng as number }));
+
+      if (anchors.length === 0) continue;
+
+      for (const job of dayJobs) {
+        const j = job as any;
+        // Only process reactive (unscheduled) jobs that have their own GPS coords but no routeOrder
+        if (j.jobType !== "unscheduled") continue;
+        if (j.routeOrder !== null) continue;
+        if (j._ownLat == null || j._ownLng == null) continue;
+
+        // Find the nearest anchor by haversine distance
+        let bestRouteOrder = -1;
+        let bestDist = Infinity;
+        for (const anchor of anchors) {
+          const dist = haversineKm(j._ownLat, j._ownLng, anchor.lat, anchor.lng);
+          if (dist < bestDist) {
+            bestDist = dist;
+            bestRouteOrder = anchor.routeOrder;
+          }
+        }
+        if (bestRouteOrder >= 0) {
+          j.routeOrder = bestRouteOrder + 0.5;
+        }
+      }
+    }
 
     // Re-sort each day's combined job list by routeOrder so mulching / infill /
     // unscheduled jobs appear at the same position as their asset's regular job,
@@ -938,7 +987,12 @@ router.get(
         if (ao === null && bo === null) return 0;
         if (ao === null) return 1;
         if (bo === null) return -1;
-        return ao - bo;
+        if (ao !== bo) return ao - bo;
+        // Tiebreak for reactive jobs at the same synthetic position: earlier raisedAt first
+        const ac = (a as any).createdAt as Date | null;
+        const bc = (b as any).createdAt as Date | null;
+        if (ac && bc) return ac.getTime() - bc.getTime();
+        return 0;
       }),
     }));
 
