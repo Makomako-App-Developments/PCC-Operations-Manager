@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { AlertTriangle, RefreshCw, CheckCircle } from "lucide-react";
+import { AlertTriangle, RefreshCw, CheckCircle, X } from "lucide-react";
 import { useState, useEffect } from "react";
 
 type HealthReadyResponse = {
@@ -50,6 +50,7 @@ export function SystemStatusBanner() {
   // Separate "was open" flag so we can show a brief "back online" notice.
   const [wasOpen, setWasOpen] = useState(false);
   const [showRecovered, setShowRecovered] = useState(false);
+  const [dismissed, setDismissed] = useState(false);
 
   const cbState = data?.cbState;
   const isUnhealthy = cbState === "OPEN" || cbState === "HALF_OPEN";
@@ -63,6 +64,8 @@ export function SystemStatusBanner() {
     if (isUnhealthy) {
       setWasOpen(true);
       setShowRecovered(false);
+      // A new outage overrides a previous dismissal.
+      setDismissed(false);
       return undefined;
     }
     if (wasOpen && cbState === "CLOSED") {
@@ -76,6 +79,7 @@ export function SystemStatusBanner() {
   }, [isUnhealthy, cbState, wasOpen]);
 
   if (!isUnhealthy && !showRecovered) return null;
+  if (isUnhealthy && dismissed) return null;
 
   if (showRecovered) {
     return (
@@ -112,6 +116,13 @@ export function SystemStatusBanner() {
         {recoveringMsg}
       </span>
       <RefreshCw className="w-3.5 h-3.5 flex-shrink-0 opacity-70 animate-spin" />
+      <button
+        onClick={() => setDismissed(true)}
+        aria-label="Dismiss banner"
+        className="ml-1 opacity-80 hover:opacity-100 transition-opacity flex-shrink-0"
+      >
+        <X className="w-4 h-4" />
+      </button>
     </div>
   );
 }

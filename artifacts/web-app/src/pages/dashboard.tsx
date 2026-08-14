@@ -115,6 +115,7 @@ function ScheduleStateChart({ completionPct }: { completionPct: number }) {
 export default function Dashboard() {
   const [, navigate] = useLocation();
   const [period, setPeriod] = useState<Period>("week");
+  const [capacityWarningDismissed, setCapacityWarningDismissed] = useState(false);
 
   const today    = new Date();
   // Council year: 1 July – 30 June
@@ -297,13 +298,20 @@ export default function Dashboard() {
       <div className="flex-1 overflow-y-auto px-8 py-6 space-y-6">
 
         {/* ── Capacity under-count warning ── */}
-        {unreliableCapacityTeams.length > 0 && (
+        {unreliableCapacityTeams.length > 0 && !capacityWarningDismissed && (
           <div className="flex items-start gap-3 rounded-xl border border-yellow-300 bg-yellow-50 px-4 py-3">
             <AlertTriangle className="w-4 h-4 text-yellow-600 mt-0.5 flex-shrink-0" />
-            <p className="text-xs text-yellow-800">
+            <p className="text-xs text-yellow-800 flex-1">
               <span className="font-semibold">Scheduled minutes may be under-counted.</span>{" "}
               One or more capacity sub-queries returned no data while others returned results — capacity figures should be treated as approximate.
             </p>
+            <button
+              onClick={() => setCapacityWarningDismissed(true)}
+              aria-label="Dismiss warning"
+              className="text-yellow-600 hover:text-yellow-800 flex-shrink-0 mt-0.5 transition-colors"
+            >
+              <X className="w-4 h-4" />
+            </button>
           </div>
         )}
 

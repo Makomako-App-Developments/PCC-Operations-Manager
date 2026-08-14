@@ -962,7 +962,8 @@ export default function TeamPage() {
   const [weekMon, setWeekMon]     = useState<Date>(() => getMondayOfWeek(new Date()));
   const [activeDay, setActiveDay] = useState(0);
 
-  const [capacityWarning,    setCapacityWarning]    = useState<CapacityWarning | null>(null);
+  const [capacityWarning,             setCapacityWarning]            = useState<CapacityWarning | null>(null);
+  const [capacityUnreliableDismissed, setCapacityUnreliableDismissed] = useState(false);
   const [replanLoading,      setReplanLoading]      = useState(false);
   const [replanSuccess,      setReplanSuccess]      = useState(false);
   const [replanError,        setReplanError]        = useState<string | null>(null);
@@ -1397,17 +1398,31 @@ export default function TeamPage() {
                   )}
                   {replanLoading ? "Re-planning…" : "Re-plan this day"}
                 </Button>
+                <button
+                  onClick={() => setCapacityWarning(null)}
+                  aria-label="Dismiss warning"
+                  className="text-red-400 hover:text-red-600 transition-colors flex-shrink-0 mt-0.5"
+                >
+                  <X className="w-4 h-4" />
+                </button>
               </div>
             )}
 
             {/* Under-count warning banner */}
-            {capacityUnreliable && (
+            {capacityUnreliable && !capacityUnreliableDismissed && (
               <div className="flex items-start gap-2 rounded-xl border border-yellow-300 bg-yellow-50 px-5 py-3">
                 <AlertTriangle className="w-4 h-4 text-yellow-600 mt-0.5 flex-shrink-0" />
-                <p className="text-xs text-yellow-800">
+                <p className="text-xs text-yellow-800 flex-1">
                   <span className="font-semibold">Scheduled minutes may be under-counted.</span>{" "}
                   One or more capacity sub-queries returned no data while others returned results — capacity figures should be treated as approximate.
                 </p>
+                <button
+                  onClick={() => setCapacityUnreliableDismissed(true)}
+                  aria-label="Dismiss warning"
+                  className="text-yellow-600 hover:text-yellow-800 transition-colors flex-shrink-0 mt-0.5"
+                >
+                  <X className="w-4 h-4" />
+                </button>
               </div>
             )}
 
