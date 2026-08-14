@@ -955,7 +955,7 @@ function SetDayButton({
 export default function TeamPage() {
   const { user } = useAuth();
   const qc = useQueryClient();
-  const canEdit = user?.role === "manager" || user?.role === "supervisor";
+  const canEdit = user?.role === "administrator" || user?.role === "manager" || user?.role === "supervisor";
   const PEOPLE = useLivePeople();
 
   const [activeTab, setActiveTab] = useState<"workload" | "composition" | "availability">("availability");
