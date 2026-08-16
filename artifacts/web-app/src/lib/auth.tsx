@@ -11,9 +11,12 @@ const FIELD_OPS_ROLES = ["field_worker", "manager", "supervisor", "administrator
 
 function isMobileDevice() {
   if (typeof navigator === "undefined") return false;
+  // Match clear mobile UA tokens only.
+  // Deliberately excludes the "Mac + maxTouchPoints > 1" heuristic that was
+  // meant to catch iPads in "Request Desktop Site" mode — it also fires on
+  // every MacBook with a Force Touch trackpad (Safari reports maxTouchPoints=5),
+  // causing desktop users to be silently redirected to the mobile app.
   if (/Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent)) return true;
-  // iPad in "Request Desktop Site" mode reports as MacIntel but has touch
-  if (navigator.maxTouchPoints > 1 && /Mac/i.test(navigator.userAgent)) return true;
   return false;
 }
 
