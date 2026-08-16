@@ -11,7 +11,7 @@ import {
 import {
   AlertTriangle, CheckCircle2, Clock, SkipForward, Target, DollarSign,
   TrendingUp, TrendingDown, Minus, Leaf, Users, TriangleAlert, HardHat,
-  ClipboardList, Zap, Layers, Sprout,
+  ClipboardList, Zap, Layers, Sprout, X,
 } from "lucide-react";
 import {
   format, startOfWeek, endOfWeek, startOfMonth, endOfMonth,
