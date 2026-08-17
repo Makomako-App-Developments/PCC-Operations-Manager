@@ -339,7 +339,9 @@ function PhotoSection({ jobId, readOnly }: { jobId: string; readOnly: boolean })
       const input = document.createElement("input");
       input.type = "file";
       input.accept = "image/*";
-      (input as any).capture = "environment";
+      // setAttribute is required on Android Chrome — setting .capture as a JS
+      // property is silently ignored on many Android browsers.
+      input.setAttribute("capture", "environment");
       input.onchange = async (e: Event) => {
         const file = (e.target as HTMLInputElement).files?.[0];
         if (file) {
@@ -347,7 +349,14 @@ function PhotoSection({ jobId, readOnly }: { jobId: string; readOnly: boolean })
           uploadPhoto.mutate({ uri, file });
         }
       };
+      // Must be in the DOM before click() — mobile browsers drop programmatic
+      // clicks on detached elements.
+      input.style.display = "none";
+      document.body.appendChild(input);
       input.click();
+      // Clean up after the picker closes (change fires before this runs on
+      // desktop; on mobile the cleanup happens after selection).
+      setTimeout(() => document.body.removeChild(input), 30_000);
       return;
     }
     if (!(await requestCameraPermission())) return;
