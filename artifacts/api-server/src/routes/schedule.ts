@@ -1,6 +1,6 @@
 import { Router } from "express";
 import {
-  db, assetsTable, jobsTable, teamMembersTable, teamAvailabilityTable,
+  db, assetsTable, jobsTable, jobPhotosTable, teamMembersTable, teamAvailabilityTable,
   systemSettingsTable, jobTeamCompletionsTable, infillJobsTable, mulchingRecordsTable,
   reactiveJobsTable, teamsTable, executeWithCircuitBreaker,
 } from "@workspace/db";
@@ -203,6 +203,23 @@ router.post(
     // ── Clear existing pending scheduled jobs in the range before regenerating ─
     // Completed and skipped jobs are preserved; only pending/in-progress ones
     // are wiped so the new geosequence-first algorithm can place them cleanly.
+    const rangeJobsToDelete = await executeWithCircuitBreaker(() => db
+      .select({ id: jobsTable.id })
+      .from(jobsTable)
+      .where(
+        and(
+          gte(jobsTable.scheduledDate, fromDate),
+          lte(jobsTable.scheduledDate, toDate),
+          eq(jobsTable.jobType, "scheduled"),
+          inArray(jobsTable.status, ["pending", "in_progress"]),
+          ...(teamId ? [eq(jobsTable.teamId, teamId)] : []),
+        ),
+      ));
+    if (rangeJobsToDelete.length > 0) {
+      await executeWithCircuitBreaker(() => db
+        .delete(jobPhotosTable)
+        .where(inArray(jobPhotosTable.jobId, rangeJobsToDelete.map(j => j.id))));
+    }
     await executeWithCircuitBreaker(() => db
       .delete(jobsTable)
       .where(
@@ -219,6 +236,23 @@ router.post(
     // If a job was scheduled before fromDate and is still pending (not started),
     // delete it so the scheduler places it fresh in the new range.
     // in_progress jobs (crew has started) are left untouched.
+    const flexJobsToDelete = await executeWithCircuitBreaker(() => db
+      .select({ id: jobsTable.id })
+      .from(jobsTable)
+      .where(
+        and(
+          gte(jobsTable.scheduledDate, addDays(fromDate, -DUE_DATE_FLEX_DAYS)),
+          lt(jobsTable.scheduledDate, fromDate),
+          eq(jobsTable.jobType, "scheduled"),
+          eq(jobsTable.status, "pending"),
+          ...(teamId ? [eq(jobsTable.teamId, teamId)] : []),
+        ),
+      ));
+    if (flexJobsToDelete.length > 0) {
+      await executeWithCircuitBreaker(() => db
+        .delete(jobPhotosTable)
+        .where(inArray(jobPhotosTable.jobId, flexJobsToDelete.map(j => j.id))));
+    }
     await executeWithCircuitBreaker(() => db
       .delete(jobsTable)
       .where(
@@ -1784,7 +1818,12 @@ router.post(
       return res.json({ jobsOnDate: 0, jobsSpilled: 0 });
     }
 
-    // Delete them so we can re-insert with updated placement
+    // Delete them so we can re-insert with updated placement.
+    // Must delete job_photos first — FK constraint prevents deleting a job that
+    // has photos attached (job_photos_job_id_jobs_id_fk).
+    await executeWithCircuitBreaker(() => db
+      .delete(jobPhotosTable)
+      .where(inArray(jobPhotosTable.jobId, pendingJobs.map(j => j.id))));
     await executeWithCircuitBreaker(() => db
       .delete(jobsTable)
       .where(inArray(jobsTable.id, pendingJobs.map(j => j.id))));
