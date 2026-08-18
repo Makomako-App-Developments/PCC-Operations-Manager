@@ -1,6 +1,6 @@
 import { useState, useMemo } from "react";
 import { useLocation } from "wouter";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   useGetDashboardSummary, getGetDashboardSummaryQueryKey,
   useListAudits,          getListAuditsQueryKey,
@@ -11,7 +11,7 @@ import {
 import {
   AlertTriangle, CheckCircle2, Clock, SkipForward, Target, DollarSign,
   TrendingUp, TrendingDown, Minus, Leaf, Users, TriangleAlert, HardHat,
-  ClipboardList, Zap, Layers, Sprout, X,
+  ClipboardList, Zap, Layers, Sprout, X, Check, Loader2,
 } from "lucide-react";
 import {
   format, startOfWeek, endOfWeek, startOfMonth, endOfMonth,
@@ -116,6 +116,24 @@ export default function Dashboard() {
   const [, navigate] = useLocation();
   const [period, setPeriod] = useState<Period>("week");
   const [capacityWarningDismissed, setCapacityWarningDismissed] = useState(false);
+  const [reviewing, setReviewing] = useState<Record<string, "accepting" | "rejecting">>({});
+  const queryClient = useQueryClient();
+
+  const handleQuickReview = async (jobId: string, outcome: "accepted" | "rejected") => {
+    setReviewing(r => ({ ...r, [jobId]: outcome === "accepted" ? "accepting" : "rejecting" }));
+    try {
+      await fetch(`/api/jobs/${jobId}/skip-review`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ outcome }),
+      });
+      queryClient.invalidateQueries({ queryKey: getListJobsQueryKey({ status: "skipped", limit: 60 } as any) });
+      queryClient.invalidateQueries({ queryKey: getGetDashboardSummaryQueryKey() });
+    } finally {
+      setReviewing(r => { const n = { ...r }; delete n[jobId]; return n; });
+    }
+  };
 
   const today    = new Date();
   // Council year: 1 July – 30 June
@@ -543,9 +561,39 @@ export default function Dashboard() {
                           </p>
                         )}
                       </div>
-                      <p className="text-[9px] text-gray-300 flex-shrink-0 mt-0.5">
-                        {j.scheduledDate ? format(parseISO(j.scheduledDate), "d MMM") : "—"}
-                      </p>
+                      <div className="flex items-center gap-1.5 flex-shrink-0 mt-0.5">
+                        <p className="text-[9px] text-gray-300">
+                          {j.scheduledDate ? format(parseISO(j.scheduledDate), "d MMM") : "—"}
+                        </p>
+                        {j.skipReviewedAt ? (
+                          <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${j.skipReviewOutcome === "accepted" ? "bg-green-50 text-green-600" : "bg-red-50 text-red-500"}`}>
+                            {j.skipReviewOutcome === "accepted" ? "Accepted" : "Rejected"}
+                          </span>
+                        ) : (
+                          <>
+                            <button
+                              onClick={() => handleQuickReview(j.id, "accepted")}
+                              disabled={!!reviewing[j.id]}
+                              title="Accept excuse"
+                              className="w-6 h-6 rounded-full flex items-center justify-center bg-green-50 hover:bg-green-100 text-green-600 transition-colors disabled:opacity-40"
+                            >
+                              {reviewing[j.id] === "accepting"
+                                ? <Loader2 className="w-3 h-3 animate-spin" />
+                                : <Check className="w-3 h-3" />}
+                            </button>
+                            <button
+                              onClick={() => handleQuickReview(j.id, "rejected")}
+                              disabled={!!reviewing[j.id]}
+                              title="Reject excuse"
+                              className="w-6 h-6 rounded-full flex items-center justify-center bg-red-50 hover:bg-red-100 text-red-500 transition-colors disabled:opacity-40"
+                            >
+                              {reviewing[j.id] === "rejecting"
+                                ? <Loader2 className="w-3 h-3 animate-spin" />
+                                : <X className="w-3 h-3" />}
+                            </button>
+                          </>
+                        )}
+                      </div>
                     </div>
                   ))}
                 </div>
