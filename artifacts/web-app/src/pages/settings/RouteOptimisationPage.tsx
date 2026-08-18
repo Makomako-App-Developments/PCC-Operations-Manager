@@ -244,7 +244,7 @@ export default function RouteOptimisationPage() {
       setAssets(prev => prev.map((a, i) => ({ ...a, routeOrder: i + 1 })));
       setIsDirty(false);
       setMapKey(k => k + 1);
-      toast({ title: "Route order saved", description: `${updates.length} sites updated.` });
+      toast({ title: "Route order saved", description: `${updates.length} sites updated. Regenerate the schedule for changes to take effect.` });
     } catch {
       toast({ title: "Save failed", variant: "destructive" });
     } finally {
@@ -348,7 +348,7 @@ export default function RouteOptimisationPage() {
             <div>
               <h2 className="text-sm font-semibold text-gray-900">Manual Route Editor</h2>
               <p className="text-xs text-gray-400 mt-0.5">
-                Drag sites to fine-tune the sequence for a team — changes apply to the schedule immediately on save
+                Drag sites to fine-tune the sequence for a team — changes take effect the next time the schedule is regenerated
               </p>
             </div>
           </div>
