@@ -200,8 +200,33 @@ router.post(
     const productiveTimeMins = settings?.productiveTimeMins ?? 390;
     const standardCrewSize   = settings?.standardCrewSize   ?? 2;
 
+    // ── Guard: refuse to regenerate if any in_progress jobs exist in the range ─
+    // Deleting an in_progress job would destroy the crew's start timestamp and
+    // any partial completion data. The manager must wait for those jobs to finish
+    // (or mark them complete/skipped) before regenerating.
+    const inProgressJobs = await executeWithCircuitBreaker(() => db
+      .select({ id: jobsTable.id })
+      .from(jobsTable)
+      .where(
+        and(
+          gte(jobsTable.scheduledDate, fromDate),
+          lte(jobsTable.scheduledDate, toDate),
+          eq(jobsTable.jobType, "scheduled"),
+          eq(jobsTable.status, "in_progress"),
+          ...(teamId ? [eq(jobsTable.teamId, teamId)] : []),
+        ),
+      ));
+    if (inProgressJobs.length > 0) {
+      res.status(409).json({
+        error: "Cannot regenerate schedule while jobs are in progress",
+        inProgressCount: inProgressJobs.length,
+        message: `${inProgressJobs.length} job${inProgressJobs.length === 1 ? " is" : "s are"} currently in progress in the selected date range. Mark ${inProgressJobs.length === 1 ? "it" : "them"} complete or skipped before regenerating.`,
+      });
+      return;
+    }
+
     // ── Clear existing pending scheduled jobs in the range before regenerating ─
-    // Completed and skipped jobs are preserved; only pending/in-progress ones
+    // Completed, skipped, and in_progress jobs are preserved; only pending ones
     // are wiped so the new geosequence-first algorithm can place them cleanly.
     const rangeJobsToDelete = await executeWithCircuitBreaker(() => db
       .select({ id: jobsTable.id })
@@ -211,7 +236,7 @@ router.post(
           gte(jobsTable.scheduledDate, fromDate),
           lte(jobsTable.scheduledDate, toDate),
           eq(jobsTable.jobType, "scheduled"),
-          inArray(jobsTable.status, ["pending", "in_progress"]),
+          eq(jobsTable.status, "pending"),
           ...(teamId ? [eq(jobsTable.teamId, teamId)] : []),
         ),
       ));
@@ -227,7 +252,7 @@ router.post(
           gte(jobsTable.scheduledDate, fromDate),
           lte(jobsTable.scheduledDate, toDate),
           eq(jobsTable.jobType, "scheduled"),
-          inArray(jobsTable.status, ["pending", "in_progress"]),
+          eq(jobsTable.status, "pending"),
           ...(teamId ? [eq(jobsTable.teamId, teamId)] : []),
         ),
       ));
