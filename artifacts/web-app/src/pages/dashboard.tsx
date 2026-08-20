@@ -619,7 +619,13 @@ export default function Dashboard() {
               ) : (
                 <div className="divide-y divide-gray-50">
                   {failedAudits.slice(0, 5).map((a, i) => (
-                    <div key={a.id} className="px-5 py-3 flex items-start gap-3">
+                    <button
+                      key={a.id}
+                      type="button"
+                      onClick={() => navigate(`/audits/${a.id}`)}
+                      className="w-full px-5 py-3 flex items-start gap-3 text-left cursor-pointer hover:bg-cyan-50/40 hover:shadow-[inset_3px_0_0_#00AECD] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#00AECD] transition-colors"
+                      title="Open audit"
+                    >
                       <div className={`mt-0.5 w-2 h-2 rounded-full flex-shrink-0 ${i === 0 ? "bg-red-400" : i < 3 ? "bg-amber-400" : "bg-gray-300"}`} />
                       <div className="flex-1 min-w-0">
                         <p className="text-[12px] font-semibold text-gray-800 truncate">
@@ -632,7 +638,7 @@ export default function Dashboard() {
                           {a.scheduledDate ? format(parseISO(a.scheduledDate as string), "d MMM") : "—"}
                         </p>
                       </div>
-                    </div>
+                    </button>
                   ))}
                 </div>
               )}
