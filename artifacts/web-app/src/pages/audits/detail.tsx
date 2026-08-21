@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { useParams, useLocation } from "wouter";
 import { useGetAudit, useDeleteAudit, getListAuditsQueryKey } from "@workspace/api-client-react";
 import { useListAssets, useListUsers, useListTeams } from "@workspace/api-client-react";
@@ -5,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Download, Edit, Trash2, CheckCircle2, XCircle, MinusCircle, MapPin, Camera } from "lucide-react";
+import { ArrowLeft, Download, Edit, Trash2, CheckCircle2, XCircle, MinusCircle, MapPin, Camera, ChevronLeft, ChevronRight, X } from "lucide-react";
 import { format } from "date-fns";
 import { KPI_SECTIONS, ALL_KPIS } from "./kpi-config";
 
@@ -43,11 +44,100 @@ function ResultBadge({ result }: { result: string | null }) {
   );
 }
 
+type AuditPhoto = {
+  id: string;
+  blobUrl: string;
+  caption?: string | null;
+};
+
+function PhotoLightbox({
+  photos,
+  index,
+  onClose,
+  onPrevious,
+  onNext,
+}: {
+  photos: AuditPhoto[];
+  index: number;
+  onClose: () => void;
+  onPrevious: () => void;
+  onNext: () => void;
+}) {
+  const photo = photos[index];
+  const hasMultiplePhotos = photos.length > 1;
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+      if (hasMultiplePhotos && event.key === "ArrowLeft") onPrevious();
+      if (hasMultiplePhotos && event.key === "ArrowRight") onNext();
+    };
+
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [hasMultiplePhotos, onClose, onNext, onPrevious]);
+
+  if (!photo) return null;
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4"
+      role="dialog"
+      aria-modal="true"
+      aria-label={`Audit photo ${index + 1} of ${photos.length}`}
+      onClick={onClose}
+    >
+      <div className="relative flex max-h-full max-w-5xl items-center justify-center" onClick={(event) => event.stopPropagation()}>
+        <img
+          src={photo.blobUrl}
+          alt={photo.caption || `Audit evidence photo ${index + 1} of ${photos.length}`}
+          className="max-h-[calc(100vh-7rem)] max-w-[calc(100vw-3rem)] rounded-xl object-contain shadow-2xl"
+        />
+
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label="Close enlarged photo"
+          className="absolute -right-3 -top-3 flex h-9 w-9 items-center justify-center rounded-full bg-white text-gray-700 shadow-lg transition-colors hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-white"
+        >
+          <X className="h-5 w-5" />
+        </button>
+
+        {hasMultiplePhotos && (
+          <>
+            <button
+              type="button"
+              onClick={onPrevious}
+              aria-label="View previous audit photo"
+              className="absolute left-3 top-1/2 flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full bg-white/95 text-gray-800 shadow-lg transition-colors hover:bg-white focus:outline-none focus:ring-2 focus:ring-white"
+            >
+              <ChevronLeft className="h-6 w-6" />
+            </button>
+            <button
+              type="button"
+              onClick={onNext}
+              aria-label="View next audit photo"
+              className="absolute right-3 top-1/2 flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full bg-white/95 text-gray-800 shadow-lg transition-colors hover:bg-white focus:outline-none focus:ring-2 focus:ring-white"
+            >
+              <ChevronRight className="h-6 w-6" />
+            </button>
+          </>
+        )}
+
+        <div className="absolute bottom-3 left-1/2 -translate-x-1/2 rounded-full bg-black/65 px-3 py-1.5 text-xs font-medium text-white">
+          Photo {index + 1} of {photos.length}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function AuditDetail() {
   const { id } = useParams<{ id: string }>();
   const [, navigate] = useLocation();
   const { toast } = useToast();
   const qc = useQueryClient();
+  const [photoViewer, setPhotoViewer] = useState<{ photos: AuditPhoto[]; index: number } | null>(null);
 
   const { data: audit, isLoading } = useGetAudit(id!, { query: { queryKey: [`/api/audits/${id}`] } });
   const { data: assetsData } = useListAssets({ limit: 2000 });
@@ -207,7 +297,7 @@ export default function AuditDetail() {
               <div className="bg-white rounded-2xl border border-gray-100 shadow-sm divide-y divide-gray-50">
                 {section.kpis.map((kpi) => {
                   const item = getItem(kpi.key);
-                  const photos: any[] = item?.photos ?? [];
+                   const photos = (item?.photos ?? []) as AuditPhoto[];
                   return (
                     <div key={kpi.key} className="px-5 py-4">
                       <div className="flex items-start justify-between gap-4 mb-2">
@@ -228,10 +318,16 @@ export default function AuditDetail() {
 
                       {photos.length > 0 && (
                         <div className="flex flex-wrap gap-2 mt-3">
-                          {photos.map((p: any) => (
-                            <a key={p.id} href={p.blobUrl} target="_blank" rel="noreferrer" className="w-16 h-16 rounded-lg overflow-hidden border border-gray-200 block">
-                              <img src={p.blobUrl} alt="" className="w-full h-full object-cover hover:opacity-90 transition-opacity" />
-                            </a>
+                           {photos.map((p, photoIndex) => (
+                             <button
+                               key={p.id}
+                               type="button"
+                               onClick={() => setPhotoViewer({ photos, index: photoIndex })}
+                               aria-label={`Enlarge audit photo ${photoIndex + 1} of ${photos.length}`}
+                               className="block h-16 w-16 overflow-hidden rounded-lg border border-gray-200 transition-opacity hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-[#00AECD] focus:ring-offset-2"
+                             >
+                               <img src={p.blobUrl} alt="" className="h-full w-full object-cover" />
+                             </button>
                           ))}
                         </div>
                       )}
@@ -243,6 +339,21 @@ export default function AuditDetail() {
           ))}
         </div>
       </div>
+       {photoViewer && (
+         <PhotoLightbox
+           photos={photoViewer.photos}
+           index={photoViewer.index}
+           onClose={() => setPhotoViewer(null)}
+           onPrevious={() => setPhotoViewer((current) => current ? {
+             ...current,
+             index: (current.index - 1 + current.photos.length) % current.photos.length,
+           } : null)}
+           onNext={() => setPhotoViewer((current) => current ? {
+             ...current,
+             index: (current.index + 1) % current.photos.length,
+           } : null)}
+         />
+       )}
     </div>
   );
 }
