@@ -655,6 +655,14 @@ export default function Dashboard() {
                 {completedJobs.length} jobs signed off · actual vs estimated · this {periodLabel}
               </p>
             </div>
+           <button
+             type="button"
+             onClick={() => navigate("/completed-works")}
+             className="rounded-lg border px-3 py-1.5 text-[11px] font-semibold transition-colors hover:bg-[#e0f7fb] focus:outline-none focus:ring-2 focus:ring-[#00AECD]/30"
+             style={{ borderColor: BRAND, color: BRAND }}
+           >
+             View all
+           </button>
           </div>
           {completedJobs.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-14 text-gray-400">
