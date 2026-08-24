@@ -192,24 +192,6 @@ function ScheduleStateChart({ completionPct }: { completionPct: number }) {
             </svg>
           </div>
 
-          <div className="mt-4 grid grid-cols-4 gap-2">
-            {weeks.map(week => (
-              <div
-                key={week.label}
-                className={`rounded-xl border px-2.5 py-2.5 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-sm ${week.current ? "border-[#8fd4dc] bg-[#effbfc]" : "border-[#e4edef] bg-white"}`}
-              >
-                <div className="flex items-center justify-between">
-                  <span className="text-[10px] font-bold text-[#789198]">{week.short}</span>
-                  {week.current && <span className="h-1.5 w-1.5 rounded-full bg-[#00AECD]" aria-label="Current week" />}
-                </div>
-                <p className="mt-1 text-[18px] font-extrabold tracking-[-0.04em]" style={{ color: NAVY }}>{week.pct}%</p>
-                <p className="mt-0.5 text-[9px] font-extrabold" style={{ color: stateColor[week.state] }}>
-                  {week.state === "behind" ? "Below target" : "Within target"}
-                </p>
-              </div>
-            ))}
-          </div>
-
           <div className="mt-5 flex items-start gap-3 rounded-xl border border-[#d8e9eb] bg-[#f3f9f9] p-3">
             <Target className="mt-0.5 h-4 w-4 shrink-0 text-[#087d93]" aria-hidden="true" />
             <p className="text-[11px] font-medium leading-relaxed text-[#4e6e77]">
