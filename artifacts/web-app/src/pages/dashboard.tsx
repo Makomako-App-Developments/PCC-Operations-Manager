@@ -11,7 +11,8 @@ import {
 import {
   AlertTriangle, CheckCircle2, Clock, SkipForward, Target, DollarSign,
   TrendingUp, TrendingDown, Minus, Leaf, Users, TriangleAlert, HardHat,
-  ClipboardList, Zap, Layers, Sprout, X, Check, Loader2,
+  ClipboardList, Zap, Layers, Sprout, X, Check, Loader2, Activity,
+  ArrowDownRight, ArrowUpRight, ChevronRight,
 } from "lucide-react";
 import {
   format, startOfWeek, endOfWeek, startOfMonth, endOfMonth,
@@ -62,9 +63,10 @@ function StatCard({ icon: Icon, label, value, sub, trend, trendDir, color, onCli
   );
 }
 
-// ─── Schedule State Chart ─────────────────────────────────────────────────────
+// ─── Operational Pulse / Schedule State Chart ─────────────────────────────────
 function ScheduleStateChart({ completionPct }: { completionPct: number }) {
-  const stateColor: Record<string, string> = { ahead: "#22c55e", "on-target": BRAND, behind: "#f97316" };
+  const TARGET = 72;
+  const stateColor: Record<string, string> = { ahead: "#15803d", "on-target": BRAND, behind: "#d97706" };
   const stateLabel: Record<string, string> = { ahead: "Ahead", "on-target": "On Target", behind: "Behind" };
   const stateFor = (pct: number) => pct >= 90 ? "ahead" : pct >= 72 ? "on-target" : "behind";
 
@@ -73,40 +75,159 @@ function ScheduleStateChart({ completionPct }: { completionPct: number }) {
     const weekStart = subWeeks(startOfWeek(today, { weekStartsOn: 1 }), ago);
     const raw = ago === 0 ? completionPct : Math.min(100, Math.max(55, completionPct + (ago % 2 === 0 ? 8 : -6)));
     const pct = Math.round(raw);
-    return { label: `Wk ${format(weekStart, "w")}`, pct, state: stateFor(pct), current: ago === 0 };
+    return {
+      label: `Week ${format(weekStart, "w")}`,
+      short: `W${format(weekStart, "w")}`,
+      pct,
+      state: stateFor(pct),
+      current: ago === 0,
+    };
   });
 
-  const overallState = stateFor(completionPct);
+  const current = weeks[weeks.length - 1].pct;
+  const start = weeks[0].pct;
+  const delta = current - start;
+  const lowestWeekIndex = weeks.reduce((lowest, week, index) => week.pct < weeks[lowest].pct ? index : lowest, 0);
+  const weeksAboveTargetAfterDip = weeks.slice(lowestWeekIndex + 1).filter(week => week.pct >= TARGET).length;
+  const overallState = stateFor(current);
+  const trendHeadline = delta >= 0 ? "The trend is recovering" : "The trend is easing";
+  const trendDetail = delta >= 0
+    ? `${weeksAboveTargetAfterDip || 1} week${weeksAboveTargetAfterDip === 1 ? "" : "s"} above the line after the dip`
+    : `${Math.abs(delta)} points below the first week`;
+  const currentStateTone = stateColor[overallState];
+  const pointParts = weeks.map((week, index) => {
+    const x = 16 + index * 90;
+    const chartPct = Math.min(100, Math.max(55, week.pct));
+    const y = 126 - ((chartPct - 65) / 25) * 82;
+    return { x, y, week };
+  });
+  const points = pointParts.map(point => `${point.x},${point.y}`).join(" ");
+
   return (
-    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
-      <div className="flex items-center justify-between mb-4">
-        <div>
-          <h3 className="text-sm font-bold" style={{ color: NAVY }}>Schedule State</h3>
-          <p className="text-[11px] text-gray-400">Rolling 4-week completion rate</p>
-        </div>
-        <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl" style={{ background: `${stateColor[overallState]}18` }}>
-          <Target className="w-3.5 h-3.5" style={{ color: stateColor[overallState] }} />
-          <span className="text-[12px] font-bold" style={{ color: stateColor[overallState] }}>{stateLabel[overallState]}</span>
-        </div>
-      </div>
-      <div className="flex items-end gap-3 h-24">
-        {weeks.map(w => (
-          <div key={w.label} className="flex-1 flex flex-col items-center gap-1.5">
-            <span className="text-[10px] font-bold" style={{ color: stateColor[w.state] }}>{w.pct}%</span>
-            <div className="w-full rounded-t-lg transition-all"
-              style={{ height: `${w.pct}%`, background: w.current ? BRAND : `${stateColor[w.state]}40` }} />
-            <span className="text-[10px] font-semibold text-gray-400">{w.label}</span>
-            <span className="text-[9px] font-medium" style={{ color: stateColor[w.state] }}>{stateLabel[w.state]}</span>
+    <div className="w-full">
+      <section className="overflow-hidden rounded-[24px] border border-[#cde5e9] bg-[#fbfdfd] shadow-[0_18px_45px_rgba(15,42,54,0.10)]">
+        <div className="relative bg-[#eaf7f8] px-6 pb-5 pt-6">
+          <div className="absolute right-0 top-0 h-28 w-28 rounded-bl-[70px] bg-[#d5f0f2]" />
+          <div className="relative flex items-start justify-between gap-4">
+            <div>
+              <div className="mb-2 flex items-center gap-2 text-[10px] font-extrabold uppercase tracking-[0.16em] text-[#367384]">
+                <Activity className="h-3.5 w-3.5" aria-hidden="true" />
+                Operational pulse
+              </div>
+              <h2 className="text-[20px] font-extrabold tracking-[-0.03em]" style={{ color: NAVY }}>
+                Schedule State
+              </h2>
+              <p className="mt-1 text-[12px] font-medium text-[#52707a]">Rolling 4-week completion rate</p>
+            </div>
+            <div className="relative flex shrink-0 items-center gap-2 rounded-full border border-[#a7dce2] bg-[#f9ffff] px-3 py-2">
+              <span className="flex h-5 w-5 items-center justify-center rounded-full bg-[#d9f3f5]">
+                <Check className="h-3.5 w-3.5 text-[#087d93]" strokeWidth={3} aria-hidden="true" />
+              </span>
+              <span className="text-[12px] font-extrabold" style={{ color: currentStateTone }}>{stateLabel[overallState]}</span>
+            </div>
           </div>
-        ))}
-      </div>
-      <div className="mt-3 flex items-center gap-4">
-        {([["#22c55e", "Ahead"], [BRAND, "On Target"], ["#f97316", "Behind"]] as [string, string][]).map(([c, l]) => (
-          <span key={l} className="flex items-center gap-1 text-[10px] text-gray-400">
-            <span className="w-2 h-2 rounded-full" style={{ background: c }} />{l}
-          </span>
-        ))}
-      </div>
+
+          <div className="relative mt-7 flex items-end justify-between">
+            <div>
+              <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-[#52707a]">Current week</p>
+              <p className="mt-1 text-[42px] font-extrabold leading-none tracking-[-0.06em]" style={{ color: NAVY }}>
+                {current}<span className="ml-1 text-[22px] text-[#4e7c86]">%</span>
+              </p>
+            </div>
+            <div
+              className={`mb-1 flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[11px] font-extrabold ${delta >= 0 ? "bg-[#dff4e6] text-[#176b3c]" : "bg-[#fff5df] text-[#a45c00]"}`}
+            >
+              {delta >= 0
+                ? <ArrowUpRight className="h-3.5 w-3.5" aria-hidden="true" />
+                : <ArrowDownRight className="h-3.5 w-3.5" aria-hidden="true" />}
+              {Math.abs(delta)} pts vs W{format(subWeeks(startOfWeek(today, { weekStartsOn: 1 }), 3), "w")}
+            </div>
+          </div>
+        </div>
+
+        <div className="px-6 pb-6 pt-5">
+          <div className="mb-2 flex items-center justify-between">
+            <div>
+              <p className="text-[13px] font-extrabold" style={{ color: "#183b49" }}>{trendHeadline}</p>
+              <p className="mt-0.5 text-[11px] font-medium text-[#6b858c]">{trendDetail}</p>
+            </div>
+            <span className="rounded-md bg-[#f1f5f5] px-2 py-1 text-[10px] font-extrabold uppercase tracking-[0.08em] text-[#607b83]">
+              Target {TARGET}%
+            </span>
+          </div>
+
+          <div className="relative mt-5 rounded-2xl border border-[#e0ebec] bg-[#f8fbfb] px-3 pb-2 pt-3">
+            <div className="pointer-events-none absolute left-3 right-3 top-[52%] border-t border-dashed border-[#b7cdd0]" />
+            <div className="pointer-events-none absolute left-3 top-[calc(52%-10px)] rounded bg-[#f8fbfb] px-1 text-[9px] font-bold text-[#799298]">
+              target {TARGET}%
+            </div>
+            <svg
+              viewBox="0 0 286 154"
+              className="h-[154px] w-full overflow-visible"
+              role="img"
+              aria-label={`Completion rate is ${weeks.map(week => `${week.pct} percent in ${week.short}`).join(", ")}`}
+            >
+              <defs>
+                <linearGradient id="operationalPulseTrendFill" x1="0" x2="0" y1="0" y2="1">
+                  <stop offset="0%" stopColor="#00AECD" stopOpacity="0.20" />
+                  <stop offset="100%" stopColor="#00AECD" stopOpacity="0.01" />
+                </linearGradient>
+              </defs>
+              <path
+                d={`M${pointParts[0].x},${pointParts[0].y} ${pointParts.slice(1).map(point => `${point.x},${point.y}`).join(" ")} L286 145 L16 145 Z`}
+                fill="url(#operationalPulseTrendFill)"
+              />
+              <polyline points={points} fill="none" stroke={BRAND} strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" />
+              {pointParts.map(({ x, y, week }) => {
+                const tone = stateColor[week.state];
+                return (
+                  <g key={week.label} className="transition-transform duration-200 hover:scale-110" style={{ transformOrigin: `${x}px ${y}px` }}>
+                    {week.current && <circle cx={x} cy={y} r="12" fill={BRAND} opacity="0.12" />}
+                    <circle cx={x} cy={y} r={week.current ? "6.5" : "5.5"} fill="#fbfdfd" stroke={tone} strokeWidth="3" />
+                    <text x={x} y={y - 14} textAnchor="middle" fill={tone} fontSize="12" fontWeight="800">{week.pct}%</text>
+                    <text x={x} y="151" textAnchor="middle" fill="#66828a" fontSize="10" fontWeight="700">{week.short}</text>
+                  </g>
+                );
+              })}
+            </svg>
+          </div>
+
+          <div className="mt-4 grid grid-cols-4 gap-2">
+            {weeks.map(week => (
+              <div
+                key={week.label}
+                className={`rounded-xl border px-2.5 py-2.5 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-sm ${week.current ? "border-[#8fd4dc] bg-[#effbfc]" : "border-[#e4edef] bg-white"}`}
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-bold text-[#789198]">{week.short}</span>
+                  {week.current && <span className="h-1.5 w-1.5 rounded-full bg-[#00AECD]" aria-label="Current week" />}
+                </div>
+                <p className="mt-1 text-[18px] font-extrabold tracking-[-0.04em]" style={{ color: NAVY }}>{week.pct}%</p>
+                <p className="mt-0.5 text-[9px] font-extrabold" style={{ color: stateColor[week.state] }}>
+                  {week.state === "behind" ? "Below target" : "Within target"}
+                </p>
+              </div>
+            ))}
+          </div>
+
+          <div className="mt-5 flex items-start gap-3 rounded-xl border border-[#d8e9eb] bg-[#f3f9f9] p-3">
+            <Target className="mt-0.5 h-4 w-4 shrink-0 text-[#087d93]" aria-hidden="true" />
+            <p className="text-[11px] font-medium leading-relaxed text-[#4e6e77]">
+              <span className="font-extrabold text-[#244d59]">
+                {current >= TARGET ? "Read: intervene only if the next week slips." : "Read: the current week needs attention."}
+              </span>{" "}
+              Current performance is {Math.abs(current - TARGET)} points {current >= TARGET ? "above" : "below"} the {TARGET}% target.
+            </p>
+            <ChevronRight className="mt-0.5 h-4 w-4 shrink-0 text-[#77949b]" aria-hidden="true" />
+          </div>
+
+          <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-[#e8eff0] pt-3 text-[10px] font-bold text-[#718a91]">
+            <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-[#15803d]" />Ahead · 90%+</span>
+            <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-[#00AECD]" />On Target · 72–89%</span>
+            <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-[#d97706]" />Behind · &lt;72%</span>
+          </div>
+        </div>
+      </section>
     </div>
   );
 }
