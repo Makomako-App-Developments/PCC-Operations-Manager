@@ -835,6 +835,16 @@ export interface JobPhotoListResponse {
 }
 
 /**
+ * Invalid request
+ */
+export type BadRequestResponse = ErrorResponse;
+
+/**
+ * Forbidden
+ */
+export type ForbiddenResponse = ErrorResponse;
+
+/**
  * Unauthorised
  */
 export type UnauthorisedResponse = ErrorResponse;

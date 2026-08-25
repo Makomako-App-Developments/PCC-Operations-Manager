@@ -1103,6 +1103,18 @@ paths:
 # ─── Shared responses ──────────────────────────────────────────────────────────
 components:
   responses:
+    BadRequest:
+      description: Invalid request
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    Forbidden:
+      description: Forbidden
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
     Unauthorised:
       description: Unauthorised
       content:
