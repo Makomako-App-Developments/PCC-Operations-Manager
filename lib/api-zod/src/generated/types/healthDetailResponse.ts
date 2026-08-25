@@ -5,10 +5,14 @@
  * Porirua City Council – Garden Asset Management API
  * OpenAPI spec version: 0.1.0
  */
+import type { HealthDetailResponseCbState } from "./healthDetailResponseCbState";
 
 export interface HealthDetailResponse {
   status: string;
   version: string;
-  uptime: number;
-  db: string;
+  uptimeMs: number;
+  dbLatencyMs: number;
+  nodeVersion: string;
+  cbState: HealthDetailResponseCbState;
+  auditFailures: number;
 }

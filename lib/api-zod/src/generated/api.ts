@@ -1159,7 +1159,7 @@ export const DownloadAuditPdfParams = zod.object({
  * @summary Liveness probe
  */
 export const GetLivenessResponse = zod.object({
-  ok: zod.boolean(),
+  status: zod.string(),
 });
 
 /**
@@ -1167,8 +1167,8 @@ export const GetLivenessResponse = zod.object({
  */
 export const GetReadinessResponse = zod.object({
   status: zod.string(),
-  db: zod.string(),
-  uptime: zod.number(),
+  dbLatencyMs: zod.number(),
+  cbState: zod.enum(["CLOSED", "OPEN", "HALF_OPEN"]),
 });
 
 /**
@@ -1177,8 +1177,11 @@ export const GetReadinessResponse = zod.object({
 export const GetFullHealthResponse = zod.object({
   status: zod.string(),
   version: zod.string(),
-  uptime: zod.number(),
-  db: zod.string(),
+  uptimeMs: zod.number(),
+  dbLatencyMs: zod.number(),
+  nodeVersion: zod.string(),
+  cbState: zod.enum(["CLOSED", "OPEN", "HALF_OPEN"]),
+  auditFailures: zod.number(),
 });
 
 /**

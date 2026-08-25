@@ -30,6 +30,7 @@ import type {
   AuditResponsesBulk,
   AuditUpdate,
   DashboardSummary,
+  DegradedHealthResponse,
   GetScheduleWeekParams,
   HealthDetailResponse,
   HealthStatus,
@@ -62,6 +63,7 @@ import type {
   ReactiveJobCreate,
   ReactiveJobListResponse,
   ReactiveJobUpdate,
+  ReadinessErrorResponse,
   ReadinessResponse,
   ScheduleGenerateBody,
   ScheduleGenerateResult,
@@ -3334,8 +3336,8 @@ export const getGetLivenessUrl = () => {
 
 export const getLiveness = async (
   options?: RequestInit,
-): Promise<OkResponse> => {
-  return customFetch<OkResponse>(getGetLivenessUrl(), {
+): Promise<HealthStatus> => {
+  return customFetch<HealthStatus>(getGetLivenessUrl(), {
     ...options,
     method: "GET",
   });
@@ -3422,7 +3424,7 @@ export const getGetReadinessQueryKey = () => {
 
 export const getGetReadinessQueryOptions = <
   TData = Awaited<ReturnType<typeof getReadiness>>,
-  TError = ErrorType<void>,
+  TError = ErrorType<ReadinessErrorResponse>,
 >(options?: {
   query?: UseQueryOptions<
     Awaited<ReturnType<typeof getReadiness>>,
@@ -3449,7 +3451,7 @@ export const getGetReadinessQueryOptions = <
 export type GetReadinessQueryResult = NonNullable<
   Awaited<ReturnType<typeof getReadiness>>
 >;
-export type GetReadinessQueryError = ErrorType<void>;
+export type GetReadinessQueryError = ErrorType<ReadinessErrorResponse>;
 
 /**
  * @summary Readiness probe — checks DB connectivity
@@ -3457,7 +3459,7 @@ export type GetReadinessQueryError = ErrorType<void>;
 
 export function useGetReadiness<
   TData = Awaited<ReturnType<typeof getReadiness>>,
-  TError = ErrorType<void>,
+  TError = ErrorType<ReadinessErrorResponse>,
 >(options?: {
   query?: UseQueryOptions<
     Awaited<ReturnType<typeof getReadiness>>,
@@ -3497,7 +3499,7 @@ export const getGetFullHealthQueryKey = () => {
 
 export const getGetFullHealthQueryOptions = <
   TData = Awaited<ReturnType<typeof getFullHealth>>,
-  TError = ErrorType<unknown>,
+  TError = ErrorType<DegradedHealthResponse>,
 >(options?: {
   query?: UseQueryOptions<
     Awaited<ReturnType<typeof getFullHealth>>,
@@ -3524,7 +3526,7 @@ export const getGetFullHealthQueryOptions = <
 export type GetFullHealthQueryResult = NonNullable<
   Awaited<ReturnType<typeof getFullHealth>>
 >;
-export type GetFullHealthQueryError = ErrorType<unknown>;
+export type GetFullHealthQueryError = ErrorType<DegradedHealthResponse>;
 
 /**
  * @summary Full health status with uptime and version
@@ -3532,7 +3534,7 @@ export type GetFullHealthQueryError = ErrorType<unknown>;
 
 export function useGetFullHealth<
   TData = Awaited<ReturnType<typeof getFullHealth>>,
-  TError = ErrorType<unknown>,
+  TError = ErrorType<DegradedHealthResponse>,
 >(options?: {
   query?: UseQueryOptions<
     Awaited<ReturnType<typeof getFullHealth>>,

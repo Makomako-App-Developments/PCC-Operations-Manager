@@ -635,17 +635,74 @@ export interface MulchingRecordListResponse {
   total: number;
 }
 
+export type ReadinessResponseCbState =
+  (typeof ReadinessResponseCbState)[keyof typeof ReadinessResponseCbState];
+
+export const ReadinessResponseCbState = {
+  CLOSED: "CLOSED",
+  OPEN: "OPEN",
+  HALF_OPEN: "HALF_OPEN",
+} as const;
+
 export interface ReadinessResponse {
   status: string;
-  db: string;
-  uptime: number;
+  dbLatencyMs: number;
+  cbState: ReadinessResponseCbState;
 }
+
+export type ReadinessErrorResponseCbState =
+  (typeof ReadinessErrorResponseCbState)[keyof typeof ReadinessErrorResponseCbState];
+
+export const ReadinessErrorResponseCbState = {
+  CLOSED: "CLOSED",
+  OPEN: "OPEN",
+  HALF_OPEN: "HALF_OPEN",
+} as const;
+
+export interface ReadinessErrorResponse {
+  status: string;
+  error: string;
+  cbState: ReadinessErrorResponseCbState;
+  openedAt?: string;
+  timeSinceOpenMs?: number;
+}
+
+export type HealthDetailResponseCbState =
+  (typeof HealthDetailResponseCbState)[keyof typeof HealthDetailResponseCbState];
+
+export const HealthDetailResponseCbState = {
+  CLOSED: "CLOSED",
+  OPEN: "OPEN",
+  HALF_OPEN: "HALF_OPEN",
+} as const;
 
 export interface HealthDetailResponse {
   status: string;
   version: string;
-  uptime: number;
+  uptimeMs: number;
+  dbLatencyMs: number;
+  nodeVersion: string;
+  cbState: HealthDetailResponseCbState;
+  auditFailures: number;
+}
+
+export type DegradedHealthResponseCbState =
+  (typeof DegradedHealthResponseCbState)[keyof typeof DegradedHealthResponseCbState];
+
+export const DegradedHealthResponseCbState = {
+  CLOSED: "CLOSED",
+  OPEN: "OPEN",
+  HALF_OPEN: "HALF_OPEN",
+} as const;
+
+export interface DegradedHealthResponse {
+  status: string;
+  uptimeMs: number;
   db: string;
+  cbState: DegradedHealthResponseCbState;
+  auditFailures: number;
+  openedAt?: string;
+  timeSinceOpenMs?: number;
 }
 
 export type AuditLogEntryAction =
