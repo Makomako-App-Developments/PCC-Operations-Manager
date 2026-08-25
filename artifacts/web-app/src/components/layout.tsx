@@ -19,6 +19,7 @@ import {
   Settings,
   FileText,
   UsersRound,
+  CircleHelp,
 } from "lucide-react";
 
 function useAuditBadge(isSupervisor: boolean) {
@@ -56,12 +57,13 @@ export function Layout({ children }: { children: React.ReactNode }) {
     { icon: BarChart2,       label: "Reports",         href: "/reports",           activePrefix: "/reports",       managerOnly: false },
     { icon: FileText,        label: "Specification",   href: "/specification",     activePrefix: "/specification", managerOnly: false },
     { icon: UsersRound,      label: "Team",            href: "/team",              activePrefix: "/team",          managerOnly: false },
+    { icon: CircleHelp,      label: "Help",            href: "/help",              activePrefix: "/help",          managerOnly: false },
   ];
   const isWorker = user?.role === "field_worker";
   const isPrivileged = user?.role === "administrator" || user?.role === "manager" || user?.role === "supervisor";
   const isManagerOrAdmin = user?.role === "administrator" || user?.role === "manager";
   const nav = isWorker
-    ? allNav.filter(item => item.href === "/specification")
+    ? allNav.filter(item => item.href === "/specification" || item.href === "/help")
     : allNav.filter(item => !item.managerOnly || isPrivileged);
 
   return (

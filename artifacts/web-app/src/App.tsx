@@ -7,7 +7,7 @@ import { AuthProvider, useAuth } from "@/lib/auth";
 import { Layout } from "@/components/layout";
 import { Loader2 } from "lucide-react";
 
-const WORKER_ALLOWED_PATHS = ["/specification"];
+const WORKER_ALLOWED_PATHS = ["/specification", "/help"];
 
 // Placeholder imports for pages
 import Login from "@/pages/login";
@@ -31,6 +31,7 @@ import Settings from "@/pages/settings/index";
 import MapPage from "@/pages/map";
 import CompletedWorks from "@/pages/completed-works/index";
 import SkipsPage from "@/pages/skips/index";
+import HelpPage from "@/pages/help";
 
 const queryClient = new QueryClient();
 
@@ -91,7 +92,8 @@ function Router() {
       <Route path="/team"><ProtectedRoute path="/team" component={Team} /></Route>
       <Route path="/specification"><ProtectedRoute path="/specification" component={Specification} /></Route>
       <Route path="/completed-works"><ProtectedRoute path="/completed-works" component={CompletedWorks} /></Route>
-      <Route path="/skips"><ProtectedRoute path="/skips" component={SkipsPage} /></Route>
+       <Route path="/skips"><ProtectedRoute path="/skips" component={SkipsPage} /></Route>
+       <Route path="/help"><ProtectedRoute path="/help" component={HelpPage} /></Route>
       <Route path="/">
         <ProtectedRoute path="/" component={() => {
           window.location.href = "/dashboard";
