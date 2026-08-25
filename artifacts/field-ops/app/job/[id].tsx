@@ -1341,7 +1341,7 @@ export default function JobDetailScreen() {
         {/* Info tiles */}
           {asset ? <View style={styles.infoGrid}>
           {/* Description — full width, first */}
-          {(asset as any).description ? (
+          {(asset as any)?.description ? (
             <View style={[styles.infoTile, styles.infoTileWide, { backgroundColor: colors.card, borderColor: colors.border, borderRadius: colors.radius }]}>
               <View style={styles.infoTileHeader}>
                 <Feather name="info" size={13} color={colors.primary} />
@@ -1475,13 +1475,13 @@ export default function JobDetailScreen() {
         </View>
 
         {/* Asset Notes — read-only, sourced from asset record */}
-        {(asset as any).notes ? (
+        {(asset as any)?.notes ? (
           <View style={[styles.section, { backgroundColor: colors.card, borderColor: colors.border, borderRadius: colors.radius }]}>
             <View style={styles.sectionHeader}>
               <Feather name="file-text" size={16} color={colors.primary} />
               <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Notes</Text>
             </View>
-            <Text style={[styles.notesText, { color: colors.foreground }]}>{(asset as any).notes}</Text>
+            <Text style={[styles.notesText, { color: colors.foreground }]}>{(asset as any)?.notes}</Text>
           </View>
         ) : null}
 
