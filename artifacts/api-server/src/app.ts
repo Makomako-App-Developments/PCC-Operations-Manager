@@ -77,6 +77,59 @@ app.use("/api/auth", authLimiter);
 // are excluded because they ARE the probes that close the circuit.
 app.use("/api", dbCircuitBreakerMiddleware);
 
+// Request-level diagnostics for the Field Ops job-detail fan-out. Keep this
+// deliberately narrow: these events contain only a route label and opaque
+// record id, never query strings, headers, bodies, or response data.
+app.use("/api", (req: Request, res: Response, next: NextFunction) => {
+  const startedAt = performance.now();
+  const pathOnly = req.path.split("?")[0];
+  const match = pathOnly.match(/^\/(?:jobs|schedule\/week|assets)\/([^/]+)(?:\/(photos|task-skip-reasons))?$/);
+  const isJobDetailRequest =
+    /^\/jobs\/[^/]+(?:\/(?:photos|task-skip-reasons))?$/.test(pathOnly) ||
+    /^\/assets\/[^/]+$/.test(pathOnly) ||
+    pathOnly === "/schedule/week";
+  if (!isJobDetailRequest) { next(); return; }
+
+  const jobId = match?.[1] && /^[0-9a-f-]{8,}$/i.test(match[1]) ? match[1] : undefined;
+  const endpoint = jobId ? pathOnly.replace(jobId, ":id") : pathOnly;
+  res.once("finish", () => {
+    const durationMs = Math.round(performance.now() - startedAt);
+    const failureCategory =
+      res.statusCode >= 500 ? "http_5xx" :
+      res.statusCode >= 400 ? "http_4xx" : undefined;
+    const diagnostic = {
+      method: req.method,
+      endpoint,
+      ...(jobId ? { jobId } : {}),
+      durationMs,
+      status: res.statusCode,
+      ...(failureCategory ? { failureCategory } : {}),
+    };
+    if (typeof Sentry.addBreadcrumb === "function") {
+      Sentry.addBreadcrumb({
+        category: "field-ops.server-request",
+        level: failureCategory || durationMs >= 1000 ? "warning" : "info",
+        message: `${req.method} ${endpoint}`,
+        data: diagnostic,
+      });
+    }
+    // Capture slow/failing requests as searchable events. Healthy fast
+    // requests remain breadcrumbs attached to a later mobile error event.
+    if (failureCategory || durationMs >= 1000) {
+      if (typeof Sentry.withScope === "function") {
+        Sentry.withScope(scope => {
+          scope.setTag("field_ops_endpoint", endpoint);
+          scope.setTag("field_ops_status", String(res.statusCode));
+          scope.setContext("field_ops_request", diagnostic);
+          Sentry.captureMessage("Field Ops request diagnostic", "warning");
+        });
+      }
+    }
+    console.info("[field-ops-request]", JSON.stringify(diagnostic));
+  });
+  next();
+});
+
 // ── Photo/upload serving — proxy from GCS object storage ─────────────────────
 // blobUrl format stored in DB: /api/uploads/uploads/<uuid>.<ext>
 // GCS object name: uploads/<uuid>.<ext>  (inside DEFAULT_OBJECT_STORAGE_BUCKET_ID)

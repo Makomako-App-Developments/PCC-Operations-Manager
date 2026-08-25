@@ -11,6 +11,42 @@ const DEFAULT_JSON_ACCEPT = "application/json, application/problem+json";
 
 let _baseUrl = "";
 let _authTokenGetter: (() => string | null | Promise<string | null>) | null = null;
+export type RequestDiagnostic = {
+  method: string;
+  endpoint: string;
+  jobId?: string;
+  durationMs: number;
+  status?: number;
+  retryCount: number;
+  failureCategory?: "network" | "timeout" | "http_4xx" | "http_5xx" | "parse";
+};
+let _requestDiagnosticHandler: ((diagnostic: RequestDiagnostic) => void) | null = null;
+
+export function setRequestDiagnosticHandler(
+  handler: ((diagnostic: RequestDiagnostic) => void) | null,
+): void {
+  _requestDiagnosticHandler = handler;
+}
+
+function safeEndpoint(url: string): { endpoint: string; jobId?: string } {
+  const path = url.replace(/^https?:\/\/[^/]+/, "").split("?")[0];
+  const match = path.match(/^\/api\/(jobs|assets)\/([^/]+)/);
+  if (match && /^[0-9a-f-]{8,}$/i.test(match[2])) {
+    return { endpoint: path.replace(match[2], ":id"), jobId: match[2] };
+  }
+  if (path === "/api/schedule/week") return { endpoint: path };
+  return { endpoint: path.replace(/\/[0-9a-f-]{8,}/gi, "/:id") };
+}
+
+function failureCategory(error: unknown): RequestDiagnostic["failureCategory"] {
+  if (error instanceof ApiError) {
+    if (error.status >= 500) return "http_5xx";
+    if (error.status >= 400) return "http_4xx";
+  }
+  if (error instanceof ResponseParseError) return "parse";
+  if (error instanceof Error && /timeout|timed out|abort/i.test(error.message)) return "timeout";
+  return "network";
+}
 
 export function setBaseUrl(url: string): void {
   _baseUrl = url.replace(/\/$/, "");
@@ -344,7 +380,18 @@ export async function customFetch<T = unknown>(
   const requestInfo = { method, url: resolvedUrl };
   const credentials = authToken ? ("omit" as const) : ("include" as const);
 
-  const response = await fetch(input, { ...init, method, headers, credentials });
+  const startedAt = performance.now();
+  let response: Response;
+  try {
+    response = await fetch(input, { ...init, method, headers, credentials });
+  } catch (error) {
+    const safe = safeEndpoint(resolvedUrl);
+    _requestDiagnosticHandler?.({
+      method, ...safe, durationMs: Math.round(performance.now() - startedAt),
+      retryCount: _retry ? 1 : 0, failureCategory: failureCategory(error),
+    });
+    throw error;
+  }
 
   if (!response.ok) {
     // On 401, attempt a single silent token refresh then retry
@@ -360,8 +407,19 @@ export async function customFetch<T = unknown>(
       _onUnauthorized?.();
     }
     const errorData = await parseErrorBody(response, method);
-    throw new ApiError(response, errorData, requestInfo);
+    const error = new ApiError(response, errorData, requestInfo);
+    const safe = safeEndpoint(resolvedUrl);
+    _requestDiagnosticHandler?.({
+      method, ...safe, durationMs: Math.round(performance.now() - startedAt),
+      status: response.status, retryCount: _retry ? 1 : 0, failureCategory: failureCategory(error),
+    });
+    throw error;
   }
 
+  const safe = safeEndpoint(resolvedUrl);
+  _requestDiagnosticHandler?.({
+    method, ...safe, durationMs: Math.round(performance.now() - startedAt),
+    status: response.status, retryCount: _retry ? 1 : 0,
+  });
   return (await parseSuccessBody(response, responseType, requestInfo)) as T;
 }

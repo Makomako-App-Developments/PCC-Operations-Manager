@@ -36,7 +36,7 @@ import { StatusBadge } from "@/components/StatusBadge";
 import { BoundaryMap } from "@/components/BoundaryMap";
 import { useAuth } from "@/context/auth";
 import { useColors } from "@/hooks/useColors";
-import { getApiUrl } from "@/lib/api";
+import { getApiUrl, trackedFetch } from "@/lib/api";
 import { useOfflinePhotoQueue } from "@/hooks/useOfflinePhotoQueue";
 
 // ─── Task definitions ────────────────────────────────────────────────────────
@@ -99,7 +99,7 @@ function useJobPhotos(jobId: string) {
   return useQuery<{ data: JobPhoto[] }>({
     queryKey: ["job-photos", jobId],
     queryFn: async () => {
-      const res = await fetch(getApiUrl(`/api/jobs/${jobId}/photos`), { credentials: "include" });
+      const res = await trackedFetch(`/api/jobs/${jobId}/photos`, { credentials: "include" });
       if (!res.ok) throw new Error("Failed to load photos");
       return res.json();
     },
@@ -128,7 +128,7 @@ function useUploadPhoto(jobId: string) {
           form.append("photo", { uri, name: filename, type: mimeType } as any);
         }
         if (caption) form.append("caption", caption);
-        const res = await fetch(getApiUrl(`/api/jobs/${jobId}/photos`), {
+        const res = await trackedFetch(`/api/jobs/${jobId}/photos`, {
           method: "POST",
           credentials: "include",
           body: form,
@@ -151,7 +151,7 @@ function useUploadPhoto(jobId: string) {
 function usePostTaskSkipReason(jobId: string) {
   return useMutation({
     mutationFn: async (body: { taskIndex: number; taskLabel: string; reason: string }) => {
-      const res = await fetch(getApiUrl(`/api/jobs/${jobId}/task-skip-reasons`), {
+      const res = await trackedFetch(`/api/jobs/${jobId}/task-skip-reasons`, {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
@@ -167,7 +167,7 @@ function useTeamComplete(jobId: string) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async ({ notes }: { notes?: string }) => {
-      const res = await fetch(getApiUrl(`/api/jobs/${jobId}/team-complete`), {
+      const res = await trackedFetch(`/api/jobs/${jobId}/team-complete`, {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
