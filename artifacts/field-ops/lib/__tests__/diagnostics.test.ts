@@ -135,6 +135,45 @@ describe("Field Ops request diagnostics", () => {
     expect(json).not.toContain("user-entered text");
   });
 
+  it("records safe diagnostics when an error response body cannot be read", async () => {
+    const partialBody =
+      '{"photoUrl":"https://private.example/photo.jpg","note":"user-entered text"';
+    const diagnostics: unknown[] = [];
+    setRequestDiagnosticHandler(diagnostic => diagnostics.push(diagnostic));
+    const response = new Response(partialBody, {
+      status: 500,
+      headers: { "content-type": "application/json" },
+    });
+    vi.spyOn(response, "text").mockRejectedValue(
+      new Error("response body stream failed after reading private content"),
+    );
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(response);
+
+    await expect(
+      customFetch(
+        "/api/jobs/123e4567-e89b-12d3-a456-426614174000?photoUrl=https%3A%2F%2Fprivate.example%2Fphoto.jpg",
+        { responseType: "json" },
+        true,
+      ),
+    ).rejects.toThrow("response body stream failed");
+
+    expect(diagnostics).toHaveLength(1);
+    const payload = diagnostics[0] as Record<string, unknown>;
+    expect(payload).toMatchObject({
+      method: "GET",
+      endpoint: "/api/jobs/:id",
+      jobId: "123e4567-e89b-12d3-a456-426614174000",
+      status: 500,
+      retryCount: 1,
+      failureCategory: "network",
+    });
+    expect(payload.durationMs).toEqual(expect.any(Number));
+    const json = JSON.stringify(payload);
+    expect(json).not.toContain(partialBody);
+    expect(json).not.toContain("private.example");
+    expect(json).not.toContain("user-entered text");
+  });
+
   it("records a successful retry without exposing the failed request", async () => {
     const diagnostics: unknown[] = [];
     setRequestDiagnosticHandler(diagnostic => diagnostics.push(diagnostic));

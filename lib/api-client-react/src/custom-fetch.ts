@@ -406,7 +406,18 @@ export async function customFetch<T = unknown>(
       // Refresh failed — session is unrecoverable; notify the app to re-login
       _onUnauthorized?.();
     }
-    const errorData = await parseErrorBody(response, method);
+    let errorData: unknown;
+    try {
+      errorData = await parseErrorBody(response, method);
+    } catch (error) {
+      const safe = safeEndpoint(resolvedUrl);
+      _requestDiagnosticHandler?.({
+        method, ...safe, durationMs: Math.round(performance.now() - startedAt),
+        status: response.status, retryCount: _retry ? 1 : 0,
+        failureCategory: failureCategory(error),
+      });
+      throw error;
+    }
     const error = new ApiError(response, errorData, requestInfo);
     const safe = safeEndpoint(resolvedUrl);
     _requestDiagnosticHandler?.({
