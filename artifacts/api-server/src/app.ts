@@ -80,7 +80,11 @@ app.use("/api", dbCircuitBreakerMiddleware);
 // Request-level diagnostics for the Field Ops job-detail fan-out. Keep this
 // deliberately narrow: these events contain only a route label and opaque
 // record id, never query strings, headers, bodies, or response data.
-app.use("/api", (req: Request, res: Response, next: NextFunction) => {
+export function fieldOpsDiagnosticMiddleware(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): void {
   const startedAt = performance.now();
   const pathOnly = req.path.split("?")[0];
   const match = pathOnly.match(/^\/(?:jobs|schedule\/week|assets)\/([^/]+)(?:\/(photos|task-skip-reasons))?$/);
@@ -128,7 +132,9 @@ app.use("/api", (req: Request, res: Response, next: NextFunction) => {
     console.info("[field-ops-request]", JSON.stringify(diagnostic));
   });
   next();
-});
+}
+
+app.use("/api", fieldOpsDiagnosticMiddleware);
 
 // ── Photo/upload serving — proxy from GCS object storage ─────────────────────
 // blobUrl format stored in DB: /api/uploads/uploads/<uuid>.<ext>
