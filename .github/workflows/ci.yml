@@ -47,6 +47,9 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Check generated API clients
+        run: pnpm run check:api-contract
+
       - name: Push DB schema
         run: pnpm --filter @workspace/db run push
 
