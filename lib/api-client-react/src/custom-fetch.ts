@@ -370,15 +370,19 @@ export async function customFetch<T = unknown>(
   }
 
   let authToken: string | null = null;
-  if (_authTokenGetter) {
+  if (_authTokenGetter && !_retry) {
     authToken = await Promise.resolve(_authTokenGetter());
   }
   if (authToken) {
     headers.set("authorization", `Bearer ${authToken}`);
+  } else if (_retry) {
+    // The refresh endpoint rotates the httpOnly cookie session. Do not resend
+    // the stale bearer token that caused the 401, or the retry will fail again.
+    headers.delete("authorization");
   }
 
   const requestInfo = { method, url: resolvedUrl };
-  const credentials = authToken ? ("omit" as const) : ("include" as const);
+  const credentials = _retry || !authToken ? ("include" as const) : ("omit" as const);
 
   const startedAt = performance.now();
   let response: Response;

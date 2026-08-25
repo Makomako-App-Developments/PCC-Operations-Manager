@@ -178,7 +178,7 @@ describe("Field Ops request diagnostics", () => {
     const diagnostics: unknown[] = [];
     setRequestDiagnosticHandler(diagnostic => diagnostics.push(diagnostic));
     let attempts = 0;
-    vi.spyOn(globalThis, "fetch").mockImplementation(async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(async () => {
       attempts += 1;
       if (attempts === 1) return new Response("expired", { status: 401 });
       if (attempts === 2) return new Response(null, { status: 200 });
@@ -203,5 +203,13 @@ describe("Field Ops request diagnostics", () => {
     const json = JSON.stringify(diagnostics[0]);
     expect(json).not.toContain("opaque-token");
     expect(json).not.toContain("private");
+    expect(fetchMock.mock.calls[0][1]).toMatchObject({
+      credentials: "omit",
+      headers: expect.objectContaining({ authorization: "Bearer opaque-token" }),
+    });
+    expect(fetchMock.mock.calls[2][1]).toMatchObject({
+      credentials: "include",
+    });
+    expect((fetchMock.mock.calls[2][1] as RequestInit).headers).not.toHaveProperty("authorization");
   });
 });
