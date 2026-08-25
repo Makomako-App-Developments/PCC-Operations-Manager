@@ -119,10 +119,7 @@ function ScheduleStateChart({ completionPct }: { completionPct: number }) {
               </h2>
               <p className="mt-1 text-[12px] font-medium text-[#52707a]">Rolling 4-week completion rate</p>
             </div>
-            <div className="relative flex shrink-0 items-center gap-2 rounded-full border border-[#a7dce2] bg-[#f9ffff] px-3 py-2">
-              <span className="flex h-5 w-5 items-center justify-center rounded-full bg-[#d9f3f5]">
-                <Check className="h-3.5 w-3.5 text-[#087d93]" strokeWidth={3} aria-hidden="true" />
-              </span>
+            <div className="relative flex shrink-0 items-center rounded-full border border-[#a7dce2] bg-[#f9ffff] px-3 py-2">
               <span className="text-[12px] font-extrabold" style={{ color: currentStateTone }}>{stateLabel[overallState]}</span>
             </div>
           </div>
