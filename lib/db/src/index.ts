@@ -287,6 +287,28 @@ export class DbCircuitBreaker {
 
 export const dbCircuitBreaker = new DbCircuitBreaker();
 
+/** Errors that indicate a brief database restart or broken connection. */
+export function isTransientDatabaseRestartError(err: unknown): boolean {
+  const error = err as { code?: unknown; message?: unknown } | null;
+  const code = typeof error?.code === "string" ? error.code : "";
+  const message = typeof error?.message === "string" ? error.message : "";
+
+  // PostgreSQL shutdown/recovery and connection-failure SQLSTATEs.
+  if (["57P01", "57P02", "57P03", "08000", "08003", "08006", "08001", "08004"].includes(code)) {
+    return true;
+  }
+  // Node socket errors and the messages emitted by pg when a backend restarts.
+  if (["ECONNRESET", "EPIPE", "ETIMEDOUT", "ECONNREFUSED"].includes(code)) {
+    return true;
+  }
+  return /(?:terminat(?:ing|ed) connection|server closed connection unexpectedly|connection reset|admin(?:istrative)? shutdown|cannot connect now)/i.test(message);
+}
+
+export type CircuitBreakerOperationOptions = {
+  /** Only safe, idempotent reads may opt into the bounded recovery retry. */
+  safeRead?: boolean;
+};
+
 /**
  * Wraps any database operation with circuit-breaker logic.
  *
@@ -303,6 +325,7 @@ export const dbCircuitBreaker = new DbCircuitBreaker();
  */
 export async function executeWithCircuitBreaker<T>(
   fn: () => Promise<T>,
+  options: CircuitBreakerOperationOptions = {},
 ): Promise<T> {
   if (!dbCircuitBreaker.tryAcquire()) {
     throw Object.assign(
@@ -316,7 +339,17 @@ export async function executeWithCircuitBreaker<T>(
   // that eventually settles cannot corrupt the state of its replacement.
   const gen = dbCircuitBreaker.getProbeGeneration();
   try {
-    const result = await fn();
+    let result: T;
+    try {
+      result = await fn();
+    } catch (err) {
+      if (!options.safeRead || !isTransientDatabaseRestartError(err)) {
+        throw err;
+      }
+      // Do not record the first transient failure: recovery is part of this
+      // single logical request. A second failure is recorded below.
+      result = await fn();
+    }
     dbCircuitBreaker.recordSuccess(gen);
     return result;
   } catch (err) {

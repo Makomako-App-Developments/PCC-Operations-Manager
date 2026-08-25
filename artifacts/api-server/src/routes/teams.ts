@@ -9,7 +9,10 @@ const router = Router();
 
 // GET /api/teams
 router.get("/teams", requireAuth, async (_req, res) => {
-  const rows = await executeWithCircuitBreaker(() => db.select().from(teamsTable));
+  const rows = await executeWithCircuitBreaker(
+    () => db.select().from(teamsTable),
+    { safeRead: true },
+  );
   res.json(rows);
 });
 

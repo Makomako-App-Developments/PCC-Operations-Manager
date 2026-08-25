@@ -20,6 +20,7 @@ import {
   auditPhotosTable,
   auditItemsTable,
   auditsTable,
+  isTransientDatabaseRestartError,
 } from "@workspace/db";
 import { eq } from "drizzle-orm";
 
@@ -284,8 +285,25 @@ app.use("/api", router);
 const MAX_CLIENT_ERROR_MESSAGE_LENGTH = 300;
 
 app.use((err: unknown, req: Request, res: Response, _next: NextFunction) => {
+  const isTransientRestart = isTransientDatabaseRestartError(err);
+  const errorCode = (err as { code?: unknown })?.code;
+  const isCircuitOpen = errorCode === "CIRCUIT_OPEN";
   if (process.env["SENTRY_DSN"]) {
-    Sentry.captureException(err);
+    if (typeof Sentry.withScope === "function") {
+      Sentry.withScope(scope => {
+        scope.setTag(
+          "database_failure_category",
+          isTransientRestart
+            ? "transient_database_restart"
+            : isCircuitOpen
+              ? "database_circuit_open"
+              : "query_or_application_error",
+        );
+        Sentry.captureException(err);
+      });
+    } else {
+      Sentry.captureException(err);
+    }
   }
   console.error("[error]", err);
 
@@ -296,6 +314,13 @@ app.use((err: unknown, req: Request, res: Response, _next: NextFunction) => {
   let message = err instanceof Error ? err.message : "Internal server error";
   if (message.length > MAX_CLIENT_ERROR_MESSAGE_LENGTH) {
     message = `${message.slice(0, MAX_CLIENT_ERROR_MESSAGE_LENGTH)}… (truncated)`;
+  }
+  if (isTransientRestart || isCircuitOpen) {
+    res.status(503).json({
+      error: "Database temporarily unavailable — please retry in a few seconds",
+      code: "DATABASE_TEMPORARILY_UNAVAILABLE",
+    });
+    return;
   }
   res.status(500).json({ error: message });
 });
