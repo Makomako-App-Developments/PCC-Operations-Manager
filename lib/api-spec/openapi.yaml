@@ -1060,7 +1060,7 @@ components:
 
     Role:
       type: string
-      enum: [manager, supervisor, team_leader, field_worker]
+      enum: [administrator, manager, supervisor, team_leader, field_worker]
 
     GardenType:
       type: string
@@ -1093,7 +1093,7 @@ components:
 
     JobStatus:
       type: string
-      enum: [pending, in_progress, completed, skipped, overdue]
+      enum: [draft, pending, in_progress, paused, completed, skipped, overdue]
 
     AuditStatus:
       type: string
@@ -1189,6 +1189,7 @@ components:
         serviceTimeMins: { type: integer }
         frequency:
           $ref: "#/components/schemas/Frequency"
+        siteType: { type: string, enum: [park, street], nullable: true }
         teamId:          { type: string, format: uuid, nullable: true }
         ward:
           allOf:
@@ -1198,6 +1199,8 @@ components:
         streetAddress: { type: string, nullable: true }
         lat:           { type: number, nullable: true }
         lng:           { type: number, nullable: true }
+        routeOrder:    { type: integer, nullable: true }
+        description:   { type: string, nullable: true }
         notes:         { type: string, nullable: true }
         isActive:      { type: boolean }
         createdAt:     { type: string, format: date-time }
@@ -1228,6 +1231,7 @@ components:
         serviceTimeMins: { type: integer }
         frequency:
           $ref: "#/components/schemas/Frequency"
+        siteType: { type: string, enum: [park, street] }
         teamId:        { type: string, format: uuid }
         ward:
           $ref: "#/components/schemas/Ward"
@@ -1235,6 +1239,8 @@ components:
         streetAddress: { type: string }
         lat:           { type: number }
         lng:           { type: number }
+        routeOrder:    { type: integer }
+        description:   { type: string }
         notes:         { type: string }
       required:
         - reference
@@ -1833,7 +1839,7 @@ components:
     # ─── Users ─────────────────────────────────────────────────────────────────
     UserRole:
       type: string
-      enum: [manager, supervisor, field_worker]
+      enum: [administrator, manager, supervisor, team_leader, field_worker]
 
     UserSafe:
       type: object

@@ -18,8 +18,9 @@ export default function Login() {
       sessionStorage.removeItem("loggedOutReason");
       setInactivityBanner(true);
       const t = setTimeout(() => setInactivityBanner(false), 8000);
-      return () => clearTimeout(t);
+      return () => { clearTimeout(t); };
     }
+    return undefined;
   }, []);
   
   const { login } = useAuth();

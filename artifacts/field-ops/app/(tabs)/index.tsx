@@ -2,6 +2,7 @@ import { Feather } from "@expo/vector-icons";
 import { useGetScheduleWeek } from "@workspace/api-client-react";
 import { Redirect } from "expo-router";
 import React, { useMemo, useState } from "react";
+import type { ScheduledJob } from "@/lib/todayJobsLogic";
 import {
   ActivityIndicator,
   Platform,
@@ -75,7 +76,19 @@ function getGreeting() {
 
 // ─── Collapsible day section ──────────────────────────────────────────────────
 
-type Job = ReturnType<typeof useMemo<any[], any>> extends (infer T)[] ? T : any;
+type Job = ScheduledJob & {
+  assetName?: string;
+  gardenType?: string;
+  serviceTimeMins?: number;
+  assetDesc?: string | null;
+  suburb?: string | null;
+  streetAddress?: string | null;
+  lat?: number | null;
+  lng?: number | null;
+  isAllTeams?: boolean;
+  jobType?: string;
+  routeOrder?: number | null;
+};
 
 function DaySection({
   date,
@@ -149,14 +162,14 @@ function DaySection({
                   <JobCard
                     key={job.id}
                     id={job.id}
-                    assetName={job.assetName}
+                    assetName={job.assetName ?? "Unknown site"}
                     assetDesc={(job as any).assetDesc}
-                    gardenType={job.gardenType}
+                    gardenType={job.gardenType ?? "—"}
                     suburb={(job as any).suburb}
                     streetAddress={(job as any).streetAddress}
                     lat={(job as any).lat}
                     lng={(job as any).lng}
-                    serviceTimeMins={job.serviceTimeMins}
+                    serviceTimeMins={job.serviceTimeMins ?? 0}
                     status={job.status}
                     scheduledDate={job.scheduledDate}
                     isAllTeams={(job as any).isAllTeams ?? false}
@@ -169,14 +182,14 @@ function DaySection({
                 <JobCard
                   key={job.id}
                   id={job.id}
-                  assetName={job.assetName}
+                  assetName={job.assetName ?? "Unknown site"}
                   assetDesc={(job as any).assetDesc}
-                  gardenType={job.gardenType}
+                  gardenType={job.gardenType ?? "—"}
                   suburb={(job as any).suburb}
                   streetAddress={(job as any).streetAddress}
                   lat={(job as any).lat}
                   lng={(job as any).lng}
-                  serviceTimeMins={job.serviceTimeMins}
+                  serviceTimeMins={job.serviceTimeMins ?? 0}
                   status={job.status}
                   scheduledDate={job.scheduledDate}
                   isAllTeams={(job as any).isAllTeams ?? false}
@@ -225,11 +238,11 @@ export default function TodayScreen() {
     const map = new Map<string, Job[]>();
     for (const w of [thisWeek, nextWeek, week3]) {
       if (!w?.days) continue;
-      for (const d of w.days as { date: string; jobs: Job[] }[]) {
+      for (const d of w.days) {
         // The API excludes manager-only drafts. Keep this guard as a second
         // boundary so a malformed or stale response can never expose draft
         // work in the field app.
-        if (!map.has(d.date)) map.set(d.date, (d.jobs ?? []).filter(job => job.status !== "draft"));
+        if (!map.has(d.date)) map.set(d.date, (d.jobs ?? []).filter(job => (job.status as string) !== "draft") as unknown as Job[]);
       }
     }
     return map;
@@ -238,7 +251,7 @@ export default function TodayScreen() {
   // Carry forward any pending/in-progress jobs from past dates into today.
   // Logic lives in lib/todayJobsLogic.ts so it can be unit-tested independently.
   const todayJobs = useMemo(
-    () => computeTodayJobs(dayMap as Map<string, Job[]>, TODAY),
+    () => computeTodayJobs(dayMap, TODAY),
     [dayMap],
   );
   const day1Jobs  = dayMap.get(DAY1)  ?? [];

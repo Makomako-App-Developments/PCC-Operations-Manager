@@ -399,7 +399,7 @@ export default function CompletedWorks() {
       totalActualMins += r.actualTimeMins ?? 0;
       totalScheduledMins += r.estimatedTimeMins ?? 0;
     }
-    const totalAreaM2 = [...uniqueAssets.values()].reduce((s, a) => s + Number(a ?? 0), 0);
+    const totalAreaM2 = [...uniqueAssets.values()].reduce<number>((s, a) => s + Number(a ?? 0), 0);
     return {
       gardens: uniqueAssets.size,
       hours: totalActualMins / 60,
@@ -729,7 +729,7 @@ export default function CompletedWorks() {
                         </td>
                         <td className="px-4 py-3">
                           <div className="flex items-center gap-1 justify-end">
-                            {row.notes && <FileText className="w-3 h-3 text-amber-400 flex-shrink-0" title="Has notes" />}
+                            {row.notes && <FileText className="w-3 h-3 text-amber-400 flex-shrink-0" aria-label="Has notes" />}
                             <button
                               title="Download PDF"
                               onClick={e => { e.stopPropagation(); window.open(`/api/jobs/${row.id}/pdf`, "_blank"); }}

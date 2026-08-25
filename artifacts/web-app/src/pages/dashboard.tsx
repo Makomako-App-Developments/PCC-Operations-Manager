@@ -849,7 +849,7 @@ export default function Dashboard() {
         {/* ── Pest Plant Sightings (full width) ── */}
         {(() => {
           const allSightings: { itemId: string; assetId: string; assetName: string; conductedAt: string; plantNames: string[] }[] = (summary as any)?.pestSightings ?? [];
-          const periodSightings = allSightings.filter(s => inPeriod(s.conductedAt instanceof Date ? (s.conductedAt as Date).toISOString() : String(s.conductedAt)));
+          const periodSightings = allSightings.filter(s => inPeriod(String(s.conductedAt)));
           return (
             <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
               <div className="px-6 py-4 border-b flex items-center justify-between">

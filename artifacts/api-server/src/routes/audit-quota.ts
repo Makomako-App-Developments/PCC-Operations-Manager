@@ -3,7 +3,7 @@ import { db, auditsTable, auditWeeklyQuotasTable, auditQuotaItemsTable, jobsTabl
 import { eq, and, sql, isNull } from "drizzle-orm";
 import { requireAuth, requireRole } from "../middlewares/auth";
 
-interface SampleRow { asset_id: string; asset_name: string; source_job_id: string; }
+interface SampleRow extends Record<string, unknown> { asset_id: string; asset_name: string; source_job_id: string; }
 
 const router = Router();
 

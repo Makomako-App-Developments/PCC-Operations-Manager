@@ -221,6 +221,7 @@ export interface AssetStub {
   frequency: string;
   teamId?: string | null;
   suburb?: string | null;
+  description?: string | null;
 }
 
 export interface TeamStub {
@@ -477,7 +478,7 @@ export function ReactiveJobWizard({ teamsData, assetsData, onClose, onPublished 
       const data = await res.json();
       setScheduleWasPushed(true);
       setPushSessionToken(data.pushedAt ?? new Date().toISOString());
-      qc.invalidateQueries({ queryKey: getGetScheduleWeekQueryKey({ teamId: selectedTeamId }) });
+      qc.invalidateQueries({ queryKey: getGetScheduleWeekQueryKey({ week: weekStr, teamId: selectedTeamId }) });
       setStep(4);
     } catch (err) {
       toast({ title: "Push failed", description: String(err), variant: "destructive" });
@@ -515,7 +516,7 @@ export function ReactiveJobWizard({ teamsData, assetsData, onClose, onPublished 
       }
       setScheduleWasPushed(false);
       setPushSessionToken(null);
-      qc.invalidateQueries({ queryKey: getGetScheduleWeekQueryKey({ teamId: selectedTeamId }) });
+      qc.invalidateQueries({ queryKey: getGetScheduleWeekQueryKey({ week: weekStr, teamId: selectedTeamId }) });
       setStep(3);
     } catch (err) {
       toast({ title: "Undo failed", description: String(err), variant: "destructive" });

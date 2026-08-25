@@ -9,6 +9,7 @@
 export type Role = (typeof Role)[keyof typeof Role];
 
 export const Role = {
+  administrator: "administrator",
   manager: "manager",
   supervisor: "supervisor",
   team_leader: "team_leader",

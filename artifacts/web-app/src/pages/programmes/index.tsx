@@ -85,7 +85,7 @@ function estimateInfillMins(
   species: { speciesCategory: string; quantity: number }[],
   rates?: Record<string, number>,
 ): number {
-  const r = rates ?? MINS_PER_PLANT;
+    const r: Record<string, number> = rates ?? MINS_PER_PLANT;
   return species.reduce((s, sp) => s + sp.quantity * (r[sp.speciesCategory] ?? MINS_PER_PLANT[sp.speciesCategory as PlantGrade] ?? 5), 0);
 }
 

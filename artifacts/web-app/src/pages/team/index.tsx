@@ -34,7 +34,7 @@ interface WorkloadRow {
 
 interface WorkloadData {
   rows: WorkloadRow[];
-  meta: { productiveTimeMins: number; annualFteHours: number; workingDaysPerYear: number };
+  meta: { productiveTimeMins: number; annualFteHours: number; workingDaysPerYear: number; standardCrewSize: number };
 }
 
 // ─── Constants ───────────────────────────────────────────────────────────────
@@ -98,7 +98,7 @@ function fmt(n: number) {
 // ─── Hooks ───────────────────────────────────────────────────────────────────
 
 function useLivePeople(): LivePerson[] {
-  const { data: users = [] } = useQuery<{ data: Array<{ id: string; name: string; role: string; teamId: string | null; isActive: boolean }> }>({
+  const { data: users } = useQuery<{ data: Array<{ id: string; name: string; role: string; teamId: string | null; isActive: boolean }> }>({
     queryKey: ["users"],
     queryFn: async () => {
       const res = await fetch("/api/users", { credentials: "include" });
@@ -128,7 +128,7 @@ function useLivePeople(): LivePerson[] {
 
   const teamMap = Object.fromEntries(teams.map(t => [t.id, t.name]));
 
-  const accountPeople: LivePerson[] = (users.data ?? [])
+  const accountPeople: LivePerson[] = (users?.data ?? [])
     .filter(u => u.isActive && !OFFICE_ROLES.has(u.role))
     .map(u => ({
       id:     u.id,
@@ -954,6 +954,7 @@ function SetDayButton({
 
 export default function TeamPage() {
   const { user } = useAuth();
+  const { toast } = useToast();
   const qc = useQueryClient();
   const canEdit = user?.role === "administrator" || user?.role === "manager" || user?.role === "supervisor";
   const PEOPLE = useLivePeople();
@@ -1118,12 +1119,12 @@ export default function TeamPage() {
     qc.invalidateQueries({ queryKey: ["team-avail", weekStart] });
 
     // Check stranded reactive jobs from any of the parallel saves
-    const anyStranded = wholeResults.find(r => r.strandedJobs?.length > 0);
-    if (anyStranded?.strandedJobs?.length > 0) {
-      setStrandedJobsWarn({ personName, date: dayDate, count: anyStranded.strandedJobs.length });
+    const strandedJobs = wholeResults.flatMap(r => r.strandedJobs ?? []);
+    if (strandedJobs.length > 0) {
+      setStrandedJobsWarn({ personName, date: dayDate, count: strandedJobs.length });
       toast({
         title: "Unscheduled work needs reassignment",
-        description: `${personName} has ${anyStranded.strandedJobs.length} unscheduled job${anyStranded.strandedJobs.length !== 1 ? "s" : ""} on this day that need a new assignee.`,
+        description: `${personName} has ${strandedJobs.length} unscheduled job${strandedJobs.length !== 1 ? "s" : ""} on this day that need a new assignee.`,
       });
     }
 

@@ -51,12 +51,12 @@ function NativeTabLayout({
       {isPrivileged && (
         <NativeTabs.Trigger name="audits">
           <Icon sf={{ default: "checkmark.seal", selected: "checkmark.seal.fill" }} />
-          <Label>Audits{auditBadge > 0 ? ` (${auditBadge})` : ""}</Label>
+          <Label>{`Audits${auditBadge > 0 ? ` (${auditBadge})` : ""}`}</Label>
         </NativeTabs.Trigger>
       )}
       {isPrivileged && (
         <NativeTabs.Trigger name="programmes">
-          <Icon sf={{ default: "calendar", selected: "calendar.fill" }} />
+          <Icon sf={{ default: "calendar", selected: "calendar" }} />
           <Label>Schedule</Label>
         </NativeTabs.Trigger>
       )}

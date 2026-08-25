@@ -57,7 +57,7 @@ router.get("/assets", requireAuth, validateQuery(listQuerySchema), async (req, r
     eq(assetsTable.isActive, isActive),
     ...(gardenType ? [eq(assetsTable.gardenType, gardenType as any)] : []),
     ...(teamId ? [eq(assetsTable.teamId, teamId)] : []),
-    ...(ward ? [eq(assetsTable.ward, ward)] : []),
+    ...(ward ? [eq(assetsTable.ward, ward as any)] : []),
     ...(search ? [or(ilike(assetsTable.name, `%${search}%`), ilike(assetsTable.globalId, `%${search}%`))] : []),
   ];
   const where = and(...conditions);

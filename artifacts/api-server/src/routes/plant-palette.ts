@@ -36,7 +36,7 @@ router.patch("/plant-palette/:id", requireAuth, requireRole("manager"), async (r
   const [row] = await executeWithCircuitBreaker(() => db
     .update(plantPaletteTable)
     .set(parsed.data)
-    .where(eq(plantPaletteTable.id, id))
+    .where(eq(plantPaletteTable.id, id as any))
     .returning());
   if (!row) { res.status(404).json({ error: "Not found" }); return; }
   res.json(row);
@@ -45,7 +45,7 @@ router.patch("/plant-palette/:id", requireAuth, requireRole("manager"), async (r
 // DELETE /api/plant-palette/:id
 router.delete("/plant-palette/:id", requireAuth, requireRole("manager"), async (req, res) => {
   const { id } = req.params;
-  await executeWithCircuitBreaker(() => db.delete(plantPaletteTable).where(eq(plantPaletteTable.id, id)));
+  await executeWithCircuitBreaker(() => db.delete(plantPaletteTable).where(eq(plantPaletteTable.id, id as any)));
   res.status(204).send();
 });
 

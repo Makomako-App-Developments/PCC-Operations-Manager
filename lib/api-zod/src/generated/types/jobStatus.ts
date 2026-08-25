@@ -9,8 +9,10 @@
 export type JobStatus = (typeof JobStatus)[keyof typeof JobStatus];
 
 export const JobStatus = {
+  draft: "draft",
   pending: "pending",
   in_progress: "in_progress",
+  paused: "paused",
   completed: "completed",
   skipped: "skipped",
   overdue: "overdue",

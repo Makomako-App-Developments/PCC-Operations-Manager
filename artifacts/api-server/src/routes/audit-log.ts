@@ -41,7 +41,7 @@ router.get(
     const { table, action, recordId, userId, from, to, limit, offset } =
       res.locals.query as ListQuery;
 
-    const conditions = [];
+  const conditions: any[] = [];
     if (table)    conditions.push(eq(auditLogTable.tableName,   table));
     if (action)   conditions.push(eq(auditLogTable.action,      action));
     if (recordId) conditions.push(eq(auditLogTable.recordId,    recordId));

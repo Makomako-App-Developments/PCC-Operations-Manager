@@ -20,6 +20,7 @@ export interface ErrorResponse {
 export type Role = (typeof Role)[keyof typeof Role];
 
 export const Role = {
+  administrator: "administrator",
   manager: "manager",
   supervisor: "supervisor",
   team_leader: "team_leader",
@@ -78,8 +79,10 @@ export const JobType = {
 export type JobStatus = (typeof JobStatus)[keyof typeof JobStatus];
 
 export const JobStatus = {
+  draft: "draft",
   pending: "pending",
   in_progress: "in_progress",
+  paused: "paused",
   completed: "completed",
   skipped: "skipped",
   overdue: "overdue",
@@ -164,6 +167,15 @@ export interface TeamCreate {
   name: string;
 }
 
+export type AssetSiteType =
+  | (typeof AssetSiteType)[keyof typeof AssetSiteType]
+  | null;
+
+export const AssetSiteType = {
+  park: "park",
+  street: "street",
+} as const;
+
 export interface Asset {
   id: string;
   reference: string;
@@ -173,17 +185,28 @@ export interface Asset {
   areaM2: number;
   serviceTimeMins: number;
   frequency: Frequency;
+  siteType?: AssetSiteType;
   teamId?: string | null;
   ward?: Ward | null;
   suburb?: string | null;
   streetAddress?: string | null;
   lat?: number | null;
   lng?: number | null;
+  routeOrder?: number | null;
+  description?: string | null;
   notes?: string | null;
   isActive: boolean;
   createdAt: string;
   updatedAt: string;
 }
+
+export type AssetCreateSiteType =
+  (typeof AssetCreateSiteType)[keyof typeof AssetCreateSiteType];
+
+export const AssetCreateSiteType = {
+  park: "park",
+  street: "street",
+} as const;
 
 export interface AssetCreate {
   reference: string;
@@ -193,12 +216,15 @@ export interface AssetCreate {
   areaM2: number;
   serviceTimeMins: number;
   frequency: Frequency;
+  siteType?: AssetCreateSiteType;
   teamId?: string;
   ward?: Ward;
   suburb?: string;
   streetAddress?: string;
   lat?: number;
   lng?: number;
+  routeOrder?: number;
+  description?: string;
   notes?: string;
 }
 
@@ -657,8 +683,10 @@ export interface AuditLogListResponse {
 export type UserRole = (typeof UserRole)[keyof typeof UserRole];
 
 export const UserRole = {
+  administrator: "administrator",
   manager: "manager",
   supervisor: "supervisor",
+  team_leader: "team_leader",
   field_worker: "field_worker",
 } as const;
 

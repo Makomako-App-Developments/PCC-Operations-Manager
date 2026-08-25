@@ -68,6 +68,7 @@ interface GanttAssetRow {
   assetId: string;
   assetName: string;
   assetDesc: string | null;
+  assetRef?: string | null;
   gardenType: string;
   standard: string;
   frequency: string;
@@ -1470,7 +1471,7 @@ export default function Schedule() {
   // ── Urgent job ──────────────────────────────────────────────────────────────
   const { data: allAssets } = useListAssets(
     { limit: 2000 },
-    { query: { enabled: urgentOpen || wizardOpen || insertOpen } },
+    { query: { queryKey: ["/api/assets", { limit: 2000 }], enabled: urgentOpen || wizardOpen || insertOpen } },
   );
 
   const createJob = useCreateJob({

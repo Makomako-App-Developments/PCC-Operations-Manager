@@ -119,7 +119,7 @@ function deriveScheduleState(
   if (assetJobs.length === 0 && assetReactive.length === 0) return "no-jobs";
 
   if (assetJobs.some(j => j.status === "overdue")) return "overdue";
-  if (assetReactive.some(r => r.status === "open" || r.status === "in_progress")) {
+  if (assetReactive.some(r => (r.status as string) === "open" || r.status === "in_progress")) {
     if (assetJobs.some(j => j.status === "in_progress")) return "in-progress";
   }
   if (assetJobs.some(j => j.status === "in_progress")) return "in-progress";
@@ -159,7 +159,7 @@ function deriveJobTypes(
   if (jobs.some(j => j.assetId === assetId && (j.status === "pending" || j.status === "in_progress"))) {
     types.push("Scheduled");
   }
-  if (reactiveJobs.some(r => r.assetId === assetId && (r.status === "open" || r.status === "in_progress"))) {
+  if (reactiveJobs.some(r => r.assetId === assetId && ((r.status as string) === "open" || r.status === "in_progress"))) {
     types.push("Reactive");
   }
   if (mulchingRecords.some(m => m.assetId === assetId)) types.push("Mulching");

@@ -701,7 +701,7 @@ router.post(
       const [asset] = await executeWithCircuitBreaker(() => db
         .select({ name: assetsTable.name })
         .from(assetsTable)
-        .where(eq(assetsTable.id, created.assetId))
+        .where(eq(assetsTable.id, created.assetId as string))
         .limit(1));
       const assetName = asset?.name ?? "a site";
       const dateStr = typeof created.scheduledDate === "string"
@@ -1239,7 +1239,7 @@ router.post("/jobs/:id/team-complete", requireAuth, async (req, res) => {
 router.get("/reactive-jobs", requireAuth, async (req, res) => {
   const assetId = req.query.assetId as string | undefined;
   const statusFilter = req.query.status as string | undefined;
-  const conditions = [];
+  const conditions: any[] = [];
   if (assetId) conditions.push(eq(reactiveJobsTable.assetId, assetId));
 
   // Non-privileged users may only see reactive jobs assigned to their team
@@ -1259,7 +1259,7 @@ router.get("/reactive-jobs", requireAuth, async (req, res) => {
   }
   const rows = await executeWithCircuitBreaker(() => db
     .select({
-      ...reactiveJobsTable,
+      ...(reactiveJobsTable as any),
       raisedByName: usersTable.name,
       assetDescription: assetsTable.description,
     })

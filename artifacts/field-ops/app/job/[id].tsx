@@ -944,7 +944,7 @@ export default function JobDetailScreen() {
   const status = job?.status;
   const isPending = status === "pending";
   const isActive = status === "in_progress";
-  const isPaused = status === "paused";
+  const isPaused = (status as string | undefined) === "paused";
   const isDone = status === "completed" || status === "skipped";
   const isActionable = isPending || isActive || isPaused;
   const isMulching = (job as any)?.jobType === "mulching";

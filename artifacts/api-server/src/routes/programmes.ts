@@ -20,7 +20,7 @@ const router = Router();
 
 router.get("/infill-jobs", requireAuth, async (req, res) => {
   const { assetId, status } = req.query as Record<string, string | undefined>;
-  const conditions = [];
+  const conditions: any[] = [];
   if (assetId) conditions.push(eq(infillJobsTable.assetId, assetId));
   if (status)  conditions.push(eq(infillJobsTable.status, status as any));
 
@@ -187,7 +187,7 @@ router.patch(
 
       const [updated] = await executeWithCircuitBreaker(() => db
         .update(infillJobsTable)
-        .set({ ...patch, updatedAt: new Date() })
+        .set({ ...patch, updatedAt: new Date() } as any)
         .where(eq(infillJobsTable.id, id))
         .returning());
 
@@ -227,7 +227,7 @@ router.delete(
 
 router.get("/infill-orders", requireAuth, async (req, res) => {
   const { assetId, status } = req.query as Record<string, string | undefined>;
-  const conditions = [];
+  const conditions: any[] = [];
   if (assetId) conditions.push(eq(infillOrdersTable.assetId, assetId));
   if (status)  conditions.push(eq(infillOrdersTable.status, status as any));
 
@@ -301,7 +301,7 @@ router.patch(
 
 router.get("/mulching-records", requireAuth, async (req, res) => {
   const { assetId, status } = req.query as Record<string, string | undefined>;
-  const conditions = [];
+  const conditions: any[] = [];
   if (assetId) conditions.push(eq(mulchingRecordsTable.assetId, assetId));
   if (status)  conditions.push(eq(mulchingRecordsTable.status, status as any));
 
@@ -486,7 +486,7 @@ const createDepthReadingSchema = z.object({
 
 router.get("/mulch-depth-readings", requireAuth, async (req, res) => {
   const { assetId } = req.query as Record<string, string | undefined>;
-  const conditions = [];
+  const conditions: any[] = [];
   if (assetId) conditions.push(eq(mulchDepthReadingsTable.assetId, assetId));
 
   const rows = await executeWithCircuitBreaker(() => db

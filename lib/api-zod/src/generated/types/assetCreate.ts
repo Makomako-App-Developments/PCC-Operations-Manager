@@ -5,6 +5,7 @@
  * Porirua City Council – Garden Asset Management API
  * OpenAPI spec version: 0.1.0
  */
+import type { AssetCreateSiteType } from "./assetCreateSiteType";
 import type { Frequency } from "./frequency";
 import type { GardenType } from "./gardenType";
 import type { Standard } from "./standard";
@@ -18,11 +19,14 @@ export interface AssetCreate {
   areaM2: number;
   serviceTimeMins: number;
   frequency: Frequency;
+  siteType?: AssetCreateSiteType;
   teamId?: string;
   ward?: Ward;
   suburb?: string;
   streetAddress?: string;
   lat?: number;
   lng?: number;
+  routeOrder?: number;
+  description?: string;
   notes?: string;
 }

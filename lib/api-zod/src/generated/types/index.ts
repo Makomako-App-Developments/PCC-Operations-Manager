@@ -8,7 +8,9 @@
 
 export * from "./asset";
 export * from "./assetCreate";
+export * from "./assetCreateSiteType";
 export * from "./assetListResponse";
+export * from "./assetSiteType";
 export * from "./assetTypeCount";
 export * from "./assetUpdate";
 export * from "./audit";

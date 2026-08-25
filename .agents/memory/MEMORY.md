@@ -12,3 +12,4 @@
 - [Stat card filter-awareness pattern](stat-card-filter-awareness.md) — use a *BaseFiltered var (search/team/date only, no status) for per-status counts; declare it AFTER the sorted source to avoid TDZ.
 - [Geosequence-only push rule](geosequence-push-rule.md) — CRITICAL: jobs must ALWAYS be selected/ordered by routeOrder (geosequence) only. Never by duration or size. Push tail of route first.
 - [Accepted-skip draft lifecycle](accepted-skip-draft-lifecycle.md) — accepted regular skips are manager-only cycle reservations; capacity-safe placement must serialize by team/date.
+- [Generated API contract](generated-api-contract.md) — update the OpenAPI source and regenerate clients whenever shared route/schema fields change.
