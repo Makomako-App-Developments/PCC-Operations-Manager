@@ -203,10 +203,10 @@ describe("Field Ops request diagnostics", () => {
     const json = JSON.stringify(diagnostics[0]);
     expect(json).not.toContain("opaque-token");
     expect(json).not.toContain("private");
-    expect(fetchMock.mock.calls[0][1]).toMatchObject({
-      credentials: "omit",
-      headers: expect.objectContaining({ authorization: "Bearer opaque-token" }),
-    });
+    expect(fetchMock.mock.calls[0][1]).toMatchObject({ credentials: "omit" });
+    expect((fetchMock.mock.calls[0][1] as RequestInit).headers).toBeInstanceOf(Headers);
+    expect(((fetchMock.mock.calls[0][1] as RequestInit).headers as Headers).get("authorization"))
+      .toBe("Bearer opaque-token");
     expect(fetchMock.mock.calls[2][1]).toMatchObject({
       credentials: "include",
     });
