@@ -38,6 +38,7 @@ import { useAuth } from "@/context/auth";
 import { useColors } from "@/hooks/useColors";
 import { getApiUrl, trackedFetch } from "@/lib/api";
 import { useOfflinePhotoQueue } from "@/hooks/useOfflinePhotoQueue";
+import { loadCachedCoreJob, saveCachedCoreJob } from "@/lib/jobDetailCache";
 
 // ─── Task definitions ────────────────────────────────────────────────────────
 
@@ -104,6 +105,8 @@ function useJobPhotos(jobId: string) {
       return res.json();
     },
     enabled: !!jobId,
+    retry: 2,
+    retryDelay: attempt => Math.min(1000 * 2 ** attempt, 4000),
   });
 }
 
@@ -306,7 +309,7 @@ function ObservationsSection({
 
 function PhotoSection({ jobId, readOnly }: { jobId: string; readOnly: boolean }) {
   const colors = useColors();
-  const { data, isLoading } = useJobPhotos(jobId);
+  const { data, isLoading, isError, refetch, isFetching } = useJobPhotos(jobId);
   const uploadPhoto = useUploadPhoto(jobId);
   const { pending: queuedPhotos, isFlushing, add: addToQueue } = useOfflinePhotoQueue("job", jobId);
   const photos = data?.data ?? [];
@@ -372,6 +375,17 @@ function PhotoSection({ jobId, readOnly }: { jobId: string; readOnly: boolean })
 
   return (
     <View style={[styles.section, { backgroundColor: colors.card, borderColor: colors.border, borderRadius: colors.radius }]}>
+      {isError && (
+        <View style={[styles.optionalError, { backgroundColor: "#fff7ed", borderColor: "#fed7aa" }]}>
+          <Feather name="wifi-off" size={15} color="#c2410c" />
+          <Text style={[styles.optionalErrorText, { color: "#9a3412" }]}>
+            Photos are unavailable right now.
+          </Text>
+          <TouchableOpacity onPress={() => refetch()} disabled={isFetching} style={styles.retryButton}>
+            {isFetching ? <ActivityIndicator size="small" color={colors.primary} /> : <Text style={[styles.retryText, { color: colors.primary }]}>Retry</Text>}
+          </TouchableOpacity>
+        </View>
+      )}
       <View style={styles.sectionHeader}>
         <Feather name="camera" size={16} color={colors.primary} />
         <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Photo Record</Text>
@@ -895,10 +909,39 @@ export default function JobDetailScreen() {
 
   const queryClient = useQueryClient();
 
-  const { data: job, isLoading: jobLoading } = useGetJob(id ?? "");
-  const { data: asset, isLoading: assetLoading } = useGetAsset(
+  const { data: liveJob, isLoading: jobLoading, isError: jobError, refetch: refetchJob, isFetching: jobFetching } = useGetJob(id ?? "", {
+    query: {
+      enabled: !!id,
+      retry: 2,
+      retryDelay: (attempt: number) => Math.min(1000 * 2 ** attempt, 4000),
+    } as any,
+  });
+  const [cachedJob, setCachedJob] = useState<any>();
+  const [usingCachedJob, setUsingCachedJob] = useState(false);
+  useEffect(() => {
+    if (!id) return;
+    loadCachedCoreJob<any>(id).then(cached => {
+      if (!liveJob && cached) {
+        setCachedJob(cached);
+        setUsingCachedJob(true);
+      }
+    });
+  }, [id, liveJob]);
+  useEffect(() => {
+    if (id && liveJob) {
+      setCachedJob(liveJob);
+      setUsingCachedJob(false);
+      void saveCachedCoreJob(id, liveJob);
+    }
+  }, [id, liveJob]);
+  const job = liveJob ?? cachedJob;
+  const { data: asset, isError: assetError, refetch: refetchAsset, isFetching: assetFetching } = useGetAsset(
     job?.assetId ?? "",
-    { query: { enabled: !!job?.assetId } as any },
+    { query: {
+      enabled: !!job?.assetId,
+      retry: 2,
+      retryDelay: (attempt: number) => Math.min(1000 * 2 ** attempt, 4000),
+    } } as any,
   );
   const { data: photosData } = useJobPhotos(id ?? "");
   const updateJob = useUpdateJob();
@@ -939,7 +982,7 @@ export default function JobDetailScreen() {
     return () => { if (timerRef.current) clearInterval(timerRef.current); };
   }, [job?.status, (job as any)?.startedAt, (job as any)?.pausedElapsedSecs, asset?.serviceTimeMins]);
 
-  const isLoading = jobLoading || assetLoading;
+  const isLoading = jobLoading && !job;
   const isMutating = updateJob.isPending || teamComplete.isPending || postSkipReason.isPending;
   const status = job?.status;
   const isPending = status === "pending";
@@ -961,7 +1004,11 @@ export default function JobDetailScreen() {
   const teamParam = user?.teamId ? { teamId: user.teamId } : {};
   const { data: todaySchedule } = useGetScheduleWeek(
     { week: TODAY, ...teamParam },
-    { query: { enabled: isPending && isScheduledToday && !isMulching } as any },
+    { query: {
+      enabled: isPending && isScheduledToday && !isMulching,
+      retry: 2,
+      retryDelay: (attempt: number) => Math.min(1000 * 2 ** attempt, 4000),
+    } as any },
   );
   const isNextInSequence = useMemo(() => {
     if (!todaySchedule?.days) return true;
@@ -1225,10 +1272,18 @@ export default function JobDetailScreen() {
     );
   }
 
-  if (!job || !asset) {
+  if (!job) {
     return (
       <View style={[styles.loadingRoot, { backgroundColor: colors.background, paddingTop: topPad }]}>
-        <Text style={[styles.errorText, { color: colors.mutedForeground }]}>Job not found.</Text>
+        <Feather name="wifi-off" size={32} color={colors.mutedForeground} />
+        <Text style={[styles.errorText, { color: colors.mutedForeground, textAlign: "center", marginTop: 12 }]}>
+          {jobError ? "This job could not be loaded." : "Job not found."}
+        </Text>
+        {jobError && (
+          <TouchableOpacity style={[styles.retryButtonLarge, { backgroundColor: colors.primary, borderRadius: colors.radius }]} onPress={() => refetchJob()} disabled={jobFetching}>
+            {jobFetching ? <ActivityIndicator color="#fff" /> : <Text style={styles.retryButtonLargeText}>Retry</Text>}
+          </TouchableOpacity>
+        )}
       </View>
     );
   }
@@ -1246,7 +1301,7 @@ export default function JobDetailScreen() {
         </TouchableOpacity>
         <View style={styles.navCenter}>
           <Text style={[styles.navSub, { color: colors.mutedForeground }]}>Job Instructions</Text>
-          <Text style={[styles.navTitle, { color: colors.foreground }]} numberOfLines={1}>{asset.name}</Text>
+          <Text style={[styles.navTitle, { color: colors.foreground }]} numberOfLines={1}>{asset?.name ?? "Asset details unavailable"}</Text>
         </View>
         <StatusBadge status={status as Parameters<typeof StatusBadge>[0]["status"]} small />
       </View>
@@ -1258,18 +1313,18 @@ export default function JobDetailScreen() {
         showsVerticalScrollIndicator={false}
       >
         {/* Known Hazards — always first, prominent warning */}
-        {(asset as any).knownHazards ? (
+        {(asset as any)?.knownHazards ? (
           <View style={[styles.hazardBanner, { backgroundColor: "#fef3c7", borderColor: "#fbbf24" }]}>
             <Feather name="alert-triangle" size={16} color="#b45309" />
             <View style={{ flex: 1 }}>
               <Text style={[styles.hazardTitle, { color: "#92400e" }]}>Known Hazards</Text>
-              <Text style={[styles.hazardText, { color: "#92400e" }]}>{(asset as any).knownHazards}</Text>
+              <Text style={[styles.hazardText, { color: "#92400e" }]}>{(asset as any)?.knownHazards}</Text>
             </View>
           </View>
         ) : null}
 
         {/* Info tiles */}
-        <View style={styles.infoGrid}>
+        {asset ? <View style={styles.infoGrid}>
           {/* Description — full width, first */}
           {(asset as any).description ? (
             <View style={[styles.infoTile, styles.infoTileWide, { backgroundColor: colors.card, borderColor: colors.border, borderRadius: colors.radius }]}>
@@ -1305,7 +1360,19 @@ export default function JobDetailScreen() {
             </View>
             <Text style={[styles.infoTileValue, { color: colors.foreground }]}>{timeLabel}</Text>
           </View>
-        </View>
+        </View> : (
+          <View style={[styles.optionalError, { backgroundColor: "#fff7ed", borderColor: "#fed7aa" }]}>
+            <Feather name="wifi-off" size={15} color="#c2410c" />
+            <Text style={[styles.optionalErrorText, { color: "#9a3412" }]}>
+              {assetError ? "Asset details are unavailable. The job can still be reviewed." : "Loading asset details…"}
+            </Text>
+            {assetError && (
+              <TouchableOpacity onPress={() => refetchAsset()} disabled={assetFetching} style={styles.retryButton}>
+                {assetFetching ? <ActivityIndicator size="small" color={colors.primary} /> : <Text style={[styles.retryText, { color: colors.primary }]}>Retry</Text>}
+              </TouchableOpacity>
+            )}
+          </View>
+        )}
 
         {/* All Teams banner */}
         {isAllTeams && (
@@ -1335,7 +1402,7 @@ export default function JobDetailScreen() {
         )}
 
         {/* Garden Boundary Map */}
-        {((asset as any).boundary || asset.lat) && (
+        {asset && ((asset as any).boundary || asset.lat) && (
           <View style={[styles.section, { backgroundColor: colors.card, borderColor: colors.border, borderRadius: colors.radius, overflow: "hidden", padding: 0 }]}>
             <View style={[styles.sectionHeader, { paddingHorizontal: 14, paddingTop: 12, paddingBottom: 8 }]}>
               <Feather name="map" size={16} color={colors.primary} />
@@ -1406,6 +1473,17 @@ export default function JobDetailScreen() {
         {/* Observations — shown once job is active, paused, or done */}
         {(isActive || isPaused || isDone) && id && (
           <ObservationsSection jobId={id} job={job} readOnly={status === "skipped"} />
+        )}
+        {(usingCachedJob || (jobError && !!job)) && (
+          <View style={[styles.staleBanner, { backgroundColor: "#fef3c7", borderColor: "#fbbf24" }]}>
+            <Feather name="clock" size={14} color="#92400e" />
+            <Text style={[styles.staleBannerText, { color: "#92400e" }]}>
+              You’re offline. Showing the last saved job details; some information may be stale.
+            </Text>
+            <TouchableOpacity onPress={() => refetchJob()} disabled={jobFetching}>
+              {jobFetching ? <ActivityIndicator size="small" color="#92400e" /> : <Text style={styles.staleRetryText}>Retry</Text>}
+            </TouchableOpacity>
+          </View>
         )}
 
         {/* Photo evidence — shown while actionable or done (including mulching jobs) */}
@@ -1615,6 +1693,21 @@ const styles = StyleSheet.create({
   root: { flex: 1, overflow: "hidden" },
   loadingRoot: { flex: 1, alignItems: "center", justifyContent: "center" },
   errorText: { fontFamily: "Inter_400Regular", fontSize: 16 },
+  retryButtonLarge: { marginTop: 18, paddingHorizontal: 24, paddingVertical: 12 },
+  retryButtonLargeText: { color: "#fff", fontFamily: "Inter_600SemiBold", fontSize: 14 },
+  optionalError: {
+    flexDirection: "row", alignItems: "center", gap: 8, margin: 12,
+    padding: 10, borderWidth: 1, borderRadius: 8,
+  },
+  optionalErrorText: { flex: 1, fontFamily: "Inter_400Regular", fontSize: 12, lineHeight: 17 },
+  retryButton: { paddingHorizontal: 4, paddingVertical: 3 },
+  retryText: { fontFamily: "Inter_600SemiBold", fontSize: 12 },
+  staleBanner: {
+    flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 12,
+    padding: 10, borderWidth: 1, borderRadius: 8,
+  },
+  staleBannerText: { flex: 1, fontFamily: "Inter_500Medium", fontSize: 12, lineHeight: 17 },
+  staleRetryText: { color: "#92400e", fontFamily: "Inter_700Bold", fontSize: 12 },
   navBar: {
     flexDirection: "row",
     alignItems: "flex-end",
