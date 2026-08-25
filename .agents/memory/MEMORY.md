@@ -14,3 +14,4 @@
 - [Accepted-skip draft lifecycle](accepted-skip-draft-lifecycle.md) — accepted regular skips are manager-only cycle reservations; capacity-safe placement must serialize by team/date.
 - [Generated API contract](generated-api-contract.md) — update the OpenAPI source and regenerate clients whenever shared route/schema fields change.
 - [Safe workbook imports](safe-workbook-imports.md) — validate, then explicitly re-upload the identical file to commit an atomic, fingerprinted manager-only batch.
+- [Python environment cleanup](python-environment-cleanup.md) — an incomplete `.pythonlibs` makes Replit’s deployment prebuild `uv lock` fail before app builds run.
