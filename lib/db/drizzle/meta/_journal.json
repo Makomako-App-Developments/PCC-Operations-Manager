@@ -29,6 +29,13 @@
       "when": 1786598400000,
       "tag": "0007_jobs_skip_review",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1787107200000,
+      "tag": "0008_skipped_job_drafts",
+      "breakpoints": true
     }
   ]
 }

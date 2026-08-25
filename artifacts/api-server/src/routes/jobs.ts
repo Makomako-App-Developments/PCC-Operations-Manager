@@ -1,12 +1,12 @@
 import { Router } from "express";
 import path from "path";
 import { db, executeWithCircuitBreaker, jobsTable, reactiveJobsTable, insertJobSchema, insertReactiveJobSchema, assetsTable, teamsTable, usersTable, jobTeamCompletionsTable, jobTaskSkipReasonsTable, mulchingRecordsTable, jobPhotosTable, auditLogTable } from "@workspace/db";
-import { eq, and, inArray, or, gte, lte, ilike, desc, sql } from "drizzle-orm";
+import { eq, and, inArray, notInArray, or, gte, lte, ilike, desc, sql } from "drizzle-orm";
 import { z } from "zod";
+import { z as zV4 } from "zod/v4";
 import { requireAuth, requireRole } from "../middlewares/auth";
 import { validateBody, validateQuery } from "../middlewares/validate";
 import { auditLog } from "../lib/audit";
-import { FREQ_DAYS } from "../lib/crew-utils";
 import { notifyTeam, notifyUsers } from "../lib/push-notifications";
 import { objectStorageClient } from "../lib/objectStorage";
 import { checkDayCapacity, computeTotalScheduledMins } from "../lib/day-capacity";
@@ -35,12 +35,6 @@ const jobQuerySchema = z.object({
 });
 
 type JobQuery = z.infer<typeof jobQuerySchema>;
-
-function addDays(dateStr: string, days: number): string {
-  const d = new Date(dateStr);
-  d.setUTCDate(d.getUTCDate() + days);
-  return d.toISOString().slice(0, 10);
-}
 
 // GET /api/jobs/skips — dedicated skipped-jobs review list (managers/admins only)
 // Must be declared BEFORE /jobs/:id to avoid route shadowing.
@@ -131,11 +125,65 @@ router.get("/jobs/skips", requireAuth, requireRole("administrator", "manager"), 
   res.json({ data, page, limit, total: countRow?.count ?? data.length });
 });
 
+// GET /api/jobs/drafts — accepted skips awaiting deliberate placement.
+// Must be declared before /jobs/:id to avoid route shadowing.
+const draftsQuerySchema = z.object({
+  teamId: z.string().uuid().optional(),
+  page:   z.coerce.number().int().min(1).default(1),
+  limit:  z.coerce.number().int().min(1).max(500).default(100),
+});
+
+router.get("/jobs/drafts", requireAuth, requireRole("administrator", "manager"), validateQuery(draftsQuerySchema), async (_req, res) => {
+  const { teamId, page, limit } = res.locals.query as z.infer<typeof draftsQuerySchema>;
+  const offset = (page - 1) * limit;
+  const conditions: ReturnType<typeof eq>[] = [eq(jobsTable.status, "draft") as any];
+  if (teamId) conditions.push(or(eq(jobsTable.teamId, teamId), eq(jobsTable.draftOriginalTeamId, teamId)) as any);
+
+  const [countRow, rows] = await Promise.all([
+    executeWithCircuitBreaker(() => db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(jobsTable)
+      .where(and(...conditions))
+      .then(result => result[0])),
+    executeWithCircuitBreaker(() => db
+      .select({
+        id:                        jobsTable.id,
+        assetId:                   jobsTable.assetId,
+        jobType:                   jobsTable.jobType,
+        status:                    jobsTable.status,
+        teamId:                    jobsTable.teamId,
+        scheduledDate:             jobsTable.scheduledDate,
+        assignedUserId:            jobsTable.assignedUserId,
+        estimatedTimeMins:         jobsTable.estimatedTimeMins,
+        crewStatus:                jobsTable.crewStatus,
+        notes:                     jobsTable.notes,
+        skipReason:                jobsTable.skipReason,
+        skipReviewedAt:            jobsTable.skipReviewedAt,
+        skipReviewedById:          jobsTable.skipReviewedById,
+        skipReviewOutcome:         jobsTable.skipReviewOutcome,
+        skipReviewNotes:           jobsTable.skipReviewNotes,
+        draftOriginalTeamId:       jobsTable.draftOriginalTeamId,
+        draftOriginalScheduledDate: jobsTable.draftOriginalScheduledDate,
+        assetName:                 assetsTable.name,
+        assetDescription:          assetsTable.description,
+      })
+      .from(jobsTable)
+      .innerJoin(assetsTable, eq(jobsTable.assetId, assetsTable.id))
+      .where(and(...conditions))
+      .orderBy(desc(jobsTable.skipReviewedAt), jobsTable.createdAt)
+      .limit(limit)
+      .offset(offset)),
+  ]);
+
+  res.json({ data: rows, page, limit, total: countRow?.count ?? rows.length });
+});
+
 // GET /api/jobs
 router.get("/jobs", requireAuth, validateQuery(jobQuerySchema), async (req, res) => {
   const { assetId, status, page, limit } = res.locals.query as JobQuery;
   let { teamId } = res.locals.query as JobQuery;
   const offset = (page - 1) * limit;
+  const conditions: any[] = [];
 
   // Only administrators and managers may list jobs across all teams;
   // supervisors and field workers are restricted to their own team.
@@ -143,9 +191,10 @@ router.get("/jobs", requireAuth, validateQuery(jobQuerySchema), async (req, res)
     const callerTeamId = req.auth!.teamId;
     if (!callerTeamId) { res.json({ data: [], page, limit }); return; }
     teamId = callerTeamId;
+    // Drafts are an internal manager queue, never worker-visible work.
+    conditions.push(notInArray(jobsTable.status, ["draft"]));
   }
 
-  const conditions = [];
   if (assetId) conditions.push(eq(jobsTable.assetId, assetId));
   if (teamId)  conditions.push(or(eq(jobsTable.teamId, teamId), eq(jobsTable.isAllTeams, true)));
   if (status) {
@@ -495,6 +544,12 @@ router.get("/jobs/:id", requireAuth, async (req, res) => {
   const id = String(req.params.id);
   const [job] = await executeWithCircuitBreaker(() => db.select().from(jobsTable).where(eq(jobsTable.id, id)).limit(1));
   if (job) {
+    // Accepted-skip drafts are exclusively manager work. Do this before the
+    // broader privileged-role check because supervisors may normally view
+    // their team's operational jobs.
+    if (job.status === "draft" && !["administrator", "manager"].includes(req.auth!.role)) {
+      res.status(404).json({ error: "Job not found" }); return;
+    }
     if (!isPrivilegedRole(req.auth!.role)) {
       const callerTeamId = req.auth!.teamId;
       if (!job.isAllTeams && job.teamId !== callerTeamId) {
@@ -567,7 +622,10 @@ router.get("/jobs/:id", requireAuth, async (req, res) => {
 // Callers can re-submit with force: true to bypass the check (e.g. after
 // showing the push-forward dialog and the user chose "Place Anyway").
 const createJobSchema = insertJobSchema.extend({
-  force: z.boolean().default(false),
+  // insertJobSchema is generated with Zod v4, so extensions must use the
+  // same instance. Mixing the route's legacy Zod import here throws at parse
+  // time before the lifecycle guard can run.
+  force: zV4.boolean().default(false),
 });
 
 router.post(
@@ -576,7 +634,18 @@ router.post(
   requireRole("manager", "supervisor"),
   validateBody(createJobSchema),
   async (req, res) => {
-    const { force, ...jobData } = res.locals.body as z.infer<typeof createJobSchema>;
+    const { force, ...jobData } = res.locals.body as Record<string, any>;
+    // Regular job drafts are a review-only lifecycle state. They are created
+    // solely by accepting a skipped scheduled job, never by the general create
+    // endpoint (which is also available to supervisors).
+    if (
+      jobData.status === "draft"
+      || Object.hasOwn(req.body as Record<string, unknown>, "draftOriginalTeamId")
+      || Object.hasOwn(req.body as Record<string, unknown>, "draftOriginalScheduledDate")
+    ) {
+      res.status(409).json({ error: "Draft jobs can only be created by accepting a skipped job review" });
+      return;
+    }
 
     // ── Capacity conflict check ───────────────────────────────────────────
     // Only relevant when a teamId and scheduledDate are set (not all-teams jobs).
@@ -661,7 +730,6 @@ router.post(
 );
 
 // PATCH /api/jobs/:id
-// When a job is marked as "skipped", automatically reschedule it at the next occurrence.
 router.patch("/jobs/:id", requireAuth, async (req, res) => {
   const id = String(req.params.id);
   const [before] = await executeWithCircuitBreaker(() => db.select().from(jobsTable).where(eq(jobsTable.id, id)).limit(1));
@@ -738,6 +806,10 @@ router.patch("/jobs/:id", requireAuth, async (req, res) => {
   }
 
   const patch = req.body as Record<string, unknown>;
+  if (before.status === "draft" || patch.status === "draft") {
+    res.status(409).json({ error: "Draft jobs can only be placed through the draft placement flow" });
+    return;
+  }
 
   // Non-privileged users may only change operational status fields, not structural ones
   if (!isPrivilegedRole(req.auth!.role)) {
@@ -831,73 +903,16 @@ router.patch("/jobs/:id", requireAuth, async (req, res) => {
     }).catch(err => console.error("[push] notify error:", err));
   }
 
-  // ── Skip → reschedule ───────────────────────────────────────────────────────
-  // When a job is skipped, create a new pending job at the next scheduled occurrence.
-  // Skip reschedule for reactive job types — those are one-off.
-  if (patch.status === "skipped" && before.status !== "skipped" && before.jobType === "scheduled") {
-    const [asset] = await executeWithCircuitBreaker(() => db
-      .select({ frequency: assetsTable.frequency, teamId: assetsTable.teamId })
-      .from(assetsTable)
-      .where(eq(assetsTable.id, before.assetId))
-      .limit(1));
-
-    if (asset) {
-      const intervalDays  = FREQ_DAYS[asset.frequency] ?? 28;
-      const scheduledDate = typeof before.scheduledDate === "string"
-        ? before.scheduledDate
-        : (before.scheduledDate as Date).toISOString().slice(0, 10);
-      const nextDate = addDays(scheduledDate, intervalDays);
-
-      // Only create if no job already exists for this asset on that date
-      const [existing] = await executeWithCircuitBreaker(() => db
-        .select({ id: jobsTable.id })
-        .from(jobsTable)
-        .where(
-          and(
-            eq(jobsTable.assetId, before.assetId),
-            eq(jobsTable.scheduledDate, nextDate),
-            eq(jobsTable.jobType, "scheduled"),
-          ),
-        )
-        .limit(1));
-
-      if (!existing) {
-        const [rescheduled] = await executeWithCircuitBreaker(() => db
-          .insert(jobsTable)
-          .values({
-            assetId:           before.assetId,
-            jobType:           "scheduled",
-            teamId:            asset.teamId ?? null,
-            isAllTeams:        !asset.teamId,
-            scheduledDate:     nextDate,
-            status:            "pending",
-            crewStatus:        "full",          // will be refreshed on next generate
-            estimatedTimeMins: before.estimatedTimeMins ?? undefined,
-            notes:             `Rescheduled from ${scheduledDate} (skipped)`,
-          })
-          .returning());
-
-        // Audit log is written after the insert commits so that a logging
-        // failure cannot roll back the rescheduled job. auditLog() swallows errors.
-        await auditLog({
-          tableName: "jobs", recordId: rescheduled.id, action: "INSERT",
-          changedById: req.auth?.userId ?? null,
-          newData: rescheduled as Record<string, unknown>,
-          ipAddress: req.ip ?? null,
-        });
-
-        res.json({ ...updated, rescheduledTo: nextDate });
-        return;
-      }
-    }
-  }
-
   res.json(updated);
 });
 
 // POST /api/jobs/:id/skip-review — manager accepts or rejects a skip reason (manager/admin only)
 router.post("/jobs/:id/skip-review", requireAuth, requireRole("administrator", "manager"), async (req, res) => {
   const id = String(req.params.id);
+  const { outcome, notes } = req.body as { outcome?: string; notes?: string };
+  if (outcome !== "accepted" && outcome !== "rejected") {
+    res.status(400).json({ error: "outcome must be 'accepted' or 'rejected'" }); return;
+  }
 
   const [job] = await executeWithCircuitBreaker(() => db
     .select()
@@ -907,12 +922,18 @@ router.post("/jobs/:id/skip-review", requireAuth, requireRole("administrator", "
 
   if (!job) { res.status(404).json({ error: "Job not found" }); return; }
   if (job.status !== "skipped") {
-    res.status(409).json({ error: "Job is not in skipped status" }); return;
+    if (job.skipReviewOutcome && job.skipReviewOutcome === outcome) {
+      res.json({ ...job, idempotent: true });
+      return;
+    }
+    if (!job.skipReviewOutcome) {
+      res.status(409).json({ error: "Job is not in skipped status" }); return;
+    }
+    res.status(409).json({ error: "Skip has already been reviewed with a different outcome" }); return;
   }
-
-  const { outcome, notes } = req.body as { outcome?: string; notes?: string };
-  if (outcome !== "accepted" && outcome !== "rejected") {
-    res.status(400).json({ error: "outcome must be 'accepted' or 'rejected'" }); return;
+  if (job.jobType !== "scheduled") {
+    res.status(409).json({ error: "Only regular scheduled jobs can be moved through the skip-review lifecycle" });
+    return;
   }
 
   const now     = new Date();
@@ -929,10 +950,15 @@ router.post("/jobs/:id/skip-review", requireAuth, requireRole("administrator", "
       const [row] = await tx
         .update(jobsTable)
         .set({
+          status:            outcome === "accepted" ? "draft" : "pending",
           skipReviewedAt:    now,
           skipReviewedById:  callerId,
           skipReviewOutcome: outcome,
           skipReviewNotes:   notes ?? null,
+          ...(outcome === "accepted" ? {
+            draftOriginalTeamId:       job.teamId,
+            draftOriginalScheduledDate: job.scheduledDate,
+          } : {}),
           updatedAt:         now,
         })
         .where(and(eq(jobsTable.id, id), eq(jobsTable.status, "skipped")))
@@ -973,13 +999,124 @@ router.post("/jobs/:id/skip-review", requireAuth, requireRole("administrator", "
   res.json(updated);
 });
 
+const placeDraftSchema = z.object({
+  teamId:        z.string().uuid(),
+  scheduledDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  force:         z.boolean().default(false),
+});
+
+// POST /api/jobs/:id/place-draft — manager deliberately returns an accepted
+// skip to a live schedule. Only a draft can make this one-way transition.
+router.post("/jobs/:id/place-draft", requireAuth, requireRole("administrator", "manager"), validateBody(placeDraftSchema), async (req, res) => {
+  const id = String(req.params.id);
+  const { teamId, scheduledDate, force } = res.locals.body as z.infer<typeof placeDraftSchema>;
+
+  const [draft] = await executeWithCircuitBreaker(() => db
+    .select()
+    .from(jobsTable)
+    .where(eq(jobsTable.id, id))
+    .limit(1));
+  if (!draft) { res.status(404).json({ error: "Job not found" }); return; }
+
+  if (draft.status !== "draft") {
+    if (draft.status === "pending" && draft.teamId === teamId && draft.scheduledDate === scheduledDate) {
+      res.json({ ...draft, idempotent: true });
+      return;
+    }
+    res.status(409).json({ error: "Job is no longer awaiting draft placement" });
+    return;
+  }
+
+  const now = new Date();
+  let placed: typeof draft | undefined;
+
+  if (!force) {
+    let newJobMins = draft.estimatedTimeMins ?? 0;
+    if (!newJobMins) {
+      const [asset] = await executeWithCircuitBreaker(() => db
+        .select({ serviceTimeMins: assetsTable.serviceTimeMins })
+        .from(assetsTable)
+        .where(eq(assetsTable.id, draft.assetId))
+        .limit(1));
+      newJobMins = asset?.serviceTimeMins ?? 0;
+    }
+
+    if (newJobMins > 0) {
+      const result = await executeWithCircuitBreaker(() => db.transaction(async tx => {
+        // Serialize capacity decisions for a team/day. The lock lasts through
+        // the re-check and update, so two drafts cannot both consume the same
+        // remaining minutes unless the manager explicitly forces placement.
+        await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${teamId} || ':' || ${scheduledDate}))`);
+        const conflict = await checkDayCapacity(teamId, scheduledDate, newJobMins, tx as unknown as typeof db);
+        if (conflict) return { conflict };
+        const [updated] = await tx
+          .update(jobsTable)
+          .set({
+            status: "pending",
+            teamId,
+            scheduledDate,
+            isAllTeams: false,
+            updatedAt: now,
+          })
+          .where(and(eq(jobsTable.id, id), eq(jobsTable.status, "draft")))
+          .returning();
+        return { placed: updated };
+      }));
+
+      if (result.conflict) {
+        if (!result.conflict.capacityDataReliable) {
+          res.status(503).json({ error: "Capacity data is unreliable; placement has been blocked", capacity: result.conflict });
+          return;
+        }
+        res.status(409).json({ capacityConflict: true, capacity: result.conflict });
+        return;
+      }
+      placed = result.placed;
+    }
+  }
+
+  if (!placed) {
+    [placed] = await executeWithCircuitBreaker(() => db
+      .update(jobsTable)
+      .set({
+        status: "pending",
+        teamId,
+        scheduledDate,
+        isAllTeams: false,
+        updatedAt: now,
+      })
+      .where(and(eq(jobsTable.id, id), eq(jobsTable.status, "draft")))
+      .returning());
+  }
+
+  if (!placed) {
+    res.status(409).json({ error: "Job is no longer awaiting draft placement" });
+    return;
+  }
+
+  await auditLog({
+    tableName: "jobs",
+    recordId: id,
+    action: "UPDATE",
+    changedById: req.auth!.userId,
+    oldData: draft as Record<string, unknown>,
+    newData: placed as Record<string, unknown>,
+    ipAddress: req.ip ?? null,
+  });
+
+  res.json(placed);
+});
+
 // GET /api/jobs/:id/task-skip-reasons
 router.get("/jobs/:id/task-skip-reasons", requireAuth, async (req, res) => {
   const id = String(req.params.id);
 
   // Authorization: verify the caller can read this job
-  const [job] = await executeWithCircuitBreaker(() => db.select({ teamId: jobsTable.teamId, isAllTeams: jobsTable.isAllTeams }).from(jobsTable).where(eq(jobsTable.id, id)).limit(1));
+  const [job] = await executeWithCircuitBreaker(() => db.select({ teamId: jobsTable.teamId, isAllTeams: jobsTable.isAllTeams, status: jobsTable.status }).from(jobsTable).where(eq(jobsTable.id, id)).limit(1));
   if (!job) { res.status(404).json({ error: "Job not found" }); return; }
+  if (job.status === "draft" && !["administrator", "manager"].includes(req.auth!.role)) {
+    res.status(404).json({ error: "Job not found" }); return;
+  }
   if (!isPrivilegedRole(req.auth!.role)) {
     const callerTeamId = req.auth!.teamId;
     if (!job.isAllTeams && job.teamId !== callerTeamId) {
@@ -1000,8 +1137,11 @@ router.post("/jobs/:id/task-skip-reasons", requireAuth, async (req, res) => {
   const id = String(req.params.id);
 
   // Authorization: verify the caller can act on this job
-  const [job] = await executeWithCircuitBreaker(() => db.select({ teamId: jobsTable.teamId, isAllTeams: jobsTable.isAllTeams }).from(jobsTable).where(eq(jobsTable.id, id)).limit(1));
+  const [job] = await executeWithCircuitBreaker(() => db.select({ teamId: jobsTable.teamId, isAllTeams: jobsTable.isAllTeams, status: jobsTable.status }).from(jobsTable).where(eq(jobsTable.id, id)).limit(1));
   if (!job) { res.status(404).json({ error: "Job not found" }); return; }
+  if (job.status === "draft") {
+    res.status(409).json({ error: "Draft jobs cannot be changed until a manager places them" }); return;
+  }
   if (!isPrivilegedRole(req.auth!.role)) {
     const callerTeamId = req.auth!.teamId;
     if (!job.isAllTeams && job.teamId !== callerTeamId) {
@@ -1033,6 +1173,9 @@ router.post("/jobs/:id/team-complete", requireAuth, async (req, res) => {
 
   const [job] = await executeWithCircuitBreaker(() => db.select().from(jobsTable).where(eq(jobsTable.id, id)).limit(1));
   if (!job)            { res.status(404).json({ error: "Job not found" }); return; }
+  if (job.status === "draft") {
+    res.status(409).json({ error: "Draft jobs cannot be completed until a manager places them" }); return;
+  }
   if (!job.isAllTeams) { res.status(400).json({ error: "Not an All Teams job" }); return; }
 
   // Authorization: teamId is always derived from the DB — callers can only sign off their own

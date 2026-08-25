@@ -3,11 +3,12 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { format, parseISO } from "date-fns";
 import {
   CheckCircle2, XCircle, ChevronDown, ChevronUp,
-  Filter, Loader2, ClipboardCheck, SkipForward,
+  Filter, Loader2, ClipboardCheck, SkipForward, CalendarDays,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
+import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   useListTeams, getListTeamsQueryKey,
@@ -40,6 +41,21 @@ interface SkippedJob {
   reviewerName: string | null;
   reviewerInitials: string | null;
   taskSkipReasons: TaskSkipReason[];
+}
+
+interface DraftJob {
+  id: string;
+  assetId: string;
+  status: "draft";
+  teamId: string | null;
+  scheduledDate: string;
+  estimatedTimeMins: number | null;
+  skipReason: string | null;
+  skipReviewNotes: string | null;
+  draftOriginalTeamId: string | null;
+  draftOriginalScheduledDate: string | null;
+  assetName: string;
+  assetDescription: string | null;
 }
 
 // ─── API helpers ───────────────────────────────────────────────────────────
@@ -97,6 +113,34 @@ async function submitReview(
     const body = await res.json().catch(() => ({}));
     throw new Error((body as any).error ?? "Failed to submit review");
   }
+}
+
+async function fetchAllDrafts(): Promise<{ data: DraftJob[]; page: number; limit: number }> {
+  const res = await fetch("/api/jobs/drafts?limit=100", { credentials: "include" });
+  if (!res.ok) throw new Error("Failed to load draft jobs");
+  return res.json();
+}
+
+type DraftPlacementResult = { conflict?: any };
+
+async function placeDraft(
+  jobId: string,
+  teamId: string,
+  scheduledDate: string,
+  force = false,
+): Promise<DraftPlacementResult> {
+  const res = await fetch(`/api/jobs/${jobId}/place-draft`, {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ teamId, scheduledDate, force }),
+  });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    if ((body as any).capacityConflict) return { conflict: (body as any).capacity };
+    throw new Error((body as any).error ?? "Failed to place draft");
+  }
+  return {};
 }
 
 // ─── Sub-components ────────────────────────────────────────────────────────
@@ -303,6 +347,120 @@ function SkipCard({
   );
 }
 
+function DraftPlacementForm({
+  draft,
+  teams,
+  onDone,
+}: {
+  draft: DraftJob;
+  teams: { id: string; name: string }[];
+  onDone: () => void;
+}) {
+  const [teamId, setTeamId] = useState(draft.teamId ?? draft.draftOriginalTeamId ?? "");
+  const [scheduledDate, setScheduledDate] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [conflict, setConflict] = useState<any | null>(null);
+  const { toast } = useToast();
+  const qc = useQueryClient();
+
+  async function submit(force = false) {
+    if (!teamId || !scheduledDate) return;
+    setBusy(true);
+    try {
+      const result = await placeDraft(draft.id, teamId, scheduledDate, force);
+      if (result.conflict) {
+        setConflict(result.conflict);
+        return;
+      }
+      toast({ title: "Draft placed on the schedule" });
+      await Promise.all([
+        qc.invalidateQueries({ queryKey: ["jobs-drafts"] }),
+        qc.invalidateQueries({ queryKey: ["/api/schedule/week"] }),
+        qc.invalidateQueries({ queryKey: ["/api/schedule/range"] }),
+      ]);
+      onDone();
+    } catch (e: any) {
+      toast({ title: "Could not place draft", description: e.message, variant: "destructive" });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="mt-3 rounded-xl border border-sky-100 bg-sky-50/60 p-3 space-y-2.5">
+      <p className="text-xs font-semibold text-sky-900">Place on schedule</p>
+      <div className="grid sm:grid-cols-2 gap-2">
+        <Select value={teamId} onValueChange={setTeamId}>
+          <SelectTrigger className="h-9 text-xs bg-white">
+            <SelectValue placeholder="Choose team" />
+          </SelectTrigger>
+          <SelectContent>
+            {teams.map(team => <SelectItem key={team.id} value={team.id}>{team.name}</SelectItem>)}
+          </SelectContent>
+        </Select>
+        <Input
+          type="date"
+          value={scheduledDate}
+          onChange={e => { setScheduledDate(e.target.value); setConflict(null); }}
+          className="h-9 text-xs bg-white"
+        />
+      </div>
+      {conflict && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-2 text-[11px] text-amber-800">
+          This would exceed capacity by {conflict.shortfallMins ?? 0} minutes
+          {conflict.productiveTimeMins ? ` (${conflict.totalScheduledMins}/${conflict.productiveTimeMins} minutes already booked)` : ""}.
+          <Button className="ml-2 h-7 text-[11px]" size="sm" disabled={busy} onClick={() => submit(true)}>
+            Place anyway
+          </Button>
+        </div>
+      )}
+      <div className="flex justify-end gap-2">
+        <Button variant="ghost" size="sm" disabled={busy} onClick={onDone}>Cancel</Button>
+        <Button size="sm" disabled={!teamId || !scheduledDate || busy} onClick={() => submit()}>
+          {busy && <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />}
+          Check & place
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function DraftCard({
+  draft,
+  teams,
+  teamName,
+}: {
+  draft: DraftJob;
+  teams: { id: string; name: string }[];
+  teamName: Map<string, string>;
+}) {
+  const [placing, setPlacing] = useState(false);
+  const originalTeam = draft.draftOriginalTeamId ? teamName.get(draft.draftOriginalTeamId) : null;
+  return (
+    <div className="rounded-2xl border border-sky-200 bg-white shadow-sm overflow-hidden">
+      <div className="px-5 py-4 flex items-start gap-3">
+        <span className="mt-0.5 rounded bg-sky-50 px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wide text-sky-600">draft</span>
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-semibold text-gray-800">{draft.assetName}</p>
+          {draft.assetDescription && <p className="mt-0.5 text-[11px] text-gray-400">{draft.assetDescription}</p>}
+          <p className="mt-1 text-[11px] text-gray-500">
+            Accepted skip
+            {originalTeam ? ` · originally ${originalTeam}` : ""}
+            {draft.draftOriginalScheduledDate ? ` · ${format(parseISO(draft.draftOriginalScheduledDate), "d MMM yyyy")}` : ""}
+          </p>
+          {draft.skipReason && <p className="mt-1 text-[11px] italic text-amber-700">"{draft.skipReason}"</p>}
+        </div>
+        {!placing && (
+          <Button size="sm" className="text-xs" onClick={() => setPlacing(true)}>
+            <CalendarDays className="mr-1 h-3.5 w-3.5" /> Place
+          </Button>
+        )}
+      </div>
+      {placing && <div className="px-5 pb-4"><DraftPlacementForm draft={draft} teams={teams} onDone={() => setPlacing(false)} /></div>}
+    </div>
+  );
+}
+
 // ─── Page ──────────────────────────────────────────────────────────────────
 export default function SkipsPage() {
   const [teamFilter,     setTeamFilter]     = useState<string>("all");
@@ -322,6 +480,10 @@ export default function SkipsPage() {
       reviewed: reviewedFilter,
     }),
   });
+  const { data: draftsRaw, isLoading: draftsLoading } = useQuery({
+    queryKey: ["jobs-drafts"],
+    queryFn: fetchAllDrafts,
+  });
 
   const assetName = useMemo(() => {
     const m = new Map<string, string>();
@@ -336,6 +498,7 @@ export default function SkipsPage() {
   }, [teamsData]);
 
   const jobs   = skipsRaw?.data ?? [];
+  const drafts = draftsRaw?.data ?? [];
   const unreviewed = jobs.filter(j => !j.skipReviewedAt).length;
 
   return (
@@ -437,6 +600,35 @@ export default function SkipsPage() {
           )}
         </div>
       )}
+
+      {/* Accepted drafts are intentionally separate from skipped-history rows. */}
+      <section className="pt-3 space-y-3">
+        <div className="flex items-center justify-between px-1">
+          <div>
+            <h2 className="text-sm font-bold" style={{ color: NAVY }}>Draft work awaiting placement</h2>
+            <p className="text-[11px] text-gray-400">Accepted skips stay out of worker schedules until deliberately placed.</p>
+          </div>
+          <Badge variant="secondary" className="text-xs">{drafts.length}</Badge>
+        </div>
+        {draftsLoading ? (
+          <div className="flex justify-center py-6"><Loader2 className="h-5 w-5 animate-spin text-gray-300" /></div>
+        ) : drafts.length === 0 ? (
+          <div className="rounded-2xl border border-dashed border-gray-200 py-7 text-center text-xs text-gray-400">
+            No accepted skips are waiting for placement.
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {drafts.map(draft => (
+              <DraftCard
+                key={draft.id}
+                draft={draft}
+                teams={teamsData ?? []}
+                teamName={teamName}
+              />
+            ))}
+          </div>
+        )}
+      </section>
     </div>
   );
 }

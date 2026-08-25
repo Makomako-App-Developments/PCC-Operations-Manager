@@ -4,7 +4,7 @@ import {
   systemSettingsTable, jobTeamCompletionsTable, infillJobsTable, mulchingRecordsTable,
   reactiveJobsTable, teamsTable, executeWithCircuitBreaker,
 } from "@workspace/db";
-import { eq, and, gte, lte, lt, inArray, sql, notInArray, isNull } from "drizzle-orm";
+import { eq, and, or, gte, lte, lt, inArray, sql, notInArray, isNull, isNotNull } from "drizzle-orm";
 import { z } from "zod";
 import { requireAuth, requireRole } from "../middlewares/auth";
 import { validateBody, validateQuery } from "../middlewares/validate";
@@ -29,6 +29,15 @@ function addDays(dateStr: string, days: number): string {
   const d = new Date(dateStr + "T00:00:00Z");
   d.setUTCDate(d.getUTCDate() + days);
   return d.toISOString().slice(0, 10);
+}
+
+/** Both dates reserve a recurring cycle after a draft is deliberately placed
+ * away from the original skipped date. */
+export function getCycleReservationDates(job: {
+  scheduledDate: string;
+  draftOriginalScheduledDate: string | null;
+}): string[] {
+  return [...new Set([job.scheduledDate, job.draftOriginalScheduledDate].filter((date): date is string => Boolean(date)))];
 }
 
 function isWeekend(dateStr: string): boolean {
@@ -226,8 +235,8 @@ router.post(
     }
 
     // ── Clear existing pending scheduled jobs in the range before regenerating ─
-    // Completed, skipped, and in_progress jobs are preserved; only pending ones
-    // are wiped so the new geosequence-first algorithm can place them cleanly.
+    // Completed, skipped, in_progress, and manager-placed skip-review jobs are
+    // preserved; only generated pending jobs are wiped for fresh placement.
     const rangeJobsToDelete = await executeWithCircuitBreaker(() => db
       .select({ id: jobsTable.id })
       .from(jobsTable)
@@ -237,6 +246,7 @@ router.post(
           lte(jobsTable.scheduledDate, toDate),
           eq(jobsTable.jobType, "scheduled"),
           eq(jobsTable.status, "pending"),
+          isNull(jobsTable.draftOriginalScheduledDate),
           ...(teamId ? [eq(jobsTable.teamId, teamId)] : []),
         ),
       ));
@@ -253,6 +263,7 @@ router.post(
           lte(jobsTable.scheduledDate, toDate),
           eq(jobsTable.jobType, "scheduled"),
           eq(jobsTable.status, "pending"),
+          isNull(jobsTable.draftOriginalScheduledDate),
           ...(teamId ? [eq(jobsTable.teamId, teamId)] : []),
         ),
       ));
@@ -270,6 +281,7 @@ router.post(
           lt(jobsTable.scheduledDate, fromDate),
           eq(jobsTable.jobType, "scheduled"),
           eq(jobsTable.status, "pending"),
+          isNull(jobsTable.draftOriginalScheduledDate),
           ...(teamId ? [eq(jobsTable.teamId, teamId)] : []),
         ),
       ));
@@ -286,6 +298,7 @@ router.post(
           lt(jobsTable.scheduledDate, fromDate),
           eq(jobsTable.jobType, "scheduled"),
           eq(jobsTable.status, "pending"),
+          isNull(jobsTable.draftOriginalScheduledDate),
           ...(teamId ? [eq(jobsTable.teamId, teamId)] : []),
         ),
       ));
@@ -326,7 +339,9 @@ router.post(
         and(
           gte(jobsTable.scheduledDate, fromDate),
           lte(jobsTable.scheduledDate, toDate),
-          notInArray(jobsTable.status, ["completed", "skipped"]),
+          // Drafts represent accepted skips awaiting manager placement. They
+          // reserve the original-cycle identity but not day capacity.
+          notInArray(jobsTable.status, ["completed", "skipped", "draft"]),
           ...(teamId ? [eq(jobsTable.teamId, teamId)] : []),
         ),
       ));
@@ -402,6 +417,7 @@ router.post(
       .select({
         assetId:       jobsTable.assetId,
         scheduledDate: sql<string>`to_char(${jobsTable.scheduledDate}, 'YYYY-MM-DD')`,
+        draftOriginalScheduledDate: sql<string | null>`to_char(${jobsTable.draftOriginalScheduledDate}, 'YYYY-MM-DD')`,
         status:        jobsTable.status,
         id:            jobsTable.id,
         estimatedTimeMins: jobsTable.estimatedTimeMins,
@@ -409,19 +425,35 @@ router.post(
       .from(jobsTable)
       .where(
         and(
-          gte(jobsTable.scheduledDate, addDays(fromDate, -DUE_DATE_FLEX_DAYS)),
-          lte(jobsTable.scheduledDate, addDays(toDate, DUE_DATE_FLEX_DAYS)),
           eq(jobsTable.jobType, "scheduled"),
+          // A placed draft keeps its original date/team as a recurring-cycle
+          // reservation. Query both current and original context so a later
+          // generation run cannot recreate the skipped cycle after placement.
+          or(
+            and(
+              gte(jobsTable.scheduledDate, addDays(fromDate, -DUE_DATE_FLEX_DAYS)),
+              lte(jobsTable.scheduledDate, addDays(toDate, DUE_DATE_FLEX_DAYS)),
+              ...(teamId ? [eq(jobsTable.teamId, teamId)] : []),
+            ),
+            and(
+              isNotNull(jobsTable.draftOriginalScheduledDate),
+              gte(jobsTable.draftOriginalScheduledDate, addDays(fromDate, -DUE_DATE_FLEX_DAYS)),
+              lte(jobsTable.draftOriginalScheduledDate, addDays(toDate, DUE_DATE_FLEX_DAYS)),
+              ...(teamId ? [eq(jobsTable.draftOriginalTeamId, teamId)] : []),
+            ),
+          ),
           notInArray(jobsTable.status, ["completed", "skipped"]),
-          ...(teamId ? [eq(jobsTable.teamId, teamId)] : []),
         ),
       ));
 
-    // Map assetId → set of scheduledDate strings that already exist
+    // Map assetId → set of cycle dates that already exist. A placed draft
+    // reserves both its original cycle and its deliberately selected date.
     const existingByAsset = new Map<string, Set<string>>();
     for (const j of existingJobDates) {
       if (!existingByAsset.has(j.assetId)) existingByAsset.set(j.assetId, new Set());
-      existingByAsset.get(j.assetId)!.add(j.scheduledDate);
+      for (const cycleDate of getCycleReservationDates(j)) {
+        existingByAsset.get(j.assetId)!.add(cycleDate);
+      }
     }
 
     // Mark placedDates for assets that already have jobs in the range
@@ -670,6 +702,8 @@ router.get(
     const condition = and(
       gte(jobsTable.scheduledDate, weekStart),
       lte(jobsTable.scheduledDate, weekEnd),
+      // Accepted-skip drafts are manager work, never worker schedule work.
+      notInArray(jobsTable.status, ["draft"]),
       ...(teamId ? [eq(assetsTable.teamId, teamId)] : []),
     );
 
@@ -1119,6 +1153,9 @@ router.get(
         and(
           gte(jobsTable.scheduledDate, from),
           lte(jobsTable.scheduledDate, to),
+          // Drafts are managed through the dedicated placement queue, not the
+          // normal Gantt schedule (for managers or workers).
+          notInArray(jobsTable.status, ["draft"]),
           ...(teamId ? [eq(assetsTable.teamId, teamId)] : []),
         ),
       )
@@ -1395,7 +1432,7 @@ router.get(
         and(
           eq(jobsTable.teamId, teamId),
           eq(jobsTable.scheduledDate, date),
-          notInArray(jobsTable.status, ["completed", "skipped"]),
+          notInArray(jobsTable.status, ["completed", "skipped", "draft"]),
         ),
       )
       .orderBy(sql`${assetsTable.routeOrder} NULLS LAST`, assetsTable.name));
@@ -1835,6 +1872,7 @@ router.post(
           eq(jobsTable.scheduledDate, date),
           eq(jobsTable.status, "pending"),
           eq(jobsTable.jobType, "scheduled"),
+          isNull(jobsTable.draftOriginalScheduledDate),
         ),
       )
       .orderBy(sql`${assetsTable.routeOrder} NULLS LAST`, assetsTable.name));

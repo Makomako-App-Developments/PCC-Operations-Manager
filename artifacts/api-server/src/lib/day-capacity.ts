@@ -66,12 +66,13 @@ async function queryJobTypeMins<T>(
 export async function computeTotalScheduledMins(
   teamId: string,
   date: string,
+  queryDb: typeof db = db,
 ): Promise<{ total: number; capacityDataReliable: boolean }> {
   const [regularRows, infillRows, mulchRows] = await Promise.all([
     // Regular maintenance + reactive + contingency jobs
     queryJobTypeMins("regular-jobs", teamId, date, () =>
       executeWithCircuitBreaker(() =>
-        db
+        queryDb
           .select({
             mins: sql<number>`coalesce(${jobsTable.estimatedTimeMins}, ${assetsTable.serviceTimeMins}, 0)`,
           })
@@ -81,7 +82,7 @@ export async function computeTotalScheduledMins(
             and(
               eq(jobsTable.teamId, teamId),
               eq(jobsTable.scheduledDate, date),
-              notInArray(jobsTable.status, ["completed", "skipped"]),
+              notInArray(jobsTable.status, ["completed", "skipped", "draft"]),
             ),
           ),
       ),
@@ -90,7 +91,7 @@ export async function computeTotalScheduledMins(
     // Infill planting jobs
     queryJobTypeMins("infill-jobs", teamId, date, () =>
       executeWithCircuitBreaker(() =>
-        db
+        queryDb
           .select({ mins: sql<number>`coalesce(${infillJobsTable.estimatedMins}, 0)` })
           .from(infillJobsTable)
           .where(
@@ -106,7 +107,7 @@ export async function computeTotalScheduledMins(
     // Mulching records
     queryJobTypeMins("mulching-records", teamId, date, () =>
       executeWithCircuitBreaker(() =>
-        db
+        queryDb
           .select({ mins: sql<number>`coalesce(${mulchingRecordsTable.estimatedMins}, 0)` })
           .from(mulchingRecordsTable)
           .where(
@@ -166,13 +167,13 @@ export async function computeTotalScheduledMins(
   if (allRowArraysEmpty && capacityDataReliable) {
     const [countRow] = await queryJobTypeMins("total-job-count", teamId, date, () =>
       executeWithCircuitBreaker(() =>
-        db
+        queryDb
           .select({
             totalCount: sql<number>`(
               (SELECT count(*) FROM ${jobsTable}
                 WHERE ${eq(jobsTable.teamId, teamId)}
                   AND ${eq(jobsTable.scheduledDate, date)}
-                  AND ${notInArray(jobsTable.status, ["completed", "skipped"])})
+                  AND ${notInArray(jobsTable.status, ["completed", "skipped", "draft"])})
               + (SELECT count(*) FROM ${infillJobsTable}
                 WHERE ${eq(infillJobsTable.assignedTeamId, teamId)}
                   AND ${eq(infillJobsTable.plannedDate, date)}
@@ -211,15 +212,16 @@ export async function checkDayCapacity(
   teamId: string,
   date: string,
   newJobMins: number,
+  queryDb: typeof db = db,
 ): Promise<DayCapacityResult | null> {
   const [settings] = await queryJobTypeMins("system-settings", teamId, date, () =>
     executeWithCircuitBreaker(() =>
-      db.select().from(systemSettingsTable).limit(1),
+      queryDb.select().from(systemSettingsTable).limit(1),
     ),
   );
   const productiveTimeMins = settings?.productiveTimeMins ?? 390;
 
-  const { total: totalScheduledMins, capacityDataReliable } = await computeTotalScheduledMins(teamId, date);
+  const { total: totalScheduledMins, capacityDataReliable } = await computeTotalScheduledMins(teamId, date, queryDb);
   const newTotal = totalScheduledMins + newJobMins;
 
   // Fail closed: if the capacity data is unreliable (asymmetry guard or
@@ -246,7 +248,7 @@ export async function checkDayCapacity(
   // push-forward would shift.
   const [pendingCountRow] = await queryJobTypeMins("pending-count", teamId, date, () =>
     executeWithCircuitBreaker(() =>
-      db
+      queryDb
         .select({ count: sql<number>`count(*)::int` })
         .from(jobsTable)
         .where(

@@ -112,17 +112,23 @@ app.get("/api/uploads/*splat", requireAuth, async (req: Request, res: Response) 
       .limit(1);
 
     if (jobPhoto) {
-      if (!isPrivileged) {
-        if (jobPhoto.jobId) {
-          const [job] = await db
-            .select({ teamId: jobsTable.teamId, isAllTeams: jobsTable.isAllTeams })
-            .from(jobsTable)
-            .where(eq(jobsTable.id, jobPhoto.jobId))
-            .limit(1);
-          if (job && !job.isAllTeams && job.teamId !== callerTeamId) {
-            res.status(403).json({ error: "Forbidden" }); return;
-          }
-        } else if (jobPhoto.reactiveJobId) {
+      if (jobPhoto.jobId) {
+        const [job] = await db
+          .select({ teamId: jobsTable.teamId, isAllTeams: jobsTable.isAllTeams, status: jobsTable.status })
+          .from(jobsTable)
+          .where(eq(jobsTable.id, jobPhoto.jobId))
+          .limit(1);
+        if (!job) { res.status(404).json({ error: "Photo not found" }); return; }
+        // Drafts are manager-only even if a worker retained a blob URL from
+        // before the skip review was accepted.
+        if (job.status === "draft" && !["administrator", "manager"].includes(callerRole)) {
+          res.status(404).json({ error: "Photo not found" }); return;
+        }
+        if (!isPrivileged && !job.isAllTeams && job.teamId !== callerTeamId) {
+          res.status(403).json({ error: "Forbidden" }); return;
+        }
+      } else if (!isPrivileged) {
+        if (jobPhoto.reactiveJobId) {
           const [rj] = await db
             .select({ assignedTeamId: reactiveJobsTable.assignedTeamId })
             .from(reactiveJobsTable)

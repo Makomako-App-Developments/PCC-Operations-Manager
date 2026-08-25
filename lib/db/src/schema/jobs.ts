@@ -37,6 +37,10 @@ export const jobsTable = pgTable("jobs", {
   skipReviewedById:   uuid("skip_reviewed_by_id").references(() => usersTable.id),
   skipReviewOutcome:  skipReviewOutcomeEnum("skip_review_outcome"),
   skipReviewNotes:    text("skip_review_notes"),
+  // Original context is retained when an accepted skip becomes a manager draft,
+  // even after that draft is placed onto a different team or date.
+  draftOriginalTeamId: uuid("draft_original_team_id").references(() => teamsTable.id),
+  draftOriginalScheduledDate: date("draft_original_scheduled_date"),
   createdAt:          timestamp("created_at").notNull().defaultNow(),
   updatedAt:          timestamp("updated_at").notNull().defaultNow(),
 }, (t) => [
@@ -47,6 +51,7 @@ export const jobsTable = pgTable("jobs", {
   index("jobs_assigned_user_id_idx").on(t.assignedUserId),
   index("jobs_is_all_teams_idx").on(t.isAllTeams),
   index("jobs_skip_review_outcome_idx").on(t.skipReviewOutcome),
+  index("jobs_draft_original_team_id_idx").on(t.draftOriginalTeamId),
 ]);
 
 // Per-team sign-off records for "All Teams" collaborative jobs

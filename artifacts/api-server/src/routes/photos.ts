@@ -71,14 +71,17 @@ router.get("/jobs/:id/photos", requireAuth, async (req, res) => {
   const kind = await resolveJobKind(id);
   if (kind === "unknown") { res.status(404).json({ error: "Job or mulching record not found" }); return; }
 
-  if (!isPrivilegedRole(req.auth!.role)) {
+  if (kind === "job") {
+    const [job] = await executeWithCircuitBreaker(() => db.select({ teamId: jobsTable.teamId, isAllTeams: jobsTable.isAllTeams, status: jobsTable.status }).from(jobsTable).where(eq(jobsTable.id, id)).limit(1));
+    if (job?.status === "draft" && !["administrator", "manager"].includes(req.auth!.role)) {
+      res.status(404).json({ error: "Job not found" }); return;
+    }
+    if (!isPrivilegedRole(req.auth!.role) && job && !job.isAllTeams && job.teamId !== req.auth!.teamId) {
+      res.status(403).json({ error: "Forbidden" }); return;
+    }
+  } else if (!isPrivilegedRole(req.auth!.role)) {
     const callerTeamId = req.auth!.teamId;
-    if (kind === "job") {
-      const [job] = await executeWithCircuitBreaker(() => db.select({ teamId: jobsTable.teamId, isAllTeams: jobsTable.isAllTeams }).from(jobsTable).where(eq(jobsTable.id, id)).limit(1));
-      if (job && !job.isAllTeams && job.teamId !== callerTeamId) {
-        res.status(403).json({ error: "Forbidden" }); return;
-      }
-    } else if (kind === "mulching") {
+    if (kind === "mulching") {
       const [mr] = await executeWithCircuitBreaker(() => db.select({ assignedTeamId: mulchingRecordsTable.assignedTeamId }).from(mulchingRecordsTable).where(eq(mulchingRecordsTable.id, id)).limit(1));
       if (mr && mr.assignedTeamId !== callerTeamId) {
         res.status(403).json({ error: "Forbidden" }); return;
@@ -110,14 +113,17 @@ router.post(
     const kind = await resolveJobKind(id);
     if (kind === "unknown") { res.status(404).json({ error: "Job or mulching record not found" }); return; }
 
-    if (!isPrivilegedRole(req.auth!.role)) {
+    if (kind === "job") {
+      const [job] = await executeWithCircuitBreaker(() => db.select({ teamId: jobsTable.teamId, isAllTeams: jobsTable.isAllTeams, status: jobsTable.status }).from(jobsTable).where(eq(jobsTable.id, id)).limit(1));
+      if (job?.status === "draft") {
+        res.status(409).json({ error: "Draft jobs cannot be changed until a manager places them" }); return;
+      }
+      if (!isPrivilegedRole(req.auth!.role) && job && !job.isAllTeams && job.teamId !== req.auth!.teamId) {
+        res.status(403).json({ error: "Forbidden" }); return;
+      }
+    } else if (!isPrivilegedRole(req.auth!.role)) {
       const callerTeamId = req.auth!.teamId;
-      if (kind === "job") {
-        const [job] = await executeWithCircuitBreaker(() => db.select({ teamId: jobsTable.teamId, isAllTeams: jobsTable.isAllTeams }).from(jobsTable).where(eq(jobsTable.id, id)).limit(1));
-        if (job && !job.isAllTeams && job.teamId !== callerTeamId) {
-          res.status(403).json({ error: "Forbidden" }); return;
-        }
-      } else if (kind === "mulching") {
+      if (kind === "mulching") {
         const [mr] = await executeWithCircuitBreaker(() => db.select({ assignedTeamId: mulchingRecordsTable.assignedTeamId }).from(mulchingRecordsTable).where(eq(mulchingRecordsTable.id, id)).limit(1));
         if (mr && mr.assignedTeamId !== callerTeamId) {
           res.status(403).json({ error: "Forbidden" }); return;

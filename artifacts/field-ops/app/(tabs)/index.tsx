@@ -226,7 +226,10 @@ export default function TodayScreen() {
     for (const w of [thisWeek, nextWeek, week3]) {
       if (!w?.days) continue;
       for (const d of w.days as { date: string; jobs: Job[] }[]) {
-        if (!map.has(d.date)) map.set(d.date, d.jobs ?? []);
+        // The API excludes manager-only drafts. Keep this guard as a second
+        // boundary so a malformed or stale response can never expose draft
+        // work in the field app.
+        if (!map.has(d.date)) map.set(d.date, (d.jobs ?? []).filter(job => job.status !== "draft"));
       }
     }
     return map;

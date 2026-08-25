@@ -4,13 +4,14 @@
  * Guards verified:
  *  1. Returns 409 when the job status is not "skipped".
  *  2. Returns 403 for field_worker and supervisor roles.
- *  3. A second review by a different manager overwrites the first (full two-request sequence).
+ *  3. Repeat review requests are idempotent, while conflicting outcomes are rejected.
  *  4. Reviewer name/initials appear in GET /api/jobs/skips response; leftJoin is executed.
  *  5. Returns 409 when a concurrent status change empties the UPDATE returning() result.
  *  6. Review survives when the audit log insert fails — returns 200 and the review is committed.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import request from "supertest";
+import { Readable } from "stream";
 
 // ── Chainable query builder ───────────────────────────────────────────────────
 
@@ -82,6 +83,7 @@ vi.mock("@workspace/db", async (importOriginal) => {
 
       // Default transaction: provides a tx with a controllable update chain.
       const tx: Record<string, unknown> = {
+        execute: vi.fn().mockResolvedValue([]),
         update: vi.fn(() => ({
           set:       vi.fn().mockReturnThis(),
           where:     vi.fn().mockReturnThis(),
@@ -111,7 +113,7 @@ vi.mock("../lib/objectStorage", () => ({
       file: vi.fn().mockReturnValue({
         exists:           vi.fn().mockResolvedValue([false]),
         getMetadata:      vi.fn().mockResolvedValue([{}]),
-        createReadStream: vi.fn(),
+        createReadStream: vi.fn(() => Readable.from(["photo"])),
         download:         vi.fn().mockResolvedValue([Buffer.from("")]),
         save:             vi.fn().mockResolvedValue(undefined),
         makePublic:       vi.fn().mockResolvedValue(undefined),
@@ -123,6 +125,11 @@ vi.mock("../lib/objectStorage", () => ({
 vi.mock("../lib/push-notifications", () => ({
   notifyTeam:  vi.fn().mockResolvedValue(undefined),
   notifyUsers: vi.fn().mockResolvedValue(undefined),
+}));
+
+vi.mock("../lib/day-capacity", () => ({
+  checkDayCapacity: vi.fn().mockResolvedValue(null),
+  computeTotalScheduledMins: vi.fn().mockResolvedValue({ total: 0, capacityDataReliable: true }),
 }));
 
 /**
@@ -185,6 +192,73 @@ function postSkipReview(
     .send(body);
 }
 
+function postPlaceDraft(
+  jobId: string,
+  body: Record<string, unknown>,
+  { role = "manager", userId = "manager-1" }: { role?: string; userId?: string } = {},
+) {
+  return request(app)
+    .post(`/api/jobs/${jobId}/place-draft`)
+    .set("x-test-role", role)
+    .set("x-test-user-id", userId)
+    .send(body);
+}
+
+function getJob(
+  jobId: string,
+  { role = "manager" }: { role?: string } = {},
+) {
+  return request(app)
+    .get(`/api/jobs/${jobId}`)
+    .set("x-test-role", role);
+}
+
+function postJob(
+  body: Record<string, unknown>,
+  { role = "manager" }: { role?: string } = {},
+) {
+  return request(app)
+    .post("/api/jobs")
+    .set("x-test-role", role)
+    .send(body);
+}
+
+function getTaskSkipReasons(
+  jobId: string,
+  { role = "manager" }: { role?: string } = {},
+) {
+  return request(app)
+    .get(`/api/jobs/${jobId}/task-skip-reasons`)
+    .set("x-test-role", role);
+}
+
+function getJobPhotos(
+  jobId: string,
+  { role = "manager" }: { role?: string } = {},
+) {
+  return request(app)
+    .get(`/api/jobs/${jobId}/photos`)
+    .set("x-test-role", role);
+}
+
+function getKnownUpload(
+  { role = "manager" }: { role?: string } = {},
+) {
+  return request(app)
+    .get("/api/uploads/uploads/known-draft-photo.jpg")
+    .set("x-test-role", role);
+}
+
+function postTeamComplete(
+  jobId: string,
+  { role = "field_worker" }: { role?: string } = {},
+) {
+  return request(app)
+    .post(`/api/jobs/${jobId}/team-complete`)
+    .set("x-test-role", role)
+    .send({});
+}
+
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
 describe("POST /api/jobs/:id/skip-review", () => {
@@ -243,16 +317,40 @@ describe("POST /api/jobs/:id/skip-review", () => {
     expect(res.status).toBe(200);
   });
 
-  // ── 3. Re-review — full two-request sequence ─────────────────────────────────
+  it("rejects a skip by returning the original assignment to pending work", async () => {
+    selectQueue = [[skippedJob]];
+    updateReturning = [{
+      ...skippedJob,
+      status: "pending",
+      skipReviewedById: "manager-1",
+      skipReviewOutcome: "rejected",
+      skipReviewNotes: "The site was accessible after all",
+    }];
+
+    const res = await postSkipReview(
+      JOB_ID,
+      { outcome: "rejected", notes: "The site was accessible after all" },
+    );
+
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({
+      status: "pending",
+      teamId: skippedJob.teamId,
+      scheduledDate: skippedJob.scheduledDate,
+      skipReviewOutcome: "rejected",
+    });
+  });
+
+  // ── 3. Repeat review — full two-request sequence ─────────────────────────────
   //
   // Uses a stateful in-memory store that the transaction mock writes to on success
   // (commit) and leaves unchanged on failure (rollback).
   //
-  // First POST: store starts as skippedJob → transaction commits first review.
-  // Second POST: SELECT reads the already-reviewed store state (first review present),
-  //              transaction writes second reviewer's fields → assert overwrite.
+  // First POST: store starts as skippedJob → transaction commits accepted draft.
+  // Second POST: an identical retry returns the existing decision without a write;
+  //              a conflicting outcome cannot reverse a lifecycle transition.
 
-  it("two-request sequence: first review commits, second review overwrites first reviewer's fields", async () => {
+  it("makes accepted review idempotent and rejects a conflicting repeat review", async () => {
     // ── Stateful in-memory store ────────────────────────────────────────────
     const store: Record<string, unknown> = { ...skippedJob };
 
@@ -299,35 +397,32 @@ describe("POST /api/jobs/:id/skip-review", () => {
     expect(store["skipReviewedById"]).toBe("manager-1");
     expect(store["skipReviewOutcome"]).toBe("accepted");
 
-    // ── Second POST: review by manager-2 (overwrite) ───────────────────────
+    expect(store["status"]).toBe("draft");
+    expect(store["draftOriginalTeamId"]).toBe(skippedJob.teamId);
+    expect(store["draftOriginalScheduledDate"]).toBe(skippedJob.scheduledDate);
+
+    // ── Second POST: same outcome is an idempotent retry ───────────────────
     lastSetArgs = null;
 
     const res2 = await postSkipReview(
       JOB_ID,
-      { outcome: "rejected", notes: "On reflection, site was accessible" },
+      { outcome: "accepted", notes: "Retry should not overwrite" },
       { role: "manager", userId: "manager-2" },
     );
     expect(res2.status).toBe(200);
+    expect(res2.body.idempotent).toBe(true);
+    expect(lastSetArgs).toBeNull();
+    expect(store["skipReviewedById"]).toBe("manager-1");
+    expect(store["skipReviewNotes"]).toBe("Looks fine");
 
-    // Response carries second reviewer's data.
-    expect(res2.body.skipReviewOutcome).toBe("rejected");
-    expect(res2.body.skipReviewedById).toBe("manager-2");
-    expect(res2.body.skipReviewNotes).toBe("On reflection, site was accessible");
-
-    // UPDATE was called with the second reviewer's values — the overwrite proof.
-    expect(lastSetArgs).not.toBeNull();
-    expect(lastSetArgs).toMatchObject({
-      skipReviewedById:  "manager-2",
-      skipReviewOutcome: "rejected",
-      skipReviewNotes:   "On reflection, site was accessible",
-    });
-    // Old reviewer must not appear in the written patch.
-    expect((lastSetArgs as Record<string, unknown>)["skipReviewedById"]).not.toBe("manager-1");
-
-    // Store's final state is the second review — fully overwritten.
-    expect(store["skipReviewedById"]).toBe("manager-2");
-    expect(store["skipReviewOutcome"]).toBe("rejected");
-    expect(store["skipReviewNotes"]).toBe("On reflection, site was accessible");
+    // ── Conflicting outcome cannot revise an already-accepted draft ───────
+    const res3 = await postSkipReview(
+      JOB_ID,
+      { outcome: "rejected" },
+      { role: "manager", userId: "manager-2" },
+    );
+    expect(res3.status).toBe(409);
+    expect(lastSetArgs).toBeNull();
   });
 
   // ── 5. Concurrent status-change race ─────────────────────────────────────────
@@ -377,9 +472,9 @@ describe("POST /api/jobs/:id/skip-review", () => {
     // Make db.insert throw — simulates an audit constraint violation.
     // auditLog() wraps this in try/catch, so the route must NOT propagate it.
     const { db } = await import("@workspace/db");
-    vi.mocked(db.insert).mockImplementationOnce(() => ({
+    vi.mocked(db.insert).mockImplementationOnce((() => ({
       values: vi.fn().mockRejectedValue(new Error("audit constraint violation")),
-    }));
+    })) as unknown as typeof db.insert);
 
     const res = await postSkipReview(JOB_ID, { outcome: "accepted", notes: "Approved" });
 
@@ -388,6 +483,176 @@ describe("POST /api/jobs/:id/skip-review", () => {
     expect(res.body.skipReviewOutcome).toBe("accepted");
     expect(res.body.skipReviewedById).toBe("manager-1");
     expect(res.body.skipReviewNotes).toBe("Approved");
+  });
+});
+
+describe("POST /api/jobs/:id/place-draft", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    selectImpl = null;
+    selectQueue = [];
+    transactionImpl = null;
+    updateReturning = [];
+  });
+
+  const draftJob = {
+    ...skippedJob,
+    status: "draft",
+    estimatedTimeMins: 45,
+    skipReviewedAt: new Date("2026-08-02T10:00:00Z"),
+    skipReviewOutcome: "accepted",
+    draftOriginalTeamId: skippedJob.teamId,
+    draftOriginalScheduledDate: skippedJob.scheduledDate,
+  };
+  const placement = {
+    teamId: "00000000-0000-0000-0000-000000000099",
+    scheduledDate: "2026-08-15",
+  };
+
+  it("promotes a draft once, retains original context, and makes an identical retry idempotent", async () => {
+    const placed = { ...draftJob, ...placement, status: "pending", isAllTeams: false };
+    selectQueue = [[draftJob]];
+    updateReturning = [placed];
+
+    const first = await postPlaceDraft(JOB_ID, placement);
+    expect(first.status).toBe(200);
+    expect(first.body.status).toBe("pending");
+    expect(first.body.draftOriginalTeamId).toBe(skippedJob.teamId);
+    expect(first.body.draftOriginalScheduledDate).toBe(skippedJob.scheduledDate);
+    const { db } = await import("@workspace/db");
+    expect(db.transaction).toHaveBeenCalled();
+
+    selectQueue = [[placed]];
+    const second = await postPlaceDraft(JOB_ID, placement);
+    expect(second.status).toBe(200);
+    expect(second.body.idempotent).toBe(true);
+  });
+
+  it("returns 409 when a concurrent placement wins the draft transition", async () => {
+    selectQueue = [[draftJob]];
+    updateReturning = [];
+
+    const res = await postPlaceDraft(JOB_ID, placement);
+    expect(res.status).toBe(409);
+  });
+
+  it("uses the capacity safeguard and requires an explicit force retry", async () => {
+    const { checkDayCapacity } = await import("../lib/day-capacity");
+    vi.mocked(checkDayCapacity).mockResolvedValueOnce({
+      teamId: placement.teamId,
+      date: placement.scheduledDate,
+      productiveTimeMins: 390,
+      totalScheduledMins: 380,
+      newJobMins: 45,
+      shortfallMins: 35,
+      pendingScheduledFromCount: 1,
+      capacityDataReliable: true,
+    });
+    selectQueue = [[draftJob]];
+
+    const res = await postPlaceDraft(JOB_ID, placement);
+    expect(res.status).toBe(409);
+    expect(res.body.capacityConflict).toBe(true);
+
+    const placed = { ...draftJob, ...placement, status: "pending", isAllTeams: false };
+    selectQueue = [[draftJob]];
+    updateReturning = [placed];
+    const forced = await postPlaceDraft(JOB_ID, { ...placement, force: true });
+    expect(forced.status).toBe(200);
+    expect(forced.body.status).toBe("pending");
+  });
+
+  it("returns 403 to a field worker", async () => {
+    const res = await postPlaceDraft(JOB_ID, placement, { role: "field_worker" });
+    expect(res.status).toBe(403);
+  });
+});
+
+describe("draft lifecycle boundaries", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    selectImpl = null;
+    selectQueue = [];
+    transactionImpl = null;
+    updateReturning = [];
+  });
+
+  it("hides a draft from a supervisor who knows its direct job ID", async () => {
+    selectQueue = [[{ ...skippedJob, status: "draft" }]];
+    const res = await getJob(JOB_ID, { role: "supervisor" });
+    expect(res.status).toBe(404);
+  });
+
+  it("hides a draft's task-skip details from a supervisor", async () => {
+    selectQueue = [[{ ...skippedJob, status: "draft" }]];
+    const res = await getTaskSkipReasons(JOB_ID, { role: "supervisor" });
+    expect(res.status).toBe(404);
+  });
+
+  it("hides a draft's photos from a field worker with the job ID", async () => {
+    selectQueue = [
+      [{ id: JOB_ID }],
+      [{ ...skippedJob, status: "draft" }],
+    ];
+    const res = await getJobPhotos(JOB_ID, { role: "field_worker" });
+    expect(res.status).toBe(404);
+  });
+
+  it.each(["field_worker", "supervisor"])(
+    "does not serve a retained draft upload URL to a %s",
+    async (role) => {
+      process.env.DEFAULT_OBJECT_STORAGE_BUCKET_ID = "test-bucket";
+      selectQueue = [
+        [{ jobId: JOB_ID, reactiveJobId: null, mulchingRecordId: null }],
+        [{ ...skippedJob, status: "draft" }],
+      ];
+
+      const res = await getKnownUpload({ role });
+      expect(res.status).toBe(404);
+    },
+  );
+
+  it("serves a retained draft upload URL to a manager", async () => {
+    process.env.DEFAULT_OBJECT_STORAGE_BUCKET_ID = "test-bucket";
+    const { objectStorageClient } = await import("../lib/objectStorage");
+    vi.mocked(objectStorageClient.bucket).mockReturnValueOnce({
+      file: vi.fn().mockReturnValue({
+        exists: vi.fn().mockResolvedValue([true]),
+        getMetadata: vi.fn().mockResolvedValue([{ contentType: "image/jpeg" }]),
+        createReadStream: vi.fn(() => Readable.from(["photo"])),
+      }),
+    } as any);
+    selectQueue = [
+      [{ jobId: JOB_ID, reactiveJobId: null, mulchingRecordId: null }],
+      [{ ...skippedJob, status: "draft" }],
+    ];
+
+    const res = await getKnownUpload();
+    expect(res.status).toBe(200);
+  });
+
+  it("does not allow a field worker to complete an unplaced all-teams draft", async () => {
+    selectQueue = [[{ ...skippedJob, status: "draft", isAllTeams: true }]];
+    const res = await postTeamComplete(JOB_ID);
+    expect(res.status).toBe(409);
+  });
+
+  it("does not allow the general job endpoint to forge a manager-only draft", async () => {
+    const res = await postJob(
+      {
+        jobType: "scheduled",
+        assetId: "00000000-0000-4000-8000-000000000002",
+        teamId: "00000000-0000-4000-8000-000000000099",
+        scheduledDate: skippedJob.scheduledDate,
+        isAllTeams: false,
+        status: "draft",
+        draftOriginalTeamId: "00000000-0000-4000-8000-000000000099",
+        draftOriginalScheduledDate: skippedJob.scheduledDate,
+      },
+      { role: "supervisor" },
+    );
+    expect(res.status).toBe(409);
+    expect(res.body.error).toContain("Draft jobs can only be created");
   });
 });
 
@@ -449,7 +714,7 @@ describe("GET /api/jobs/skips", () => {
 
     const usersJoinFound = selectResults
       .filter(r => r.type === "return")
-      .map(r => r.value as ReturnType<typeof makeChain>)
+      .map(r => r.value as unknown as ReturnType<typeof makeChain>)
       .some(chain =>
         (chain.leftJoin as ReturnType<typeof vi.fn>).mock.calls
           .some((args: unknown[]) => args[0] === usersTable),
