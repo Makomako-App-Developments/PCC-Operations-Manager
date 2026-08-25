@@ -38,7 +38,7 @@ import { useAuth } from "@/context/auth";
 import { useColors } from "@/hooks/useColors";
 import { getApiUrl, trackedFetch } from "@/lib/api";
 import { useOfflinePhotoQueue } from "@/hooks/useOfflinePhotoQueue";
-import { loadCachedCoreJob, saveCachedCoreJob } from "@/lib/jobDetailCache";
+import { loadCachedAsset, loadCachedCoreJob, saveCachedAsset, saveCachedCoreJob } from "@/lib/jobDetailCache";
 
 // ─── Task definitions ────────────────────────────────────────────────────────
 
@@ -935,7 +935,7 @@ export default function JobDetailScreen() {
     }
   }, [id, liveJob]);
   const job = liveJob ?? cachedJob;
-  const { data: asset, isError: assetError, refetch: refetchAsset, isFetching: assetFetching } = useGetAsset(
+  const { data: liveAsset, isError: assetError, refetch: refetchAsset, isFetching: assetFetching } = useGetAsset(
     job?.assetId ?? "",
     { query: {
       enabled: !!job?.assetId,
@@ -943,6 +943,21 @@ export default function JobDetailScreen() {
       retryDelay: (attempt: number) => Math.min(1000 * 2 ** attempt, 4000),
     } } as any,
   );
+  const [cachedAsset, setCachedAsset] = useState<any>();
+  useEffect(() => {
+    const assetId = job?.assetId;
+    if (!assetId) return;
+    loadCachedAsset<any>(assetId).then(setCachedAsset);
+  }, [job?.assetId]);
+  useEffect(() => {
+    const assetId = job?.assetId;
+    if (assetId && liveAsset) {
+      setCachedAsset(liveAsset);
+      void saveCachedAsset(assetId, liveAsset);
+    }
+  }, [job?.assetId, liveAsset]);
+  const asset = liveAsset ?? cachedAsset;
+  const usingCachedAsset = !liveAsset && !!cachedAsset;
   const { data: photosData } = useJobPhotos(id ?? "");
   const updateJob = useUpdateJob();
   const teamComplete = useTeamComplete(id ?? "");
@@ -1324,7 +1339,7 @@ export default function JobDetailScreen() {
         ) : null}
 
         {/* Info tiles */}
-        {asset ? <View style={styles.infoGrid}>
+          {asset ? <View style={styles.infoGrid}>
           {/* Description — full width, first */}
           {(asset as any).description ? (
             <View style={[styles.infoTile, styles.infoTileWide, { backgroundColor: colors.card, borderColor: colors.border, borderRadius: colors.radius }]}>
@@ -1402,7 +1417,7 @@ export default function JobDetailScreen() {
         )}
 
         {/* Garden Boundary Map */}
-        {asset && ((asset as any).boundary || asset.lat) && (
+        {asset && ((asset as any).boundary || asset.lat != null || asset.lng != null) && (
           <View style={[styles.section, { backgroundColor: colors.card, borderColor: colors.border, borderRadius: colors.radius, overflow: "hidden", padding: 0 }]}>
             <View style={[styles.sectionHeader, { paddingHorizontal: 14, paddingTop: 12, paddingBottom: 8 }]}>
               <Feather name="map" size={16} color={colors.primary} />
@@ -1474,14 +1489,14 @@ export default function JobDetailScreen() {
         {(isActive || isPaused || isDone) && id && (
           <ObservationsSection jobId={id} job={job} readOnly={status === "skipped"} />
         )}
-        {(usingCachedJob || (jobError && !!job)) && (
+        {(usingCachedJob || (jobError && !!job) || usingCachedAsset) && (
           <View style={[styles.staleBanner, { backgroundColor: "#fef3c7", borderColor: "#fbbf24" }]}>
             <Feather name="clock" size={14} color="#92400e" />
             <Text style={[styles.staleBannerText, { color: "#92400e" }]}>
-              You’re offline. Showing the last saved job details; some information may be stale.
+              You’re offline. Showing the last saved job and asset details; some information may be stale.
             </Text>
-            <TouchableOpacity onPress={() => refetchJob()} disabled={jobFetching}>
-              {jobFetching ? <ActivityIndicator size="small" color="#92400e" /> : <Text style={styles.staleRetryText}>Retry</Text>}
+              <TouchableOpacity onPress={() => { void refetchJob(); void refetchAsset(); }} disabled={jobFetching || assetFetching}>
+                {jobFetching || assetFetching ? <ActivityIndicator size="small" color="#92400e" /> : <Text style={styles.staleRetryText}>Retry</Text>}
             </TouchableOpacity>
           </View>
         )}

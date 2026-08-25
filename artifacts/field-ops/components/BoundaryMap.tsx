@@ -1,8 +1,9 @@
 import React from "react";
 import { View, StyleSheet, Platform } from "react-native";
 import { WebView } from "react-native-webview";
+import { isRenderableBoundary } from "@/lib/boundaryValidation";
 
-type GeoPolygon = { type: "Polygon"; coordinates: number[][][] };
+import type { GeoPolygon } from "@/lib/boundaryValidation";
 
 interface Props {
   boundary: GeoPolygon | null | undefined;
@@ -18,7 +19,7 @@ function buildHtml(
   lng: number,
   color: string
 ): string {
-  const hasPolygon = boundary?.coordinates?.[0]?.length;
+  const hasPolygon = isRenderableBoundary(boundary);
   const leafletCoords = hasPolygon
     ? JSON.stringify(
         boundary!.coordinates[0].map(([lo, la]: number[]) => [la, lo])
@@ -109,7 +110,9 @@ export function BoundaryMap({ boundary, lat, lng, color = "#00AECD", height = 22
   const clat = lat != null ? Number(lat) : -41.13;
   const clng = lng != null ? Number(lng) : 174.85;
 
-  if (!boundary && !lat && !lng) return null;
+  const hasCoordinates = Number.isFinite(clat) && Number.isFinite(clng) && lat != null && lng != null;
+  const hasPolygon = isRenderableBoundary(boundary);
+  if (!hasCoordinates && !hasPolygon) return null;
 
   const html = buildHtml(boundary, clat, clng, color);
 

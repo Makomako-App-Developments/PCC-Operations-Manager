@@ -1,7 +1,7 @@
 import { Feather } from "@expo/vector-icons";
 import { useGetAsset } from "@workspace/api-client-react";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import React, { useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import { setLastAssetId } from "@/lib/lastAsset";
 import {
   ActivityIndicator,
@@ -18,6 +18,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { BoundaryMap } from "@/components/BoundaryMap";
 import { useAuth } from "@/context/auth";
 import { useColors } from "@/hooks/useColors";
+import { loadCachedAsset, saveCachedAsset } from "@/lib/jobDetailCache";
 
 const GARDEN_TYPE_LABEL: Record<string, string> = {
   annuals: "Annuals",
@@ -52,9 +53,22 @@ export default function AssetDetailScreen() {
     if (id) setLastAssetId(id);
   }, [id]);
 
-  const { data: asset, isLoading } = useGetAsset(id ?? "", {
-    query: { enabled: !!id } as any,
+  const { data: liveAsset, isLoading, isError, refetch, isFetching } = useGetAsset(id ?? "", {
+    query: { enabled: !!id, retry: 2, retryDelay: (attempt: number) => Math.min(1000 * 2 ** attempt, 4000) } as any,
   });
+  const [cachedAsset, setCachedAsset] = useState<any>();
+  useEffect(() => {
+    if (!id) return;
+    loadCachedAsset<any>(id).then(setCachedAsset);
+  }, [id]);
+  useEffect(() => {
+    if (id && liveAsset) {
+      setCachedAsset(liveAsset);
+      void saveCachedAsset(id, liveAsset);
+    }
+  }, [id, liveAsset]);
+  const asset = liveAsset ?? cachedAsset;
+  const usingCachedAsset = !liveAsset && !!cachedAsset;
 
   const topPad = insets.top;
   const bottomPad = insets.bottom + (Platform.OS === "web" ? 34 : 16);
@@ -125,7 +139,7 @@ export default function AssetDetailScreen() {
         )}
       </View>
 
-      {isLoading ? (
+      {isLoading && !asset ? (
         <ActivityIndicator
           style={{ marginTop: 60 }}
           color={colors.primary}
@@ -135,11 +149,32 @@ export default function AssetDetailScreen() {
         <View style={styles.centered}>
           <Feather name="alert-circle" size={32} color={colors.mutedForeground} />
           <Text style={[styles.errorText, { color: colors.mutedForeground }]}>
-            Asset not found
+            {isError ? "Asset details could not be loaded." : "Asset not found"}
           </Text>
+          {isError && (
+            <TouchableOpacity
+              style={[styles.retryButtonLarge, { backgroundColor: colors.primary, borderRadius: colors.radius }]}
+              onPress={() => refetch()}
+              disabled={isFetching}
+              testID="asset-retry"
+            >
+              {isFetching ? <ActivityIndicator color="#fff" /> : <Text style={styles.retryButtonLargeText}>Retry</Text>}
+            </TouchableOpacity>
+          )}
         </View>
       ) : (
         <>
+        {usingCachedAsset && (
+          <View style={[styles.staleBanner, { backgroundColor: "#fef3c7", borderColor: "#fbbf24" }]}>
+            <Feather name="clock" size={14} color="#92400e" />
+            <Text style={[styles.staleBannerText, { color: "#92400e" }]}>
+              You’re offline. Showing the last saved asset details; some information may be stale.
+            </Text>
+            <TouchableOpacity onPress={() => refetch()} disabled={isFetching} testID="asset-retry">
+              {isFetching ? <ActivityIndicator size="small" color="#92400e" /> : <Text style={styles.staleRetryText}>Retry</Text>}
+            </TouchableOpacity>
+          </View>
+        )}
         <ScrollView
           style={styles.scroll}
           contentContainerStyle={{ padding: 16, paddingBottom: canAudit ? bottomPad + 160 : bottomPad + 32 }}
@@ -538,4 +573,18 @@ const styles = StyleSheet.create({
     fontFamily: "Inter_600SemiBold",
     fontSize: 13,
   },
+  staleBanner: {
+    marginHorizontal: 16,
+    marginTop: 12,
+    padding: 10,
+    borderWidth: 1,
+    borderRadius: 8,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  staleBannerText: { flex: 1, fontFamily: "Inter_400Regular", fontSize: 12 },
+  staleRetryText: { color: "#92400e", fontFamily: "Inter_700Bold", fontSize: 12 },
+  retryButtonLarge: { marginTop: 8, paddingHorizontal: 24, paddingVertical: 12 },
+  retryButtonLargeText: { color: "#fff", fontFamily: "Inter_700Bold", fontSize: 14 },
 });
