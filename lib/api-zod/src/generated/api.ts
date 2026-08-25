@@ -889,6 +889,59 @@ export const UpdateMulchingRecordResponse = zod.object({
 });
 
 /**
+ * @summary Validate a mulch-depth workbook before import
+ */
+export const PreviewMulchDepthImportBody = zod.object({
+  workbook: zod.instanceof(File),
+});
+
+export const PreviewMulchDepthImportResponse = zod.object({
+  batchKey: zod.string(),
+  valid: zod.boolean(),
+  summary: zod.object({
+    totalRows: zod.number(),
+    validRows: zod.number(),
+    invalidRows: zod.number(),
+    warnings: zod.number(),
+    alreadyImported: zod.boolean(),
+  }),
+  rows: zod.array(
+    zod.object({
+      rowNumber: zod.number(),
+      globalId: zod.string(),
+      siteName: zod.string(),
+      recordedAt: zod.date(),
+      depthMm: zod.number(),
+      warning: zod.string().nullish(),
+      error: zod.string().nullish(),
+    }),
+  ),
+  errors: zod.array(zod.string()),
+  warnings: zod.array(zod.string()),
+});
+
+/**
+ * @summary Atomically import a validated mulch-depth workbook as drafts
+ */
+export const commitMulchDepthImportBodyBatchKeyRegExp = new RegExp(
+  "^[a-f0-9]{64}$",
+);
+
+export const CommitMulchDepthImportBody = zod.object({
+  workbook: zod.instanceof(File),
+  batchKey: zod.string().regex(commitMulchDepthImportBodyBatchKeyRegExp),
+});
+
+export const CommitMulchDepthImportResponse = zod.object({
+  batchKey: zod.string(),
+  createdReadings: zod.number(),
+  createdDrafts: zod.number(),
+  updatedDrafts: zod.number(),
+  alreadyImported: zod.boolean(),
+  message: zod.string(),
+});
+
+/**
  * @summary List audits
  */
 export const listAuditsResponseDataItemOverallScoreMin = 0;

@@ -635,6 +635,42 @@ export interface MulchingRecordListResponse {
   total: number;
 }
 
+export interface MulchDepthImportRow {
+  rowNumber: number;
+  globalId: string;
+  siteName: string;
+  recordedAt: string;
+  depthMm: number;
+  warning?: string | null;
+  error?: string | null;
+}
+
+export type MulchDepthImportPreviewSummary = {
+  totalRows: number;
+  validRows: number;
+  invalidRows: number;
+  warnings: number;
+  alreadyImported: boolean;
+};
+
+export interface MulchDepthImportPreview {
+  batchKey: string;
+  valid: boolean;
+  summary: MulchDepthImportPreviewSummary;
+  rows: MulchDepthImportRow[];
+  errors: string[];
+  warnings: string[];
+}
+
+export interface MulchDepthImportCommit {
+  batchKey: string;
+  createdReadings: number;
+  createdDrafts: number;
+  updatedDrafts: number;
+  alreadyImported: boolean;
+  message: string;
+}
+
 export type ReadinessResponseCbState =
   (typeof ReadinessResponseCbState)[keyof typeof ReadinessResponseCbState];
 
@@ -850,6 +886,16 @@ export type ListInfillOrdersParams = {
 export type ListMulchingRecordsParams = {
   assetId?: string;
   status?: MulchingStatus;
+};
+
+export type PreviewMulchDepthImportBody = {
+  workbook: Blob;
+};
+
+export type CommitMulchDepthImportBody = {
+  workbook: Blob;
+  /** @pattern ^[a-f0-9]{64}$ */
+  batchKey: string;
 };
 
 export type ListAuditItemPhotos200 = {

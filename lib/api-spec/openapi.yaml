@@ -598,6 +598,77 @@ paths:
               schema:
                 $ref: "#/components/schemas/MulchingRecord"
 
+  /mulch-depth-import/preview:
+    post:
+      operationId: previewMulchDepthImport
+      tags: [programmes]
+      summary: Validate a mulch-depth workbook before import
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                workbook: { type: string, format: binary }
+              required: [workbook]
+      responses:
+        "200":
+          description: Validation preview
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MulchDepthImportPreview"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorised"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /mulch-depth-import/commit:
+    post:
+      operationId: commitMulchDepthImport
+      tags: [programmes]
+      summary: Atomically import a validated mulch-depth workbook as drafts
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                workbook: { type: string, format: binary }
+                batchKey: { type: string, pattern: "^[a-f0-9]{64}$" }
+              required: [workbook, batchKey]
+      responses:
+        "201":
+          description: Imported
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MulchDepthImportCommit"
+        "200":
+          description: Already imported
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MulchDepthImportCommit"
+        "409":
+          description: Batch mismatch or incomplete batch marker
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "422":
+          description: Workbook validation failed
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "401":
+          $ref: "#/components/responses/Unauthorised"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
   # ─── Audits ─────────────────────────────────────────────────────────────────
   /audits:
     get:
@@ -1803,6 +1874,50 @@ components:
         data:  { type: array, items: { $ref: "#/components/schemas/MulchingRecord" } }
         total: { type: integer }
       required: [data, total]
+
+    MulchDepthImportRow:
+      type: object
+      properties:
+        rowNumber: { type: integer }
+        globalId: { type: string }
+        siteName: { type: string }
+        recordedAt: { type: string, format: date }
+        depthMm: { type: integer }
+        warning: { type: string, nullable: true }
+        error: { type: string, nullable: true }
+      required: [rowNumber, globalId, siteName, recordedAt, depthMm]
+
+    MulchDepthImportPreview:
+      type: object
+      properties:
+        batchKey: { type: string }
+        valid: { type: boolean }
+        summary:
+          type: object
+          properties:
+            totalRows: { type: integer }
+            validRows: { type: integer }
+            invalidRows: { type: integer }
+            warnings: { type: integer }
+            alreadyImported: { type: boolean }
+          required: [totalRows, validRows, invalidRows, warnings, alreadyImported]
+        rows:
+          type: array
+          items: { $ref: "#/components/schemas/MulchDepthImportRow" }
+        errors: { type: array, items: { type: string } }
+        warnings: { type: array, items: { type: string } }
+      required: [batchKey, valid, summary, rows, errors, warnings]
+
+    MulchDepthImportCommit:
+      type: object
+      properties:
+        batchKey: { type: string }
+        createdReadings: { type: integer }
+        createdDrafts: { type: integer }
+        updatedDrafts: { type: integer }
+        alreadyImported: { type: boolean }
+        message: { type: string }
+      required: [batchKey, createdReadings, createdDrafts, updatedDrafts, alreadyImported, message]
 
     # ─── Health (extended) ─────────────────────────────────────────────────────
     ReadinessResponse:

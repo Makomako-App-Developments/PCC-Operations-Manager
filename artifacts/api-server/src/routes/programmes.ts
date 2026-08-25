@@ -1,4 +1,7 @@
 import { Router } from "express";
+import multer from "multer";
+import * as XLSX from "xlsx";
+import { createHash } from "crypto";
 import {
   db, infillJobsTable, infillOrdersTable, mulchingRecordsTable, mulchDepthReadingsTable,
   assetsTable, teamsTable, usersTable, jobsTable, systemSettingsTable,
@@ -15,6 +18,17 @@ import {
 } from "../lib/mulch-decay";
 
 const router = Router();
+const mulchImportUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 5 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    if (
+      file.mimetype === "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" ||
+      file.originalname.toLowerCase().endsWith(".xlsx")
+    ) cb(null, true);
+    else cb(new Error("Upload an Excel .xlsx workbook."));
+  },
+});
 
 // ─── Infill Jobs ──────────────────────────────────────────────────────────────
 
@@ -484,6 +498,187 @@ const createDepthReadingSchema = z.object({
   isFreshApplication: z.boolean().optional().default(false),
 });
 
+type DepthReadingInput = z.infer<typeof createDepthReadingSchema> & {
+  importNote?: string | null;
+};
+
+/**
+ * The one authoritative path from a recorded depth to its manager-only draft.
+ * Both the individual form and historical workbook import use this function so
+ * their projection, capacity alignment, volume and duration stay identical.
+ */
+async function createDepthReadingAndDraft(
+  tx: any,
+  body: DepthReadingInput,
+  settings: { mulchDecayRateMmPerMonth?: number | null; mulchSpreadingRateM3PerHour?: number | null } | undefined,
+  recordedById: string | null,
+) {
+  const configDecayRate = settings?.mulchDecayRateMmPerMonth ?? 5;
+  const configSpreadingRate = settings?.mulchSpreadingRateM3PerHour ?? 2;
+  const effectiveDepth = body.isFreshApplication ? STANDARD_DEPTH_MM : body.depthMm;
+  const projectedJobDate = projectNextJobDate(effectiveDepth, body.mulchType, body.recordedAt);
+
+  const ALIGN_FLEX_DAYS = 14;
+  const FORWARD_LOOK_DAYS = 45;
+  const isImmediate = effectiveDepth <= ACTION_THRESHOLD_MM;
+  const projectedMs = new Date(`${projectedJobDate}T00:00:00Z`).getTime();
+  let queryStart: string;
+  let queryEnd: string;
+  if (isImmediate) {
+    queryStart = body.recordedAt;
+    queryEnd = new Date(new Date(`${body.recordedAt}T00:00:00Z`).getTime() + FORWARD_LOOK_DAYS * 86400000).toISOString().slice(0, 10);
+  } else {
+    queryStart = new Date(projectedMs - ALIGN_FLEX_DAYS * 86400000).toISOString().slice(0, 10);
+    queryEnd = new Date(projectedMs + ALIGN_FLEX_DAYS * 86400000).toISOString().slice(0, 10);
+    if (queryStart < body.recordedAt) queryStart = body.recordedAt;
+  }
+
+  const nearbyJobs = await tx
+    .select({ id: jobsTable.id, scheduledDate: jobsTable.scheduledDate })
+    .from(jobsTable)
+    .where(and(
+      eq(jobsTable.assetId, body.assetId),
+      inArray(jobsTable.status, ["pending", "in_progress"]),
+      gte(jobsTable.scheduledDate, queryStart),
+      lte(jobsTable.scheduledDate, queryEnd),
+    ));
+  const nearestJob = nearbyJobs.length
+    ? nearbyJobs.reduce((best: { id: string; scheduledDate: string }, job: { id: string; scheduledDate: string }) =>
+        job.scheduledDate < best.scheduledDate ? job : best, nearbyJobs[0])
+    : null;
+  const finalJobDate = nearestJob ? nearestJob.scheduledDate : projectedJobDate;
+  const alignedJobId = nearestJob?.id ?? null;
+  const alignedJobDate = nearestJob?.scheduledDate ?? null;
+
+  const [reading] = await tx.insert(mulchDepthReadingsTable).values({
+    assetId: body.assetId,
+    depthMm: effectiveDepth,
+    mulchType: body.mulchType ?? null,
+    recordedAt: body.recordedAt,
+    recordedById,
+    notes: body.importNote ?? body.notes ?? null,
+    isFreshApplication: body.isFreshApplication ?? false,
+    projectedJobDate,
+  }).returning();
+
+  const rate = decayRateForType(body.mulchType, configDecayRate);
+  const readingDate = new Date(`${body.recordedAt}T00:00:00Z`);
+  const finalDate = new Date(`${finalJobDate}T00:00:00Z`);
+  const projectedDepthAtDue = Math.max(0, Math.round(
+    effectiveDepth - rate * ((finalDate.getTime() - readingDate.getTime()) / (1000 * 60 * 60 * 24 * 30.44)),
+  ));
+  const [asset] = await tx.select({ areaM2: assetsTable.areaM2 }).from(assetsTable)
+    .where(eq(assetsTable.id, body.assetId)).limit(1);
+  const areaM2 = asset ? parseFloat(asset.areaM2 ?? "0") : 0;
+  const volumeM3 = areaM2 > 0 ? Math.round((Math.max(0, STANDARD_DEPTH_MM - projectedDepthAtDue) / 1000 * areaM2) * 100) / 100 : null;
+  const estimatedMins = volumeM3 != null && configSpreadingRate > 0
+    ? Math.max(5, Math.round((volumeM3 / configSpreadingRate) * 60 / 5) * 5)
+    : null;
+  const [existingDraft] = await tx.select().from(mulchingRecordsTable).where(and(
+    eq(mulchingRecordsTable.assetId, body.assetId),
+    eq(mulchingRecordsTable.status, "draft"),
+  )).limit(1);
+
+  const [draft] = existingDraft
+    ? await tx.update(mulchingRecordsTable).set({
+        scheduledDate: finalJobDate, mulchType: body.mulchType ?? existingDraft.mulchType,
+        sourceReadingId: reading.id, projectedDepthAtDue,
+        volumeM3: volumeM3 !== null ? String(volumeM3) : existingDraft.volumeM3,
+        estimatedMins: estimatedMins ?? existingDraft.estimatedMins,
+        alignedJobId, alignedJobDate, updatedAt: new Date(),
+      }).where(eq(mulchingRecordsTable.id, existingDraft.id)).returning()
+    : await tx.insert(mulchingRecordsTable).values({
+        assetId: body.assetId, status: "draft", scheduledDate: finalJobDate,
+        mulchType: body.mulchType ?? null, sourceReadingId: reading.id,
+        projectedDepthAtDue, volumeM3: volumeM3 !== null ? String(volumeM3) : null,
+        estimatedMins, alignedJobId, alignedJobDate,
+      }).returning();
+  return { reading, draft, draftAction: existingDraft ? "updated" as const : "created" as const };
+}
+
+type ImportRow = {
+  rowNumber: number;
+  globalId: string;
+  siteName: string;
+  recordedAt: string;
+  depthMm: number;
+  assetId?: string;
+  warning?: string;
+  error?: string;
+};
+
+function normaliseGlobalId(value: unknown): string {
+  return String(value ?? "").trim().replace(/^\{|\}$/g, "").toUpperCase();
+}
+function normaliseSiteName(value: unknown): string {
+  return String(value ?? "").toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+function asIsoDate(value: unknown): string | null {
+  if (value instanceof Date && !Number.isNaN(value.getTime())) return value.toISOString().slice(0, 10);
+  if (typeof value === "number") {
+    const parsed = XLSX.SSF.parse_date_code(value);
+    if (parsed) return `${String(parsed.y).padStart(4, "0")}-${String(parsed.m).padStart(2, "0")}-${String(parsed.d).padStart(2, "0")}`;
+  }
+  if (typeof value === "string" && /^\d{4}-\d{2}-\d{2}/.test(value.trim())) return value.trim().slice(0, 10);
+  return null;
+}
+
+async function inspectMulchImport(buffer: Buffer) {
+  const workbook = XLSX.read(buffer, { type: "buffer", cellDates: true });
+  const sheet = workbook.Sheets["Mulch Depths"];
+  const batchKey = createHash("sha256").update(buffer).digest("hex");
+  if (!sheet) return { batchKey, rows: [] as ImportRow[], errors: ["Workbook must include a sheet named “Mulch Depths”."], warnings: [] as string[] };
+  const cells = XLSX.utils.sheet_to_json<unknown[]>(sheet, { header: 1, defval: null, raw: true });
+  const headers = (cells[0] ?? []).map(v => String(v ?? "").trim().toLowerCase());
+  const required = ["date", "globalid", "site name", "mulch depth (mm)"];
+  const missing = required.filter(header => !headers.includes(header));
+  if (missing.length) return { batchKey, rows: [] as ImportRow[], errors: [`Missing required column${missing.length > 1 ? "s" : ""}: ${missing.join(", ")}.`], warnings: [] as string[] };
+  const index = Object.fromEntries(headers.map((header, position) => [header, position]));
+  const rows: ImportRow[] = [];
+  const errors: string[] = [];
+  const seen = new Set<string>();
+  cells.slice(1).forEach((row, offset) => {
+    if (!row.some(value => value !== null && value !== "")) return;
+    const rowNumber = offset + 2;
+    const globalId = normaliseGlobalId(row[index.globalid]);
+    const siteName = String(row[index["site name"]] ?? "").trim();
+    const recordedAt = asIsoDate(row[index.date]);
+    const rawDepth = row[index["mulch depth (mm)"]];
+    const depthMm = typeof rawDepth === "number" ? rawDepth : Number(rawDepth);
+    const item: ImportRow = { rowNumber, globalId, siteName, recordedAt: recordedAt ?? "", depthMm };
+    if (!/^[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}$/.test(globalId)) item.error = "Invalid GlobalID.";
+    else if (seen.has(globalId)) item.error = "Duplicate GlobalID in workbook.";
+    else if (!recordedAt) item.error = "Invalid reading date.";
+    else if (!Number.isInteger(depthMm) || depthMm < 0) item.error = "Depth must be a non-negative whole number.";
+    seen.add(globalId);
+    if (item.error) errors.push(`Row ${rowNumber}: ${item.error}`);
+    rows.push(item);
+  });
+  if (!rows.length) errors.push("Workbook has no data rows.");
+  if (rows.length > 500) errors.push("Workbook exceeds the 500-row import limit.");
+
+  const activeAssets = await executeWithCircuitBreaker(() => db.select({
+    id: assetsTable.id, globalId: assetsTable.globalId, name: assetsTable.name,
+  }).from(assetsTable).where(eq(assetsTable.isActive, true)));
+  const assetsByGlobalId = new Map(activeAssets.map(asset => [normaliseGlobalId(asset.globalId), asset]));
+  const warnings: string[] = [];
+  for (const row of rows) {
+    if (row.error) continue;
+    const asset = assetsByGlobalId.get(row.globalId);
+    if (!asset) {
+      row.error = "No active production asset matches this GlobalID.";
+      errors.push(`Row ${row.rowNumber}: ${row.error}`);
+      continue;
+    }
+    row.assetId = asset.id;
+    if (row.siteName && normaliseSiteName(row.siteName) !== normaliseSiteName(asset.name)) {
+      row.warning = `Workbook site name “${row.siteName}” differs from current asset name “${asset.name}”.`;
+      warnings.push(`Row ${row.rowNumber}: ${row.warning}`);
+    }
+  }
+  return { batchKey, rows, errors, warnings };
+}
+
 router.get("/mulch-depth-readings", requireAuth, async (req, res) => {
   const { assetId } = req.query as Record<string, string | undefined>;
   const conditions: any[] = [];
@@ -689,6 +884,115 @@ router.post(
     } catch (err) {
       console.error("POST /mulch-depth-readings error:", err);
       res.status(500).json({ error: "Internal server error" });
+    }
+  },
+);
+
+// ─── Historical mulch-depth workbook import ──────────────────────────────────
+// Preview and commit deliberately accept the same file. The deterministic hash
+// makes the confirmation stateless and prevents a changed workbook being
+// committed after a manager has reviewed an earlier preview.
+router.post(
+  "/mulch-depth-import/preview",
+  requireAuth,
+  requireRole("manager"),
+  mulchImportUpload.single("workbook"),
+  async (req, res) => {
+    try {
+      if (!req.file) return res.status(400).json({ error: "Attach an Excel .xlsx workbook." });
+      const inspection = await inspectMulchImport(req.file.buffer);
+      const validRows = inspection.rows.filter(row => !row.error).length;
+      const tag = `Workbook mulch-depth import ${inspection.batchKey}`;
+      const existing = validRows
+        ? await executeWithCircuitBreaker(() => db.select({ id: mulchDepthReadingsTable.id })
+            .from(mulchDepthReadingsTable).where(eq(mulchDepthReadingsTable.notes, tag)))
+        : [];
+      res.json({
+        batchKey: inspection.batchKey,
+        valid: inspection.errors.length === 0,
+        summary: {
+          totalRows: inspection.rows.length,
+          validRows,
+          invalidRows: inspection.rows.length - validRows,
+          warnings: inspection.warnings.length,
+          alreadyImported: existing.length === validRows && validRows > 0,
+        },
+        rows: inspection.rows.map(row => ({
+          rowNumber: row.rowNumber, globalId: row.globalId, siteName: row.siteName,
+          recordedAt: row.recordedAt, depthMm: row.depthMm, warning: row.warning, error: row.error,
+        })),
+        errors: inspection.errors,
+        warnings: inspection.warnings,
+      });
+    } catch (error) {
+      console.error("POST /mulch-depth-import/preview error:", error);
+      res.status(400).json({ error: error instanceof Error ? error.message : "Unable to read workbook." });
+    }
+  },
+);
+
+router.post(
+  "/mulch-depth-import/commit",
+  requireAuth,
+  requireRole("manager"),
+  mulchImportUpload.single("workbook"),
+  async (req, res) => {
+    try {
+      if (!req.file) return res.status(400).json({ error: "Attach the validated Excel workbook again to confirm import." });
+      const inspection = await inspectMulchImport(req.file.buffer);
+      const submittedKey = String(req.body?.batchKey ?? "");
+      if (!/^[a-f0-9]{64}$/.test(submittedKey) || submittedKey !== inspection.batchKey) {
+        return res.status(409).json({ error: "This workbook differs from the reviewed batch. Preview it again before confirming." });
+      }
+      if (inspection.errors.length) {
+        return res.status(422).json({ error: "Workbook validation failed.", errors: inspection.errors, warnings: inspection.warnings });
+      }
+      const rows = inspection.rows as (ImportRow & { assetId: string })[];
+      const importNote = `Workbook mulch-depth import ${inspection.batchKey}`;
+      const [sysSettings] = await executeWithCircuitBreaker(() => db.select().from(systemSettingsTable).limit(1));
+      const result = await executeWithCircuitBreaker(() => db.transaction(async tx => {
+        const alreadyImported = await tx.select({ id: mulchDepthReadingsTable.id })
+          .from(mulchDepthReadingsTable).where(eq(mulchDepthReadingsTable.notes, importNote));
+        if (alreadyImported.length) {
+          if (alreadyImported.length !== rows.length) throw new Error("This batch has an incomplete import marker and requires administrator review.");
+          return { createdReadings: 0, createdDrafts: 0, updatedDrafts: 0, alreadyImported: true };
+        }
+        let createdDrafts = 0;
+        let updatedDrafts = 0;
+        for (const row of rows) {
+          const created = await createDepthReadingAndDraft(tx, {
+            assetId: row.assetId,
+            depthMm: row.depthMm,
+            mulchType: "wood_chip",
+            recordedAt: row.recordedAt,
+            notes: undefined,
+            isFreshApplication: false,
+            importNote,
+          }, sysSettings, req.auth?.userId ?? null);
+          if (created.draftAction === "created") createdDrafts++;
+          else updatedDrafts++;
+        }
+        return { createdReadings: rows.length, createdDrafts, updatedDrafts, alreadyImported: false };
+      }));
+      await auditLog({
+        tableName: "mulch_depth_import",
+        recordId: null,
+        action: "INSERT",
+        changedById: req.auth?.userId ?? null,
+        newData: { batchKey: inspection.batchKey, source: "Mulch Depths workbook", ...result },
+        ipAddress: req.ip ?? null,
+      });
+      res.status(result.alreadyImported ? 200 : 201).json({
+        batchKey: inspection.batchKey,
+        ...result,
+        message: result.alreadyImported
+          ? "This workbook was already imported; no duplicate readings or drafts were created."
+          : "Mulch-depth readings imported as manager-review drafts. No field work was scheduled or assigned.",
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unable to import workbook.";
+      console.error("POST /mulch-depth-import/commit error:", error);
+      res.status(message.includes("incomplete import marker") ? 409 : 500).json({ error: message });
     }
   },
 );

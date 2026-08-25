@@ -29,8 +29,12 @@ import type {
   AuditPhoto,
   AuditResponsesBulk,
   AuditUpdate,
+  BadRequestResponse,
+  CommitMulchDepthImportBody,
   DashboardSummary,
   DegradedHealthResponse,
+  ErrorResponse,
+  ForbiddenResponse,
   GetScheduleWeekParams,
   HealthDetailResponse,
   HealthStatus,
@@ -53,12 +57,15 @@ import type {
   ListSkippedJobsParams,
   LoginRequest,
   LoginResponse,
+  MulchDepthImportCommit,
+  MulchDepthImportPreview,
   MulchingRecord,
   MulchingRecordCreate,
   MulchingRecordListResponse,
   MulchingRecordUpdate,
   NotFoundResponse,
   OkResponse,
+  PreviewMulchDepthImportBody,
   ReactiveJob,
   ReactiveJobCreate,
   ReactiveJobListResponse,
@@ -2458,6 +2465,193 @@ export const useUpdateMulchingRecord = <
   TContext
 > => {
   return useMutation(getUpdateMulchingRecordMutationOptions(options));
+};
+
+/**
+ * @summary Validate a mulch-depth workbook before import
+ */
+export const getPreviewMulchDepthImportUrl = () => {
+  return `/api/mulch-depth-import/preview`;
+};
+
+export const previewMulchDepthImport = async (
+  previewMulchDepthImportBody: PreviewMulchDepthImportBody,
+  options?: RequestInit,
+): Promise<MulchDepthImportPreview> => {
+  const formData = new FormData();
+  formData.append(`workbook`, previewMulchDepthImportBody.workbook);
+
+  return customFetch<MulchDepthImportPreview>(getPreviewMulchDepthImportUrl(), {
+    ...options,
+    method: "POST",
+    body: formData,
+  });
+};
+
+export const getPreviewMulchDepthImportMutationOptions = <
+  TError = ErrorType<
+    BadRequestResponse | UnauthorisedResponse | ForbiddenResponse
+  >,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof previewMulchDepthImport>>,
+    TError,
+    { data: BodyType<PreviewMulchDepthImportBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof previewMulchDepthImport>>,
+  TError,
+  { data: BodyType<PreviewMulchDepthImportBody> },
+  TContext
+> => {
+  const mutationKey = ["previewMulchDepthImport"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof previewMulchDepthImport>>,
+    { data: BodyType<PreviewMulchDepthImportBody> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return previewMulchDepthImport(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type PreviewMulchDepthImportMutationResult = NonNullable<
+  Awaited<ReturnType<typeof previewMulchDepthImport>>
+>;
+export type PreviewMulchDepthImportMutationBody =
+  BodyType<PreviewMulchDepthImportBody>;
+export type PreviewMulchDepthImportMutationError = ErrorType<
+  BadRequestResponse | UnauthorisedResponse | ForbiddenResponse
+>;
+
+/**
+ * @summary Validate a mulch-depth workbook before import
+ */
+export const usePreviewMulchDepthImport = <
+  TError = ErrorType<
+    BadRequestResponse | UnauthorisedResponse | ForbiddenResponse
+  >,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof previewMulchDepthImport>>,
+    TError,
+    { data: BodyType<PreviewMulchDepthImportBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof previewMulchDepthImport>>,
+  TError,
+  { data: BodyType<PreviewMulchDepthImportBody> },
+  TContext
+> => {
+  return useMutation(getPreviewMulchDepthImportMutationOptions(options));
+};
+
+/**
+ * @summary Atomically import a validated mulch-depth workbook as drafts
+ */
+export const getCommitMulchDepthImportUrl = () => {
+  return `/api/mulch-depth-import/commit`;
+};
+
+export const commitMulchDepthImport = async (
+  commitMulchDepthImportBody: CommitMulchDepthImportBody,
+  options?: RequestInit,
+): Promise<MulchDepthImportCommit> => {
+  const formData = new FormData();
+  formData.append(`workbook`, commitMulchDepthImportBody.workbook);
+  formData.append(`batchKey`, commitMulchDepthImportBody.batchKey);
+
+  return customFetch<MulchDepthImportCommit>(getCommitMulchDepthImportUrl(), {
+    ...options,
+    method: "POST",
+    body: formData,
+  });
+};
+
+export const getCommitMulchDepthImportMutationOptions = <
+  TError = ErrorType<UnauthorisedResponse | ForbiddenResponse | ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof commitMulchDepthImport>>,
+    TError,
+    { data: BodyType<CommitMulchDepthImportBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof commitMulchDepthImport>>,
+  TError,
+  { data: BodyType<CommitMulchDepthImportBody> },
+  TContext
+> => {
+  const mutationKey = ["commitMulchDepthImport"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof commitMulchDepthImport>>,
+    { data: BodyType<CommitMulchDepthImportBody> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return commitMulchDepthImport(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type CommitMulchDepthImportMutationResult = NonNullable<
+  Awaited<ReturnType<typeof commitMulchDepthImport>>
+>;
+export type CommitMulchDepthImportMutationBody =
+  BodyType<CommitMulchDepthImportBody>;
+export type CommitMulchDepthImportMutationError = ErrorType<
+  UnauthorisedResponse | ForbiddenResponse | ErrorResponse
+>;
+
+/**
+ * @summary Atomically import a validated mulch-depth workbook as drafts
+ */
+export const useCommitMulchDepthImport = <
+  TError = ErrorType<UnauthorisedResponse | ForbiddenResponse | ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof commitMulchDepthImport>>,
+    TError,
+    { data: BodyType<CommitMulchDepthImportBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof commitMulchDepthImport>>,
+  TError,
+  { data: BodyType<CommitMulchDepthImportBody> },
+  TContext
+> => {
+  return useMutation(getCommitMulchDepthImportMutationOptions(options));
 };
 
 /**

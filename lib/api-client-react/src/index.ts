@@ -7,4 +7,9 @@ export {
   setOnUnauthorized,
   setRequestDiagnosticHandler,
 } from "./custom-fetch";
-export type { CustomFetchOptions, ErrorType, BodyType, RequestDiagnostic } from "./custom-fetch";
+export type {
+  CustomFetchOptions,
+  ErrorType,
+  BodyType,
+  RequestDiagnostic,
+} from "./custom-fetch";

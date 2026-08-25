@@ -33,7 +33,7 @@ import {
   Calendar, CalendarCheck, CalendarDays, Users, Leaf, FileText, AlertTriangle, CheckCircle2,
   Download, ChevronDown, ChevronUp, Package, List, Map as MapIcon, ExternalLink,
   Ruler, History, ClipboardList, Zap, SkipForward, Trash2, Clock, Check, ChevronsUpDown, Scissors, Pencil,
-  RotateCcw, ChevronsRight,
+  RotateCcw, ChevronsRight, Upload,
 } from "lucide-react";
 import { useLocation, useSearch } from "wouter";
 import {
@@ -2255,6 +2255,10 @@ function MulchingTab({
   const [depthPickerOpen, setDepthPickerOpen] = useState(false);
   const [depthPickerAssetId, setDepthPickerAssetId] = useState("");
   const [depthPickerComboOpen, setDepthPickerComboOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
+  const [importFile, setImportFile] = useState<File | null>(null);
+  const [importPreview, setImportPreview] = useState<any | null>(null);
+  const [importBusy, setImportBusy] = useState(false);
   // Review & Schedule drawer state
   const [reviewTarget, setReviewTarget] = useState<any | null>(null);
   // Detail panel
@@ -2300,6 +2304,45 @@ function MulchingTab({
   const handleRefresh = () => {
     qc.invalidateQueries({ queryKey: getListMulchingRecordsQueryKey() });
     qc.invalidateQueries({ queryKey: ["/api/schedule/week"] });
+  };
+
+  const previewMulchWorkbook = async () => {
+    if (!importFile) return;
+    setImportBusy(true);
+    try {
+      const form = new FormData();
+      form.append("workbook", importFile);
+      const response = await fetch("/api/mulch-depth-import/preview", { method: "POST", body: form });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error ?? "Unable to preview workbook.");
+      setImportPreview(payload);
+    } catch (error) {
+      toast({ title: "Workbook could not be checked", description: error instanceof Error ? error.message : undefined, variant: "destructive" });
+    } finally {
+      setImportBusy(false);
+    }
+  };
+
+  const commitMulchWorkbook = async () => {
+    if (!importFile || !importPreview?.batchKey || !importPreview?.valid) return;
+    setImportBusy(true);
+    try {
+      const form = new FormData();
+      form.append("workbook", importFile);
+      form.append("batchKey", importPreview.batchKey);
+      const response = await fetch("/api/mulch-depth-import/commit", { method: "POST", body: form });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error ?? "Import could not be completed.");
+      handleRefresh();
+      setImportOpen(false);
+      setImportFile(null);
+      setImportPreview(null);
+      toast({ title: payload.alreadyImported ? "Workbook already imported" : "Mulch depths imported", description: payload.message });
+    } catch (error) {
+      toast({ title: "Import failed", description: error instanceof Error ? error.message : undefined, variant: "destructive" });
+    } finally {
+      setImportBusy(false);
+    }
   };
 
   const handleMulchEditSave = async () => {
@@ -2525,6 +2568,12 @@ function MulchingTab({
             <Download className="w-4 h-4" /> Export CSV
           </button>
           <button
+            onClick={() => { setImportFile(null); setImportPreview(null); setImportOpen(true); }}
+            className="flex items-center gap-1.5 text-sm font-semibold px-3 py-2 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors"
+          >
+            <Upload className="w-4 h-4" /> Import workbook
+          </button>
+          <button
             onClick={() => { setDepthPickerAssetId(""); setDepthPickerOpen(true); }}
             className="flex items-center gap-1.5 text-sm font-semibold px-3 py-2 rounded-lg transition-colors text-white"
             style={{ background: BRAND }}
@@ -2533,6 +2582,60 @@ function MulchingTab({
           </button>
         </div>
       </header>
+
+      <Dialog open={importOpen} onOpenChange={(open) => { if (!importBusy) setImportOpen(open); }}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Import mulch-depth workbook</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <p className="text-sm text-gray-600">
+              Upload the <strong>Mulch Depths</strong> Excel sheet to validate every row before anything is written.
+              Confirming creates manager-review drafts only; it does not assign or schedule field work.
+            </p>
+            <Input
+              type="file"
+              accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+              onChange={(event) => { setImportFile(event.target.files?.[0] ?? null); setImportPreview(null); }}
+              disabled={importBusy}
+            />
+            {importPreview && (
+              <div className={`rounded-lg border p-3 text-sm ${importPreview.valid ? "border-emerald-200 bg-emerald-50" : "border-red-200 bg-red-50"}`}>
+                <div className="font-semibold">
+                  {importPreview.valid ? "Workbook is ready to import" : "Workbook needs correction"}
+                </div>
+                <div className="mt-1 text-gray-700">
+                  {importPreview.summary.validRows} valid of {importPreview.summary.totalRows} rows
+                  {importPreview.summary.warnings ? ` · ${importPreview.summary.warnings} warning${importPreview.summary.warnings === 1 ? "" : "s"}` : ""}
+                  {importPreview.summary.alreadyImported ? " · This exact workbook was already imported" : ""}
+                </div>
+                {importPreview.errors?.length > 0 && (
+                  <ul className="mt-2 max-h-32 overflow-auto list-disc pl-5 text-red-700">
+                    {importPreview.errors.slice(0, 12).map((error: string) => <li key={error}>{error}</li>)}
+                  </ul>
+                )}
+                {importPreview.warnings?.length > 0 && (
+                  <ul className="mt-2 max-h-24 overflow-auto list-disc pl-5 text-amber-800">
+                    {importPreview.warnings.slice(0, 8).map((warning: string) => <li key={warning}>{warning}</li>)}
+                  </ul>
+                )}
+              </div>
+            )}
+          </div>
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button variant="outline" onClick={() => setImportOpen(false)} disabled={importBusy}>Cancel</Button>
+            {!importPreview ? (
+              <Button onClick={previewMulchWorkbook} disabled={!importFile || importBusy}>
+                {importBusy ? "Checking…" : "Validate workbook"}
+              </Button>
+            ) : (
+              <Button onClick={commitMulchWorkbook} disabled={!importPreview.valid || importBusy}>
+                {importBusy ? "Importing…" : importPreview.summary.alreadyImported ? "Confirm no changes" : "Confirm import"}
+              </Button>
+            )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Summary stats */}
       {!mulchLoading && mulchRecords.length > 0 && (
