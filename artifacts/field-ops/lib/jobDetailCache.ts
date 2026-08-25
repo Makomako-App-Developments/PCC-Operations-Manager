@@ -2,6 +2,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 
 const CORE_JOB_CACHE_PREFIX = "@field_ops_core_job_v1:";
 const ASSET_CACHE_PREFIX = "@field_ops_asset_v1:";
+const ASSET_LIST_CACHE_KEY = "@field_ops_asset_list_v1";
 
 function parseCached<T>(raw: string | null): T | undefined {
   if (!raw) return undefined;
@@ -43,6 +44,27 @@ export async function saveCachedAsset<T>(assetId: string, asset: T): Promise<voi
   try {
     if (asset && typeof asset === "object") {
       await AsyncStorage.setItem(`${ASSET_CACHE_PREFIX}${assetId}`, JSON.stringify(asset));
+    }
+  } catch {
+    // A cache write must never interfere with the usable server response.
+  }
+}
+
+/** Read the latest successful asset list without allowing bad storage to break the screen. */
+export async function loadCachedAssetList<T>(): Promise<T | undefined> {
+  try {
+    const cached = parseCached<T>(await AsyncStorage.getItem(ASSET_LIST_CACHE_KEY));
+    return Array.isArray(cached) ? cached : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/** Cache only a successful asset list; storage failures must never affect the live response. */
+export async function saveCachedAssetList<T>(assets: T): Promise<void> {
+  try {
+    if (Array.isArray(assets)) {
+      await AsyncStorage.setItem(ASSET_LIST_CACHE_KEY, JSON.stringify(assets));
     }
   } catch {
     // A cache write must never interfere with the usable server response.

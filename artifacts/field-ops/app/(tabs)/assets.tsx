@@ -4,6 +4,7 @@ import * as Location from "expo-location";
 import { useFocusEffect, useRouter } from "expo-router";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { getLastAssetId } from "@/lib/lastAsset";
+import { loadCachedAssetList, saveCachedAssetList } from "@/lib/jobDetailCache";
 import {
   ActivityIndicator,
   Platform,
@@ -94,12 +95,26 @@ export default function AssetsScreen() {
     })();
   }, [mapView]);
 
-  const { data, isLoading, refetch, isRefetching } = useListAssets({
+  const { data, isLoading, isError, refetch, isRefetching } = useListAssets({
     limit: 2000,
     isActive: true,
   });
 
-  const assets = data?.data ?? [];
+  const [cachedAssets, setCachedAssets] = useState<any[]>();
+  useEffect(() => {
+    loadCachedAssetList<any[]>().then(setCachedAssets);
+  }, []);
+  useEffect(() => {
+    if (data?.data) {
+      setCachedAssets(data.data);
+      void saveCachedAssetList(data.data);
+    }
+  }, [data?.data]);
+
+  const hasLiveData = data?.data !== undefined;
+  const usingCachedAssets = !hasLiveData && cachedAssets !== undefined;
+  const hasListData = hasLiveData || cachedAssets !== undefined;
+  const assets = hasLiveData ? data.data : cachedAssets ?? [];
 
   // Filter by name, suburb, or street address
   const filtered = useMemo(() => {
@@ -265,7 +280,7 @@ ${userMarker}
       {/* Map view */}
       {mapView ? (
         <View style={styles.mapContainer}>
-          {isLoading ? (
+          {isLoading && assets.length === 0 ? (
             <ActivityIndicator style={{ marginTop: 48 }} color="#00AECD" size="large" />
           ) : (
             <AssetMap html={mapHtml} onOpenAsset={handleOpenAsset} />
@@ -285,8 +300,42 @@ ${userMarker}
           }
           showsVerticalScrollIndicator={false}
         >
-          {isLoading ? (
+          {usingCachedAssets && (
+            <View style={[styles.staleBanner, { backgroundColor: "#fef3c7", borderColor: "#fbbf24" }]}>
+              <Feather name="clock" size={14} color="#92400e" />
+              <Text style={[styles.staleBannerText, { color: "#92400e" }]}>
+                You’re offline. Showing the last saved asset list; some information may be stale.
+              </Text>
+              <TouchableOpacity onPress={() => refetch()} disabled={isRefetching} testID="assets-retry">
+                {isRefetching ? (
+                  <ActivityIndicator size="small" color="#92400e" />
+                ) : (
+                  <Text style={styles.staleRetryText}>Retry</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          )}
+          {isLoading && !hasListData ? (
             <ActivityIndicator style={{ marginTop: 48 }} color={colors.primary} size="large" />
+          ) : isError && !hasListData ? (
+            <View style={styles.centered}>
+              <Feather name="wifi-off" size={32} color={colors.mutedForeground} />
+              <Text style={[styles.errorText, { color: colors.mutedForeground }]}>
+                Asset list could not be loaded.
+              </Text>
+              <TouchableOpacity
+                style={[styles.retryButton, { backgroundColor: colors.primary, borderRadius: colors.radius }]}
+                onPress={() => refetch()}
+                disabled={isRefetching}
+                testID="assets-retry"
+              >
+                {isRefetching ? (
+                  <ActivityIndicator color="#fff" />
+                ) : (
+                  <Text style={styles.retryButtonText}>Retry</Text>
+                )}
+              </TouchableOpacity>
+            </View>
           ) : filtered.length === 0 ? (
             <EmptyState
               icon="layers"
@@ -324,6 +373,11 @@ ${userMarker}
                         <Text style={[styles.assetName, { color: colors.foreground }]} numberOfLines={1}>
                           {asset.name}
                         </Text>
+                        {asset.description ? (
+                          <Text style={[styles.assetDescription, { color: colors.mutedForeground }]} numberOfLines={1}>
+                            {asset.description}
+                          </Text>
+                        ) : null}
                       </View>
                       <View style={styles.cardRight}>
                         {distKm !== null && (
@@ -440,6 +494,48 @@ const styles = StyleSheet.create({
   mapContainer: { flex: 1 },
   map: { flex: 1 },
   scroll: { flex: 1 },
+  centered: {
+    alignItems: "center",
+    justifyContent: "center",
+    paddingTop: 56,
+    paddingHorizontal: 24,
+  },
+  errorText: {
+    fontFamily: "Inter_400Regular",
+    fontSize: 14,
+    textAlign: "center",
+    marginTop: 12,
+  },
+  retryButton: {
+    marginTop: 16,
+    paddingHorizontal: 22,
+    paddingVertical: 10,
+  },
+  retryButtonText: {
+    color: "#fff",
+    fontFamily: "Inter_700Bold",
+    fontSize: 14,
+  },
+  staleBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    borderWidth: 1,
+    borderRadius: 10,
+    padding: 10,
+    marginBottom: 12,
+  },
+  staleBannerText: {
+    flex: 1,
+    fontFamily: "Inter_400Regular",
+    fontSize: 12,
+    lineHeight: 17,
+  },
+  staleRetryText: {
+    color: "#92400e",
+    fontFamily: "Inter_700Bold",
+    fontSize: 12,
+  },
   countLabel: {
     fontFamily: "Inter_400Regular",
     fontSize: 13,
@@ -461,6 +557,10 @@ const styles = StyleSheet.create({
     fontFamily: "Inter_600SemiBold",
     fontSize: 15,
     marginBottom: 2,
+  },
+  assetDescription: {
+    fontFamily: "Inter_400Regular",
+    fontSize: 10,
   },
   cardRight: {
     flexDirection: "row",

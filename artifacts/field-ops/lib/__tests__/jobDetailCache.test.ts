@@ -13,8 +13,10 @@ vi.mock("@react-native-async-storage/async-storage", () => ({
 
 import {
   loadCachedAsset,
+  loadCachedAssetList,
   loadCachedCoreJob,
   saveCachedAsset,
+  saveCachedAssetList,
 } from "../jobDetailCache";
 
 beforeEach(() => store.clear());
@@ -48,5 +50,22 @@ describe("asset detail cache", () => {
   it("keeps the existing core job cache readable", async () => {
     store.set("@field_ops_core_job_v1:job-1", JSON.stringify({ id: "job-1" }));
     await expect(loadCachedCoreJob("job-1")).resolves.toEqual({ id: "job-1" });
+  });
+});
+
+describe("asset list cache", () => {
+  it("round-trips the latest successful list", async () => {
+    const assets = [{ id: "asset-1", name: "Rose Garden" }];
+    await saveCachedAssetList(assets);
+
+    await expect(loadCachedAssetList<typeof assets>()).resolves.toEqual(assets);
+  });
+
+  it("ignores malformed or non-list cached responses", async () => {
+    store.set("@field_ops_asset_list_v1", JSON.stringify({ data: [] }));
+    await expect(loadCachedAssetList()).resolves.toBeUndefined();
+
+    store.set("@field_ops_asset_list_v1", "{not-json");
+    await expect(loadCachedAssetList()).resolves.toBeUndefined();
   });
 });
