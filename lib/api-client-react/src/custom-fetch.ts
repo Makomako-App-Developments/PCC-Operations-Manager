@@ -417,9 +417,19 @@ export async function customFetch<T = unknown>(
   }
 
   const safe = safeEndpoint(resolvedUrl);
-  _requestDiagnosticHandler?.({
-    method, ...safe, durationMs: Math.round(performance.now() - startedAt),
-    status: response.status, retryCount: _retry ? 1 : 0,
-  });
-  return (await parseSuccessBody(response, responseType, requestInfo)) as T;
+  try {
+    const body = await parseSuccessBody(response, responseType, requestInfo);
+    _requestDiagnosticHandler?.({
+      method, ...safe, durationMs: Math.round(performance.now() - startedAt),
+      status: response.status, retryCount: _retry ? 1 : 0,
+    });
+    return body as T;
+  } catch (error) {
+    _requestDiagnosticHandler?.({
+      method, ...safe, durationMs: Math.round(performance.now() - startedAt),
+      status: response.status, retryCount: _retry ? 1 : 0,
+      failureCategory: failureCategory(error),
+    });
+    throw error;
+  }
 }

@@ -101,6 +101,40 @@ describe("Field Ops request diagnostics", () => {
     ]));
   });
 
+  it("records safe diagnostics when a successful JSON response cannot be parsed", async () => {
+    const malformedBody =
+      '{"photoUrl":"https://private.example/photo.jpg","note":"user-entered text"';
+    const diagnostics: unknown[] = [];
+    setRequestDiagnosticHandler(diagnostic => diagnostics.push(diagnostic));
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(malformedBody, {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    }));
+
+    await expect(
+      customFetch(
+        "/api/jobs/123e4567-e89b-12d3-a456-426614174000?photoUrl=https%3A%2F%2Fprivate.example%2Fphoto.jpg",
+        { responseType: "json" },
+      ),
+    ).rejects.toMatchObject({ name: "ResponseParseError" });
+
+    expect(diagnostics).toHaveLength(1);
+    const payload = diagnostics[0] as Record<string, unknown>;
+    expect(payload).toMatchObject({
+      method: "GET",
+      endpoint: "/api/jobs/:id",
+      jobId: "123e4567-e89b-12d3-a456-426614174000",
+      status: 200,
+      retryCount: 0,
+      failureCategory: "parse",
+    });
+    expect(payload.durationMs).toEqual(expect.any(Number));
+    const json = JSON.stringify(payload);
+    expect(json).not.toContain(malformedBody);
+    expect(json).not.toContain("private.example");
+    expect(json).not.toContain("user-entered text");
+  });
+
   it("records a successful retry without exposing the failed request", async () => {
     const diagnostics: unknown[] = [];
     setRequestDiagnosticHandler(diagnostic => diagnostics.push(diagnostic));
