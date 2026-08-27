@@ -345,7 +345,7 @@ export interface JobListResponse {
 
 export interface ReactiveJob {
   id: string;
-  assetId: string;
+  assetId?: string | null;
   raisedById: string;
   assignedTeamId?: string | null;
   assignedUserId?: string | null;
@@ -353,6 +353,11 @@ export interface ReactiveJob {
   assignedUserName?: string | null;
   issueType: string;
   description: string;
+  location?: string | null;
+  locationLat?: number | null;
+  locationLng?: number | null;
+  scheduledDate?: string | null;
+  estimatedTimeMins?: number | null;
   status: ReactiveJobStatus;
   priority: ReactivePriority;
   raisedAt: string;

@@ -278,7 +278,7 @@ export default function ReactiveJobDetailScreen() {
   const [pendingStatus, setPendingStatus] = useState<string | null>(null);
 
   const { data: job, isLoading, refetch, isRefetching } = useGetReactiveJob(id ?? "", {
-    query: { enabled: !!id },
+    query: { enabled: !!id } as any,
   });
   const updateStatus = useUpdateReactiveJob();
 

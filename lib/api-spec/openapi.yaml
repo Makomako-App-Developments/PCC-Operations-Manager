@@ -1509,13 +1509,18 @@ components:
       type: object
       properties:
         id:             { type: string, format: uuid }
-        assetId:        { type: string, format: uuid }
+        assetId:        { type: string, format: uuid, nullable: true }
         raisedById:     { type: string, format: uuid }
         assignedTeamId: { type: string, format: uuid, nullable: true }
         assignedUserId: { type: string, format: uuid, nullable: true }
         assignedUserName: { type: string, nullable: true, description: "Name of the worker who claimed this job." }
         issueType:      { type: string }
         description:    { type: string }
+        location:       { type: string, nullable: true }
+        locationLat:    { type: number, nullable: true }
+        locationLng:    { type: number, nullable: true }
+        scheduledDate:  { type: string, format: date, nullable: true }
+        estimatedTimeMins: { type: integer, nullable: true }
         status:
           $ref: "#/components/schemas/ReactiveJobStatus"
         priority:
@@ -1529,7 +1534,6 @@ components:
         updatedAt:      { type: string, format: date-time }
       required:
         - id
-        - assetId
         - raisedById
         - issueType
         - description

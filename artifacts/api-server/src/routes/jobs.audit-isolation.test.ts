@@ -66,6 +66,7 @@ const ASSET_ID        = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb";
 const TEAM_ID         = "cccccccc-cccc-cccc-cccc-cccccccccccc";
 const REACTIVE_JOB_ID = "dddddddd-dddd-dddd-dddd-dddddddddddd";
 const USER_ID         = "eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee";
+const OTHER_USER_ID   = "ffffffff-ffff-ffff-ffff-ffffffffffff";
 
 // ── Fake DB rows ──────────────────────────────────────────────────────────────
 
@@ -370,7 +371,7 @@ describe("audit-log isolation — jobs routes", () => {
       let selectCalls = 0;
       vi.mocked(db.select).mockImplementation(() => {
         selectCalls++;
-        return makeChain(selectCalls === 1 ? [fakeJob] : []) as never;
+        return makeChain(selectCalls === 1 ? [{ ...fakeJob, assignedUserId: USER_ID }] : []) as never;
       });
       vi.mocked(db.update).mockReturnValue(
         makeChain([{ ...fakeJob, status: "completed" }]) as never,
@@ -383,6 +384,77 @@ describe("audit-log isolation — jobs routes", () => {
 
       expect(vi.mocked(db.update)).toHaveBeenCalledTimes(1);
       expect(vi.mocked(auditLog)).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe("shared queue claiming — regular jobs", () => {
+    it("claims a pending job for the authenticated worker on first start", async () => {
+      const db = await getDb();
+      const auditLog = await getAuditLog();
+      let selectCalls = 0;
+      vi.mocked(db.select).mockImplementation(() => {
+        selectCalls++;
+        return makeChain(selectCalls === 1 ? [fakeJob] : [{ name: "Taylor Gardener" }]) as never;
+      });
+      vi.mocked(db.update).mockReturnValue(
+        makeChain([{ ...fakeJob, status: "in_progress", assignedUserId: USER_ID }]) as never,
+      );
+      vi.mocked(auditLog).mockResolvedValue(undefined);
+
+      const response = await request(app)
+        .patch(`/api/jobs/${JOB_ID}`)
+        .send({ status: "in_progress" });
+
+      expect(response.status).toBe(200);
+      expect(response.body).toMatchObject({
+        status: "in_progress",
+        assignedUserId: USER_ID,
+        assignedUserName: "Taylor Gardener",
+      });
+      expect(vi.mocked(db.update)).toHaveBeenCalledTimes(1);
+    });
+
+    it("returns the winning claimant when its conditional start update loses a race", async () => {
+      const db = await getDb();
+      let selectCalls = 0;
+      const winningJob = { ...fakeJob, status: "in_progress", assignedUserId: OTHER_USER_ID };
+      vi.mocked(db.select).mockImplementation(() => {
+        selectCalls++;
+        if (selectCalls === 1) return makeChain([fakeJob]) as never;
+        if (selectCalls === 2) return makeChain([winningJob]) as never;
+        return makeChain([{ name: "Morgan Gardener" }]) as never;
+      });
+      vi.mocked(db.update).mockReturnValue(makeChain([]) as never);
+
+      const response = await request(app)
+        .patch(`/api/jobs/${JOB_ID}`)
+        .send({ status: "in_progress" });
+
+      expect(response.status).toBe(409);
+      expect(response.body).toMatchObject({
+        code: "JOB_ALREADY_CLAIMED",
+        data: { assignedUserId: OTHER_USER_ID, assignedUserName: "Morgan Gardener" },
+      });
+      expect(vi.mocked(db.update)).toHaveBeenCalledTimes(1);
+    });
+
+    it("blocks a teammate from changing a claimed job but leaves checklist reads available", async () => {
+      const db = await getDb();
+      const claimedJob = { ...fakeJob, assignedUserId: OTHER_USER_ID };
+      vi.mocked(db.select).mockReturnValue(makeChain([claimedJob]) as never);
+
+      const updateResponse = await request(app)
+        .patch(`/api/jobs/${JOB_ID}`)
+        .send({ notes: "A teammate must not write this." });
+
+      expect(updateResponse.status).toBe(409);
+      expect(vi.mocked(db.update)).not.toHaveBeenCalled();
+
+      vi.mocked(db.select).mockImplementationOnce(() => makeChain([claimedJob]) as never)
+        .mockImplementationOnce(() => makeChain([]) as never);
+      const checklistResponse = await request(app).get(`/api/jobs/${JOB_ID}/task-skip-reasons`);
+      expect(checklistResponse.status).toBe(200);
+      expect(checklistResponse.body).toEqual({ data: [] });
     });
   });
 
@@ -421,6 +493,33 @@ describe("audit-log isolation — jobs routes", () => {
       expect(callOrder.indexOf("write:resolved")).toBeLessThan(
         callOrder.indexOf("auditLog"),
       );
+    });
+
+    it("claims an assigned reactive job for the worker who starts it", async () => {
+      const db = await getDb();
+      const auditLog = await getAuditLog();
+      let selectCalls = 0;
+      vi.mocked(db.select).mockImplementation(() => {
+        selectCalls++;
+        return makeChain(selectCalls === 1
+          ? [{ ...fakeReactiveJob, status: "assigned", assignedTeamId: TEAM_ID }]
+          : [{ name: "Taylor Gardener" }]) as never;
+      });
+      vi.mocked(db.update).mockReturnValue(
+        makeChain([{ ...fakeReactiveJob, status: "in_progress", assignedUserId: USER_ID }]) as never,
+      );
+      vi.mocked(auditLog).mockResolvedValue(undefined);
+
+      const response = await request(app)
+        .patch(`/api/reactive-jobs/${REACTIVE_JOB_ID}`)
+        .send({ status: "in_progress" });
+
+      expect(response.status).toBe(200);
+      expect(response.body).toMatchObject({
+        status: "in_progress",
+        assignedUserId: USER_ID,
+        assignedUserName: "Taylor Gardener",
+      });
     });
 
     it("calls auditLog with reactive_jobs table name and UPDATE action", async () => {

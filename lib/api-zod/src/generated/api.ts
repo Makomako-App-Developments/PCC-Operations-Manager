@@ -501,7 +501,7 @@ export const ListReactiveJobsResponse = zod.object({
   data: zod.array(
     zod.object({
       id: zod.string().uuid(),
-      assetId: zod.string().uuid(),
+      assetId: zod.string().uuid().nullish(),
       raisedById: zod.string().uuid(),
       assignedTeamId: zod.string().uuid().nullish(),
       assignedUserId: zod.string().uuid().nullish(),
@@ -511,6 +511,11 @@ export const ListReactiveJobsResponse = zod.object({
         .describe("Name of the worker who claimed this job."),
       issueType: zod.string(),
       description: zod.string(),
+      location: zod.string().nullish(),
+      locationLat: zod.number().nullish(),
+      locationLng: zod.number().nullish(),
+      scheduledDate: zod.date().nullish(),
+      estimatedTimeMins: zod.number().nullish(),
       status: zod.enum([
         "raised",
         "assigned",
@@ -550,7 +555,7 @@ export const GetReactiveJobParams = zod.object({
 
 export const GetReactiveJobResponse = zod.object({
   id: zod.string().uuid(),
-  assetId: zod.string().uuid(),
+  assetId: zod.string().uuid().nullish(),
   raisedById: zod.string().uuid(),
   assignedTeamId: zod.string().uuid().nullish(),
   assignedUserId: zod.string().uuid().nullish(),
@@ -560,6 +565,11 @@ export const GetReactiveJobResponse = zod.object({
     .describe("Name of the worker who claimed this job."),
   issueType: zod.string(),
   description: zod.string(),
+  location: zod.string().nullish(),
+  locationLat: zod.number().nullish(),
+  locationLng: zod.number().nullish(),
+  scheduledDate: zod.date().nullish(),
+  estimatedTimeMins: zod.number().nullish(),
   status: zod.enum([
     "raised",
     "assigned",
@@ -599,7 +609,7 @@ export const UpdateReactiveJobBody = zod.object({
 
 export const UpdateReactiveJobResponse = zod.object({
   id: zod.string().uuid(),
-  assetId: zod.string().uuid(),
+  assetId: zod.string().uuid().nullish(),
   raisedById: zod.string().uuid(),
   assignedTeamId: zod.string().uuid().nullish(),
   assignedUserId: zod.string().uuid().nullish(),
@@ -609,6 +619,11 @@ export const UpdateReactiveJobResponse = zod.object({
     .describe("Name of the worker who claimed this job."),
   issueType: zod.string(),
   description: zod.string(),
+  location: zod.string().nullish(),
+  locationLat: zod.number().nullish(),
+  locationLng: zod.number().nullish(),
+  scheduledDate: zod.date().nullish(),
+  estimatedTimeMins: zod.number().nullish(),
   status: zod.enum([
     "raised",
     "assigned",
