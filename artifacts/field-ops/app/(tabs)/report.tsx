@@ -673,10 +673,17 @@ export default function ReportScreen() {
       return;
     }
     if (!(await requestCameraPermission())) return;
-    const result = await ImagePicker.launchCameraAsync({ mediaTypes: ["images"], quality: 0.8 });
-    if (!result.canceled && result.assets[0]) {
-      const a = result.assets[0];
-      setSelectedPhotos(prev => [...prev, { uri: a.uri, file: (a as any).file ?? undefined }]);
+    try {
+      const result = await ImagePicker.launchCameraAsync({ mediaTypes: ["images"], quality: 0.8 });
+      if (!result.canceled && result.assets[0]) {
+        const a = result.assets[0];
+        setSelectedPhotos(prev => [...prev, { uri: a.uri, file: (a as any).file ?? undefined }]);
+      }
+    } catch {
+      Alert.alert(
+        "Camera unavailable",
+        "GardenOps could not open your camera. Please close and reopen the app, then try again. You can still attach a photo from your library.",
+      );
     }
   };
 

@@ -3,6 +3,7 @@
 - [Geosequence-first scheduler](geosequence-scheduler.md) — epoch-anchored due dates + backward flex (±DUE_DATE_FLEX_DAYS); carry queue has NO expiry (capacity wins); forward-flex-only causes harmful clustering.
 - [Expo Auth Routing](expo-auth-routing.md) — use AuthGuard in _layout.tsx; never bare Redirect/router.replace on login screen or it escapes to web app
 - [Expo web API base URL](expo-web-base-url.md) — never call setBaseUrl() on web; use relative /api/... paths instead so prod domain isn't baked in at dev-build time.
+- [Android 16 camera permissions](android-16-camera-permissions.md) — read Image Picker permission state before requesting; Android 16 may hang on an already-granted request.
 - [Artifact path conflicts](artifact-path-conflicts.md) — Expo's broad service paths (/node_modules/, /assets/) hijack sibling web-app requests on the main proxy; narrow to previewPath only.
 - [Photo storage — GCS not local disk](photo-storage-gcs.md) — photos use multer memoryStorage + GCS upload; Express 5 wildcard *splat returns array, join it.
 - [React Compiler TDZ bug](react-compiler-tdz.md) — babel-plugin-react-compiler auto-discovered by babel-preset-expo caused TDZ crash in production; disable with 'react-compiler':false in babel.config.js.

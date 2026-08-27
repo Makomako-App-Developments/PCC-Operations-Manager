@@ -45,21 +45,36 @@ export async function requestMediaLibraryPermission(): Promise<boolean> {
  * (iOS behaviour is intentionally left unchanged from before).
  */
 export async function requestCameraPermission(): Promise<boolean> {
-  const { status } = await ImagePicker.requestCameraPermissionsAsync();
+  try {
+    // Android 16 can leave requestCameraPermissionsAsync unresolved after an
+    // Android security update when permission is already granted. Reading the
+    // current state first lets existing users proceed straight to the camera.
+    let permission = await ImagePicker.getCameraPermissionsAsync();
 
-  if (status === "granted") return true;
+    if (permission.granted) return true;
 
-  if (Platform.OS === "android") {
+    if (permission.canAskAgain) {
+      permission = await ImagePicker.requestCameraPermissionsAsync();
+      if (permission.granted) return true;
+    }
+
+    if (Platform.OS === "android") {
+      Alert.alert(
+        "Camera access required",
+        "GardenOps needs access to your camera to take photos for jobs and reports.\n\nTap 'Open Settings', then enable 'Camera' permission for GardenOps.",
+        [
+          { text: "Cancel", style: "cancel" },
+          { text: "Open Settings", onPress: () => { void Linking.openSettings(); } },
+        ],
+      );
+    } else {
+      Alert.alert("Permission needed", "Please allow camera access in Settings.");
+    }
+  } catch {
     Alert.alert(
-      "Camera access required",
-      "GardenOps needs access to your camera to take photos for jobs and reports.\n\nTap 'Open Settings', then enable 'Camera' permission for GardenOps.",
-      [
-        { text: "Cancel", style: "cancel" },
-        { text: "Open Settings", onPress: () => Linking.openSettings() },
-      ]
+      "Camera unavailable",
+      "GardenOps could not open the camera. Please close and reopen the app, then try again. You can still attach a photo from your library.",
     );
-  } else {
-    Alert.alert("Permission needed", "Please allow camera access in Settings.");
   }
 
   return false;

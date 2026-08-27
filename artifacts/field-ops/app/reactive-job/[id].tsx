@@ -147,12 +147,19 @@ function AttachmentsSection({ jobId, readOnly }: { jobId: string; readOnly: bool
       return;
     }
     if (!(await requestCameraPermission())) return;
-    const result = await ImagePicker.launchCameraAsync({ mediaTypes: ["images"], quality: 0.7 });
-    if (!result.canceled && result.assets[0]) {
-      const uri = result.assets[0].uri;
-      upload.mutate(
-        { uri, file: (result.assets[0] as any).file ?? undefined },
-        { onSuccess: (r) => handleMutateResult(r, uri) },
+    try {
+      const result = await ImagePicker.launchCameraAsync({ mediaTypes: ["images"], quality: 0.7 });
+      if (!result.canceled && result.assets[0]) {
+        const uri = result.assets[0].uri;
+        upload.mutate(
+          { uri, file: (result.assets[0] as any).file ?? undefined },
+          { onSuccess: (r) => handleMutateResult(r, uri) },
+        );
+      }
+    } catch {
+      Alert.alert(
+        "Camera unavailable",
+        "GardenOps could not open your camera. Please close and reopen the app, then try again. You can still attach a photo from your library.",
       );
     }
   };
