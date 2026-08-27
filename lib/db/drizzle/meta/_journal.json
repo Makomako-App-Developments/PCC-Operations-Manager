@@ -36,6 +36,13 @@
       "when": 1787107200000,
       "tag": "0008_skipped_job_drafts",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1787794862888,
+      "tag": "0009_add_training_availability",
+      "breakpoints": true
     }
   ]
 }

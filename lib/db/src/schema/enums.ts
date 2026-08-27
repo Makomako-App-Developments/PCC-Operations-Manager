@@ -96,6 +96,7 @@ export const availabilityStatusEnum = pgEnum("availability_status", [
   "sick",
   "statutory_holiday",
   "unpaid_leave",
+  "training",
 ]);
 
 export const skipReviewOutcomeEnum = pgEnum("skip_review_outcome", ["accepted", "rejected"]);

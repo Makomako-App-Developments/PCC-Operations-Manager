@@ -17,7 +17,7 @@ const upsertSchema = z.object({
   personName: z.string().min(1),
   date:       z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   hour:       z.number().int().min(8).max(16),
-  status:     z.enum(["available", "annual_leave", "sick", "statutory_holiday", "unpaid_leave"]),
+  status:     z.enum(["available", "annual_leave", "sick", "statutory_holiday", "unpaid_leave", "training"]),
   skipSpill:  z.boolean().optional().default(false),
 });
 

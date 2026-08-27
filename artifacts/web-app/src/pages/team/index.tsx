@@ -43,7 +43,7 @@ const OFFICE_ROLES = new Set(["administrator", "manager"]);
 const DEFAULT_HOURS = [8, 9, 10, 11, 12, 13, 14, 15, 16];
 const DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
 
-type Status = "available" | "annual_leave" | "sick" | "statutory_holiday" | "unpaid_leave";
+type Status = "available" | "annual_leave" | "sick" | "statutory_holiday" | "unpaid_leave" | "training";
 
 const STATUS_OPTIONS: { value: Status; label: string; color: string; bg: string }[] = [
   { value: "available",          label: "Available",          color: "text-green-700",  bg: "bg-green-100"  },
@@ -51,6 +51,7 @@ const STATUS_OPTIONS: { value: Status; label: string; color: string; bg: string 
   { value: "sick",               label: "Sick",               color: "text-red-700",    bg: "bg-red-100"    },
   { value: "statutory_holiday",  label: "Statutory Holiday",  color: "text-purple-700", bg: "bg-purple-100" },
   { value: "unpaid_leave",       label: "Unpaid Leave",       color: "text-gray-700",   bg: "bg-gray-100"   },
+  { value: "training",           label: "Training",           color: "text-amber-700",  bg: "bg-amber-100"  },
 ];
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
