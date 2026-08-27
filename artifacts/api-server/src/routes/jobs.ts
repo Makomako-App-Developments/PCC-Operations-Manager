@@ -257,6 +257,7 @@ router.get("/completed-works", requireAuth, validateQuery(completedWorksQuerySch
       id:               jobsTable.id,
       jobType:          jobsTable.jobType,
       scheduledDate:    jobsTable.scheduledDate,
+      startedAt:        jobsTable.startedAt,
       completedAt:      jobsTable.completedAt,
       actualTimeMins:   jobsTable.actualTimeMins,
       estimatedTimeMins: jobsTable.estimatedTimeMins,

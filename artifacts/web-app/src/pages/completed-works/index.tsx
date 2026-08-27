@@ -16,6 +16,7 @@ interface CompletedWork {
   id: string;
   jobType: string;
   scheduledDate: string;
+  startedAt: string | null;
   completedAt: string | null;
   actualTimeMins: number | null;
   estimatedTimeMins: number | null;
@@ -132,6 +133,7 @@ function DetailPanel({ job, onClose }: { job: CompletedWork; onClose: () => void
         {/* Key info grid */}
         <div className="grid grid-cols-2 gap-3">
           <InfoBlock label="Scheduled Date" value={formatDate(job.scheduledDate)} />
+          <InfoBlock label="Start Time" value={formatDateTime(job.startedAt)} />
           <InfoBlock label="Completed" value={formatDateTime(job.completedAt)} />
           <InfoBlock label="Team" value={job.isAllTeams ? "All Teams" : (job.teamName ?? "—")} />
           <InfoBlock label="Job Type" value={JOB_TYPE_LABELS[job.jobType] ?? job.jobType} />
