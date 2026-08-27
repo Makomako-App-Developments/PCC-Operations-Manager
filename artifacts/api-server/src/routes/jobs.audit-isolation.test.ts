@@ -414,6 +414,54 @@ describe("audit-log isolation — jobs routes", () => {
       expect(vi.mocked(db.update)).toHaveBeenCalledTimes(1);
     });
 
+    it("lets a worker complete a legacy active job with no claimant and records that claimant", async () => {
+      const db = await getDb();
+      const auditLog = await getAuditLog();
+      const legacyJob = {
+        ...fakeJob,
+        status: "in_progress",
+        startedAt: new Date("2026-08-20T09:00:00Z"),
+      };
+
+      let selectCalls = 0;
+      vi.mocked(db.select).mockImplementation(() => {
+        selectCalls++;
+        return makeChain(
+          selectCalls === 1
+            ? [legacyJob]
+            : [{ name: "Taylor Gardener" }],
+        ) as never;
+      });
+      vi.mocked(db.update).mockReturnValue(
+        makeChain([{
+          ...legacyJob,
+          status: "completed",
+          completedAt: new Date("2026-08-20T10:00:00Z"),
+          assignedUserId: USER_ID,
+        }]) as never,
+      );
+      vi.mocked(auditLog).mockResolvedValue(undefined);
+
+      const response = await request(app)
+        .patch(`/api/jobs/${JOB_ID}`)
+        .send({ status: "completed" });
+
+      expect(response.status).toBe(200);
+      expect(response.body).toMatchObject({
+        status: "completed",
+        assignedUserId: USER_ID,
+        assignedUserName: "Taylor Gardener",
+      });
+      expect(vi.mocked(db.update)).toHaveBeenCalledTimes(1);
+      expect(vi.mocked(auditLog)).toHaveBeenCalledWith(
+        expect.objectContaining({
+          tableName: "jobs",
+          recordId: JOB_ID,
+          action: "UPDATE",
+        }),
+      );
+    });
+
     it("returns the winning claimant when its conditional start update loses a race", async () => {
       const db = await getDb();
       let selectCalls = 0;

@@ -887,8 +887,16 @@ router.patch("/jobs/:id", requireAuth, async (req, res) => {
   const fromStatus = before.status;
   const toStatus = patch.status as string | undefined;
   const isClaimStart = !before.isAllTeams && toStatus === "in_progress" && fromStatus === "pending";
+  // Jobs already in progress when individual claiming was introduced have no
+  // claimant. Let the worker who closes one of those legacy jobs establish
+  // ownership as part of its completion, without allowing pending work to
+  // bypass the normal start-and-claim transition.
+  const isLegacyCompletionClaim = !before.isAllTeams
+    && toStatus === "completed"
+    && !before.assignedUserId
+    && (fromStatus === "in_progress" || fromStatus === "paused");
 
-  if (toStatus === "completed" && !before.isAllTeams && !before.assignedUserId) {
+  if (toStatus === "completed" && !before.isAllTeams && !before.assignedUserId && !isLegacyCompletionClaim) {
     res.status(409).json({ error: "Start this job before completing it." });
     return;
   }
@@ -922,9 +930,10 @@ router.patch("/jobs/:id", requireAuth, async (req, res) => {
     }
   }
 
-  if (isClaimStart) {
+  if (isClaimStart || isLegacyCompletionClaim) {
     // The authenticated worker, rather than the client request body, owns a
-    // fresh start. The conditional WHERE below makes this claim race-safe.
+    // fresh start or the completion of a legacy, ownerless active job. The
+    // conditional WHERE below makes either ownership claim race-safe.
     patch.assignedUserId = req.auth!.userId;
   }
 
@@ -932,6 +941,9 @@ router.patch("/jobs/:id", requireAuth, async (req, res) => {
   if (isClaimStart) {
     updateConditions.push(eq(jobsTable.status, "pending"));
     updateConditions.push(or(isNull(jobsTable.assignedUserId), eq(jobsTable.assignedUserId, req.auth!.userId)) as any);
+  } else if (isLegacyCompletionClaim) {
+    updateConditions.push(eq(jobsTable.status, fromStatus));
+    updateConditions.push(isNull(jobsTable.assignedUserId));
   }
 
   const [updated] = await executeWithCircuitBreaker(() => db
@@ -963,7 +975,7 @@ router.patch("/jobs/:id", requireAuth, async (req, res) => {
   // Notify the crew member when a job is directly assigned (or reassigned) to them.
   const newAssignedUserId = updated.assignedUserId ?? null;
   const oldAssignedUserId = before.assignedUserId ?? null;
-  if (newAssignedUserId && newAssignedUserId !== oldAssignedUserId) {
+  if (!isLegacyCompletionClaim && newAssignedUserId && newAssignedUserId !== oldAssignedUserId) {
     const [asset] = await executeWithCircuitBreaker(() => db
       .select({ name: assetsTable.name })
       .from(assetsTable)
