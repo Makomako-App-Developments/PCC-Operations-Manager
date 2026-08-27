@@ -88,6 +88,8 @@ type Job = ScheduledJob & {
   isAllTeams?: boolean;
   jobType?: string;
   priority?: string | null;
+  assignedUserId?: string | null;
+  assignedUserName?: string | null;
   routeOrder?: number | null;
 };
 
@@ -95,10 +97,12 @@ function DaySection({
   date,
   jobs,
   defaultExpanded,
+  currentUserId,
 }: {
   date: string;
   jobs: Job[];
   defaultExpanded: boolean;
+  currentUserId?: string | null;
 }) {
   const colors = useColors();
   const [expanded, setExpanded] = useState(defaultExpanded);
@@ -176,6 +180,9 @@ function DaySection({
                     isAllTeams={(job as any).isAllTeams ?? false}
                     jobType={(job as any).jobType}
                     priority={(job as any).priority}
+                    assignedUserId={(job as any).assignedUserId}
+                    assignedUserName={(job as any).assignedUserName}
+                    currentUserId={currentUserId}
                     geoSeq={geoSeqFor[idx]}
                   />
                 ));
@@ -197,6 +204,9 @@ function DaySection({
                   isAllTeams={(job as any).isAllTeams ?? false}
                   jobType={(job as any).jobType}
                   priority={(job as any).priority}
+                  assignedUserId={(job as any).assignedUserId}
+                  assignedUserName={(job as any).assignedUserName}
+                  currentUserId={currentUserId}
                 />
               ))}
             </>
@@ -319,11 +329,11 @@ export default function TodayScreen() {
           />
         ) : (
           <>
-            <DaySection date={TODAY} jobs={todayJobs} defaultExpanded={true} />
-            <DaySection date={DAY1}  jobs={day1Jobs}  defaultExpanded={false} />
-            <DaySection date={DAY2}  jobs={day2Jobs}  defaultExpanded={false} />
-            <DaySection date={DAY3}  jobs={day3Jobs}  defaultExpanded={false} />
-            <DaySection date={DAY4}  jobs={day4Jobs}  defaultExpanded={false} />
+            <DaySection date={TODAY} jobs={todayJobs} defaultExpanded={true} currentUserId={user?.id} />
+            <DaySection date={DAY1}  jobs={day1Jobs}  defaultExpanded={false} currentUserId={user?.id} />
+            <DaySection date={DAY2}  jobs={day2Jobs}  defaultExpanded={false} currentUserId={user?.id} />
+            <DaySection date={DAY3}  jobs={day3Jobs}  defaultExpanded={false} currentUserId={user?.id} />
+            <DaySection date={DAY4}  jobs={day4Jobs}  defaultExpanded={false} currentUserId={user?.id} />
           </>
         )}
       </ScrollView>

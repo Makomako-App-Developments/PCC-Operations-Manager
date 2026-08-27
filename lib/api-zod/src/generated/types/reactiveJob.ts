@@ -14,6 +14,8 @@ export interface ReactiveJob {
   raisedById: string;
   assignedTeamId?: string | null;
   assignedUserId?: string | null;
+  /** Name of the worker who claimed this job. */
+  assignedUserName?: string | null;
   issueType: string;
   description: string;
   status: ReactiveJobStatus;

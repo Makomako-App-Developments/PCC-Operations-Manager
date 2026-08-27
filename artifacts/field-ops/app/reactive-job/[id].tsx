@@ -24,25 +24,10 @@ import { useColors } from "@/hooks/useColors";
 import { getApiUrl } from "@/lib/api";
 import { useOfflinePhotoQueue } from "@/hooks/useOfflinePhotoQueue";
 import { PinMap } from "@/components/PinMap";
+import { useAuth } from "@/context/auth";
+import { useGetReactiveJob, useUpdateReactiveJob } from "@workspace/api-client-react";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
-
-interface ReactiveJob {
-  id: string;
-  issueType: string;
-  description: string | null;
-  location: string | null;
-  locationLat: number | null;
-  locationLng: number | null;
-  assetId: string | null;
-  status: string;
-  priority: string;
-  scheduledDate: string | null;
-  estimatedTimeMins: number | null;
-  notes: string | null;
-  raisedAt: string;
-  assignedTeamId: string | null;
-}
 
 interface JobPhoto {
   id: string;
@@ -71,20 +56,6 @@ const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string; 
 };
 
 // ─── Hooks ────────────────────────────────────────────────────────────────────
-
-function useReactiveJob(id: string) {
-  return useQuery<ReactiveJob>({
-    queryKey: ["reactive-job", id],
-    queryFn: async () => {
-      const res = await fetch(getApiUrl(`/api/reactive-jobs/${id}`), { credentials: "include" });
-      if (!res.ok) throw new Error("Job not found");
-      const body = await res.json();
-      // API may wrap in data or return directly
-      return (body.data ?? body) as ReactiveJob;
-    },
-    enabled: !!id,
-  });
-}
 
 function useReactiveJobPhotos(id: string) {
   return useQuery<{ data: JobPhoto[] }>({
@@ -138,30 +109,9 @@ function useUploadReactivePhoto(jobId: string) {
   });
 }
 
-function useUpdateReactiveJobStatus(jobId: string) {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: async (status: string) => {
-      const res = await fetch(getApiUrl(`/api/reactive-jobs/${jobId}`), {
-        method: "PATCH",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status }),
-      });
-      if (!res.ok) throw new Error("Update failed");
-      return res.json();
-    },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["reactive-job", jobId] });
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    },
-    onError: () => Alert.alert("Update failed", "Could not update status. Please try again."),
-  });
-}
-
 // ─── Photo Attachment Row ─────────────────────────────────────────────────────
 
-function AttachmentsSection({ jobId, isDone }: { jobId: string; isDone: boolean }) {
+function AttachmentsSection({ jobId, readOnly }: { jobId: string; readOnly: boolean }) {
   const colors = useColors();
   const { data, isLoading } = useReactiveJobPhotos(jobId);
   const upload = useUploadReactivePhoto(jobId);
@@ -285,7 +235,7 @@ function AttachmentsSection({ jobId, isDone }: { jobId: string; isDone: boolean 
         </ScrollView>
       )}
 
-      {!isDone && (
+      {!readOnly && (
         <View style={[styles.photoActions, { borderTopColor: colors.border }]}>
           <TouchableOpacity
             style={[styles.photoBtn, { borderColor: colors.border, borderRadius: colors.radius, flex: 1 }]}
@@ -324,10 +274,13 @@ export default function ReactiveJobDetailScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
+  const { user } = useAuth();
   const [pendingStatus, setPendingStatus] = useState<string | null>(null);
 
-  const { data: job, isLoading, refetch, isRefetching } = useReactiveJob(id ?? "");
-  const updateStatus = useUpdateReactiveJobStatus(id ?? "");
+  const { data: job, isLoading, refetch, isRefetching } = useGetReactiveJob(id ?? "", {
+    query: { enabled: !!id },
+  });
+  const updateStatus = useUpdateReactiveJob();
 
   const topPad = insets.top + (Platform.OS === "web" ? 67 : 0);
   const bottomPad = insets.bottom + (Platform.OS === "web" ? 34 : 16);
@@ -351,8 +304,16 @@ export default function ReactiveJobDetailScreen() {
 
   const handleUpdateStatus = (status: string) => {
     setPendingStatus(null);
-    updateStatus.mutate(status, {
-      onSuccess: () => refetch(),
+    if (!id) return;
+    updateStatus.mutate({ id, data: { status: status as any } }, {
+      onSuccess: () => {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        refetch();
+      },
+      onError: () => {
+        void refetch();
+        Alert.alert("Job unavailable", "This job may have just been claimed by another team member. The latest status has been loaded.");
+      },
     });
   };
 
@@ -377,6 +338,7 @@ export default function ReactiveJobDetailScreen() {
   const isDone = job.status === "completed" || job.status === "cancelled";
   const canStart = job.status === "assigned" || job.status === "raised";
   const isActive = job.status === "in_progress";
+  const isClaimedByOther = !!job.assignedUserId && job.assignedUserId !== user?.id;
 
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>
@@ -427,6 +389,14 @@ export default function ReactiveJobDetailScreen() {
             Unscheduled work — complete and add at least one photo as evidence.
           </Text>
         </View>
+        {isClaimedByOther && (
+          <View style={[styles.claimedBanner, { backgroundColor: colors.primary + "12", borderColor: colors.primary + "40", borderRadius: colors.radius }]}>
+            <Feather name="lock" size={15} color={colors.primary} />
+            <Text style={[styles.claimedBannerText, { color: colors.foreground }]}>
+              Claimed by {job.assignedUserName ?? "another team member"} — read-only
+            </Text>
+          </View>
+        )}
 
         {/* Description */}
         {job.description ? (
@@ -510,11 +480,11 @@ export default function ReactiveJobDetailScreen() {
         ) : null}
 
         {/* Attachments */}
-        <AttachmentsSection jobId={id ?? ""} isDone={isDone} />
+        <AttachmentsSection jobId={id ?? ""} readOnly={isDone || isClaimedByOther} />
       </ScrollView>
 
       {/* Action bar — only shown when not done/cancelled */}
-      {!isDone && (
+      {!isDone && !isClaimedByOther && (
         <View style={[styles.actionBar, { backgroundColor: colors.card, borderTopColor: colors.border, paddingBottom: bottomPad }]}>
           {pendingStatus ? (
             <View style={styles.confirmBar}>
@@ -630,6 +600,16 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   bannerText: { fontFamily: "Inter_500Medium", fontSize: 13, flex: 1, lineHeight: 18 },
+  claimedBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    borderWidth: 1,
+    marginBottom: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  claimedBannerText: { flex: 1, fontFamily: "Inter_600SemiBold", fontSize: 12 },
 
   section: { borderWidth: 1, overflow: "hidden", marginBottom: 12 },
   sectionHeader: { flexDirection: "row", alignItems: "center", gap: 8, padding: 14, paddingBottom: 10 },

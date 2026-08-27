@@ -25,6 +25,7 @@ interface CompletedWork {
   isAllTeams: boolean;
   teamId: string | null;
   teamName: string | null;
+  assignedUserName: string | null;
   assetId: string | null;
   assetName: string | null;
   assetDescription: string | null;
@@ -136,6 +137,7 @@ function DetailPanel({ job, onClose }: { job: CompletedWork; onClose: () => void
           <InfoBlock label="Start Time" value={formatDateTime(job.startedAt)} />
           <InfoBlock label="Completed" value={formatDateTime(job.completedAt)} />
           <InfoBlock label="Team" value={job.isAllTeams ? "All Teams" : (job.teamName ?? "—")} />
+          <InfoBlock label="Completed by" value={job.isAllTeams ? "Team sign-off" : (job.assignedUserName ?? "—")} />
           <InfoBlock label="Job Type" value={JOB_TYPE_LABELS[job.jobType] ?? job.jobType} />
           <InfoBlock label="Ward" value={job.ward ? WARD_LABELS[job.ward] ?? job.ward : "—"} />
           <InfoBlock label="Garden Type" value={job.gardenType ? GARDEN_TYPE_LABELS[job.gardenType] ?? job.gardenType : "—"} />
@@ -437,7 +439,7 @@ export default function CompletedWorks() {
         ? allRows.filter(r => r.teamId != null && exportTeamIds.has(r.teamId))
         : allRows;
 
-      const headers = ["Date", "Site", "Description", "Specification", "Ward", "Suburb", "Team", "Estimated (min)", "Actual (min)", "Variance (min)", "Status", "Notes"];
+      const headers = ["Date", "Site", "Description", "Specification", "Ward", "Suburb", "Team", "Completed by", "Estimated (min)", "Actual (min)", "Variance (min)", "Status", "Notes"];
       const csvRows = filtered.map(r => {
         const est = r.estimatedTimeMins ?? 0;
         const act = r.actualTimeMins ?? est;
@@ -449,6 +451,7 @@ export default function CompletedWorks() {
           WARD_LABELS[r.ward ?? ""] ?? r.ward ?? "",
           r.suburb ?? "",
           r.isAllTeams ? "All Teams" : (r.teamName ?? ""),
+           r.isAllTeams ? "Team sign-off" : (r.assignedUserName ?? ""),
           est,
           act,
           act - est,

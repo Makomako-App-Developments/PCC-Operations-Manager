@@ -15,6 +15,8 @@ export interface Job {
   status: JobStatus;
   teamId?: string | null;
   assignedUserId?: string | null;
+  /** Name of the worker who claimed this job. */
+  assignedUserName?: string | null;
   scheduledDate: Date;
   startedAt?: Date | null;
   completedAt?: Date | null;

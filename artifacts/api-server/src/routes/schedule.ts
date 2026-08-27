@@ -2,7 +2,7 @@ import { Router } from "express";
 import {
   db, assetsTable, jobsTable, jobPhotosTable, teamMembersTable, teamAvailabilityTable,
   systemSettingsTable, jobTeamCompletionsTable, infillJobsTable, mulchingRecordsTable,
-  reactiveJobsTable, teamsTable, executeWithCircuitBreaker,
+  reactiveJobsTable, teamsTable, usersTable, executeWithCircuitBreaker,
 } from "@workspace/db";
 import { eq, and, or, gte, lte, lt, inArray, sql, notInArray, isNull, isNotNull } from "drizzle-orm";
 import { z } from "zod";
@@ -764,8 +764,18 @@ router.get(
       }
     }
 
+    const assignedUserIds = [...new Set(rows.flatMap(row => row.assignedUserId ? [row.assignedUserId] : []))];
+    const assignedUsers = assignedUserIds.length
+      ? await executeWithCircuitBreaker(() => db
+        .select({ id: usersTable.id, name: usersTable.name })
+        .from(usersTable)
+        .where(inArray(usersTable.id, assignedUserIds)))
+      : [];
+    const assignedUserNames = new Map(assignedUsers.map(user => [user.id, user.name]));
+
     const enrichedRows = rows.map(r => ({
       ...r,
+      assignedUserName: r.assignedUserId ? assignedUserNames.get(r.assignedUserId) ?? null : null,
       teamCompletions: r.isAllTeams ? (completionsByJobId.get(r.id) ?? []) : [],
     }));
 
@@ -946,6 +956,10 @@ router.get(
         status:            reactiveJobsTable.status,
         priority:         reactiveJobsTable.priority,
         assignedTeamId:    reactiveJobsTable.assignedTeamId,
+         assignedUserId:    reactiveJobsTable.assignedUserId,
+         startedAt:         reactiveJobsTable.startedAt,
+         completedAt:       reactiveJobsTable.completedAt,
+         actualTimeMins:    reactiveJobsTable.actualTimeMins,
         estimatedTimeMins: reactiveJobsTable.estimatedTimeMins,
         issueType:         reactiveJobsTable.issueType,
         description:       reactiveJobsTable.description,
@@ -988,6 +1002,15 @@ router.get(
       completed:   "completed",
     };
 
+    const reactiveAssignedIds = [...new Set(reactiveWeekRows.flatMap(row => row.assignedUserId ? [row.assignedUserId] : []))];
+    const reactiveAssignees = reactiveAssignedIds.length
+      ? await executeWithCircuitBreaker(() => db
+        .select({ id: usersTable.id, name: usersTable.name })
+        .from(usersTable)
+        .where(inArray(usersTable.id, reactiveAssignedIds)))
+      : [];
+    const reactiveAssigneeNames = new Map(reactiveAssignees.map(user => [user.id, user.name]));
+
     for (const rj of reactiveWeekRows) {
       const mapped = {
         id:                rj.id,
@@ -998,11 +1021,12 @@ router.get(
         reactiveStatus:    rj.status,
         teamId:            rj.assignedTeamId,
         isAllTeams:        false,
-        assignedUserId:    null,
+        assignedUserId:    rj.assignedUserId,
+        assignedUserName:  rj.assignedUserId ? reactiveAssigneeNames.get(rj.assignedUserId) ?? null : null,
         scheduledDate:     rj.scheduledDate,
-        startedAt:         null,
-        completedAt:       null,
-        actualTimeMins:    null,
+        startedAt:         rj.startedAt,
+        completedAt:       rj.completedAt,
+        actualTimeMins:    rj.actualTimeMins,
         estimatedTimeMins: rj.estimatedTimeMins,
         crewStatus:        null,
         notes:             rj.description,

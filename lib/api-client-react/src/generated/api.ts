@@ -1342,6 +1342,93 @@ export const useCreateReactiveJob = <
 };
 
 /**
+ * @summary Get a reactive job
+ */
+export const getGetReactiveJobUrl = (id: string) => {
+  return `/api/reactive-jobs/${id}`;
+};
+
+export const getReactiveJob = async (
+  id: string,
+  options?: RequestInit,
+): Promise<ReactiveJob> => {
+  return customFetch<ReactiveJob>(getGetReactiveJobUrl(id), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetReactiveJobQueryKey = (id: string) => {
+  return [`/api/reactive-jobs/${id}`] as const;
+};
+
+export const getGetReactiveJobQueryOptions = <
+  TData = Awaited<ReturnType<typeof getReactiveJob>>,
+  TError = ErrorType<unknown>,
+>(
+  id: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getReactiveJob>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetReactiveJobQueryKey(id);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getReactiveJob>>> = ({
+    signal,
+  }) => getReactiveJob(id, { signal, ...requestOptions });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!id,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof getReactiveJob>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetReactiveJobQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getReactiveJob>>
+>;
+export type GetReactiveJobQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Get a reactive job
+ */
+
+export function useGetReactiveJob<
+  TData = Awaited<ReturnType<typeof getReactiveJob>>,
+  TError = ErrorType<unknown>,
+>(
+  id: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getReactiveJob>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetReactiveJobQueryOptions(id, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
  * @summary Update a reactive job
  */
 export const getUpdateReactiveJobUrl = (id: string) => {

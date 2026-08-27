@@ -259,6 +259,8 @@ export interface Job {
   status: JobStatus;
   teamId?: string | null;
   assignedUserId?: string | null;
+  /** Name of the worker who claimed this job. */
+  assignedUserName?: string | null;
   scheduledDate: string;
   startedAt?: string | null;
   completedAt?: string | null;
@@ -347,6 +349,8 @@ export interface ReactiveJob {
   raisedById: string;
   assignedTeamId?: string | null;
   assignedUserId?: string | null;
+  /** Name of the worker who claimed this job. */
+  assignedUserName?: string | null;
   issueType: string;
   description: string;
   status: ReactiveJobStatus;

@@ -21,6 +21,9 @@ interface JobCardProps {
   isAllTeams?: boolean;
   jobType?: string | null;
   priority?: string | null;
+  assignedUserId?: string | null;
+  assignedUserName?: string | null;
+  currentUserId?: string | null;
   geoSeq?: number;
 }
 
@@ -101,6 +104,9 @@ export function JobCard({
   isAllTeams,
   jobType,
   priority,
+  assignedUserId,
+  assignedUserName,
+  currentUserId,
   geoSeq,
 }: JobCardProps) {
   const colors = useColors();
@@ -128,6 +134,8 @@ export function JobCard({
   const isUrgentUnscheduled = isUnscheduled && priority === "urgent";
   const isCompleted = status === "completed";
   const isSkipped = status === "skipped";
+  const isClaimed = !!assignedUserId && !isAllTeams;
+  const claimedByCurrentUser = isClaimed && assignedUserId === currentUserId;
 
   const cardBg = isCompleted
     ? "#f0fdf4"
@@ -207,6 +215,14 @@ export function JobCard({
         <View style={[styles.allTeamsBadge, { backgroundColor: "#fff0e0", borderColor: "#f9731660" }]}>
           <Feather name="zap" size={10} color="#f97316" />
           <Text style={[styles.allTeamsText, { color: "#f97316" }]}>Unscheduled</Text>
+        </View>
+      )}
+      {isClaimed && (
+        <View style={[styles.allTeamsBadge, { backgroundColor: colors.primary + "12", borderColor: colors.primary + "40" }]}>
+          <Feather name={claimedByCurrentUser ? "user-check" : "lock"} size={10} color={colors.primary} />
+          <Text style={[styles.allTeamsText, { color: colors.primary }]} numberOfLines={1}>
+            {claimedByCurrentUser ? "Claimed by you" : `Claimed by ${assignedUserName ?? "team member"}`}
+          </Text>
         </View>
       )}
 

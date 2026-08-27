@@ -1,7 +1,7 @@
 import { Router } from "express";
 import path from "path";
 import { db, executeWithCircuitBreaker, jobsTable, reactiveJobsTable, insertJobSchema, insertReactiveJobSchema, assetsTable, teamsTable, usersTable, jobTeamCompletionsTable, jobTaskSkipReasonsTable, mulchingRecordsTable, jobPhotosTable, auditLogTable } from "@workspace/db";
-import { eq, and, inArray, notInArray, or, gte, lte, ilike, desc, sql } from "drizzle-orm";
+import { eq, and, inArray, notInArray, or, isNull, gte, lte, ilike, desc, sql } from "drizzle-orm";
 import { z } from "zod";
 import { z as zV4 } from "zod/v4";
 import { requireAuth, requireRole } from "../middlewares/auth";
@@ -22,6 +22,46 @@ const router = Router();
 
 function isPrivilegedRole(role: string): boolean {
   return ["administrator", "manager", "supervisor"].includes(role);
+}
+
+function isClaimedByAnotherUser(
+  job: { assignedUserId: string | null; isAllTeams?: boolean },
+  userId: string,
+): boolean {
+  return !job.isAllTeams && job.assignedUserId !== null && job.assignedUserId !== userId;
+}
+
+async function withAssignedUserName<T extends { assignedUserId: string | null }>(
+  row: T,
+): Promise<T & { assignedUserName: string | null }> {
+  if (!row.assignedUserId) return { ...row, assignedUserName: null };
+  const [user] = await executeWithCircuitBreaker(() => db
+    .select({ name: usersTable.name })
+    .from(usersTable)
+    .where(eq(usersTable.id, row.assignedUserId!))
+    .limit(1));
+  return { ...row, assignedUserName: user?.name ?? null };
+}
+
+async function withAssignedUserNames<T extends { assignedUserId: string | null }>(
+  rows: T[],
+): Promise<Array<T & { assignedUserName: string | null }>> {
+  const userIds = [...new Set(rows.flatMap(row => row.assignedUserId ? [row.assignedUserId] : []))];
+  if (userIds.length === 0) return rows.map(row => ({ ...row, assignedUserName: null }));
+  const users = await executeWithCircuitBreaker(() => db
+    .select({ id: usersTable.id, name: usersTable.name })
+    .from(usersTable)
+    .where(inArray(usersTable.id, userIds)));
+  const names = new Map(users.map(user => [user.id, user.name]));
+  return rows.map(row => ({ ...row, assignedUserName: row.assignedUserId ? names.get(row.assignedUserId) ?? null : null }));
+}
+
+function sendClaimConflict(res: import("express").Response, job: unknown) {
+  res.status(409).json({
+    error: "This job has already been claimed by another team member.",
+    code: "JOB_ALREADY_CLAIMED",
+    data: job,
+  });
 }
 
 const jobQuerySchema = z.object({
@@ -212,7 +252,7 @@ router.get("/jobs", requireAuth, validateQuery(jobQuerySchema), async (req, res)
     .where(conditions.length > 0 ? and(...conditions) : undefined)
     .limit(limit)
     .offset(offset));
-  res.json({ data: rows, page, limit });
+  res.json({ data: await withAssignedUserNames(rows), page, limit });
 });
 
 // GET /api/completed-works  — enriched view joining jobs + assets + teams
@@ -264,7 +304,9 @@ router.get("/completed-works", requireAuth, validateQuery(completedWorksQuerySch
       notes:            jobsTable.notes,
       crewStatus:       jobsTable.crewStatus,
       isAllTeams:       jobsTable.isAllTeams,
-      teamId:           jobsTable.teamId,
+       teamId:           jobsTable.teamId,
+       assignedUserId:   jobsTable.assignedUserId,
+       assignedUserName: usersTable.name,
       teamName:         teamsTable.name,
       assetId:          assetsTable.id,
       assetName:        assetsTable.name,
@@ -277,6 +319,7 @@ router.get("/completed-works", requireAuth, validateQuery(completedWorksQuerySch
     .from(jobsTable)
     .leftJoin(assetsTable, eq(jobsTable.assetId, assetsTable.id))
     .leftJoin(teamsTable, eq(jobsTable.teamId, teamsTable.id))
+    .leftJoin(usersTable, eq(jobsTable.assignedUserId, usersTable.id))
     .where(and(...conditions))
     .orderBy(desc(jobsTable.scheduledDate))
     .limit(q.limit)
@@ -557,7 +600,7 @@ router.get("/jobs/:id", requireAuth, async (req, res) => {
         res.status(403).json({ error: "Forbidden" }); return;
       }
     }
-    res.json(job); return;
+    res.json(await withAssignedUserName(job)); return;
   }
 
   // Fallback: check mulching_records
@@ -812,6 +855,14 @@ router.patch("/jobs/:id", requireAuth, async (req, res) => {
     return;
   }
 
+  // Individual jobs are shared for viewing, but their worker is the only person
+  // permitted to change work in progress. All Teams jobs remain collaborative
+  // because each team signs off independently through their own endpoint.
+  if (isClaimedByAnotherUser(before, req.auth!.userId)) {
+    sendClaimConflict(res, await withAssignedUserName(before));
+    return;
+  }
+
   // Non-privileged users may only change operational status fields, not structural ones
   if (!isPrivilegedRole(req.auth!.role)) {
     const allowedFields = new Set(["status", "notes", "crewStatus", "pausedElapsedSecs", "actualTimeMins", "skipReason", "outOfSequenceReason", "pestsAndDiseases", "plantHealthVigor", "generalComments"]);
@@ -835,6 +886,12 @@ router.patch("/jobs/:id", requireAuth, async (req, res) => {
   // Status transition logic
   const fromStatus = before.status;
   const toStatus = patch.status as string | undefined;
+  const isClaimStart = !before.isAllTeams && toStatus === "in_progress" && fromStatus === "pending";
+
+  if (toStatus === "completed" && !before.isAllTeams && !before.assignedUserId) {
+    res.status(409).json({ error: "Start this job before completing it." });
+    return;
+  }
 
   if (toStatus === "in_progress") {
     if (fromStatus === "pending") {
@@ -865,11 +922,33 @@ router.patch("/jobs/:id", requireAuth, async (req, res) => {
     }
   }
 
+  if (isClaimStart) {
+    // The authenticated worker, rather than the client request body, owns a
+    // fresh start. The conditional WHERE below makes this claim race-safe.
+    patch.assignedUserId = req.auth!.userId;
+  }
+
+  const updateConditions = [eq(jobsTable.id, id)];
+  if (isClaimStart) {
+    updateConditions.push(eq(jobsTable.status, "pending"));
+    updateConditions.push(or(isNull(jobsTable.assignedUserId), eq(jobsTable.assignedUserId, req.auth!.userId)) as any);
+  }
+
   const [updated] = await executeWithCircuitBreaker(() => db
     .update(jobsTable)
     .set({ ...patch, updatedAt: new Date() })
-    .where(eq(jobsTable.id, id))
+    .where(and(...updateConditions))
     .returning());
+
+  if (!updated) {
+    const [current] = await executeWithCircuitBreaker(() => db
+      .select()
+      .from(jobsTable)
+      .where(eq(jobsTable.id, id))
+      .limit(1));
+    sendClaimConflict(res, current ? await withAssignedUserName(current) : null);
+    return;
+  }
 
   // Audit log is written after the update commits so that a logging failure
   // cannot roll back the committed record change. auditLog() swallows errors.
@@ -904,7 +983,7 @@ router.patch("/jobs/:id", requireAuth, async (req, res) => {
     }).catch(err => console.error("[push] notify error:", err));
   }
 
-  res.json(updated);
+  res.json(await withAssignedUserName(updated));
 });
 
 // POST /api/jobs/:id/skip-review — manager accepts or rejects a skip reason (manager/admin only)
@@ -1124,7 +1203,6 @@ router.get("/jobs/:id/task-skip-reasons", requireAuth, async (req, res) => {
       res.status(403).json({ error: "Forbidden" }); return;
     }
   }
-
   const rows = await executeWithCircuitBreaker(() => db
     .select()
     .from(jobTaskSkipReasonsTable)
@@ -1138,7 +1216,7 @@ router.post("/jobs/:id/task-skip-reasons", requireAuth, async (req, res) => {
   const id = String(req.params.id);
 
   // Authorization: verify the caller can act on this job
-  const [job] = await executeWithCircuitBreaker(() => db.select({ teamId: jobsTable.teamId, isAllTeams: jobsTable.isAllTeams, status: jobsTable.status }).from(jobsTable).where(eq(jobsTable.id, id)).limit(1));
+  const [job] = await executeWithCircuitBreaker(() => db.select({ teamId: jobsTable.teamId, isAllTeams: jobsTable.isAllTeams, status: jobsTable.status, assignedUserId: jobsTable.assignedUserId }).from(jobsTable).where(eq(jobsTable.id, id)).limit(1));
   if (!job) { res.status(404).json({ error: "Job not found" }); return; }
   if (job.status === "draft") {
     res.status(409).json({ error: "Draft jobs cannot be changed until a manager places them" }); return;
@@ -1148,6 +1226,10 @@ router.post("/jobs/:id/task-skip-reasons", requireAuth, async (req, res) => {
     if (!job.isAllTeams && job.teamId !== callerTeamId) {
       res.status(403).json({ error: "Forbidden" }); return;
     }
+  }
+  if (isClaimedByAnotherUser(job, req.auth!.userId)) {
+    sendClaimConflict(res, job);
+    return;
   }
 
   const { taskIndex, taskLabel, reason } = req.body as {
@@ -1269,7 +1351,7 @@ router.get("/reactive-jobs", requireAuth, async (req, res) => {
     .leftJoin(assetsTable, eq(reactiveJobsTable.assetId, assetsTable.id))
     .where(conditions.length > 0 ? and(...conditions) : undefined)
     .limit(5000));
-  res.json({ data: rows });
+  res.json({ data: await withAssignedUserNames(rows) });
 });
 
 // POST /api/reactive-jobs
@@ -1355,7 +1437,7 @@ router.get("/reactive-jobs/:id", requireAuth, async (req, res) => {
     }
   }
 
-  res.json(row);
+  res.json(await withAssignedUserName(row));
 });
 
 // PATCH /api/reactive-jobs/:id
@@ -1370,6 +1452,10 @@ router.patch("/reactive-jobs/:id", requireAuth, async (req, res) => {
     if (before.assignedTeamId !== callerTeamId) {
       res.status(403).json({ error: "Forbidden" }); return;
     }
+  }
+  if (isClaimedByAnotherUser(before, req.auth!.userId)) {
+    sendClaimConflict(res, await withAssignedUserName(before));
+    return;
   }
 
   // Build an explicit patch to prevent mass-assignment of sensitive fields
@@ -1400,11 +1486,40 @@ router.patch("/reactive-jobs/:id", requireAuth, async (req, res) => {
     patch[key] = val;
   }
 
+  const toStatus = patch.status as string | undefined;
+  const isClaimStart = toStatus === "in_progress" && (before.status === "raised" || before.status === "assigned");
+  if (toStatus === "completed" && !before.assignedUserId) {
+    res.status(409).json({ error: "Start this job before completing it." });
+    return;
+  }
+  if (isClaimStart) {
+    patch.assignedUserId = req.auth!.userId;
+    patch.startedAt = new Date();
+  }
+  if (toStatus === "completed" && before.status !== "completed") {
+    patch.completedAt = new Date();
+  }
+
+  const updateConditions = [eq(reactiveJobsTable.id, id)];
+  if (isClaimStart) {
+    updateConditions.push(inArray(reactiveJobsTable.status, ["raised", "assigned"]));
+    updateConditions.push(or(isNull(reactiveJobsTable.assignedUserId), eq(reactiveJobsTable.assignedUserId, req.auth!.userId)) as any);
+  }
+
   const [updated] = await executeWithCircuitBreaker(() => db
     .update(reactiveJobsTable)
     .set({ ...patch, updatedAt: new Date() })
-    .where(eq(reactiveJobsTable.id, id))
+    .where(and(...updateConditions))
     .returning());
+  if (!updated) {
+    const [current] = await executeWithCircuitBreaker(() => db
+      .select()
+      .from(reactiveJobsTable)
+      .where(eq(reactiveJobsTable.id, id))
+      .limit(1));
+    sendClaimConflict(res, current ? await withAssignedUserName(current) : null);
+    return;
+  }
   // Audit log is written after the update commits so that a logging failure
   // cannot roll back the committed record change. auditLog() swallows errors.
   await auditLog({
@@ -1413,7 +1528,7 @@ router.patch("/reactive-jobs/:id", requireAuth, async (req, res) => {
     oldData: before as Record<string, unknown>, newData: updated as Record<string, unknown>,
     ipAddress: req.ip ?? null,
   });
-  res.json(updated);
+  res.json(await withAssignedUserName(updated));
 });
 
 export default router;

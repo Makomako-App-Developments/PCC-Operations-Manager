@@ -114,12 +114,15 @@ router.post(
     if (kind === "unknown") { res.status(404).json({ error: "Job or mulching record not found" }); return; }
 
     if (kind === "job") {
-      const [job] = await executeWithCircuitBreaker(() => db.select({ teamId: jobsTable.teamId, isAllTeams: jobsTable.isAllTeams, status: jobsTable.status }).from(jobsTable).where(eq(jobsTable.id, id)).limit(1));
+      const [job] = await executeWithCircuitBreaker(() => db.select({ teamId: jobsTable.teamId, isAllTeams: jobsTable.isAllTeams, status: jobsTable.status, assignedUserId: jobsTable.assignedUserId }).from(jobsTable).where(eq(jobsTable.id, id)).limit(1));
       if (job?.status === "draft") {
         res.status(409).json({ error: "Draft jobs cannot be changed until a manager places them" }); return;
       }
       if (!isPrivilegedRole(req.auth!.role) && job && !job.isAllTeams && job.teamId !== req.auth!.teamId) {
         res.status(403).json({ error: "Forbidden" }); return;
+      }
+      if (job && !job.isAllTeams && job.assignedUserId && job.assignedUserId !== userId) {
+        res.status(409).json({ error: "This job has already been claimed by another team member.", code: "JOB_ALREADY_CLAIMED" }); return;
       }
     } else if (!isPrivilegedRole(req.auth!.role)) {
       const callerTeamId = req.auth!.teamId;
@@ -172,7 +175,7 @@ router.post(
     const userId = req.auth?.userId;
     if (!userId) { res.status(401).json({ error: "Unauthorised" }); return; }
 
-    const [rj] = await executeWithCircuitBreaker(() => db.select({ id: reactiveJobsTable.id, assignedTeamId: reactiveJobsTable.assignedTeamId }).from(reactiveJobsTable).where(eq(reactiveJobsTable.id, id)).limit(1));
+    const [rj] = await executeWithCircuitBreaker(() => db.select({ id: reactiveJobsTable.id, assignedTeamId: reactiveJobsTable.assignedTeamId, assignedUserId: reactiveJobsTable.assignedUserId }).from(reactiveJobsTable).where(eq(reactiveJobsTable.id, id)).limit(1));
     if (!rj) { res.status(404).json({ error: "Reactive job not found" }); return; }
 
     if (!isPrivilegedRole(req.auth!.role)) {
@@ -180,6 +183,9 @@ router.post(
       if (rj.assignedTeamId !== callerTeamId) {
         res.status(403).json({ error: "Forbidden" }); return;
       }
+    }
+    if (rj.assignedUserId && rj.assignedUserId !== userId) {
+      res.status(409).json({ error: "This job has already been claimed by another team member.", code: "JOB_ALREADY_CLAIMED" }); return;
     }
 
     const blobUrl = await uploadToGCS(req.file.buffer, req.file.mimetype, req.file.originalname);

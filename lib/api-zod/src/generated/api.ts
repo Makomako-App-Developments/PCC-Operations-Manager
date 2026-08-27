@@ -376,6 +376,10 @@ export const ListJobsResponse = zod.object({
       ]),
       teamId: zod.string().uuid().nullish(),
       assignedUserId: zod.string().uuid().nullish(),
+      assignedUserName: zod
+        .string()
+        .nullish()
+        .describe("Name of the worker who claimed this job."),
       scheduledDate: zod.date(),
       startedAt: zod.date().nullish(),
       completedAt: zod.date().nullish(),
@@ -423,6 +427,10 @@ export const GetJobResponse = zod.object({
   ]),
   teamId: zod.string().uuid().nullish(),
   assignedUserId: zod.string().uuid().nullish(),
+  assignedUserName: zod
+    .string()
+    .nullish()
+    .describe("Name of the worker who claimed this job."),
   scheduledDate: zod.date(),
   startedAt: zod.date().nullish(),
   completedAt: zod.date().nullish(),
@@ -473,6 +481,10 @@ export const UpdateJobResponse = zod.object({
   ]),
   teamId: zod.string().uuid().nullish(),
   assignedUserId: zod.string().uuid().nullish(),
+  assignedUserName: zod
+    .string()
+    .nullish()
+    .describe("Name of the worker who claimed this job."),
   scheduledDate: zod.date(),
   startedAt: zod.date().nullish(),
   completedAt: zod.date().nullish(),
@@ -493,6 +505,10 @@ export const ListReactiveJobsResponse = zod.object({
       raisedById: zod.string().uuid(),
       assignedTeamId: zod.string().uuid().nullish(),
       assignedUserId: zod.string().uuid().nullish(),
+      assignedUserName: zod
+        .string()
+        .nullish()
+        .describe("Name of the worker who claimed this job."),
       issueType: zod.string(),
       description: zod.string(),
       status: zod.enum([
@@ -526,6 +542,42 @@ export const CreateReactiveJobBody = zod.object({
 });
 
 /**
+ * @summary Get a reactive job
+ */
+export const GetReactiveJobParams = zod.object({
+  id: zod.coerce.string().uuid(),
+});
+
+export const GetReactiveJobResponse = zod.object({
+  id: zod.string().uuid(),
+  assetId: zod.string().uuid(),
+  raisedById: zod.string().uuid(),
+  assignedTeamId: zod.string().uuid().nullish(),
+  assignedUserId: zod.string().uuid().nullish(),
+  assignedUserName: zod
+    .string()
+    .nullish()
+    .describe("Name of the worker who claimed this job."),
+  issueType: zod.string(),
+  description: zod.string(),
+  status: zod.enum([
+    "raised",
+    "assigned",
+    "in_progress",
+    "completed",
+    "cancelled",
+  ]),
+  priority: zod.enum(["low", "medium", "high", "urgent"]),
+  raisedAt: zod.date(),
+  startedAt: zod.date().nullish(),
+  completedAt: zod.date().nullish(),
+  actualTimeMins: zod.number().nullish(),
+  notes: zod.string().nullish(),
+  createdAt: zod.date(),
+  updatedAt: zod.date(),
+});
+
+/**
  * @summary Update a reactive job
  */
 export const UpdateReactiveJobParams = zod.object({
@@ -551,6 +603,10 @@ export const UpdateReactiveJobResponse = zod.object({
   raisedById: zod.string().uuid(),
   assignedTeamId: zod.string().uuid().nullish(),
   assignedUserId: zod.string().uuid().nullish(),
+  assignedUserName: zod
+    .string()
+    .nullish()
+    .describe("Name of the worker who claimed this job."),
   issueType: zod.string(),
   description: zod.string(),
   status: zod.enum([
@@ -688,6 +744,10 @@ export const GetScheduleWeekResponse = zod.object({
             ]),
             teamId: zod.string().uuid().nullish(),
             assignedUserId: zod.string().uuid().nullish(),
+            assignedUserName: zod
+              .string()
+              .nullish()
+              .describe("Name of the worker who claimed this job."),
             scheduledDate: zod.date(),
             startedAt: zod.date().nullish(),
             completedAt: zod.date().nullish(),
@@ -1464,6 +1524,10 @@ export const ReviewSkippedJobResponse = zod.object({
   ]),
   teamId: zod.string().uuid().nullish(),
   assignedUserId: zod.string().uuid().nullish(),
+  assignedUserName: zod
+    .string()
+    .nullish()
+    .describe("Name of the worker who claimed this job."),
   scheduledDate: zod.date(),
   startedAt: zod.date().nullish(),
   completedAt: zod.date().nullish(),

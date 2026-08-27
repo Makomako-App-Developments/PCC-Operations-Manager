@@ -340,6 +340,17 @@ paths:
         in: path
         required: true
         schema: { type: string, format: uuid }
+    get:
+      operationId: getReactiveJob
+      tags: [jobs]
+      summary: Get a reactive job
+      responses:
+        "200":
+          description: Reactive job
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReactiveJob"
     patch:
       operationId: updateReactiveJob
       tags: [jobs]
@@ -1387,6 +1398,7 @@ components:
           $ref: "#/components/schemas/JobStatus"
         teamId:         { type: string, format: uuid, nullable: true }
         assignedUserId: { type: string, format: uuid, nullable: true }
+        assignedUserName: { type: string, nullable: true, description: "Name of the worker who claimed this job." }
         scheduledDate:  { type: string, format: date }
         startedAt:      { type: string, format: date-time, nullable: true }
         completedAt:    { type: string, format: date-time, nullable: true }
@@ -1501,6 +1513,7 @@ components:
         raisedById:     { type: string, format: uuid }
         assignedTeamId: { type: string, format: uuid, nullable: true }
         assignedUserId: { type: string, format: uuid, nullable: true }
+        assignedUserName: { type: string, nullable: true, description: "Name of the worker who claimed this job." }
         issueType:      { type: string }
         description:    { type: string }
         status:

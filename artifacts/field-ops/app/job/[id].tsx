@@ -1004,8 +1004,12 @@ export default function JobDetailScreen() {
   const isActive = status === "in_progress";
   const isPaused = (status as string | undefined) === "paused";
   const isDone = status === "completed" || status === "skipped";
-  const isActionable = isPending || isActive || isPaused;
   const isMulching = (job as any)?.jobType === "mulching";
+  const isClaimedByOther = !isAllTeams
+    && !!(job as any)?.assignedUserId
+    && (job as any).assignedUserId !== user?.id;
+  const isReadOnly = isDone || isClaimedByOther;
+  const isActionable = (isPending || isActive || isPaused) && !isClaimedByOther;
   const mulchingCanAct = isMulching && isPending;
 
   const tasks = isMulching
@@ -1037,7 +1041,7 @@ export default function JobDetailScreen() {
 
   // Confirm before leaving when job is active or paused
   const handleBack = () => {
-    if (isActive || isPaused) {
+    if ((isActive || isPaused) && !isReadOnly) {
       Alert.alert(
         "Leave without pausing?",
         "This job is still in progress. Tap Pause first to save your progress, or leave anyway.",
@@ -1062,16 +1066,17 @@ export default function JobDetailScreen() {
       });
       return () => sub.remove();
     }
-    if (isActive || isPaused) {
+    if ((isActive || isPaused) && !isReadOnly) {
       const sub = BackHandler.addEventListener("hardwareBackPress", () => {
         handleBack();
         return true;
       });
       return () => sub.remove();
     }
-  }, [pendingAction, isActive, isPaused]);
+  }, [pendingAction, isActive, isPaused, isReadOnly]);
 
   const toggleTask = (index: number) => {
+    if (isReadOnly) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setCheckedTasks(prev => ({ ...prev, [index]: !prev[index] }));
   };
@@ -1456,8 +1461,8 @@ export default function JobDetailScreen() {
                   styles.taskRow,
                   i < tasks.length - 1 && { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
                 ]}
-                onPress={() => canCheck && toggleTask(i)}
-                activeOpacity={canCheck ? 0.75 : 1}
+                onPress={() => canCheck && !isReadOnly && toggleTask(i)}
+                activeOpacity={canCheck && !isReadOnly ? 0.75 : 1}
               >
                 {canCheck ? (
                   <View style={[styles.checkbox, { borderColor: isChecked ? colors.primary : colors.border, backgroundColor: isChecked ? colors.primary : "transparent" }]}>
@@ -1487,7 +1492,7 @@ export default function JobDetailScreen() {
 
         {/* Observations — shown once job is active, paused, or done */}
         {(isActive || isPaused || isDone) && id && (
-          <ObservationsSection jobId={id} job={job} readOnly={status === "skipped"} />
+          <ObservationsSection jobId={id} job={job} readOnly={isReadOnly} />
         )}
         {(usingCachedJob || (jobError && !!job) || usingCachedAsset) && (
           <View style={[styles.staleBanner, { backgroundColor: "#fef3c7", borderColor: "#fbbf24" }]}>
@@ -1502,9 +1507,9 @@ export default function JobDetailScreen() {
         )}
 
         {/* Photo evidence — shown while actionable or done (including mulching jobs) */}
-        {(isActive || isPaused || isDone || mulchingCanAct) && id && (
+        {(isActive || isPaused || isDone || mulchingCanAct || isClaimedByOther) && id && (
           <>
-            <PhotoSection jobId={id} readOnly={status === "skipped"} />
+            <PhotoSection jobId={id} readOnly={isReadOnly} />
             {photoError && (
               <View style={[styles.photoErrorBanner, { backgroundColor: "#fee2e2", borderColor: "#fca5a5" }]}>
                 <Feather name="alert-circle" size={14} color="#ef4444" />
@@ -1518,7 +1523,16 @@ export default function JobDetailScreen() {
       </ScrollView>
 
       {/* Action bar */}
-      {(isActionable || mulchingCanAct) && (
+      {isClaimedByOther && (
+        <View style={[styles.claimedBanner, { backgroundColor: colors.primary + "12", borderColor: colors.primary + "40", borderRadius: colors.radius }]}>
+          <Feather name="lock" size={15} color={colors.primary} />
+          <Text style={[styles.claimedBannerText, { color: colors.foreground }]}>
+            Claimed by {(job as any)?.assignedUserName ?? "another team member"} — read-only
+          </Text>
+        </View>
+      )}
+
+      {(isActionable || (mulchingCanAct && !isClaimedByOther)) && (
         <View style={[styles.actionBar, { backgroundColor: colors.card, borderTopColor: colors.border, paddingBottom: bottomPad }]}>
           {pendingAction ? (
             // Inline confirmation
@@ -1903,6 +1917,8 @@ const styles = StyleSheet.create({
   // Observations section
   obsField: { paddingHorizontal: 14, paddingVertical: 12, alignSelf: "stretch", overflow: "hidden" },
   obsLabel: { fontFamily: "Inter_500Medium", fontSize: 12, marginBottom: 6, textTransform: "uppercase", letterSpacing: 0.4 },
+  claimedBanner: { flexDirection: "row", alignItems: "center", gap: 8, borderWidth: 1, marginHorizontal: 16, marginTop: 10, paddingHorizontal: 12, paddingVertical: 10 },
+  claimedBannerText: { flex: 1, fontFamily: "Inter_600SemiBold", fontSize: 12 },
   obsInput: {
     borderWidth: 1, paddingHorizontal: 10, paddingVertical: 8,
     fontFamily: "Inter_400Regular", fontSize: 14, lineHeight: 20, minHeight: 72,
