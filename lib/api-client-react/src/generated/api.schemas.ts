@@ -504,6 +504,7 @@ export type JobWithAsset = Job & {
   gardenType: string;
   suburb?: string | null;
   serviceTimeMins: number;
+  priority?: ReactivePriority;
 };
 
 export interface ScheduleWeekDay {

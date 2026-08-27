@@ -87,6 +87,7 @@ type Job = ScheduledJob & {
   lng?: number | null;
   isAllTeams?: boolean;
   jobType?: string;
+  priority?: string | null;
   routeOrder?: number | null;
 };
 
@@ -174,6 +175,7 @@ function DaySection({
                     scheduledDate={job.scheduledDate}
                     isAllTeams={(job as any).isAllTeams ?? false}
                     jobType={(job as any).jobType}
+                    priority={(job as any).priority}
                     geoSeq={geoSeqFor[idx]}
                   />
                 ));
@@ -194,6 +196,7 @@ function DaySection({
                   scheduledDate={job.scheduledDate}
                   isAllTeams={(job as any).isAllTeams ?? false}
                   jobType={(job as any).jobType}
+                  priority={(job as any).priority}
                 />
               ))}
             </>

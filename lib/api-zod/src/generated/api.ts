@@ -703,6 +703,9 @@ export const GetScheduleWeekResponse = zod.object({
               gardenType: zod.string(),
               suburb: zod.string().nullish(),
               serviceTimeMins: zod.number(),
+              priority: zod
+                .enum(["low", "medium", "high", "urgent"])
+                .optional(),
             }),
           ),
       ),

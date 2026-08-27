@@ -6,6 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { Job } from "./job";
+import type { ReactivePriority } from "./reactivePriority";
 
 export type JobWithAsset = Job & {
   assetName: string;
@@ -13,4 +14,5 @@ export type JobWithAsset = Job & {
   gardenType: string;
   suburb?: string | null;
   serviceTimeMins: number;
+  priority?: ReactivePriority;
 };

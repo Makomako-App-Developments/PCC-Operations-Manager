@@ -1738,6 +1738,8 @@ components:
             gardenType:   { type: string }
             suburb:       { type: string, nullable: true }
             serviceTimeMins: { type: integer }
+            priority:
+              $ref: "#/components/schemas/ReactivePriority"
           required: [assetName, assetRef, gardenType, serviceTimeMins]
 
     ScheduleWeekDay:

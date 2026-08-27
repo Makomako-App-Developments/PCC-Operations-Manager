@@ -20,6 +20,7 @@ interface JobCardProps {
   scheduledDate: string;
   isAllTeams?: boolean;
   jobType?: string | null;
+  priority?: string | null;
   geoSeq?: number;
 }
 
@@ -99,6 +100,7 @@ export function JobCard({
   status,
   isAllTeams,
   jobType,
+  priority,
   geoSeq,
 }: JobCardProps) {
   const colors = useColors();
@@ -123,6 +125,7 @@ export function JobCard({
   };
 
   const isUnscheduled = jobType === "unscheduled";
+  const isUrgentUnscheduled = isUnscheduled && priority === "urgent";
   const isCompleted = status === "completed";
   const isSkipped = status === "skipped";
 
@@ -174,7 +177,7 @@ export function JobCard({
         )}
         <View style={styles.titleGroup}>
           <Text
-            style={[styles.assetName, { color: colors.foreground }]}
+            style={[styles.assetName, { color: isUrgentUnscheduled ? colors.destructive : colors.foreground }]}
             numberOfLines={1}
           >
             {assetName}
