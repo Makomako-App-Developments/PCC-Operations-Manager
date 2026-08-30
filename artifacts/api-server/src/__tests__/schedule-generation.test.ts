@@ -45,6 +45,7 @@ const OUT_OF_RANGE_ACTIVE_JOB_ID = "22222222-2222-2222-2222-222222222226";
 const OTHER_TEAM_ACTIVE_JOB_ID = "22222222-2222-2222-2222-222222222227";
 const MANAGER_WIDE_ACTIVE_JOB_ID = "22222222-2222-2222-2222-222222222228";
 const MANAGER_WIDE_OTHER_TEAM_ACTIVE_JOB_ID = "22222222-2222-2222-2222-222222222229";
+const CAPACITY_ACTIVE_JOB_ID = "22222222-2222-2222-2222-222222222230";
 
 const teamMembers = [
   { teamId: TEAM_ID, personName: "Aroha" },
@@ -63,6 +64,24 @@ let persistedJobs: Record<string, unknown>[] = [];
 let insertedRows: Record<string, unknown>[] = [];
 let deleteCallCount = 0;
 let insertCallCount = 0;
+
+function activeJobRows() {
+  return persistedJobs
+    .filter(job => job.status === "in_progress")
+    .map(job => {
+      const asset = routeAssets.find(candidate => candidate.id === job.assetId);
+      return {
+        assetId: job.assetId,
+        teamId: job.teamId,
+        scheduledDate: job.scheduledDate,
+        estimatedTimeMins: job.estimatedTimeMins,
+        serviceTimeMins: asset?.serviceTimeMins ?? 0,
+        draftOriginalScheduledDate: null,
+        status: job.status,
+        id: job.id,
+      };
+    });
+}
 
 function getWhereComparisons(condition: unknown): Array<{
   column: string;
@@ -150,8 +169,8 @@ vi.mock("@workspace/db", async (importOriginal) => {
         routeAssets,
         teamMembers,
         [],
-        [],
-        [],
+        activeJobRows(),
+        activeJobRows(),
       ];
       return makeChain(resultByCall[currentSelectCall] ?? []);
     }),
@@ -430,6 +449,48 @@ describe("geosequence schedule capacity decisions", () => {
     expect(insertedRows.every(job => job.status === "pending")).toBe(true);
     for (const activeJob of activeJobsBeforeRegeneration) {
       expect(persistedJobs.find(job => job.id === activeJob.id)).toEqual(activeJob);
+    }
+  });
+
+  it("reserves an in-progress job's estimated time during manager-wide regeneration", async () => {
+    persistedJobs.push({
+      id: CAPACITY_ACTIVE_JOB_ID,
+      assetId: routeAssets[0].id,
+      jobType: "scheduled",
+      status: "in_progress",
+      scheduledDate: "2026-08-10",
+      teamId: TEAM_ID,
+      estimatedTimeMins: 250,
+    });
+
+    const response = await request(app)
+      .post("/api/schedule/generate")
+      .send({
+        fromDate: "2026-08-03",
+        toDate: "2026-08-31",
+      });
+
+    expect(response.status).toBe(200);
+    expect(response.body.jobsCreated).toBeGreaterThan(0);
+
+    const loadByDate = new Map<string, number>();
+    for (const job of persistedJobs) {
+      if (
+        job.teamId !== TEAM_ID ||
+        !["pending", "in_progress"].includes(String(job.status))
+      ) {
+        continue;
+      }
+      const estimatedTimeMins = Number(job.estimatedTimeMins ?? 0);
+      loadByDate.set(
+        String(job.scheduledDate),
+        (loadByDate.get(String(job.scheduledDate)) ?? 0) + estimatedTimeMins,
+      );
+    }
+
+    expect(loadByDate.get("2026-08-10")).toBe(250);
+    for (const totalMins of loadByDate.values()) {
+      expect(totalMins).toBeLessThanOrEqual(390);
     }
   });
 
