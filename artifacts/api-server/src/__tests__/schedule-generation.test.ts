@@ -30,6 +30,8 @@ function makeChain(result: unknown) {
 
 const TEAM_ID = "11111111-1111-1111-1111-111111111111";
 const STALE_JOB_ID = "22222222-2222-2222-2222-222222222222";
+const COMPLETED_JOB_ID = "22222222-2222-2222-2222-222222222223";
+const SKIPPED_JOB_ID = "22222222-2222-2222-2222-222222222224";
 
 const teamMembers = [
   { teamId: TEAM_ID, personName: "Aroha" },
@@ -66,9 +68,10 @@ vi.mock("@workspace/db", async (importOriginal) => {
       return makeChain(resultByCall[selectCall++] ?? []);
     }),
     delete: vi.fn(() => {
-      // The route deletes job photos first and then the matching pending jobs.
-      // This small fake models the resulting replacement of the old schedule.
-      persistedJobs = [];
+      // The route deletes job photos first and then matching pending jobs.
+      // Completed and skipped rows must survive both calls just as they do
+      // behind the route's status predicate in the real database.
+      persistedJobs = persistedJobs.filter(job => job.status !== "pending");
       return makeChain([]);
     }),
     insert: vi.fn(() => ({
@@ -118,6 +121,18 @@ describe("geosequence schedule capacity decisions", () => {
       jobType: "scheduled",
       status: "pending",
       scheduledDate: "2026-08-03",
+    }, {
+      id: COMPLETED_JOB_ID,
+      assetId: routeAssets[1].id,
+      jobType: "scheduled",
+      status: "completed",
+      scheduledDate: "2026-08-04",
+    }, {
+      id: SKIPPED_JOB_ID,
+      assetId: routeAssets[2].id,
+      jobType: "scheduled",
+      status: "skipped",
+      scheduledDate: "2026-09-09",
     }];
   });
 
@@ -202,13 +217,24 @@ describe("geosequence schedule capacity decisions", () => {
       fromDate: "2026-08-03",
       toDate: "2026-09-30",
     });
-    expect(persistedJobs).toHaveLength(8);
+    expect(persistedJobs).toHaveLength(10);
     expect(insertedRows).toHaveLength(8);
+
+    expect(persistedJobs).toContainEqual(expect.objectContaining({
+      id: COMPLETED_JOB_ID,
+      scheduledDate: "2026-08-04",
+      status: "completed",
+    }));
+    expect(persistedJobs).toContainEqual(expect.objectContaining({
+      id: SKIPPED_JOB_ID,
+      scheduledDate: "2026-09-09",
+      status: "skipped",
+    }));
 
     const jobsByAsset = new Map(
       routeAssets.map(asset => [
         asset.id,
-        persistedJobs.filter(job => job.assetId === asset.id),
+        persistedJobs.filter(job => job.assetId === asset.id && job.status === "pending"),
       ]),
     );
 
