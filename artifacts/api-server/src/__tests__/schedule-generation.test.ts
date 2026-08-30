@@ -32,6 +32,7 @@ const TEAM_ID = "11111111-1111-1111-1111-111111111111";
 const STALE_JOB_ID = "22222222-2222-2222-2222-222222222222";
 const COMPLETED_JOB_ID = "22222222-2222-2222-2222-222222222223";
 const SKIPPED_JOB_ID = "22222222-2222-2222-2222-222222222224";
+const IN_PROGRESS_JOB_ID = "22222222-2222-2222-2222-222222222225";
 
 const teamMembers = [
   { teamId: TEAM_ID, personName: "Aroha" },
@@ -48,6 +49,8 @@ const routeAssets = [
 let selectCall = 0;
 let persistedJobs: Record<string, unknown>[] = [];
 let insertedRows: Record<string, unknown>[] = [];
+let deleteCallCount = 0;
+let insertCallCount = 0;
 
 vi.mock("@workspace/db", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@workspace/db")>();
@@ -56,7 +59,9 @@ vi.mock("@workspace/db", async (importOriginal) => {
     select: vi.fn(() => {
       const resultByCall = [
         [{ productiveTimeMins: 390, standardCrewSize: 2 }],
-        [],
+        persistedJobs
+          .filter(job => job.jobType === "scheduled" && job.status === "in_progress")
+          .map(job => ({ id: job.id })),
         persistedJobs.length > 0 ? [{ id: STALE_JOB_ID }] : [],
         [],
         routeAssets,
@@ -68,18 +73,22 @@ vi.mock("@workspace/db", async (importOriginal) => {
       return makeChain(resultByCall[selectCall++] ?? []);
     }),
     delete: vi.fn(() => {
+      deleteCallCount++;
       // The route deletes job photos first and then matching pending jobs.
       // Completed and skipped rows must survive both calls just as they do
       // behind the route's status predicate in the real database.
       persistedJobs = persistedJobs.filter(job => job.status !== "pending");
       return makeChain([]);
     }),
-    insert: vi.fn(() => ({
-      values: vi.fn(async (rows: Record<string, unknown>[]) => {
-        insertedRows.push(...rows);
-        persistedJobs.push(...rows);
-      }),
-    })),
+    insert: vi.fn(() => {
+      insertCallCount++;
+      return {
+        values: vi.fn(async (rows: Record<string, unknown>[]) => {
+          insertedRows.push(...rows);
+          persistedJobs.push(...rows);
+        }),
+      };
+    }),
     update: vi.fn(() => makeChain([])),
   };
 
@@ -113,6 +122,8 @@ describe("geosequence schedule capacity decisions", () => {
   beforeEach(() => {
     selectCall = 0;
     insertedRows = [];
+    deleteCallCount = 0;
+    insertCallCount = 0;
     // A pending row from an earlier generation is what the manager repair flow
     // replaces. The route's range-delete query sees this row before insertion.
     persistedJobs = [{
@@ -200,6 +211,39 @@ describe("geosequence schedule capacity decisions", () => {
       estimatedMins: 250,
       productiveTimeMins: 390,
     })).toBe("spill");
+  });
+
+  it("rejects regeneration without changing scheduled rows when a job is in progress", async () => {
+    persistedJobs = [{
+      id: IN_PROGRESS_JOB_ID,
+      assetId: routeAssets[0].id,
+      jobType: "scheduled",
+      status: "in_progress",
+      scheduledDate: "2026-08-12",
+      teamId: TEAM_ID,
+    }];
+    const rowsBeforeRegeneration = structuredClone(persistedJobs);
+
+    const response = await request(app)
+      .post("/api/schedule/generate")
+      .send({
+        fromDate: "2026-08-03",
+        toDate: "2026-08-31",
+        teamId: TEAM_ID,
+      });
+
+    expect(response.status).toBe(409);
+    expect(response.body).toMatchObject({
+      error: "Cannot regenerate schedule while jobs are in progress",
+      inProgressCount: 1,
+    });
+    expect(response.body.message).toBe(
+      "1 job is currently in progress in the selected date range. Mark it complete or skipped before regenerating.",
+    );
+    expect(deleteCallCount).toBe(0);
+    expect(insertCallCount).toBe(0);
+    expect(insertedRows).toEqual([]);
+    expect(persistedJobs).toEqual(rowsBeforeRegeneration);
   });
 
   it("persists oversized jobs and continues the route across a multi-month regeneration", async () => {
