@@ -46,6 +46,7 @@ const OTHER_TEAM_ACTIVE_JOB_ID = "22222222-2222-2222-2222-222222222227";
 const MANAGER_WIDE_ACTIVE_JOB_ID = "22222222-2222-2222-2222-222222222228";
 const MANAGER_WIDE_OTHER_TEAM_ACTIVE_JOB_ID = "22222222-2222-2222-2222-222222222229";
 const CAPACITY_ACTIVE_JOB_ID = "22222222-2222-2222-2222-222222222230";
+const CAPACITY_SECOND_ACTIVE_JOB_ID = "22222222-2222-2222-2222-222222222231";
 
 const teamMembers = [
   { teamId: TEAM_ID, personName: "Aroha" },
@@ -489,6 +490,61 @@ describe("geosequence schedule capacity decisions", () => {
     }
 
     expect(loadByDate.get("2026-08-10")).toBe(250);
+    for (const totalMins of loadByDate.values()) {
+      expect(totalMins).toBeLessThanOrEqual(390);
+    }
+  });
+
+  it("reserves multiple same-day in-progress jobs during manager-wide regeneration", async () => {
+    const activeJobs = [{
+      id: CAPACITY_ACTIVE_JOB_ID,
+      assetId: routeAssets[0].id,
+      jobType: "scheduled",
+      status: "in_progress",
+      scheduledDate: "2026-08-10",
+      teamId: TEAM_ID,
+      estimatedTimeMins: 250,
+    }, {
+      id: CAPACITY_SECOND_ACTIVE_JOB_ID,
+      assetId: routeAssets[1].id,
+      jobType: "scheduled",
+      status: "in_progress",
+      scheduledDate: "2026-08-10",
+      teamId: TEAM_ID,
+      estimatedTimeMins: 100,
+    }];
+    persistedJobs.push(...activeJobs);
+    const activeJobsBeforeRegeneration = structuredClone(activeJobs);
+
+    const response = await request(app)
+      .post("/api/schedule/generate")
+      .send({
+        fromDate: "2026-08-03",
+        toDate: "2026-08-31",
+      });
+
+    expect(response.status).toBe(200);
+    expect(response.body.jobsCreated).toBeGreaterThan(0);
+    for (const activeJob of activeJobsBeforeRegeneration) {
+      expect(persistedJobs.find(job => job.id === activeJob.id)).toEqual(activeJob);
+    }
+
+    const loadByDate = new Map<string, number>();
+    for (const job of persistedJobs) {
+      if (
+        job.teamId !== TEAM_ID ||
+        !["pending", "in_progress"].includes(String(job.status))
+      ) {
+        continue;
+      }
+      const estimatedTimeMins = Number(job.estimatedTimeMins ?? 0);
+      loadByDate.set(
+        String(job.scheduledDate),
+        (loadByDate.get(String(job.scheduledDate)) ?? 0) + estimatedTimeMins,
+      );
+    }
+
+    expect(loadByDate.get("2026-08-10")).toBe(350);
     for (const totalMins of loadByDate.values()) {
       expect(totalMins).toBeLessThanOrEqual(390);
     }
