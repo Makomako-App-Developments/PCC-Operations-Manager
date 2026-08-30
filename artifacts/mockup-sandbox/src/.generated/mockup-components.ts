@@ -25,11 +25,11 @@ export const modules: ModuleMap = {
   "./components/mockups/mulch-panel/VariantA.tsx": () => import("../components/mockups/mulch-panel/VariantA.tsx"),
   "./components/mockups/mulch-panel/VariantB.tsx": () => import("../components/mockups/mulch-panel/VariantB.tsx"),
   "./components/mockups/mulch-panel/VariantC.tsx": () => import("../components/mockups/mulch-panel/VariantC.tsx"),
-  "./components/mockups/schedule-header/VariantA.tsx": () => import("../components/mockups/schedule-header/VariantA.tsx"),
-  "./components/mockups/schedule-header/VariantB.tsx": () => import("../components/mockups/schedule-header/VariantB.tsx"),
-  "./components/mockups/schedule-header/VariantC.tsx": () => import("../components/mockups/schedule-header/VariantC.tsx"),
   "./components/mockups/schedule-state-options/CalendarRhythm.tsx": () => import("../components/mockups/schedule-state-options/CalendarRhythm.tsx"),
   "./components/mockups/schedule-state-options/CommandCenter.tsx": () => import("../components/mockups/schedule-state-options/CommandCenter.tsx"),
   "./components/mockups/schedule-state-options/Current.tsx": () => import("../components/mockups/schedule-state-options/Current.tsx"),
-  "./components/mockups/schedule-state-options/TrendFirst.tsx": () => import("../components/mockups/schedule-state-options/TrendFirst.tsx")
+  "./components/mockups/schedule-state-options/TrendFirst.tsx": () => import("../components/mockups/schedule-state-options/TrendFirst.tsx"),
+  "./components/mockups/schedule-header/VariantA.tsx": () => import("../components/mockups/schedule-header/VariantA.tsx"),
+  "./components/mockups/schedule-header/VariantB.tsx": () => import("../components/mockups/schedule-header/VariantB.tsx"),
+  "./components/mockups/schedule-header/VariantC.tsx": () => import("../components/mockups/schedule-header/VariantC.tsx")
 };
