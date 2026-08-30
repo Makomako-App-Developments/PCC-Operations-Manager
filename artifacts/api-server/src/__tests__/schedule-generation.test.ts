@@ -43,6 +43,8 @@ const SKIPPED_JOB_ID = "22222222-2222-2222-2222-222222222224";
 const IN_PROGRESS_JOB_ID = "22222222-2222-2222-2222-222222222225";
 const OUT_OF_RANGE_ACTIVE_JOB_ID = "22222222-2222-2222-2222-222222222226";
 const OTHER_TEAM_ACTIVE_JOB_ID = "22222222-2222-2222-2222-222222222227";
+const MANAGER_WIDE_ACTIVE_JOB_ID = "22222222-2222-2222-2222-222222222228";
+const MANAGER_WIDE_OTHER_TEAM_ACTIVE_JOB_ID = "22222222-2222-2222-2222-222222222229";
 
 const teamMembers = [
   { teamId: TEAM_ID, personName: "Aroha" },
@@ -390,6 +392,45 @@ describe("geosequence schedule capacity decisions", () => {
     expect(persistedJobs.find(job => job.id === OTHER_TEAM_ACTIVE_JOB_ID)).toEqual(
       activeJobBeforeRegeneration,
     );
+  });
+
+  it("regenerates all teams while preserving every team's in-progress work", async () => {
+    const activeJobs = [{
+      id: MANAGER_WIDE_ACTIVE_JOB_ID,
+      assetId: routeAssets[0].id,
+      jobType: "scheduled",
+      status: "in_progress",
+      scheduledDate: "2026-08-12",
+      teamId: TEAM_ID,
+      startedAt: "2026-08-12T08:15:00.000Z",
+      actualTimeMins: 45,
+    }, {
+      id: MANAGER_WIDE_OTHER_TEAM_ACTIVE_JOB_ID,
+      assetId: routeAssets[1].id,
+      jobType: "scheduled",
+      status: "in_progress",
+      scheduledDate: "2026-08-13",
+      teamId: OTHER_TEAM_ID,
+      startedAt: "2026-08-13T09:30:00.000Z",
+      actualTimeMins: 90,
+    }];
+    persistedJobs.push(...activeJobs);
+    const activeJobsBeforeRegeneration = structuredClone(activeJobs);
+
+    const response = await request(app)
+      .post("/api/schedule/generate")
+      .send({
+        fromDate: "2026-08-03",
+        toDate: "2026-08-31",
+      });
+
+    expect(response.status).toBe(200);
+    expect(response.body.jobsCreated).toBeGreaterThan(0);
+    expect(insertedRows.length).toBeGreaterThan(0);
+    expect(insertedRows.every(job => job.status === "pending")).toBe(true);
+    for (const activeJob of activeJobsBeforeRegeneration) {
+      expect(persistedJobs.find(job => job.id === activeJob.id)).toEqual(activeJob);
+    }
   });
 
   it("persists oversized jobs and continues the route across a multi-month regeneration", async () => {

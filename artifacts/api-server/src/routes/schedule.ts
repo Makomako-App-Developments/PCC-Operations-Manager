@@ -233,10 +233,12 @@ router.post(
     const productiveTimeMins = settings?.productiveTimeMins ?? 390;
     const standardCrewSize   = settings?.standardCrewSize   ?? 2;
 
-    // ── Guard: refuse to regenerate if any in_progress jobs exist in the range ─
-    // Deleting an in_progress job would destroy the crew's start timestamp and
-    // any partial completion data. The manager must wait for those jobs to finish
-    // (or mark them complete/skipped) before regenerating.
+    // ── Guard: refuse team-scoped regeneration if active jobs exist ───────────
+    // A team-scoped regeneration must wait for that team's active work to finish
+    // (or be marked complete/skipped) before recalculating its schedule. A
+    // manager-wide regeneration is allowed to proceed: all destructive queries
+    // below target pending rows only, and existing active rows are included in
+    // the capacity snapshot so they remain untouched and reserve their time.
     const inProgressJobs = await executeWithCircuitBreaker(() => db
       .select({ id: jobsTable.id })
       .from(jobsTable)
@@ -249,7 +251,7 @@ router.post(
           ...(teamId ? [eq(jobsTable.teamId, teamId)] : []),
         ),
       ));
-    if (inProgressJobs.length > 0) {
+    if (teamId && inProgressJobs.length > 0) {
       res.status(409).json({
         error: "Cannot regenerate schedule while jobs are in progress",
         inProgressCount: inProgressJobs.length,
