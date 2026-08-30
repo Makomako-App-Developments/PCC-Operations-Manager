@@ -120,6 +120,30 @@ function getMins(map: Map<string, Map<string, number>>, teamId: string, date: st
   return map.get(teamId)?.get(date) ?? 0;
 }
 
+export type ScheduleCapacityDecision = "fit" | "overrun" | "spill";
+
+/**
+ * Decide how a route-ordered job should be handled on a team's current day.
+ *
+ * An individual job larger than a full productive day is deliberately placed
+ * as a one-day overrun rather than being carried forever. This is still
+ * geosequence-safe: the job is placed before any later route-ordered jobs,
+ * which remain queued for the next working day.
+ */
+export function getScheduleCapacityDecision({
+  usedMins,
+  estimatedMins,
+  productiveTimeMins,
+}: {
+  usedMins: number;
+  estimatedMins: number;
+  productiveTimeMins: number;
+}): ScheduleCapacityDecision {
+  if (usedMins + estimatedMins <= productiveTimeMins) return "fit";
+  if (estimatedMins > productiveTimeMins) return "overrun";
+  return "spill";
+}
+
 // ── Absence map ───────────────────────────────────────────────────────────────
 
 async function buildAbsenceMap(
@@ -524,8 +548,9 @@ router.post(
     //   • If the next asset fits in remaining capacity → place it, advance pointer.
     //   • If it doesn't fit → spill it (and all subsequent) to the next working day
     //     by marking them as "pending for next day" via a carry queue.
-    //   • Exception: if only this one asset remains for the day and the day would
-    //     otherwise be empty, place it as an overrun (crew finishes tomorrow).
+    //   • If the asset itself exceeds a full productive day, place it as an
+    //     explicit one-day overrun instead. This prevents it from blocking every
+    //     later route asset indefinitely; later assets still carry in geosequence.
     //
     // carryQueue[teamKey]: assets that overflowed from a previous day and must
     // be placed as soon as possible (prepended before natural eligibles).
@@ -587,7 +612,6 @@ router.post(
           if (sched.placedDates.has(dueDate)) continue;
 
           const usedToday = tid ? getMins(minutesUsed, tid, today) : 0;
-          const remaining = productiveTimeMins - usedToday;
           const { estimatedTimeMins: estMins, crewStatus: cs } = calcCrewAdjustment(
             tid, today, membersByTeam, absenceMap, asset.serviceTimeMins, standardCrewSize,
           );
@@ -600,11 +624,19 @@ router.post(
             continue;
           }
 
-          if (!tid || remaining >= estMins) {
-            // Fits (or no-team asset) — place today
+          const capacityDecision = tid
+            ? getScheduleCapacityDecision({
+                usedMins: usedToday,
+                estimatedMins: estMins,
+                productiveTimeMins,
+              })
+            : "fit";
+
+          if (capacityDecision !== "spill") {
+            // Fits (or is an explicit oversized one-day overrun) — place today.
             placeJob(asset, today, estMins, cs);
             sched.placedDates.add(dueDate);
-            if (tid && remaining < estMins) {
+            if (tid && capacityDecision === "overrun") {
               dayFull = true;
             }
           } else {
@@ -619,9 +651,9 @@ router.post(
     }
 
     // ── Step 6: Flush remaining carry-overs onto the last working day ──────────
-    // Respect daily capacity — only place what fits. Any remaining overflow is
-    // left unscheduled; the epoch-anchored due dates ensure those sites will be
-    // picked up automatically when the user generates the next date range.
+    // Respect daily capacity except for an oversized asset, which is placed as
+    // an explicit one-day overrun. Any other remaining overflow is left
+    // unscheduled; epoch-anchored due dates pick it up in the next generation.
     const lastWorkDay = workingDays[workingDays.length - 1] ?? toDate;
     for (const [teamKey, remaining] of carryQueue) {
       const tid = teamKey === "__none__" ? null : teamKey;
@@ -632,7 +664,11 @@ router.post(
           tid, lastWorkDay, membersByTeam, absenceMap, asset.serviceTimeMins, standardCrewSize,
         );
         const usedLast = tid ? getMins(minutesUsed, tid, lastWorkDay) : 0;
-        if (tid && usedLast + estMins > productiveTimeMins) continue; // day full — defer
+        if (tid && getScheduleCapacityDecision({
+          usedMins: usedLast,
+          estimatedMins: estMins,
+          productiveTimeMins,
+        }) === "spill") continue; // day full — defer
         placeJob(asset, lastWorkDay, estMins, cs);
         sched.placedDates.add(dueDate);
       }
