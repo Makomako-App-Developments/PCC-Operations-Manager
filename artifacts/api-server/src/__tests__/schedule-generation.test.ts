@@ -8,31 +8,41 @@ import { getScheduleCapacityDecision } from "../routes/schedule";
  * test uses the same route, but keeps a tiny in-memory representation of the
  * database so it can verify the rows written by manager regeneration.
  */
-function makeChain(result: unknown) {
+type QueryResult = unknown | ((whereClause: unknown) => unknown);
+
+function makeChain(result: QueryResult) {
+  let whereClause: unknown;
   const chain = {
     from: vi.fn(),
-    where: vi.fn(),
+    where: vi.fn((clause: unknown) => {
+      whereClause = clause;
+      return chain;
+    }),
     orderBy: vi.fn(),
     limit: vi.fn(),
     innerJoin: vi.fn(),
     set: vi.fn(),
     values: vi.fn(),
     then(resolve: (value: unknown) => unknown, reject?: (reason: unknown) => unknown) {
-      return Promise.resolve(result).then(resolve, reject);
+      const resolvedResult = typeof result === "function" ? result(whereClause) : result;
+      return Promise.resolve(resolvedResult).then(resolve, reject);
     },
   };
 
-  for (const method of ["from", "where", "orderBy", "limit", "innerJoin", "set", "values"]) {
+  for (const method of ["from", "orderBy", "limit", "innerJoin", "set", "values"]) {
     chain[method as keyof typeof chain].mockReturnValue(chain);
   }
   return chain;
 }
 
 const TEAM_ID = "11111111-1111-1111-1111-111111111111";
+const OTHER_TEAM_ID = "55555555-5555-5555-5555-555555555555";
 const STALE_JOB_ID = "22222222-2222-2222-2222-222222222222";
 const COMPLETED_JOB_ID = "22222222-2222-2222-2222-222222222223";
 const SKIPPED_JOB_ID = "22222222-2222-2222-2222-222222222224";
 const IN_PROGRESS_JOB_ID = "22222222-2222-2222-2222-222222222225";
+const OUT_OF_RANGE_ACTIVE_JOB_ID = "22222222-2222-2222-2222-222222222226";
+const OTHER_TEAM_ACTIVE_JOB_ID = "22222222-2222-2222-2222-222222222227";
 
 const teamMembers = [
   { teamId: TEAM_ID, personName: "Aroha" },
@@ -52,16 +62,87 @@ let insertedRows: Record<string, unknown>[] = [];
 let deleteCallCount = 0;
 let insertCallCount = 0;
 
+function getWhereComparisons(condition: unknown): Array<{
+  column: string;
+  operator: string;
+  value: unknown;
+}> {
+  const comparisons: Array<{ column: string; operator: string; value: unknown }> = [];
+
+  const visit = (value: unknown) => {
+    if (!value || typeof value !== "object") return;
+    const queryChunks = (value as { queryChunks?: unknown[] }).queryChunks;
+    if (!Array.isArray(queryChunks)) return;
+
+    const columnChunk = queryChunks.find(
+      chunk => chunk && typeof chunk === "object" && typeof (chunk as { name?: unknown }).name === "string",
+    ) as { name: string } | undefined;
+    const operatorChunk = queryChunks.find(
+      chunk =>
+        chunk &&
+        typeof chunk === "object" &&
+        Array.isArray((chunk as { value?: unknown }).value) &&
+        ((chunk as { value: unknown[] }).value[0] === " >= " ||
+          (chunk as { value: unknown[] }).value[0] === " <= " ||
+          (chunk as { value: unknown[] }).value[0] === " = " ||
+          (chunk as { value: unknown[] }).value[0] === " < "),
+    ) as { value: string[] } | undefined;
+    const parameterChunk = queryChunks.find(
+      chunk =>
+        chunk &&
+        typeof chunk === "object" &&
+        !Array.isArray((chunk as { value?: unknown }).value) &&
+        "value" in chunk &&
+        chunk !== columnChunk &&
+        chunk !== operatorChunk,
+    ) as { value: unknown } | undefined;
+
+    if (columnChunk && operatorChunk && parameterChunk) {
+      comparisons.push({
+        column: columnChunk.name,
+        operator: operatorChunk.value[0].trim(),
+        value: parameterChunk.value,
+      });
+      return;
+    }
+
+    queryChunks.forEach(visit);
+  };
+
+  visit(condition);
+  return comparisons;
+}
+
+function matchesWhereClause(job: Record<string, unknown>, condition: unknown): boolean {
+  return getWhereComparisons(condition).every(({ column, operator, value }) => {
+    const jobValue = job[column === "job_type" ? "jobType" : column === "scheduled_date" ? "scheduledDate" : column === "team_id" ? "teamId" : column];
+    switch (operator) {
+      case ">=":
+        return String(jobValue) >= String(value);
+      case "<=":
+        return String(jobValue) <= String(value);
+      case "<":
+        return String(jobValue) < String(value);
+      case "=":
+        return jobValue === value;
+      default:
+        return false;
+    }
+  });
+}
+
 vi.mock("@workspace/db", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@workspace/db")>();
 
   const db = {
     select: vi.fn(() => {
+      const currentSelectCall = selectCall++;
       const resultByCall = [
         [{ productiveTimeMins: 390, standardCrewSize: 2 }],
-        persistedJobs
-          .filter(job => job.jobType === "scheduled" && job.status === "in_progress")
-          .map(job => ({ id: job.id })),
+        (whereClause: unknown) =>
+          persistedJobs
+            .filter(job => matchesWhereClause(job, whereClause))
+            .map(job => ({ id: job.id })),
         persistedJobs.length > 0 ? [{ id: STALE_JOB_ID }] : [],
         [],
         routeAssets,
@@ -70,15 +151,19 @@ vi.mock("@workspace/db", async (importOriginal) => {
         [],
         [],
       ];
-      return makeChain(resultByCall[selectCall++] ?? []);
+      return makeChain(resultByCall[currentSelectCall] ?? []);
     }),
     delete: vi.fn(() => {
-      deleteCallCount++;
+      const currentDeleteCall = deleteCallCount++;
       // The route deletes job photos first and then matching pending jobs.
       // Completed and skipped rows must survive both calls just as they do
       // behind the route's status predicate in the real database.
-      persistedJobs = persistedJobs.filter(job => job.status !== "pending");
-      return makeChain([]);
+      return makeChain(whereClause => {
+        // The first and third deletes target job photos and do not mutate jobs.
+        if (currentDeleteCall === 0 || currentDeleteCall === 2) return [];
+        persistedJobs = persistedJobs.filter(job => !matchesWhereClause(job, whereClause));
+        return [];
+      });
     }),
     insert: vi.fn(() => {
       insertCallCount++;
@@ -132,6 +217,7 @@ describe("geosequence schedule capacity decisions", () => {
       jobType: "scheduled",
       status: "pending",
       scheduledDate: "2026-08-03",
+      teamId: TEAM_ID,
     }, {
       id: COMPLETED_JOB_ID,
       assetId: routeAssets[1].id,
@@ -244,6 +330,66 @@ describe("geosequence schedule capacity decisions", () => {
     expect(insertCallCount).toBe(0);
     expect(insertedRows).toEqual([]);
     expect(persistedJobs).toEqual(rowsBeforeRegeneration);
+  });
+
+  it("regenerates the selected date range while preserving in-progress work outside it", async () => {
+    const activeJob = {
+      id: OUT_OF_RANGE_ACTIVE_JOB_ID,
+      assetId: routeAssets[0].id,
+      jobType: "scheduled",
+      status: "in_progress",
+      scheduledDate: "2026-09-01",
+      teamId: TEAM_ID,
+      startedAt: "2026-09-01T08:15:00.000Z",
+      actualTimeMins: 45,
+    };
+    persistedJobs.push(activeJob);
+    const activeJobBeforeRegeneration = structuredClone(activeJob);
+
+    const response = await request(app)
+      .post("/api/schedule/generate")
+      .send({
+        fromDate: "2026-08-03",
+        toDate: "2026-08-31",
+        teamId: TEAM_ID,
+      });
+
+    expect(response.status).toBe(200);
+    expect(response.body.jobsCreated).toBeGreaterThan(0);
+    expect(persistedJobs).toContainEqual(activeJobBeforeRegeneration);
+    expect(persistedJobs.find(job => job.id === OUT_OF_RANGE_ACTIVE_JOB_ID)).toEqual(
+      activeJobBeforeRegeneration,
+    );
+  });
+
+  it("regenerates one team while preserving in-progress work for another team", async () => {
+    const activeJob = {
+      id: OTHER_TEAM_ACTIVE_JOB_ID,
+      assetId: routeAssets[0].id,
+      jobType: "scheduled",
+      status: "in_progress",
+      scheduledDate: "2026-08-12",
+      teamId: OTHER_TEAM_ID,
+      startedAt: "2026-08-12T09:30:00.000Z",
+      actualTimeMins: 90,
+    };
+    persistedJobs.push(activeJob);
+    const activeJobBeforeRegeneration = structuredClone(activeJob);
+
+    const response = await request(app)
+      .post("/api/schedule/generate")
+      .send({
+        fromDate: "2026-08-03",
+        toDate: "2026-08-31",
+        teamId: TEAM_ID,
+      });
+
+    expect(response.status).toBe(200);
+    expect(response.body.jobsCreated).toBeGreaterThan(0);
+    expect(persistedJobs).toContainEqual(activeJobBeforeRegeneration);
+    expect(persistedJobs.find(job => job.id === OTHER_TEAM_ACTIVE_JOB_ID)).toEqual(
+      activeJobBeforeRegeneration,
+    );
   });
 
   it("persists oversized jobs and continues the route across a multi-month regeneration", async () => {
