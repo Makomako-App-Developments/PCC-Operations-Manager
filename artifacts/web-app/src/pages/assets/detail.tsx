@@ -319,18 +319,25 @@ function PhotoPanel({ jobId }: { jobId: string }) {
           </button>
         ))}
       </div>
-      {lightbox && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm" onClick={() => setLightbox(null)}>
+      {lightbox && createPortal(
+        <div
+          className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/70 backdrop-blur-sm"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Completed work photo"
+          onClick={() => setLightbox(null)}
+        >
           <div className="max-w-lg w-full mx-4 rounded-2xl overflow-hidden shadow-2xl bg-white" onClick={e => e.stopPropagation()}>
             <img src={lightbox.blobUrl} alt={lightbox.caption || "Photo"} className="w-full object-contain max-h-[80vh]" />
             <div className="px-4 py-3 flex items-center justify-between">
               <p className="text-sm font-medium text-gray-700">{lightbox.caption || ""}</p>
-              <button onClick={() => setLightbox(null)} className="text-gray-400 hover:text-gray-700">
+              <button onClick={() => setLightbox(null)} className="text-gray-400 hover:text-gray-700" aria-label="Close photo">
                 <X className="w-4 h-4" />
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body,
       )}
     </>
   );

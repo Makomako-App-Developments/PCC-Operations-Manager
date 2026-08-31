@@ -5,6 +5,7 @@
 - [Expo web API base URL](expo-web-base-url.md) — never call setBaseUrl() on web; use relative /api/... paths instead so prod domain isn't baked in at dev-build time.
 - [Android 16 camera permissions](android-16-camera-permissions.md) — read Image Picker permission state before requesting; Android 16 may hang on an already-granted request.
 - [Artifact path conflicts](artifact-path-conflicts.md) — Expo's broad service paths (/node_modules/, /assets/) hijack sibling web-app requests on the main proxy; narrow to previewPath only.
+- [Leaflet overlay portals](leaflet-overlay-portals.md) — image and dialog overlays over Leaflet maps must render through document.body with a top-level z-index.
 - [Photo storage — GCS not local disk](photo-storage-gcs.md) — photos use multer memoryStorage + GCS upload; Express 5 wildcard *splat returns array, join it.
 - [React Compiler TDZ bug](react-compiler-tdz.md) — babel-plugin-react-compiler auto-discovered by babel-preset-expo caused TDZ crash in production; disable with 'react-compiler':false in babel.config.js.
 - [Asset description always shown](asset-description-always-shown.md) — site name must always have asset description subtitle so same-name gardens are distinguishable; pattern: semibold name + text-[10px] text-gray-400 subtitle.
