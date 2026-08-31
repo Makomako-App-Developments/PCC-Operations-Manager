@@ -47,6 +47,7 @@ const MANAGER_WIDE_ACTIVE_JOB_ID = "22222222-2222-2222-2222-222222222228";
 const MANAGER_WIDE_OTHER_TEAM_ACTIVE_JOB_ID = "22222222-2222-2222-2222-222222222229";
 const CAPACITY_ACTIVE_JOB_ID = "22222222-2222-2222-2222-222222222230";
 const CAPACITY_SECOND_ACTIVE_JOB_ID = "22222222-2222-2222-2222-222222222231";
+const CAPACITY_UNESTIMATED_ACTIVE_JOB_ID = "22222222-2222-2222-2222-222222222232";
 
 const teamMembers = [
   { teamId: TEAM_ID, personName: "Aroha" },
@@ -548,6 +549,62 @@ describe("geosequence schedule capacity decisions", () => {
     for (const totalMins of loadByDate.values()) {
       expect(totalMins).toBeLessThanOrEqual(390);
     }
+  });
+
+  it("reserves an in-progress job's asset service time when its estimate is missing", async () => {
+    const activeJob = {
+      id: CAPACITY_UNESTIMATED_ACTIVE_JOB_ID,
+      assetId: routeAssets[2].id,
+      jobType: "scheduled",
+      status: "in_progress",
+      scheduledDate: "2026-08-11",
+      teamId: TEAM_ID,
+    };
+    persistedJobs.push(activeJob);
+
+    const response = await request(app)
+      .post("/api/schedule/generate")
+      .send({
+        fromDate: "2026-08-03",
+        toDate: "2026-08-31",
+      });
+
+    expect(response.status).toBe(200);
+    expect(response.body.jobsCreated).toBeGreaterThan(0);
+    expect(persistedJobs.find(job => job.id === activeJob.id)).toEqual(activeJob);
+    const loadByDate = new Map<string, number>();
+    for (const job of persistedJobs) {
+      if (
+        job.teamId !== TEAM_ID ||
+        !["pending", "in_progress"].includes(String(job.status))
+      ) {
+        continue;
+      }
+      const asset = routeAssets.find(candidate => candidate.id === job.assetId);
+      const scheduledMins = Number(job.estimatedTimeMins ?? asset?.serviceTimeMins ?? 0);
+      loadByDate.set(
+        String(job.scheduledDate),
+        (loadByDate.get(String(job.scheduledDate)) ?? 0) + scheduledMins,
+      );
+    }
+
+    const activeDate = String(activeJob.scheduledDate);
+    const activeServiceTimeMins = routeAssets.find(
+      asset => asset.id === activeJob.assetId,
+    )!.serviceTimeMins;
+    const generatedPendingMins = persistedJobs
+      .filter(job =>
+        job.teamId === TEAM_ID &&
+        job.status === "pending" &&
+        String(job.scheduledDate) === activeDate,
+      )
+      .reduce((total, job) => total + Number(job.estimatedTimeMins ?? 0), 0);
+
+    expect(generatedPendingMins).toBeGreaterThan(0);
+    expect(loadByDate.get(activeDate)).toBe(
+      activeServiceTimeMins + generatedPendingMins,
+    );
+    expect(loadByDate.get(activeDate)).toBeLessThanOrEqual(390);
   });
 
   it("persists oversized jobs and continues the route across a multi-month regeneration", async () => {
