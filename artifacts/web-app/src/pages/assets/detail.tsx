@@ -25,7 +25,7 @@ import { MapContainer, TileLayer, CircleMarker, Polygon, Tooltip as LeafletToolt
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import BoundaryEditor, { type GeoPolygon as EditorGeoPolygon } from "@/components/BoundaryEditor";
-import { DEPARTMENTS, departmentLabel } from "@workspace/asset-definitions";
+import { DEPARTMENTS, assetSpecification, departmentLabel, departmentRule } from "@workspace/asset-definitions";
 
 const BRAND = "#00AECD";
 const NAVY = "#0f2a36";
@@ -706,7 +706,7 @@ function InfillPlantingTab({ assetId, onJobClick, onNewAssessment }: { assetId: 
 // ─── Edit form ────────────────────────────────────────────────────────────────
 
 type EditForm = {
-  name: string; description: string; department: string; gardenType: string; standard: string; areaM2: string;
+  name: string; description: string; department: string; gardenType: string; standard: string; areaM2: string; departmentDetails: Record<string, string | number>;
   serviceTimeMins: string; frequency: string; siteType: string; ward: string;
   teamId: string; suburb: string; streetAddress: string; notes: string; knownHazards: string;
   lat: string; lng: string;
@@ -733,6 +733,7 @@ function EditPanel({
     gardenType:      asset.gardenType || "",
     standard:        asset.standard || "",
     areaM2:          String(asset.areaM2 ?? ""),
+    departmentDetails: (asset.departmentDetails ?? {}) as Record<string, string | number>,
     serviceTimeMins: String(asset.serviceTimeMins ?? ""),
     frequency:       asset.frequency || "",
     siteType:        (asset as any).siteType || "",
@@ -746,14 +747,18 @@ function EditPanel({
     lng:             asset.lng != null ? String(Number(asset.lng)) : "",
   });
 
-  const f = (key: keyof EditForm, val: string) => setForm(prev => ({ ...prev, [key]: val }));
+  const f = (key: keyof EditForm, val: any) => setForm(prev => ({ ...prev, [key]: val }));
+  const rule = departmentRule(form.department);
 
   const handleSave = async () => {
     setSaving(true);
     try {
       const payload = {
         ...form,
-        areaM2:          parseInt(form.areaM2) || 0,
+        departmentDetails: form.department === "garden" ? null : form.departmentDetails,
+        gardenType: form.department === "garden" ? form.gardenType : null,
+        standard: form.department === "garden" ? form.standard : null,
+        areaM2:          form.areaM2 ? parseFloat(form.areaM2) : null,
         serviceTimeMins: parseInt(form.serviceTimeMins) || 0,
         siteType:        form.siteType      || null,
         ward:            form.ward          || null,
@@ -798,7 +803,17 @@ function EditPanel({
           <Input value={form.description} onChange={e => f("description", e.target.value)} className="text-sm" placeholder="e.g. Carpark garden, Playground garden…" />
         </FormField>
         <FormField label="Department / Function">
-          <Select value={form.department} onValueChange={v => f("department", v)}>
+          <Select value={form.department} onValueChange={v => {
+            f("department", v);
+            f("departmentDetails", {});
+            if (v !== "garden") {
+              f("gardenType", "");
+              f("standard", "");
+            } else {
+              f("gardenType", asset.gardenType || "amenity");
+              f("standard", asset.standard || "medium");
+            }
+          }}>
             <SelectTrigger className="text-sm"><SelectValue /></SelectTrigger>
             <SelectContent>
               {DEPARTMENTS.map(({ value, label }) => (
@@ -808,17 +823,17 @@ function EditPanel({
           </Select>
         </FormField>
         <div className="grid grid-cols-2 gap-3">
-          <FormField label="Specification">
-            <Select value={form.gardenType} onValueChange={v => f("gardenType", v)}>
+          <FormField label={rule.specificationLabel}>
+            <Select value={form.department === "garden" ? form.gardenType : String(form.departmentDetails[rule.specificationKey] ?? "")} onValueChange={v => f(form.department === "garden" ? "gardenType" : "departmentDetails", form.department === "garden" ? v : { ...form.departmentDetails, [rule.specificationKey]: v })}>
               <SelectTrigger className="text-sm"><SelectValue /></SelectTrigger>
               <SelectContent>
-                {["amenity","annuals","bush","hedge","ornamental","rain_garden","reveg","roses_perennials","tree_planter_pits"].map(g => (
-                  <SelectItem key={g} value={g}>{g.replace(/_/g, " ")}</SelectItem>
+                {rule.specificationOptions.map(option => (
+                  <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
           </FormField>
-          <FormField label="Standard">
+          {form.department === "garden" && <FormField label="Standard">
             <Select value={form.standard} onValueChange={v => f("standard", v)}>
               <SelectTrigger className="text-sm"><SelectValue /></SelectTrigger>
               <SelectContent>
@@ -827,18 +842,18 @@ function EditPanel({
                 <SelectItem value="low">Low</SelectItem>
               </SelectContent>
             </Select>
-          </FormField>
+          </FormField>}
         </div>
         <div className="grid grid-cols-2 gap-3">
-          <FormField label="Area (m²)">
+          <FormField label={`${rule.areaLabel}${rule.areaRequired ? "" : " (optional)"}`}>
             <Input type="number" value={form.areaM2} onChange={e => f("areaM2", e.target.value)} className="text-sm" />
           </FormField>
-          <FormField label="Service Time (mins)">
+          <FormField label={rule.serviceTimeLabel}>
             <Input type="number" value={form.serviceTimeMins} onChange={e => f("serviceTimeMins", e.target.value)} className="text-sm" />
           </FormField>
         </div>
         <div className="grid grid-cols-2 gap-3">
-          <FormField label="Frequency">
+          <FormField label={rule.frequencyLabel}>
             <Select value={form.frequency} onValueChange={v => f("frequency", v)}>
               <SelectTrigger className="text-sm"><SelectValue /></SelectTrigger>
               <SelectContent>
@@ -1509,12 +1524,12 @@ export default function AssetDetail() {
                   <Badge variant="outline" className="text-[10px] text-white/70 border-white/20 bg-white/5">
                     {departmentLabel(asset.department)}
                   </Badge>
-                  <Badge className={`text-[10px] border-0 capitalize ${TYPE_COLORS[asset.gardenType] ?? "bg-gray-100 text-gray-700"}`}>
-                    {asset.gardenType.replace(/_/g, " ")}
+                  <Badge className="text-[10px] border-0 bg-cyan-100 text-cyan-800">
+                    {assetSpecification(asset)}
                   </Badge>
-                  <Badge variant="outline" className="text-[10px] text-white/70 border-white/20 bg-white/5 capitalize">
+                  {asset.standard && <Badge variant="outline" className="text-[10px] text-white/70 border-white/20 bg-white/5 capitalize">
                     {asset.standard} Standard
-                  </Badge>
+                  </Badge>}
                   <Badge variant="outline" className="text-[10px] text-white/70 border-white/20 bg-white/5">
                     {getTeamName(asset.teamId)}
                   </Badge>
@@ -1524,9 +1539,9 @@ export default function AssetDetail() {
               {/* Stats grid */}
               <div className="grid grid-cols-2 gap-px bg-gray-200 border-b flex-shrink-0">
                 {[
-                  { icon: Ruler,        label: "Area",      value: `${Number(asset.areaM2).toFixed(1)} m²` },
-                  { icon: Clock,        label: "Service",   value: `${asset.serviceTimeMins} min` },
-                  { icon: CalendarDays, label: "Frequency", value: asset.frequency },
+                  { icon: Ruler,        label: departmentRule(asset.department).areaLabel, value: asset.areaM2 != null ? `${Number(asset.areaM2).toFixed(1)} m²` : "—" },
+                  { icon: Clock,        label: departmentRule(asset.department).serviceTimeLabel, value: `${asset.serviceTimeMins} min` },
+                  { icon: CalendarDays, label: departmentRule(asset.department).frequencyLabel, value: asset.frequency },
                   { icon: Tag,          label: "Site Type", value: (asset as any).siteType || "—" },
                 ].map(({ icon: Icon, label, value }) => (
                   <div key={label} className="px-4 py-3 bg-white">
@@ -1547,6 +1562,7 @@ export default function AssetDetail() {
                 <div className="space-y-2">
                   {[
                     { label: "Department / Function", value: departmentLabel(asset.department) },
+                    { label: departmentRule(asset.department).specificationLabel, value: assetSpecification(asset) },
                     { label: "Ward",    value: asset.ward },
                     { label: "Suburb",  value: asset.suburb },
                   ].map(({ label, value }) => (

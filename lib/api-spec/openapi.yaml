@@ -1287,6 +1287,60 @@ components:
       required: [name]
 
     # ─── Assets ─────────────────────────────────────────────────────────────
+    GardenAssetDetails:
+      type: object
+      description: Garden-only fields. Required when department is garden; legacy assets use these top-level fields.
+      properties:
+        gardenType:
+          $ref: "#/components/schemas/GardenType"
+        standard:
+          $ref: "#/components/schemas/Standard"
+      required: [gardenType, standard]
+
+    MowingAssetDetails:
+      type: object
+      description: Required specification for mowing assets.
+      properties:
+        mowingType:
+          type: string
+          enum: [amenity_turf, sports_turf, roadside_verge, rough_grass]
+      required: [mowingType]
+
+    StormwaterAssetDetails:
+      type: object
+      description: Required specification for stormwater assets.
+      properties:
+        stormwaterType:
+          type: string
+          enum: [swale, detention_basin, wetland, rain_garden, catchpit]
+      required: [stormwaterType]
+
+    SportsfieldsAssetDetails:
+      type: object
+      description: Required specification for sportsfield assets.
+      properties:
+        surfaceType:
+          type: string
+          enum: [natural_turf, artificial_turf, hard_court]
+      required: [surfaceType]
+
+    CityCleaningAssetDetails:
+      type: object
+      description: Required specification for City Cleaning assets.
+      properties:
+        cleaningType:
+          type: string
+          enum: [litter_bin, street_sweeping, graffiti, pressure_washing]
+      required: [cleaningType]
+
+    DepartmentDetails:
+      description: Use the details schema matching department. Garden assets use gardenType and standard for backwards compatibility.
+      oneOf:
+        - $ref: "#/components/schemas/MowingAssetDetails"
+        - $ref: "#/components/schemas/StormwaterAssetDetails"
+        - $ref: "#/components/schemas/SportsfieldsAssetDetails"
+        - $ref: "#/components/schemas/CityCleaningAssetDetails"
+
     Asset:
       type: object
       properties:
@@ -1296,13 +1350,19 @@ components:
         department:
           $ref: "#/components/schemas/Department"
         gardenType:
+          nullable: true
           $ref: "#/components/schemas/GardenType"
         standard:
+          nullable: true
           $ref: "#/components/schemas/Standard"
-        areaM2:          { type: integer }
+        areaM2:          { type: number, nullable: true }
         serviceTimeMins: { type: integer }
         frequency:
           $ref: "#/components/schemas/Frequency"
+        departmentDetails:
+          oneOf:
+            - $ref: "#/components/schemas/DepartmentDetails"
+            - type: "null"
         siteType: { type: string, enum: [park, street], nullable: true }
         teamId:          { type: string, format: uuid, nullable: true }
         ward:
@@ -1324,9 +1384,6 @@ components:
         - reference
         - name
         - department
-        - gardenType
-        - standard
-        - areaM2
         - serviceTimeMins
         - frequency
         - isActive
@@ -1335,19 +1392,24 @@ components:
 
     AssetCreate:
       type: object
+      description: Common fields are required for every asset. Garden requires gardenType and standard; Mowing and Sportsfields require areaM2; all non-Garden departments require their matching DepartmentDetails specification.
       properties:
         reference:       { type: string }
         name:            { type: string }
         department:
           $ref: "#/components/schemas/Department"
         gardenType:
+          nullable: true
           $ref: "#/components/schemas/GardenType"
         standard:
+          nullable: true
           $ref: "#/components/schemas/Standard"
-        areaM2:          { type: integer }
+        areaM2:          { type: number, nullable: true }
         serviceTimeMins: { type: integer }
         frequency:
           $ref: "#/components/schemas/Frequency"
+        departmentDetails:
+          $ref: "#/components/schemas/DepartmentDetails"
         siteType: { type: string, enum: [park, street] }
         teamId:        { type: string, format: uuid }
         ward:
@@ -1363,9 +1425,6 @@ components:
         - reference
         - name
         - department
-        - gardenType
-        - standard
-        - areaM2
         - serviceTimeMins
         - frequency
 
@@ -1376,13 +1435,17 @@ components:
         department:
           $ref: "#/components/schemas/Department"
         gardenType:
+          nullable: true
           $ref: "#/components/schemas/GardenType"
         standard:
+          nullable: true
           $ref: "#/components/schemas/Standard"
-        areaM2:          { type: integer }
+        areaM2:          { type: number, nullable: true }
         serviceTimeMins: { type: integer }
         frequency:
           $ref: "#/components/schemas/Frequency"
+        departmentDetails:
+          $ref: "#/components/schemas/DepartmentDetails"
         teamId:        { type: string, format: uuid }
         ward:
           $ref: "#/components/schemas/Ward"

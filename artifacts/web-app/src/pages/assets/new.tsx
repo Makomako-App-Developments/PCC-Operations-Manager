@@ -13,7 +13,7 @@ import { useLocation } from "wouter";
 import { useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft } from "lucide-react";
 import BoundaryEditor, { type GeoPolygon } from "@/components/BoundaryEditor";
-import { DEPARTMENTS, DEPARTMENT_VALUES } from "@workspace/asset-definitions";
+import { DEPARTMENTS, DEPARTMENT_VALUES, departmentRule } from "@workspace/asset-definitions";
 
 const BRAND = "#00AECD";
 
@@ -21,11 +21,12 @@ const assetSchema = z.object({
   name: z.string().min(1, "Name is required"),
   department: z.enum(DEPARTMENT_VALUES),
   siteType: z.enum(["park","street"]).optional(),
-  gardenType: z.enum(["annuals","roses_perennials","ornamental","amenity","rain_garden","reveg","bush","tree_planter_pits","hedge"]),
-  standard: z.enum(["high","medium","low"]),
-  areaM2: z.coerce.number().min(1, "Area must be at least 1"),
+  gardenType: z.enum(["annuals","roses_perennials","ornamental","amenity","rain_garden","reveg","bush","tree_planter_pits","hedge"]).optional(),
+  standard: z.enum(["high","medium","low"]).optional(),
+  areaM2: z.coerce.number().optional(),
   serviceTimeMins: z.coerce.number().min(1, "Service time must be at least 1"),
   frequency: z.enum(["weekly","fortnightly","monthly","bimonthly","quarterly"]),
+  departmentDetails: z.record(z.string(), z.union([z.string(), z.number()])).default({}),
   teamId: z.string().optional(),
   ward: z.enum(["eastern","northern","western"]).optional(),
   suburb: z.string().optional(),
@@ -34,6 +35,20 @@ const assetSchema = z.object({
   lng: z.coerce.number().optional(),
   notes: z.string().optional(),
   knownHazards: z.string().optional(),
+}).superRefine((data, ctx) => {
+  const rule = departmentRule(data.department);
+  if (data.department === "garden" && !data.gardenType) {
+    ctx.addIssue({ code: "custom", path: ["gardenType"], message: "Garden type is required" });
+  }
+  if (data.department === "garden" && !data.standard) {
+    ctx.addIssue({ code: "custom", path: ["standard"], message: "Standard is required" });
+  }
+  if (data.department !== "garden" && !data.departmentDetails[rule.specificationKey]) {
+    ctx.addIssue({ code: "custom", path: ["departmentDetails"], message: `${rule.specificationLabel} is required` });
+  }
+  if (rule.areaRequired && (!data.areaM2 || data.areaM2 <= 0)) {
+    ctx.addIssue({ code: "custom", path: ["areaM2"], message: `${rule.areaLabel} must be greater than 0` });
+  }
 });
 
 export default function NewAsset() {
@@ -54,15 +69,24 @@ export default function NewAsset() {
       areaM2: 0,
       serviceTimeMins: 30,
       frequency: "monthly",
+      departmentDetails: {},
     }
   });
 
   const [submitting, setSubmitting] = useState(false);
+  const selectedDepartment = form.watch("department");
+  const selectedRule = departmentRule(selectedDepartment);
 
   const onSubmit = async (data: z.infer<typeof assetSchema>) => {
     setSubmitting(true);
     try {
       const payload: Record<string, unknown> = { ...data };
+      payload.departmentDetails = data.department === "garden" ? null : data.departmentDetails;
+      if (data.department !== "garden") {
+        payload.gardenType = null;
+        payload.standard = null;
+      }
+      payload.areaM2 = data.areaM2 && data.areaM2 > 0 ? data.areaM2 : null;
       if (boundary) payload.boundary = boundary;
       const r = await fetch("/api/assets", {
         method: "POST",
@@ -124,7 +148,17 @@ export default function NewAsset() {
                   <FormField control={form.control} name="department" render={({ field }) => (
                     <FormItem>
                       <FormLabel className="text-xs text-gray-500 uppercase tracking-wide">Department / Function</FormLabel>
-                      <Select onValueChange={field.onChange} value={field.value}>
+                      <Select onValueChange={(value) => {
+                        field.onChange(value);
+                        form.setValue("departmentDetails", {});
+                        if (value === "garden") {
+                          form.setValue("gardenType", "amenity");
+                          form.setValue("standard", "medium");
+                        } else {
+                          form.setValue("gardenType", undefined);
+                          form.setValue("standard", undefined);
+                        }
+                      }} value={field.value}>
                         <FormControl>
                           <SelectTrigger className="h-10"><SelectValue /></SelectTrigger>
                         </FormControl>
@@ -138,10 +172,10 @@ export default function NewAsset() {
                     </FormItem>
                   )} />
 
-                  <div className="grid grid-cols-3 gap-4">
+                  <div className={`grid gap-4 ${selectedDepartment === "garden" ? "grid-cols-3" : "grid-cols-2"}`}>
                     <FormField control={form.control} name="siteType" render={({ field }) => (
                       <FormItem>
-                        <FormLabel className="text-xs text-gray-500 uppercase tracking-wide">Garden Type</FormLabel>
+                        <FormLabel className="text-xs text-gray-500 uppercase tracking-wide">Site Type</FormLabel>
                         <Select onValueChange={field.onChange} defaultValue={field.value}>
                           <FormControl>
                             <SelectTrigger className="h-10"><SelectValue placeholder="Select…" /></SelectTrigger>
@@ -155,30 +189,37 @@ export default function NewAsset() {
                       </FormItem>
                     )} />
 
-                    <FormField control={form.control} name="gardenType" render={({ field }) => (
+                    {selectedDepartment === "garden" ? <FormField control={form.control} name="gardenType" render={({ field }) => (
                       <FormItem>
-                        <FormLabel className="text-xs text-gray-500 uppercase tracking-wide">Specification</FormLabel>
+                        <FormLabel className="text-xs text-gray-500 uppercase tracking-wide">{selectedRule.specificationLabel}</FormLabel>
                         <Select onValueChange={field.onChange} defaultValue={field.value}>
                           <FormControl>
                             <SelectTrigger className="h-10"><SelectValue /></SelectTrigger>
                           </FormControl>
                           <SelectContent>
-                            <SelectItem value="amenity">Amenity</SelectItem>
-                            <SelectItem value="annuals">Annuals</SelectItem>
-                            <SelectItem value="bush">Bush</SelectItem>
-                            <SelectItem value="hedge">Hedge</SelectItem>
-                            <SelectItem value="ornamental">Ornamental</SelectItem>
-                            <SelectItem value="rain_garden">Rain Garden</SelectItem>
-                            <SelectItem value="reveg">Reveg</SelectItem>
-                            <SelectItem value="roses_perennials">Roses & Perennials</SelectItem>
-                            <SelectItem value="tree_planter_pits">Tree Planter Pits</SelectItem>
+                            {selectedRule.specificationOptions.map(option => (
+                              <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
+                            ))}
                           </SelectContent>
                         </Select>
                         <FormMessage />
                       </FormItem>
-                    )} />
+                    )} /> : <FormField control={form.control} name={"departmentDetails" as any} render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className="text-xs text-gray-500 uppercase tracking-wide">{selectedRule.specificationLabel}</FormLabel>
+                        <Select value={String(field.value?.[selectedRule.specificationKey] ?? "")} onValueChange={value => field.onChange({ ...(field.value ?? {}), [selectedRule.specificationKey]: value })}>
+                          <FormControl><SelectTrigger className="h-10"><SelectValue placeholder="Select…" /></SelectTrigger></FormControl>
+                          <SelectContent>
+                            {selectedRule.specificationOptions.map(option => (
+                              <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )} />}
 
-                    <FormField control={form.control} name="standard" render={({ field }) => (
+                    {selectedDepartment === "garden" && <FormField control={form.control} name="standard" render={({ field }) => (
                       <FormItem>
                         <FormLabel className="text-xs text-gray-500 uppercase tracking-wide">Standard</FormLabel>
                         <Select onValueChange={field.onChange} defaultValue={field.value}>
@@ -193,7 +234,7 @@ export default function NewAsset() {
                         </Select>
                         <FormMessage />
                       </FormItem>
-                    )} />
+                    )} />}
                   </div>
                 </div>
 
@@ -205,15 +246,15 @@ export default function NewAsset() {
                   <div className="grid grid-cols-2 gap-4">
                     <FormField control={form.control} name="areaM2" render={({ field }) => (
                       <FormItem>
-                        <FormLabel className="text-xs text-gray-500 uppercase tracking-wide">Area (m²)</FormLabel>
-                        <FormControl><Input type="number" {...field} className="h-10" /></FormControl>
+                        <FormLabel className="text-xs text-gray-500 uppercase tracking-wide">{selectedRule.areaLabel}{selectedRule.areaRequired ? "" : " (optional)"}</FormLabel>
+                        <FormControl><Input type="number" min="0" {...field} className="h-10" /></FormControl>
                         <FormMessage />
                       </FormItem>
                     )} />
 
                     <FormField control={form.control} name="serviceTimeMins" render={({ field }) => (
                       <FormItem>
-                        <FormLabel className="text-xs text-gray-500 uppercase tracking-wide">Service Time (mins)</FormLabel>
+                        <FormLabel className="text-xs text-gray-500 uppercase tracking-wide">{selectedRule.serviceTimeLabel}</FormLabel>
                         <FormControl><Input type="number" {...field} className="h-10" /></FormControl>
                         <FormMessage />
                       </FormItem>
@@ -222,7 +263,7 @@ export default function NewAsset() {
 
                   <FormField control={form.control} name="frequency" render={({ field }) => (
                     <FormItem>
-                      <FormLabel className="text-xs text-gray-500 uppercase tracking-wide">Frequency</FormLabel>
+                      <FormLabel className="text-xs text-gray-500 uppercase tracking-wide">{selectedRule.frequencyLabel}</FormLabel>
                       <Select onValueChange={field.onChange} defaultValue={field.value}>
                         <FormControl>
                           <SelectTrigger className="h-10"><SelectValue /></SelectTrigger>

@@ -177,6 +177,91 @@ export interface TeamCreate {
   name: string;
 }
 
+/**
+ * Garden-only fields. Required when department is garden; legacy assets use these top-level fields.
+ */
+export interface GardenAssetDetails {
+  gardenType: GardenType;
+  standard: Standard;
+}
+
+export type MowingAssetDetailsMowingType =
+  (typeof MowingAssetDetailsMowingType)[keyof typeof MowingAssetDetailsMowingType];
+
+export const MowingAssetDetailsMowingType = {
+  amenity_turf: "amenity_turf",
+  sports_turf: "sports_turf",
+  roadside_verge: "roadside_verge",
+  rough_grass: "rough_grass",
+} as const;
+
+/**
+ * Required specification for mowing assets.
+ */
+export interface MowingAssetDetails {
+  mowingType: MowingAssetDetailsMowingType;
+}
+
+export type StormwaterAssetDetailsStormwaterType =
+  (typeof StormwaterAssetDetailsStormwaterType)[keyof typeof StormwaterAssetDetailsStormwaterType];
+
+export const StormwaterAssetDetailsStormwaterType = {
+  swale: "swale",
+  detention_basin: "detention_basin",
+  wetland: "wetland",
+  rain_garden: "rain_garden",
+  catchpit: "catchpit",
+} as const;
+
+/**
+ * Required specification for stormwater assets.
+ */
+export interface StormwaterAssetDetails {
+  stormwaterType: StormwaterAssetDetailsStormwaterType;
+}
+
+export type SportsfieldsAssetDetailsSurfaceType =
+  (typeof SportsfieldsAssetDetailsSurfaceType)[keyof typeof SportsfieldsAssetDetailsSurfaceType];
+
+export const SportsfieldsAssetDetailsSurfaceType = {
+  natural_turf: "natural_turf",
+  artificial_turf: "artificial_turf",
+  hard_court: "hard_court",
+} as const;
+
+/**
+ * Required specification for sportsfield assets.
+ */
+export interface SportsfieldsAssetDetails {
+  surfaceType: SportsfieldsAssetDetailsSurfaceType;
+}
+
+export type CityCleaningAssetDetailsCleaningType =
+  (typeof CityCleaningAssetDetailsCleaningType)[keyof typeof CityCleaningAssetDetailsCleaningType];
+
+export const CityCleaningAssetDetailsCleaningType = {
+  litter_bin: "litter_bin",
+  street_sweeping: "street_sweeping",
+  graffiti: "graffiti",
+  pressure_washing: "pressure_washing",
+} as const;
+
+/**
+ * Required specification for City Cleaning assets.
+ */
+export interface CityCleaningAssetDetails {
+  cleaningType: CityCleaningAssetDetailsCleaningType;
+}
+
+/**
+ * Use the details schema matching department. Garden assets use gardenType and standard for backwards compatibility.
+ */
+export type DepartmentDetails =
+  | MowingAssetDetails
+  | StormwaterAssetDetails
+  | SportsfieldsAssetDetails
+  | CityCleaningAssetDetails;
+
 export type AssetSiteType =
   | (typeof AssetSiteType)[keyof typeof AssetSiteType]
   | null;
@@ -191,11 +276,12 @@ export interface Asset {
   reference: string;
   name: string;
   department: Department;
-  gardenType: GardenType;
-  standard: Standard;
-  areaM2: number;
+  gardenType?: GardenType | null;
+  standard?: Standard | null;
+  areaM2?: number | null;
   serviceTimeMins: number;
   frequency: Frequency;
+  departmentDetails?: DepartmentDetails | null;
   siteType?: AssetSiteType;
   teamId?: string | null;
   ward?: Ward | null;
@@ -219,15 +305,19 @@ export const AssetCreateSiteType = {
   street: "street",
 } as const;
 
+/**
+ * Common fields are required for every asset. Garden requires gardenType and standard; Mowing and Sportsfields require areaM2; all non-Garden departments require their matching DepartmentDetails specification.
+ */
 export interface AssetCreate {
   reference: string;
   name: string;
   department: Department;
-  gardenType: GardenType;
-  standard: Standard;
-  areaM2: number;
+  gardenType?: GardenType | null;
+  standard?: Standard | null;
+  areaM2?: number | null;
   serviceTimeMins: number;
   frequency: Frequency;
+  departmentDetails?: DepartmentDetails;
   siteType?: AssetCreateSiteType;
   teamId?: string;
   ward?: Ward;
@@ -243,11 +333,12 @@ export interface AssetCreate {
 export interface AssetUpdate {
   name?: string;
   department?: Department;
-  gardenType?: GardenType;
-  standard?: Standard;
-  areaM2?: number;
+  gardenType?: GardenType | null;
+  standard?: Standard | null;
+  areaM2?: number | null;
   serviceTimeMins?: number;
   frequency?: Frequency;
+  departmentDetails?: DepartmentDetails;
   teamId?: string;
   ward?: Ward;
   suburb?: string;

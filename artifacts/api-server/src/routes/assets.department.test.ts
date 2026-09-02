@@ -81,6 +81,87 @@ describe("asset department/function", () => {
     expect(response.body.department).toBe("garden");
   });
 
+  it("validates and normalizes department-specific specifications", async () => {
+    const returning = vi.fn().mockResolvedValue([{ id: "asset-1", department: "mowing" }]);
+    const values = vi.fn().mockReturnValue({ returning });
+    insert.mockReturnValue({ values });
+
+    const departments = [
+      ["mowing", "mowingType", "amenity_turf", { areaM2: 20 }],
+      ["stormwater", "stormwaterType", "swale", {}],
+      ["sportsfields", "surfaceType", "natural_turf", { areaM2: 20 }],
+      ["city_cleaning", "cleaningType", "litter_bin", {}],
+    ] as const;
+
+    for (const [department, key, value, extra] of departments) {
+      const response = await request(buildApp()).post("/assets").send({
+        ...validAsset,
+        ...extra,
+        department,
+        gardenType: "amenity",
+        standard: "medium",
+        departmentDetails: { [key]: value },
+      });
+      expect(response.status).toBe(201);
+      expect(values).toHaveBeenLastCalledWith(expect.objectContaining({
+        department,
+        gardenType: null,
+        standard: null,
+        departmentDetails: { [key]: value },
+      }));
+    }
+  });
+
+  it("rejects missing specifications and required areas", async () => {
+    const missingSpecification = await request(buildApp()).post("/assets").send({
+      ...validAsset,
+      department: "stormwater",
+      gardenType: undefined,
+      standard: undefined,
+      departmentDetails: {},
+    });
+    const missingArea = await request(buildApp()).post("/assets").send({
+      ...validAsset,
+      department: "sportsfields",
+      gardenType: undefined,
+      standard: undefined,
+      areaM2: undefined,
+      departmentDetails: { surfaceType: "natural_turf" },
+    });
+
+    expect(missingSpecification.status).toBe(400);
+    expect(missingArea.status).toBe(400);
+    expect(insert).not.toHaveBeenCalled();
+  });
+
+  it("does not clear Garden fields on an unrelated partial edit", async () => {
+    const before = { id: "asset-1", ...validAsset, areaM2: "10", departmentDetails: null };
+    const updated = { ...before, name: "Renamed Garden" };
+    const firstSelect = {
+      from: vi.fn().mockReturnThis(),
+      where: vi.fn().mockReturnThis(),
+      limit: vi.fn().mockResolvedValue([before]),
+    };
+    const returning = vi.fn().mockResolvedValue([updated]);
+    const where = vi.fn().mockReturnValue({ returning });
+    const set = vi.fn().mockReturnValue({ where });
+    const updateQuery = { set };
+    select.mockReturnValueOnce(firstSelect);
+    update.mockReturnValue(updateQuery);
+
+    const response = await request(buildApp())
+      .patch("/assets/asset-1")
+      .send({ name: "Renamed Garden" });
+
+    expect(response.status).toBe(200);
+    expect(set).toHaveBeenCalledWith(expect.objectContaining({
+      name: "Renamed Garden",
+      departmentDetails: null,
+    }));
+    expect(set.mock.calls[0][0]).not.toHaveProperty("gardenType");
+    expect(set.mock.calls[0][0]).not.toHaveProperty("standard");
+  });
+
   it("accepts a supported department filter and rejects unsupported values", async () => {
     const listQuery = {
       from: vi.fn().mockReturnThis(),

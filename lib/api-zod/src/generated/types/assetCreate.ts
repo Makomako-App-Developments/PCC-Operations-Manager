@@ -7,20 +7,25 @@
  */
 import type { AssetCreateSiteType } from "./assetCreateSiteType";
 import type { Department } from "./department";
+import type { DepartmentDetails } from "./departmentDetails";
 import type { Frequency } from "./frequency";
 import type { GardenType } from "./gardenType";
 import type { Standard } from "./standard";
 import type { Ward } from "./ward";
 
+/**
+ * Common fields are required for every asset. Garden requires gardenType and standard; Mowing and Sportsfields require areaM2; all non-Garden departments require their matching DepartmentDetails specification.
+ */
 export interface AssetCreate {
   reference: string;
   name: string;
   department: Department;
-  gardenType: GardenType;
-  standard: Standard;
-  areaM2: number;
+  gardenType?: GardenType | null;
+  standard?: Standard | null;
+  areaM2?: number | null;
   serviceTimeMins: number;
   frequency: Frequency;
+  departmentDetails?: DepartmentDetails;
   siteType?: AssetCreateSiteType;
   teamId?: string;
   ward?: Ward;

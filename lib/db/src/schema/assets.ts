@@ -11,11 +11,15 @@ export const assetsTable = pgTable("assets", {
   globalId:        varchar("global_id", { length: 100 }),
   name:            varchar("name", { length: 200 }).notNull(),
   department:      varchar("department", { length: 100 }).notNull().default("garden"),
-  gardenType:      gardenTypeEnum("garden_type").notNull(),
-  standard:        standardEnum("standard").notNull(),
-  areaM2:          numeric("area_m2", { precision: 10, scale: 4 }).notNull(),
+  // Garden fields stay available for backwards compatibility, but are not
+  // applicable to every department. Department-specific specifications live
+  // in departmentDetails.
+  gardenType:      gardenTypeEnum("garden_type"),
+  standard:        standardEnum("standard"),
+  areaM2:          numeric("area_m2", { precision: 10, scale: 4 }),
   serviceTimeMins: integer("service_time_mins").notNull(),
   frequency:       frequencyEnum("frequency").notNull(),
+  departmentDetails: jsonb("department_details"),
   teamId:          uuid("team_id").references(() => teamsTable.id),
   siteType:        siteTypeEnum("site_type"),
   ward:            wardEnum("ward"),

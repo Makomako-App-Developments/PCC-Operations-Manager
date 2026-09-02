@@ -19,7 +19,7 @@ import { BoundaryMap } from "@/components/BoundaryMap";
 import { useAuth } from "@/context/auth";
 import { useColors } from "@/hooks/useColors";
 import { loadCachedAsset, saveCachedAsset } from "@/lib/jobDetailCache";
-import { departmentLabel } from "@workspace/asset-definitions";
+import { assetSpecification, departmentLabel, departmentRule } from "@workspace/asset-definitions";
 
 const GARDEN_TYPE_LABEL: Record<string, string> = {
   annuals: "Annuals",
@@ -134,7 +134,7 @@ export default function AssetDetailScreen() {
                 { color: colors.mutedForeground },
               ]}
             >
-              {(asset as any).standard}
+              {assetSpecification(asset)}
             </Text>
           </View>
         )}
@@ -237,7 +237,7 @@ export default function AssetDetailScreen() {
               </Text>
             </View>
 
-            {/* Garden Type */}
+            {/* Department specification */}
             <View
               style={[
                 styles.infoTile,
@@ -256,19 +256,18 @@ export default function AssetDetailScreen() {
                     { color: colors.mutedForeground },
                   ]}
                 >
-                  Garden Type
+                  {departmentRule((asset as any).department).specificationLabel}
                 </Text>
               </View>
               <Text
                 style={[styles.infoTileValue, { color: colors.foreground }]}
               >
-                {GARDEN_TYPE_LABEL[(asset as any).gardenType] ??
-                  (asset as any).gardenType}
+                {assetSpecification(asset)}
               </Text>
             </View>
 
-            {/* Specification */}
-            <View
+            {/* Garden standard */}
+            {(asset as any).standard && <View
               style={[
                 styles.infoTile,
                 {
@@ -297,7 +296,7 @@ export default function AssetDetailScreen() {
                     (asset as any).standard.slice(1)
                   : "—"}
               </Text>
-            </View>
+            </View>}
 
             {/* Suburb */}
             {(asset as any).suburb ? (
@@ -349,7 +348,7 @@ export default function AssetDetailScreen() {
                     { color: colors.mutedForeground },
                   ]}
                 >
-                  Service Time
+                  {departmentRule((asset as any).department).serviceTimeLabel}
                 </Text>
               </View>
               <Text
@@ -420,7 +419,7 @@ export default function AssetDetailScreen() {
               <Feather name="check-square" size={18} color="#fff" />
               <Text style={styles.auditBtnText}>Start Audit</Text>
             </TouchableOpacity>
-            <View style={styles.actionRow}>
+            {(asset as any).department === "garden" && <View style={styles.actionRow}>
               <TouchableOpacity
                 style={[
                   styles.actionSecondaryBtn,
@@ -451,7 +450,7 @@ export default function AssetDetailScreen() {
                 <Feather name="activity" size={16} color={colors.primary} />
                 <Text style={[styles.actionSecondaryText, { color: colors.primary }]}>Infill Assessment</Text>
               </TouchableOpacity>
-            </View>
+            </View>}
           </View>
         )}
         </>

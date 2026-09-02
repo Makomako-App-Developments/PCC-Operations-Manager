@@ -5,7 +5,7 @@ import { z } from "zod/v4";
 import { requireAuth, requireRole } from "../middlewares/auth";
 import { validateBody, validateQuery } from "../middlewares/validate";
 import { auditLog } from "../lib/audit";
-import { DEPARTMENT_VALUES } from "@workspace/asset-definitions";
+import { DEPARTMENT_RULES, DEPARTMENT_VALUES } from "@workspace/asset-definitions";
 
 const ASSET_FIELD_LABELS: Record<string, string> = {
   name:            "Site Name",
@@ -23,6 +23,7 @@ const ASSET_FIELD_LABELS: Record<string, string> = {
   description:     "Description",
   notes:           "Notes",
   knownHazards:    "Known Hazards",
+  departmentDetails: "Department-specific details",
   isActive:        "Active",
 };
 
@@ -39,6 +40,45 @@ function diffAsset(oldD: Record<string, any>, newD: Record<string, any>) {
 const router = Router();
 
 const departmentSchema = z.enum(DEPARTMENT_VALUES);
+const gardenTypeSchema = z.enum(["annuals", "roses_perennials", "ornamental", "amenity", "rain_garden", "reveg", "bush", "tree_planter_pits", "hedge"]);
+const standardSchema = z.enum(["high", "medium", "low"]);
+const departmentDetailsSchema = z.record(z.string(), z.union([z.string(), z.number()])).nullable().optional();
+
+function validateDepartmentFields(data: {
+  department?: string;
+  gardenType?: string | null;
+  standard?: string | null;
+  areaM2?: string | null;
+  departmentDetails?: Record<string, string | number> | null;
+}, ctx: z.RefinementCtx) {
+  const department = data.department ?? "garden";
+  const rule = DEPARTMENT_RULES[department as keyof typeof DEPARTMENT_RULES];
+  if (!rule) return;
+
+  if (department === "garden") {
+    if (!data.gardenType) ctx.addIssue({ code: "custom", path: ["gardenType"], message: "Garden type is required for Garden assets" });
+    if (!data.standard) ctx.addIssue({ code: "custom", path: ["standard"], message: "Standard is required for Garden assets" });
+  } else if (!data.departmentDetails?.[rule.specificationKey]) {
+    ctx.addIssue({ code: "custom", path: ["departmentDetails", rule.specificationKey], message: `${rule.specificationLabel} is required` });
+  }
+
+  if (rule.areaRequired && (!data.areaM2 || Number(data.areaM2) <= 0)) {
+    ctx.addIssue({ code: "custom", path: ["areaM2"], message: `${rule.areaLabel} must be greater than 0` });
+  }
+}
+
+const assetCreateSchema = insertAssetSchema
+  .omit({ gardenType: true, standard: true, areaM2: true, departmentDetails: true })
+  .extend({
+    department: departmentSchema,
+    gardenType: gardenTypeSchema.nullable().optional(),
+    standard: standardSchema.nullable().optional(),
+    areaM2: z.string().nullable().optional(),
+    departmentDetails: departmentDetailsSchema,
+  })
+  .superRefine((data, ctx) => validateDepartmentFields(data, ctx));
+
+const assetUpdateSchema = assetCreateSchema.partial();
 
 const listQuerySchema = z.object({
   page:       z.coerce.number().int().min(1).default(1),
@@ -124,15 +164,31 @@ function coerceAssetNumerics(body: Record<string, unknown>): Record<string, unkn
   return out;
 }
 
+function normalizeDepartmentFields<T extends {
+  department?: string;
+  gardenType?: unknown;
+  standard?: unknown;
+  departmentDetails?: unknown;
+}>(data: T): T {
+  if (data.department === "garden") return { ...data, departmentDetails: null };
+  return { ...data, gardenType: null, standard: null };
+}
+
+function normalizeDepartmentChanges<T extends object>(data: T, department: string): T {
+  if (department === "garden") return { ...data, departmentDetails: null };
+  return { ...data, gardenType: null, standard: null };
+}
+
 // POST /api/assets
 router.post("/assets", requireAuth, requireRole("manager", "supervisor"), async (req, res) => {
   try {
-    const parsed = insertAssetSchema.extend({ department: departmentSchema }).safeParse(coerceAssetNumerics(req.body));
+    const parsed = assetCreateSchema.safeParse(coerceAssetNumerics(req.body));
     if (!parsed.success) {
       res.status(400).json({ error: "Validation error", issues: parsed.error.issues });
       return;
     }
-    const [created] = await executeWithCircuitBreaker(() => db.insert(assetsTable).values(parsed.data as any).returning());
+    const values = normalizeDepartmentFields(parsed.data);
+    const [created] = await executeWithCircuitBreaker(() => db.insert(assetsTable).values(values as any).returning());
     await auditLog({ tableName: "assets", recordId: created.id, action: "INSERT", changedById: req.auth?.userId ?? null, newData: created as Record<string, unknown>, ipAddress: req.ip ?? null });
     res.status(201).json(created);
   } catch (err) {
@@ -182,14 +238,21 @@ router.patch("/assets/:id", requireAuth, requireRole("manager", "supervisor"), a
     const id = String(req.params.id);
     const [before] = await executeWithCircuitBreaker(() => db.select().from(assetsTable).where(eq(assetsTable.id, id)).limit(1));
     if (!before) { res.status(404).json({ error: "Asset not found" }); return; }
-    const parsed = insertAssetSchema.partial().extend({ department: departmentSchema.optional() }).safeParse(coerceAssetNumerics(req.body));
+    const parsed = assetUpdateSchema.safeParse(coerceAssetNumerics(req.body));
     if (!parsed.success) {
       res.status(400).json({ error: "Validation error", issues: parsed.error.issues });
       return;
     }
+    const merged = { ...before, ...parsed.data };
+    const departmentValidation = assetCreateSchema.safeParse(merged);
+    if (!departmentValidation.success) {
+      res.status(400).json({ error: "Validation error", issues: departmentValidation.error.issues });
+      return;
+    }
+    const changes = normalizeDepartmentChanges(parsed.data, String(merged.department));
     const [updated] = await executeWithCircuitBreaker(() => db
       .update(assetsTable)
-      .set({ ...parsed.data, updatedAt: new Date() })
+      .set({ ...changes, updatedAt: new Date() })
       .where(eq(assetsTable.id, id))
       .returning());
     await auditLog({ tableName: "assets", recordId: id, action: "UPDATE", changedById: req.auth?.userId ?? null, oldData: before as Record<string, unknown>, newData: updated as Record<string, unknown>, ipAddress: req.ip ?? null });

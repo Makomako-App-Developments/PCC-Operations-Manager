@@ -7,6 +7,7 @@
  */
 import type { AssetSiteType } from "./assetSiteType";
 import type { Department } from "./department";
+import type { DepartmentDetails } from "./departmentDetails";
 import type { Frequency } from "./frequency";
 import type { GardenType } from "./gardenType";
 import type { Standard } from "./standard";
@@ -17,11 +18,12 @@ export interface Asset {
   reference: string;
   name: string;
   department: Department;
-  gardenType: GardenType;
-  standard: Standard;
-  areaM2: number;
+  gardenType?: GardenType | null;
+  standard?: Standard | null;
+  areaM2?: number | null;
   serviceTimeMins: number;
   frequency: Frequency;
+  departmentDetails?: DepartmentDetails | null;
   siteType?: AssetSiteType;
   teamId?: string | null;
   ward?: Ward | null;

@@ -6,6 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { Department } from "./department";
+import type { DepartmentDetails } from "./departmentDetails";
 import type { Frequency } from "./frequency";
 import type { GardenType } from "./gardenType";
 import type { Standard } from "./standard";
@@ -14,11 +15,12 @@ import type { Ward } from "./ward";
 export interface AssetUpdate {
   name?: string;
   department?: Department;
-  gardenType?: GardenType;
-  standard?: Standard;
-  areaM2?: number;
+  gardenType?: GardenType | null;
+  standard?: Standard | null;
+  areaM2?: number | null;
   serviceTimeMins?: number;
   frequency?: Frequency;
+  departmentDetails?: DepartmentDetails;
   teamId?: string;
   ward?: Ward;
   suburb?: string;

@@ -11,6 +11,7 @@ import { validateBody, validateQuery } from "../middlewares/validate";
 import { FREQ_DAYS, calcCrewAdjustment, loadSystemSettings, buildAbsenceDataForTeamDate, type CrewStatus } from "../lib/crew-utils";
 import { checkDayCapacity } from "../lib/day-capacity";
 import { auditLog } from "../lib/audit";
+import { assetSpecification } from "@workspace/asset-definitions";
 
 const router = Router();
 
@@ -765,6 +766,8 @@ router.get(
         updatedAt:         jobsTable.updatedAt,
         assetName:         assetsTable.name,
         assetDesc:         assetsTable.description,
+        department:        assetsTable.department,
+        departmentDetails: assetsTable.departmentDetails,
         gardenType:        assetsTable.gardenType,
         suburb:            assetsTable.suburb,
         streetAddress:     assetsTable.streetAddress,
@@ -846,6 +849,8 @@ router.get(
         updatedAt:      infillJobsTable.updatedAt,
         assetName:      assetsTable.name,
         assetDesc:      assetsTable.description,
+        department:     assetsTable.department,
+        departmentDetails: assetsTable.departmentDetails,
         gardenType:     assetsTable.gardenType,
         suburb:         assetsTable.suburb,
         streetAddress:  assetsTable.streetAddress,
@@ -891,6 +896,8 @@ router.get(
         updatedAt:         ir.updatedAt,
         assetName:         ir.assetName,
         assetDesc:         ir.assetDesc,
+        department:        ir.department,
+        departmentDetails: ir.departmentDetails,
         gardenType:        ir.gardenType,
         suburb:            ir.suburb,
         streetAddress:     ir.streetAddress,
@@ -928,6 +935,8 @@ router.get(
         updatedAt:      mulchingRecordsTable.updatedAt,
         assetName:      assetsTable.name,
         assetDesc:      assetsTable.description,
+        department:     assetsTable.department,
+        departmentDetails: assetsTable.departmentDetails,
         gardenType:     assetsTable.gardenType,
         suburb:         assetsTable.suburb,
         streetAddress:  assetsTable.streetAddress,
@@ -973,6 +982,8 @@ router.get(
         updatedAt:         mr.updatedAt,
         assetName:         mr.assetName,
         assetDesc:         mr.assetDesc,
+        department:        mr.department,
+        departmentDetails: mr.departmentDetails,
         gardenType:        mr.gardenType,
         suburb:            mr.suburb,
         streetAddress:     mr.streetAddress,
@@ -1008,6 +1019,8 @@ router.get(
         updatedAt:         reactiveJobsTable.updatedAt,
         assetName:         assetsTable.name,
         assetDesc:         assetsTable.description,
+        department:        assetsTable.department,
+        departmentDetails: assetsTable.departmentDetails,
         gardenType:        assetsTable.gardenType,
         suburb:            assetsTable.suburb,
         streetAddress:     assetsTable.streetAddress,
@@ -1072,6 +1085,8 @@ router.get(
         updatedAt:         rj.updatedAt,
         assetName:         rj.assetName ?? rj.location ?? rj.issueType,
         assetDesc:         rj.assetDesc ?? rj.description,
+        department:        rj.department ?? null,
+        departmentDetails: rj.departmentDetails ?? null,
         gardenType:        rj.gardenType ?? "other",
         suburb:            rj.suburb ?? null,
         streetAddress:     rj.streetAddress ?? null,
@@ -1150,7 +1165,10 @@ router.get(
         const bc = (b as any).createdAt as Date | null;
         if (ac && bc) return ac.getTime() - bc.getTime();
         return 0;
-      }),
+      }).map((job: any) => ({
+        ...job,
+        specification: assetSpecification(job),
+      })),
     }));
 
     res.json({
@@ -1202,6 +1220,8 @@ router.get(
         assetId:           assetsTable.id,
         assetName:         assetsTable.name,
         assetDesc:         assetsTable.description,
+        department:        assetsTable.department,
+        departmentDetails: assetsTable.departmentDetails,
         gardenType:        assetsTable.gardenType,
         standard:          assetsTable.standard,
         frequency:         assetsTable.frequency,
@@ -1237,7 +1257,8 @@ router.get(
 
     const assetMap = new Map<string, {
       assetId: string; assetName: string; assetDesc: string | null;
-      gardenType: string; standard: string; frequency: string;
+      department: string; departmentDetails: unknown; specification: string;
+      gardenType: string | null; standard: string | null; frequency: string;
       serviceTimeMins: number; teamId: string | null; routeOrder: number | null;
       jobs: RangeJob[];
     }>();
@@ -1246,6 +1267,8 @@ router.get(
       if (!assetMap.has(row.assetId)) {
         assetMap.set(row.assetId, {
           assetId: row.assetId, assetName: row.assetName, assetDesc: row.assetDesc,
+          department: row.department, departmentDetails: row.departmentDetails,
+          specification: assetSpecification(row),
           gardenType: row.gardenType, standard: row.standard, frequency: row.frequency,
           serviceTimeMins: row.serviceTimeMins, teamId: row.teamId, routeOrder: row.routeOrder,
           jobs: [],

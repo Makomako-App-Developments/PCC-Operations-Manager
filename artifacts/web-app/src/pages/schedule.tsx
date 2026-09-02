@@ -69,6 +69,7 @@ interface GanttAssetRow {
   assetName: string;
   assetDesc: string | null;
   assetRef?: string | null;
+  specification?: string;
   gardenType: string;
   standard: string;
   frequency: string;
@@ -299,8 +300,8 @@ function DailyGanttView({
                       <p className="text-gray-400 text-[10px] truncate max-w-[185px]">{row.assetDesc}</p>
                     </td>
                     <td className="py-1.5 px-3 sticky z-10" style={{ left: 230, background: rowBg, width: 80 }}>
-                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold capitalize ${TYPE_BADGES[row.gardenType] ?? "bg-gray-100 text-gray-600"}`}>
-                        {row.gardenType.replace(/_/g, " ")}
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-cyan-100 text-cyan-800">
+                        {row.specification ?? row.gardenType?.replace(/_/g, " ") ?? "—"}
                       </span>
                     </td>
                     <td className="py-1.5 px-3 sticky z-10 text-gray-600 capitalize" style={{ left: 310, background: rowBg, width: 70 }}>{row.frequency}</td>
@@ -533,8 +534,8 @@ function GanttView({
                       <p className="text-gray-400 text-[10px] truncate max-w-[185px]">{row.assetDesc || row.assetRef}</p>
                     </td>
                     <td className="py-2 px-3 sticky z-10" style={{ left: 230, background: rowBg, width: 80 }}>
-                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold capitalize ${TYPE_BADGES[row.gardenType] ?? "bg-gray-100 text-gray-600"}`}>
-                        {row.gardenType.replace(/_/g, " ")}
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-cyan-100 text-cyan-800">
+                        {row.specification ?? row.gardenType?.replace(/_/g, " ") ?? "—"}
                       </span>
                     </td>
                     <td className="py-2 px-3 sticky z-10 text-gray-600 capitalize" style={{ left: 310, background: rowBg, width: 70 }}>{row.frequency}</td>
@@ -1358,7 +1359,7 @@ export default function Schedule() {
           return `<tr>
             <td style="width:40px;text-align:center;color:#6b7280;font-size:11px;">${r.routeOrder ?? "–"}</td>
             <td><strong>${r.assetName}</strong>${r.assetDesc ? `<br><span style="color:#9ca3af;font-size:11px;">${r.assetDesc}</span>` : ""}</td>
-            <td style="font-size:12px;">${typeLabel(r.gardenType)}</td>
+            <td style="font-size:12px;">${(r as any).specification ?? typeLabel(r.gardenType)}</td>
             <td style="font-size:12px;">${r.frequency}</td>
             <td style="text-align:right;font-size:12px;">${r.serviceTimeMins} min</td>
             <td style="text-align:center;font-size:14px;color:#10b981;">${status}</td>

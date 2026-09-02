@@ -12,6 +12,7 @@ import {
   useListInfillOrders,
 } from "@workspace/api-client-react";
 import type { Asset, Job, ReactiveJob, MulchingRecord, InfillOrder } from "@workspace/api-client-react";
+import { assetSpecification, departmentRule } from "@workspace/asset-definitions";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -169,7 +170,7 @@ function deriveJobTypes(
 
 function pinColor(asset: Asset, scheduleState: ScheduleState, mode: ColorMode): string {
   if (mode === "schedule") return SCHEDULE_CONFIG[scheduleState].color;
-  return TYPE_COLORS[asset.gardenType] ?? BRAND;
+  return TYPE_COLORS[asset.gardenType ?? ""] ?? BRAND;
 }
 
 function jobStroke(jobs: JobType[]): { color: string; weight: number; dashArray?: string } {
@@ -341,7 +342,7 @@ export default function MapPage() {
   }
 
   const visible = useMemo(() => enriched.filter(({ asset, scheduleState, jobTypes }) => {
-    if (typeFilter.size > 0     && !typeFilter.has(asset.gardenType))    return false;
+    if (typeFilter.size > 0     && !typeFilter.has(asset.gardenType ?? ""))    return false;
     if (scheduleFilter.size > 0 && !scheduleFilter.has(scheduleState))   return false;
     if (jobFilter.size > 0      && !jobTypes.some(j => jobFilter.has(j))) return false;
     if (freqFilter.size > 0     && !freqFilter.has(asset.frequency))     return false;
@@ -443,7 +444,7 @@ export default function MapPage() {
                   className="w-full flex flex-col items-start px-3 py-2 hover:bg-gray-50 border-b border-gray-100 last:border-0 transition-colors"
                 >
                   <span className="text-xs font-semibold text-gray-800 truncate w-full text-left">{asset.name}</span>
-                  <span className="text-[10px] text-gray-400 mt-0.5">{asset.description || TYPE_LABELS[asset.gardenType] || asset.gardenType}</span>
+                  <span className="text-[10px] text-gray-400 mt-0.5">{asset.description || assetSpecification(asset)}</span>
                 </button>
               ))}
             </div>
@@ -748,11 +749,11 @@ export default function MapPage() {
 
                     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "6px 12px", marginBottom: 10 }}>
                       {[
-                        { l: "Type",      v: TYPE_LABELS[asset.gardenType] ?? asset.gardenType },
-                        { l: "Standard",  v: asset.standard.charAt(0).toUpperCase() + asset.standard.slice(1) },
-                        { l: "Area",      v: `${Number(asset.areaM2).toFixed(1)} m²` },
-                        { l: "Service",   v: `${asset.serviceTimeMins} min` },
-                        { l: "Frequency", v: FREQ_LABELS[asset.frequency] ?? asset.frequency },
+                        { l: departmentRule(asset.department).specificationLabel, v: assetSpecification(asset) },
+                        ...(asset.standard ? [{ l: "Standard", v: asset.standard.charAt(0).toUpperCase() + asset.standard.slice(1) }] : []),
+                        { l: departmentRule(asset.department).areaLabel, v: asset.areaM2 != null ? `${Number(asset.areaM2).toFixed(1)} m²` : "—" },
+                        { l: departmentRule(asset.department).serviceTimeLabel, v: `${asset.serviceTimeMins} min` },
+                        { l: departmentRule(asset.department).frequencyLabel, v: FREQ_LABELS[asset.frequency] ?? asset.frequency },
                         { l: "Team",      v: teamName },
                         { l: "Next Due",  v: nextDueJob?.scheduledDate ? new Date(nextDueJob.scheduledDate).toLocaleDateString("en-NZ", { day: "numeric", month: "short", year: "numeric" }) : "—" },
                         { l: "Last Visit",v: lastVisitJob?.scheduledDate ? new Date(lastVisitJob.scheduledDate).toLocaleDateString("en-NZ", { day: "numeric", month: "short", year: "numeric" }) : "—" },
@@ -851,11 +852,11 @@ export default function MapPage() {
 
                     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "6px 12px", marginBottom: 10 }}>
                       {[
-                        { l: "Type",      v: TYPE_LABELS[asset.gardenType] ?? asset.gardenType },
-                        { l: "Standard",  v: asset.standard.charAt(0).toUpperCase() + asset.standard.slice(1) },
-                        { l: "Area",      v: `${Number(asset.areaM2).toFixed(1)} m²` },
-                        { l: "Service",   v: `${asset.serviceTimeMins} min` },
-                        { l: "Frequency", v: FREQ_LABELS[asset.frequency] ?? asset.frequency },
+                        { l: departmentRule(asset.department).specificationLabel, v: assetSpecification(asset) },
+                        ...(asset.standard ? [{ l: "Standard", v: asset.standard.charAt(0).toUpperCase() + asset.standard.slice(1) }] : []),
+                        { l: departmentRule(asset.department).areaLabel, v: asset.areaM2 != null ? `${Number(asset.areaM2).toFixed(1)} m²` : "—" },
+                        { l: departmentRule(asset.department).serviceTimeLabel, v: `${asset.serviceTimeMins} min` },
+                        { l: departmentRule(asset.department).frequencyLabel, v: FREQ_LABELS[asset.frequency] ?? asset.frequency },
                         { l: "Team",      v: teamName },
                         { l: "Next Due",  v: nextDueJob?.scheduledDate ? new Date(nextDueJob.scheduledDate).toLocaleDateString("en-NZ", { day: "numeric", month: "short", year: "numeric" }) : "—" },
                         { l: "Last Visit",v: lastVisitJob?.scheduledDate ? new Date(lastVisitJob.scheduledDate).toLocaleDateString("en-NZ", { day: "numeric", month: "short", year: "numeric" }) : "—" },

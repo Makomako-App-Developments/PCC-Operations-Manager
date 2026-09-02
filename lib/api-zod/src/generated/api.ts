@@ -118,19 +118,21 @@ export const ListAssetsResponse = zod.object({
         "sportsfields",
         "city_cleaning",
       ]),
-      gardenType: zod.enum([
-        "annuals",
-        "roses_perennials",
-        "ornamental",
-        "amenity",
-        "rain_garden",
-        "reveg",
-        "bush",
-        "tree_planter_pits",
-        "hedge",
-      ]),
-      standard: zod.enum(["high", "medium", "low"]),
-      areaM2: zod.number(),
+      gardenType: zod
+        .enum([
+          "annuals",
+          "roses_perennials",
+          "ornamental",
+          "amenity",
+          "rain_garden",
+          "reveg",
+          "bush",
+          "tree_planter_pits",
+          "hedge",
+        ])
+        .nullish(),
+      standard: zod.enum(["high", "medium", "low"]).nullish(),
+      areaM2: zod.number().nullish(),
       serviceTimeMins: zod.number(),
       frequency: zod.enum([
         "weekly",
@@ -139,6 +141,57 @@ export const ListAssetsResponse = zod.object({
         "bimonthly",
         "quarterly",
       ]),
+      departmentDetails: zod
+        .union([
+          zod
+            .union([
+              zod
+                .object({
+                  mowingType: zod.enum([
+                    "amenity_turf",
+                    "sports_turf",
+                    "roadside_verge",
+                    "rough_grass",
+                  ]),
+                })
+                .describe("Required specification for mowing assets."),
+              zod
+                .object({
+                  stormwaterType: zod.enum([
+                    "swale",
+                    "detention_basin",
+                    "wetland",
+                    "rain_garden",
+                    "catchpit",
+                  ]),
+                })
+                .describe("Required specification for stormwater assets."),
+              zod
+                .object({
+                  surfaceType: zod.enum([
+                    "natural_turf",
+                    "artificial_turf",
+                    "hard_court",
+                  ]),
+                })
+                .describe("Required specification for sportsfield assets."),
+              zod
+                .object({
+                  cleaningType: zod.enum([
+                    "litter_bin",
+                    "street_sweeping",
+                    "graffiti",
+                    "pressure_washing",
+                  ]),
+                })
+                .describe("Required specification for City Cleaning assets."),
+            ])
+            .describe(
+              "Use the details schema matching department. Garden assets use gardenType and standard for backwards compatibility.",
+            ),
+          zod.null(),
+        ])
+        .optional(),
       siteType: zod.enum(["park", "street"]).nullish(),
       teamId: zod.string().uuid().nullish(),
       ward: zod.enum(["eastern", "northern", "western"]).nullish(),
@@ -162,48 +215,101 @@ export const ListAssetsResponse = zod.object({
 /**
  * @summary Create a new garden asset
  */
-export const CreateAssetBody = zod.object({
-  reference: zod.string(),
-  name: zod.string(),
-  department: zod.enum([
-    "garden",
-    "mowing",
-    "stormwater",
-    "sportsfields",
-    "city_cleaning",
-  ]),
-  gardenType: zod.enum([
-    "annuals",
-    "roses_perennials",
-    "ornamental",
-    "amenity",
-    "rain_garden",
-    "reveg",
-    "bush",
-    "tree_planter_pits",
-    "hedge",
-  ]),
-  standard: zod.enum(["high", "medium", "low"]),
-  areaM2: zod.number(),
-  serviceTimeMins: zod.number(),
-  frequency: zod.enum([
-    "weekly",
-    "fortnightly",
-    "monthly",
-    "bimonthly",
-    "quarterly",
-  ]),
-  siteType: zod.enum(["park", "street"]).optional(),
-  teamId: zod.string().uuid().optional(),
-  ward: zod.enum(["eastern", "northern", "western"]).optional(),
-  suburb: zod.string().optional(),
-  streetAddress: zod.string().optional(),
-  lat: zod.number().optional(),
-  lng: zod.number().optional(),
-  routeOrder: zod.number().optional(),
-  description: zod.string().optional(),
-  notes: zod.string().optional(),
-});
+export const CreateAssetBody = zod
+  .object({
+    reference: zod.string(),
+    name: zod.string(),
+    department: zod.enum([
+      "garden",
+      "mowing",
+      "stormwater",
+      "sportsfields",
+      "city_cleaning",
+    ]),
+    gardenType: zod
+      .enum([
+        "annuals",
+        "roses_perennials",
+        "ornamental",
+        "amenity",
+        "rain_garden",
+        "reveg",
+        "bush",
+        "tree_planter_pits",
+        "hedge",
+      ])
+      .nullish(),
+    standard: zod.enum(["high", "medium", "low"]).nullish(),
+    areaM2: zod.number().nullish(),
+    serviceTimeMins: zod.number(),
+    frequency: zod.enum([
+      "weekly",
+      "fortnightly",
+      "monthly",
+      "bimonthly",
+      "quarterly",
+    ]),
+    departmentDetails: zod
+      .union([
+        zod
+          .object({
+            mowingType: zod.enum([
+              "amenity_turf",
+              "sports_turf",
+              "roadside_verge",
+              "rough_grass",
+            ]),
+          })
+          .describe("Required specification for mowing assets."),
+        zod
+          .object({
+            stormwaterType: zod.enum([
+              "swale",
+              "detention_basin",
+              "wetland",
+              "rain_garden",
+              "catchpit",
+            ]),
+          })
+          .describe("Required specification for stormwater assets."),
+        zod
+          .object({
+            surfaceType: zod.enum([
+              "natural_turf",
+              "artificial_turf",
+              "hard_court",
+            ]),
+          })
+          .describe("Required specification for sportsfield assets."),
+        zod
+          .object({
+            cleaningType: zod.enum([
+              "litter_bin",
+              "street_sweeping",
+              "graffiti",
+              "pressure_washing",
+            ]),
+          })
+          .describe("Required specification for City Cleaning assets."),
+      ])
+      .optional()
+      .describe(
+        "Use the details schema matching department. Garden assets use gardenType and standard for backwards compatibility.",
+      ),
+    siteType: zod.enum(["park", "street"]).optional(),
+    teamId: zod.string().uuid().optional(),
+    ward: zod.enum(["eastern", "northern", "western"]).optional(),
+    suburb: zod.string().optional(),
+    streetAddress: zod.string().optional(),
+    lat: zod.number().optional(),
+    lng: zod.number().optional(),
+    routeOrder: zod.number().optional(),
+    description: zod.string().optional(),
+    notes: zod.string().optional(),
+  })
+  .describe(
+    "Common fields are required for every asset. Garden requires gardenType and standard; Mowing and Sportsfields require areaM2; all non-Garden departments require their matching DepartmentDetails specification.",
+  );
 
 /**
  * @summary Get a single asset
@@ -223,19 +329,21 @@ export const GetAssetResponse = zod.object({
     "sportsfields",
     "city_cleaning",
   ]),
-  gardenType: zod.enum([
-    "annuals",
-    "roses_perennials",
-    "ornamental",
-    "amenity",
-    "rain_garden",
-    "reveg",
-    "bush",
-    "tree_planter_pits",
-    "hedge",
-  ]),
-  standard: zod.enum(["high", "medium", "low"]),
-  areaM2: zod.number(),
+  gardenType: zod
+    .enum([
+      "annuals",
+      "roses_perennials",
+      "ornamental",
+      "amenity",
+      "rain_garden",
+      "reveg",
+      "bush",
+      "tree_planter_pits",
+      "hedge",
+    ])
+    .nullish(),
+  standard: zod.enum(["high", "medium", "low"]).nullish(),
+  areaM2: zod.number().nullish(),
   serviceTimeMins: zod.number(),
   frequency: zod.enum([
     "weekly",
@@ -244,6 +352,57 @@ export const GetAssetResponse = zod.object({
     "bimonthly",
     "quarterly",
   ]),
+  departmentDetails: zod
+    .union([
+      zod
+        .union([
+          zod
+            .object({
+              mowingType: zod.enum([
+                "amenity_turf",
+                "sports_turf",
+                "roadside_verge",
+                "rough_grass",
+              ]),
+            })
+            .describe("Required specification for mowing assets."),
+          zod
+            .object({
+              stormwaterType: zod.enum([
+                "swale",
+                "detention_basin",
+                "wetland",
+                "rain_garden",
+                "catchpit",
+              ]),
+            })
+            .describe("Required specification for stormwater assets."),
+          zod
+            .object({
+              surfaceType: zod.enum([
+                "natural_turf",
+                "artificial_turf",
+                "hard_court",
+              ]),
+            })
+            .describe("Required specification for sportsfield assets."),
+          zod
+            .object({
+              cleaningType: zod.enum([
+                "litter_bin",
+                "street_sweeping",
+                "graffiti",
+                "pressure_washing",
+              ]),
+            })
+            .describe("Required specification for City Cleaning assets."),
+        ])
+        .describe(
+          "Use the details schema matching department. Garden assets use gardenType and standard for backwards compatibility.",
+        ),
+      zod.null(),
+    ])
+    .optional(),
   siteType: zod.enum(["park", "street"]).nullish(),
   teamId: zod.string().uuid().nullish(),
   ward: zod.enum(["eastern", "northern", "western"]).nullish(),
@@ -283,13 +442,60 @@ export const UpdateAssetBody = zod.object({
       "tree_planter_pits",
       "hedge",
     ])
-    .optional(),
-  standard: zod.enum(["high", "medium", "low"]).optional(),
-  areaM2: zod.number().optional(),
+    .nullish(),
+  standard: zod.enum(["high", "medium", "low"]).nullish(),
+  areaM2: zod.number().nullish(),
   serviceTimeMins: zod.number().optional(),
   frequency: zod
     .enum(["weekly", "fortnightly", "monthly", "bimonthly", "quarterly"])
     .optional(),
+  departmentDetails: zod
+    .union([
+      zod
+        .object({
+          mowingType: zod.enum([
+            "amenity_turf",
+            "sports_turf",
+            "roadside_verge",
+            "rough_grass",
+          ]),
+        })
+        .describe("Required specification for mowing assets."),
+      zod
+        .object({
+          stormwaterType: zod.enum([
+            "swale",
+            "detention_basin",
+            "wetland",
+            "rain_garden",
+            "catchpit",
+          ]),
+        })
+        .describe("Required specification for stormwater assets."),
+      zod
+        .object({
+          surfaceType: zod.enum([
+            "natural_turf",
+            "artificial_turf",
+            "hard_court",
+          ]),
+        })
+        .describe("Required specification for sportsfield assets."),
+      zod
+        .object({
+          cleaningType: zod.enum([
+            "litter_bin",
+            "street_sweeping",
+            "graffiti",
+            "pressure_washing",
+          ]),
+        })
+        .describe("Required specification for City Cleaning assets."),
+    ])
+    .optional()
+    .describe(
+      "Use the details schema matching department. Garden assets use gardenType and standard for backwards compatibility.",
+    ),
   teamId: zod.string().uuid().optional(),
   ward: zod.enum(["eastern", "northern", "western"]).optional(),
   suburb: zod.string().optional(),
@@ -311,19 +517,21 @@ export const UpdateAssetResponse = zod.object({
     "sportsfields",
     "city_cleaning",
   ]),
-  gardenType: zod.enum([
-    "annuals",
-    "roses_perennials",
-    "ornamental",
-    "amenity",
-    "rain_garden",
-    "reveg",
-    "bush",
-    "tree_planter_pits",
-    "hedge",
-  ]),
-  standard: zod.enum(["high", "medium", "low"]),
-  areaM2: zod.number(),
+  gardenType: zod
+    .enum([
+      "annuals",
+      "roses_perennials",
+      "ornamental",
+      "amenity",
+      "rain_garden",
+      "reveg",
+      "bush",
+      "tree_planter_pits",
+      "hedge",
+    ])
+    .nullish(),
+  standard: zod.enum(["high", "medium", "low"]).nullish(),
+  areaM2: zod.number().nullish(),
   serviceTimeMins: zod.number(),
   frequency: zod.enum([
     "weekly",
@@ -332,6 +540,57 @@ export const UpdateAssetResponse = zod.object({
     "bimonthly",
     "quarterly",
   ]),
+  departmentDetails: zod
+    .union([
+      zod
+        .union([
+          zod
+            .object({
+              mowingType: zod.enum([
+                "amenity_turf",
+                "sports_turf",
+                "roadside_verge",
+                "rough_grass",
+              ]),
+            })
+            .describe("Required specification for mowing assets."),
+          zod
+            .object({
+              stormwaterType: zod.enum([
+                "swale",
+                "detention_basin",
+                "wetland",
+                "rain_garden",
+                "catchpit",
+              ]),
+            })
+            .describe("Required specification for stormwater assets."),
+          zod
+            .object({
+              surfaceType: zod.enum([
+                "natural_turf",
+                "artificial_turf",
+                "hard_court",
+              ]),
+            })
+            .describe("Required specification for sportsfield assets."),
+          zod
+            .object({
+              cleaningType: zod.enum([
+                "litter_bin",
+                "street_sweeping",
+                "graffiti",
+                "pressure_washing",
+              ]),
+            })
+            .describe("Required specification for City Cleaning assets."),
+        ])
+        .describe(
+          "Use the details schema matching department. Garden assets use gardenType and standard for backwards compatibility.",
+        ),
+      zod.null(),
+    ])
+    .optional(),
   siteType: zod.enum(["park", "street"]).nullish(),
   teamId: zod.string().uuid().nullish(),
   ward: zod.enum(["eastern", "northern", "western"]).nullish(),

@@ -16,7 +16,7 @@ import { useToast } from "@/hooks/use-toast";
 import { MapContainer, TileLayer, CircleMarker, Polygon, Tooltip as LeafletTooltip, useMap } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
-import { DEPARTMENTS, departmentLabel } from "@workspace/asset-definitions";
+import { assetSpecification, DEPARTMENTS, departmentLabel, departmentRule } from "@workspace/asset-definitions";
 
 const BRAND = "#00AECD";
 
@@ -453,9 +453,9 @@ export default function Assets() {
                   <th className="px-4 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider w-[25%]">Description</th>
                   <SortTh label="Department / Function" col="department" sortCol={sortCol} sortDir={sortDir} onSort={handleSort} />
                   <SortTh label="Specification" col="gardenType"     sortCol={sortCol} sortDir={sortDir} onSort={handleSort} />
-                  <SortTh label="Area (m²)"    col="areaM2"          sortCol={sortCol} sortDir={sortDir} onSort={handleSort} />
+                  <SortTh label="Area / Footprint" col="areaM2"          sortCol={sortCol} sortDir={sortDir} onSort={handleSort} />
                   <SortTh label="Service Time"  col="serviceTimeMins" sortCol={sortCol} sortDir={sortDir} onSort={handleSort} />
-                  <SortTh label="Garden Type"   col="siteType"       sortCol={sortCol} sortDir={sortDir} onSort={handleSort} />
+                  <SortTh label="Site Type"   col="siteType"       sortCol={sortCol} sortDir={sortDir} onSort={handleSort} />
                   <SortTh label="Freq"          col="frequency"      sortCol={sortCol} sortDir={sortDir} onSort={handleSort} />
                   <SortTh label="Team"          col="team"           sortCol={sortCol} sortDir={sortDir} onSort={handleSort} />
                 </tr>
@@ -474,8 +474,8 @@ export default function Assets() {
                     </td>
                     <td className="px-4 py-3 text-sm font-medium text-gray-700">{departmentLabel(asset.department)}</td>
                     <td className="px-4 py-3">
-                      <Badge className={`text-[10px] border-0 capitalize ${TYPE_COLORS[asset.gardenType] || "bg-gray-100 text-gray-700"}`}>
-                        {asset.gardenType.replace(/_/g, " ")}
+                      <Badge className="text-[10px] border-0 bg-cyan-100 text-cyan-800">
+                        {assetSpecification(asset)}
                       </Badge>
                     </td>
                     <td className="px-4 py-3 text-sm text-gray-700 tabular-nums">
@@ -675,12 +675,12 @@ function AssetDetailDrawer({ assetId, onClose, teamName }: { assetId: string | n
                 <Badge variant="outline" className="text-[10px] text-white/70 border-white/20 bg-white/5">
                   {departmentLabel(asset.department)}
                 </Badge>
-                <Badge className={`text-[10px] border-0 capitalize ${TYPE_COLORS[asset.gardenType] || "bg-gray-100 text-gray-700"}`}>
-                  {asset.gardenType.replace(/_/g, " ")}
+                <Badge className="text-[10px] border-0 bg-cyan-100 text-cyan-800">
+                  {assetSpecification(asset)}
                 </Badge>
-                <Badge className={`text-[10px] border-0 capitalize ${STANDARD_COLORS[asset.standard]}`}>
+                {asset.standard && <Badge className={`text-[10px] border-0 capitalize ${STANDARD_COLORS[asset.standard]}`}>
                   {asset.standard} Standard
-                </Badge>
+                </Badge>}
                 <Badge variant="outline" className="text-[10px] text-white/70 border-white/20 bg-white/5">
                   {teamName(asset.teamId)}
                 </Badge>
@@ -691,9 +691,9 @@ function AssetDetailDrawer({ assetId, onClose, teamName }: { assetId: string | n
             {!editing && (
               <div className="grid grid-cols-4 gap-0 border-b flex-shrink-0 bg-white">
                 {[
-                  { label: "Area",    value: `${Number(asset.areaM2).toFixed(1)} m²` },
-                  { label: "Service", value: `${asset.serviceTimeMins} min` },
-                  { label: "Freq",    value: asset.frequency },
+                  { label: departmentRule(asset.department).areaLabel, value: asset.areaM2 != null ? `${Number(asset.areaM2).toFixed(1)} m²` : "—" },
+                  { label: departmentRule(asset.department).serviceTimeLabel, value: `${asset.serviceTimeMins} min` },
+                  { label: departmentRule(asset.department).frequencyLabel, value: asset.frequency },
                   { label: "Ward",    value: asset.ward || "-" },
                 ].map(({ label, value }) => (
                   <div key={label} className="px-3 py-2.5 text-center border-r border-gray-100 last:border-r-0">
