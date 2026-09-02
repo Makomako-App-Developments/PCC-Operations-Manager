@@ -25,18 +25,10 @@ import { MapContainer, TileLayer, CircleMarker, Polygon, Tooltip as LeafletToolt
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import BoundaryEditor, { type GeoPolygon as EditorGeoPolygon } from "@/components/BoundaryEditor";
+import { DEPARTMENTS, departmentLabel } from "@workspace/asset-definitions";
 
 const BRAND = "#00AECD";
 const NAVY = "#0f2a36";
-const DEPARTMENTS = [
-  ["garden", "Garden"],
-  ["mowing", "Mowing"],
-  ["stormwater", "Stormwater"],
-  ["sportsfields", "Sportsfields"],
-  ["city_cleaning", "City Cleaning"],
-] as const;
-const departmentLabel = (value?: string | null) =>
-  DEPARTMENTS.find(([key]) => key === value)?.[1] ?? value?.replace(/_/g, " ") ?? "Garden";
 
 type GeoPolygon = { type: "Polygon"; coordinates: number[][][] };
 
@@ -809,7 +801,7 @@ function EditPanel({
           <Select value={form.department} onValueChange={v => f("department", v)}>
             <SelectTrigger className="text-sm"><SelectValue /></SelectTrigger>
             <SelectContent>
-              {DEPARTMENTS.map(([value, label]) => (
+              {DEPARTMENTS.map(({ value, label }) => (
                 <SelectItem key={value} value={value}>{label}</SelectItem>
               ))}
             </SelectContent>

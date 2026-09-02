@@ -13,19 +13,13 @@ import { useLocation } from "wouter";
 import { useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft } from "lucide-react";
 import BoundaryEditor, { type GeoPolygon } from "@/components/BoundaryEditor";
+import { DEPARTMENTS, DEPARTMENT_VALUES } from "@workspace/asset-definitions";
 
 const BRAND = "#00AECD";
-const DEPARTMENTS = [
-  ["garden", "Garden"],
-  ["mowing", "Mowing"],
-  ["stormwater", "Stormwater"],
-  ["sportsfields", "Sportsfields"],
-  ["city_cleaning", "City Cleaning"],
-] as const;
 
 const assetSchema = z.object({
   name: z.string().min(1, "Name is required"),
-  department: z.enum(["garden", "mowing", "stormwater", "sportsfields", "city_cleaning"]),
+  department: z.enum(DEPARTMENT_VALUES),
   siteType: z.enum(["park","street"]).optional(),
   gardenType: z.enum(["annuals","roses_perennials","ornamental","amenity","rain_garden","reveg","bush","tree_planter_pits","hedge"]),
   standard: z.enum(["high","medium","low"]),
@@ -135,7 +129,7 @@ export default function NewAsset() {
                           <SelectTrigger className="h-10"><SelectValue /></SelectTrigger>
                         </FormControl>
                         <SelectContent>
-                          {DEPARTMENTS.map(([value, label]) => (
+                          {DEPARTMENTS.map(({ value, label }) => (
                             <SelectItem key={value} value={value}>{label}</SelectItem>
                           ))}
                         </SelectContent>

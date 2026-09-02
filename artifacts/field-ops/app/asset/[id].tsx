@@ -19,6 +19,7 @@ import { BoundaryMap } from "@/components/BoundaryMap";
 import { useAuth } from "@/context/auth";
 import { useColors } from "@/hooks/useColors";
 import { loadCachedAsset, saveCachedAsset } from "@/lib/jobDetailCache";
+import { departmentLabel } from "@workspace/asset-definitions";
 
 const GARDEN_TYPE_LABEL: Record<string, string> = {
   annuals: "Annuals",
@@ -30,14 +31,6 @@ const GARDEN_TYPE_LABEL: Record<string, string> = {
   bush: "Bush",
   tree_planter_pits: "Tree Planter Pits",
   hedge: "Hedge",
-};
-
-const DEPARTMENT_LABEL: Record<string, string> = {
-  garden: "Garden",
-  mowing: "Mowing",
-  stormwater: "Stormwater",
-  sportsfields: "Sportsfields",
-  city_cleaning: "City Cleaning",
 };
 
 const STANDARD_COLOR: Record<string, string> = {
@@ -240,7 +233,7 @@ export default function AssetDetailScreen() {
                 </Text>
               </View>
               <Text style={[styles.infoTileValue, { color: colors.foreground }]}>
-                {DEPARTMENT_LABEL[(asset as any).department] ?? (asset as any).department ?? "Garden"}
+                {departmentLabel((asset as any).department)}
               </Text>
             </View>
 

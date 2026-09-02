@@ -5,6 +5,7 @@ import { z } from "zod/v4";
 import { requireAuth, requireRole } from "../middlewares/auth";
 import { validateBody, validateQuery } from "../middlewares/validate";
 import { auditLog } from "../lib/audit";
+import { DEPARTMENT_VALUES } from "@workspace/asset-definitions";
 
 const ASSET_FIELD_LABELS: Record<string, string> = {
   name:            "Site Name",
@@ -37,7 +38,7 @@ function diffAsset(oldD: Record<string, any>, newD: Record<string, any>) {
 
 const router = Router();
 
-const departmentSchema = z.enum(["garden", "mowing", "stormwater", "sportsfields", "city_cleaning"]);
+const departmentSchema = z.enum(DEPARTMENT_VALUES);
 
 const listQuerySchema = z.object({
   page:       z.coerce.number().int().min(1).default(1),

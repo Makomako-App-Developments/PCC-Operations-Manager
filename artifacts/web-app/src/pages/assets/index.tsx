@@ -16,17 +16,9 @@ import { useToast } from "@/hooks/use-toast";
 import { MapContainer, TileLayer, CircleMarker, Polygon, Tooltip as LeafletTooltip, useMap } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
+import { DEPARTMENTS, departmentLabel } from "@workspace/asset-definitions";
 
 const BRAND = "#00AECD";
-const DEPARTMENTS = [
-  ["garden", "Garden"],
-  ["mowing", "Mowing"],
-  ["stormwater", "Stormwater"],
-  ["sportsfields", "Sportsfields"],
-  ["city_cleaning", "City Cleaning"],
-] as const;
-const departmentLabel = (value?: string | null) =>
-  DEPARTMENTS.find(([key]) => key === value)?.[1] ?? value?.replace(/_/g, " ") ?? "Garden";
 
 type GeoPolygon = { type: string; coordinates: number[][][] };
 
@@ -376,7 +368,7 @@ export default function Assets() {
           </SelectTrigger>
           <SelectContent className="z-[1100]">
             <SelectItem value="all">All Departments</SelectItem>
-            {DEPARTMENTS.map(([value, label]) => (
+            {DEPARTMENTS.map(({ value, label }) => (
               <SelectItem key={value} value={value}>{label}</SelectItem>
             ))}
           </SelectContent>
@@ -780,7 +772,7 @@ function AssetDetailDrawer({ assetId, onClose, teamName }: { assetId: string | n
                       <Select value={form.department} onValueChange={v => f("department", v)}>
                         <SelectTrigger className="text-sm"><SelectValue /></SelectTrigger>
                         <SelectContent>
-                          {DEPARTMENTS.map(([value, label]) => (
+                          {DEPARTMENTS.map(({ value, label }) => (
                             <SelectItem key={value} value={value}>{label}</SelectItem>
                           ))}
                         </SelectContent>
