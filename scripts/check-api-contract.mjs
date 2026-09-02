@@ -2,6 +2,7 @@ import { cp, mkdir, mkdtemp, readdir, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, relative, resolve } from "node:path";
 import { spawn } from "node:child_process";
+import { DEPARTMENTS } from "../lib/asset-definitions/src/index.ts";
 
 const root = resolve(import.meta.dirname, "..");
 const generatedDirectories = [
@@ -80,9 +81,99 @@ async function compareGeneratedFiles(outputRoot) {
   return differences;
 }
 
+async function checkDepartmentContract() {
+  const openApi = await readFile(
+    join(root, "lib/api-spec/openapi.yaml"),
+    "utf8",
+  );
+  const openApiLines = openApi.split(/\r?\n/);
+  const departmentIndex = openApiLines.findIndex((line) =>
+    /^ {4}Department:\s*$/.test(line),
+  );
+  const nextSchemaIndex = openApiLines.findIndex(
+    (line, index) => index > departmentIndex && /^ {4}\S/.test(line),
+  );
+  const departmentSchema = openApiLines.slice(
+    departmentIndex + 1,
+    nextSchemaIndex,
+  );
+
+  if (departmentIndex === -1 || nextSchemaIndex === -1) {
+    throw new Error(
+      "Could not find the Department schema in lib/api-spec/openapi.yaml.",
+    );
+  }
+
+  const enumIndex = departmentSchema.findIndex((line) =>
+    /^ {6}enum:/.test(line),
+  );
+  if (enumIndex === -1) {
+    throw new Error(
+      "Could not find the Department enum in lib/api-spec/openapi.yaml.",
+    );
+  }
+
+  const enumLine = departmentSchema[enumIndex];
+  const inlineEnum = enumLine.match(/^ {6}enum:\s*\[([^\]]*)\]\s*$/)?.[1];
+  const openApiDepartments = inlineEnum
+    ? inlineEnum
+        .split(",")
+        .map((value) => value.trim())
+        .filter(Boolean)
+    : departmentSchema
+        .slice(enumIndex + 1)
+        .filter((line) => /^ {8}-\s+\S/.test(line))
+        .map((line) => line.replace(/^ {8}-\s+/, "").trim());
+  const sharedDepartments = DEPARTMENTS.map(({ value }) => value);
+  const missingFromShared = openApiDepartments.filter(
+    (value) => !sharedDepartments.includes(value),
+  );
+  const missingFromOpenApi = sharedDepartments.filter(
+    (value) => !openApiDepartments.includes(value),
+  );
+  const orderDiffers =
+    missingFromShared.length === 0 &&
+    missingFromOpenApi.length === 0 &&
+    openApiDepartments.some(
+      (value, index) => value !== sharedDepartments[index],
+    );
+  const unlabeledDepartments = DEPARTMENTS.filter(
+    ({ value, label }) =>
+      typeof label !== "string" || label.trim().length === 0 || !value,
+  ).map(({ value }) => value || "<unknown>");
+
+  if (
+    missingFromShared.length ||
+    missingFromOpenApi.length ||
+    orderDiffers ||
+    unlabeledDepartments.length
+  ) {
+    const details = [
+      missingFromShared.length
+        ? `OpenAPI values missing from shared definitions: ${missingFromShared.join(", ")}`
+        : "",
+      missingFromOpenApi.length
+        ? `Shared values missing from OpenAPI: ${missingFromOpenApi.join(", ")}`
+        : "",
+      orderDiffers ? "Department values differ in order." : "",
+      unlabeledDepartments.length
+        ? `Departments without a display label: ${unlabeledDepartments.join(", ")}`
+        : "",
+    ].filter(Boolean);
+    throw new Error(
+      `Department contract drift detected.\n${details.map((detail) => `  - ${detail}`).join("\n")}`,
+    );
+  }
+
+  console.log(
+    `Department contract is in sync (${sharedDepartments.length} labeled values).`,
+  );
+}
+
 const temporaryDirectory = await mkdtemp(join(tmpdir(), "pcc-api-codegen-"));
 
 try {
+  await checkDepartmentContract();
   const temporaryMutator = join(
     temporaryDirectory,
     "lib/api-client-react/src/custom-fetch.ts",
