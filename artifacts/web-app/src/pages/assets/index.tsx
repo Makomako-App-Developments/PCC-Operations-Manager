@@ -18,6 +18,15 @@ import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 
 const BRAND = "#00AECD";
+const DEPARTMENTS = [
+  ["garden", "Garden"],
+  ["mowing", "Mowing"],
+  ["stormwater", "Stormwater"],
+  ["sportsfields", "Sportsfields"],
+  ["city_cleaning", "City Cleaning"],
+] as const;
+const departmentLabel = (value?: string | null) =>
+  DEPARTMENTS.find(([key]) => key === value)?.[1] ?? value?.replace(/_/g, " ") ?? "Garden";
 
 type GeoPolygon = { type: string; coordinates: number[][][] };
 
@@ -251,7 +260,7 @@ const STANDARD_COLORS: Record<string, string> = {
   low:    "bg-gray-100 text-gray-600",
 };
 
-type SortCol = "name" | "gardenType" | "areaM2" | "serviceTimeMins" | "siteType" | "frequency" | "team";
+type SortCol = "name" | "department" | "gardenType" | "areaM2" | "serviceTimeMins" | "siteType" | "frequency" | "team";
 type SortDir = "asc" | "desc";
 
 function SortTh({ label, col, sortCol, sortDir, onSort, className }: {
@@ -276,6 +285,7 @@ function SortTh({ label, col, sortCol, sortDir, onSort, className }: {
 export default function Assets() {
   const [, navigate] = useLocation();
   const [search, setSearch] = useState("");
+  const [department, setDepartment] = useState<any>("all");
   const [gardenType, setGardenType] = useState<any>("all");
   const [ward, setWard] = useState<any>("all");
   const [teamId, setTeamId] = useState<any>("all");
@@ -287,6 +297,7 @@ export default function Assets() {
 
   const queryParams: any = { limit: 2000 };
   if (search) queryParams.search = search;
+  if (department && department !== "all") queryParams.department = department;
   if (gardenType && gardenType !== "all") queryParams.gardenType = gardenType;
   if (ward && ward !== "all") queryParams.ward = ward;
   if (teamId && teamId !== "all") queryParams.teamId = teamId;
@@ -318,6 +329,7 @@ export default function Assets() {
     rows.sort((a, b) => {
       let av: any, bv: any;
       if (sortCol === "name")            { av = a.name;            bv = b.name; }
+      else if (sortCol === "department") { av = a.department;      bv = b.department; }
       else if (sortCol === "gardenType"){ av = a.gardenType;      bv = b.gardenType; }
       else if (sortCol === "areaM2")    { av = Number(a.areaM2) || 0; bv = Number(b.areaM2) || 0; }
       else if (sortCol === "serviceTimeMins") { av = a.serviceTimeMins ?? 0; bv = b.serviceTimeMins ?? 0; }
@@ -336,7 +348,7 @@ export default function Assets() {
       <header className="bg-white border-b px-8 py-4 flex items-center justify-between sticky top-0 z-10 flex-shrink-0">
         <div>
           <h1 className="text-lg font-semibold text-gray-900">Asset Register</h1>
-          <p className="text-xs text-gray-400">{assetsData?.total || 0} garden assets in register</p>
+          <p className="text-xs text-gray-400">{assetsData?.total || 0} assets in register</p>
         </div>
         <div className="flex items-center gap-3">
           <Link href="/assets/new">
@@ -357,7 +369,19 @@ export default function Assets() {
             className="pl-9 h-9 text-sm"
           />
         </div>
-        
+
+        <Select value={department} onValueChange={setDepartment}>
+          <SelectTrigger className="w-[175px] h-9 text-sm bg-white">
+            <SelectValue placeholder="Department / Function" />
+          </SelectTrigger>
+          <SelectContent className="z-[1100]">
+            <SelectItem value="all">All Departments</SelectItem>
+            {DEPARTMENTS.map(([value, label]) => (
+              <SelectItem key={value} value={value}>{label}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+
         <Select value={gardenType} onValueChange={setGardenType}>
           <SelectTrigger className="w-[160px] h-9 text-sm bg-white">
             <SelectValue placeholder="Specification" />
@@ -400,13 +424,14 @@ export default function Assets() {
           </SelectContent>
         </Select>
 
-        {(search || gardenType !== "all" || ward !== "all" || teamId !== "all") && (
+        {(search || department !== "all" || gardenType !== "all" || ward !== "all" || teamId !== "all") && (
           <Button 
             variant="ghost" 
             size="sm" 
             className="h-9 px-3 text-gray-500 hover:text-gray-900"
             onClick={() => {
               setSearch("");
+              setDepartment("all");
               setGardenType("all");
               setWard("all");
               setTeamId("all");
@@ -434,6 +459,7 @@ export default function Assets() {
                 <tr>
                   <SortTh label="Site Name"     col="name"           sortCol={sortCol} sortDir={sortDir} onSort={handleSort} className="w-[25%]" />
                   <th className="px-4 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider w-[25%]">Description</th>
+                  <SortTh label="Department / Function" col="department" sortCol={sortCol} sortDir={sortDir} onSort={handleSort} />
                   <SortTh label="Specification" col="gardenType"     sortCol={sortCol} sortDir={sortDir} onSort={handleSort} />
                   <SortTh label="Area (m²)"    col="areaM2"          sortCol={sortCol} sortDir={sortDir} onSort={handleSort} />
                   <SortTh label="Service Time"  col="serviceTimeMins" sortCol={sortCol} sortDir={sortDir} onSort={handleSort} />
@@ -454,6 +480,7 @@ export default function Assets() {
                     <td className="px-4 py-3 text-sm text-gray-500 w-[25%]">
                       <span className="line-clamp-2" title={asset.description ?? undefined}>{asset.description || <span className="text-gray-300">—</span>}</span>
                     </td>
+                    <td className="px-4 py-3 text-sm font-medium text-gray-700">{departmentLabel(asset.department)}</td>
                     <td className="px-4 py-3">
                       <Badge className={`text-[10px] border-0 capitalize ${TYPE_COLORS[asset.gardenType] || "bg-gray-100 text-gray-700"}`}>
                         {asset.gardenType.replace(/_/g, " ")}
@@ -476,7 +503,7 @@ export default function Assets() {
                 ))}
                 {assetsData?.data.length === 0 && (
                   <tr>
-                    <td colSpan={8} className="px-4 py-8 text-center text-gray-500">
+                    <td colSpan={9} className="px-4 py-8 text-center text-gray-500">
                       No assets found matching filters.
                     </td>
                   </tr>
@@ -497,7 +524,7 @@ export default function Assets() {
 }
 
 type EditForm = {
-  name: string; gardenType: string; standard: string; areaM2: string;
+  name: string; department: string; gardenType: string; standard: string; areaM2: string;
   serviceTimeMins: string; frequency: string; siteType: string; ward: string;
   teamId: string; suburb: string; streetAddress: string; description: string; notes: string;
 };
@@ -542,7 +569,7 @@ function AssetDetailDrawer({ assetId, onClose, teamName }: { assetId: string | n
   const [history, setHistory]     = useState<HistoryEntry[]>([]);
   const [histLoading, setHistLoading] = useState(false);
   const [form, setForm] = useState<EditForm>({
-    name: "", gardenType: "", standard: "", areaM2: "", serviceTimeMins: "",
+    name: "", department: "garden", gardenType: "", standard: "", areaM2: "", serviceTimeMins: "",
     frequency: "", siteType: "", ward: "", teamId: "", suburb: "", streetAddress: "", description: "", notes: "",
   });
 
@@ -561,6 +588,7 @@ function AssetDetailDrawer({ assetId, onClose, teamName }: { assetId: string | n
     if (asset) {
       setForm({
         name:            asset.name || "",
+        department:      asset.department || "garden",
         gardenType:      asset.gardenType || "",
         standard:        asset.standard || "",
         areaM2:          String(asset.areaM2 ?? ""),
@@ -652,6 +680,9 @@ function AssetDetailDrawer({ assetId, onClose, teamName }: { assetId: string | n
                 )}
               </div>
               <div className="flex flex-wrap gap-1.5">
+                <Badge variant="outline" className="text-[10px] text-white/70 border-white/20 bg-white/5">
+                  {departmentLabel(asset.department)}
+                </Badge>
                 <Badge className={`text-[10px] border-0 capitalize ${TYPE_COLORS[asset.gardenType] || "bg-gray-100 text-gray-700"}`}>
                   {asset.gardenType.replace(/_/g, " ")}
                 </Badge>
@@ -706,6 +737,7 @@ function AssetDetailDrawer({ assetId, onClose, teamName }: { assetId: string | n
                   <section>
                     <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3">Location Details</p>
                     <div className="space-y-2">
+                      <InfoRow label="Department / Function" value={departmentLabel(asset.department)} />
                       <InfoRow label="Site Type"   value={(asset as any).siteType} />
                       <InfoRow label="Global ID"   value={(asset as any).globalId} mono />
                       <InfoRow label="Suburb"      value={asset.suburb} />
@@ -743,6 +775,16 @@ function AssetDetailDrawer({ assetId, onClose, teamName }: { assetId: string | n
                   <div className="space-y-4">
                     <FormField label="Site Name">
                       <Input value={form.name} onChange={e => f("name", e.target.value)} className="text-sm" />
+                    </FormField>
+                    <FormField label="Department / Function">
+                      <Select value={form.department} onValueChange={v => f("department", v)}>
+                        <SelectTrigger className="text-sm"><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          {DEPARTMENTS.map(([value, label]) => (
+                            <SelectItem key={value} value={value}>{label}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
                     </FormField>
                     <div className="grid grid-cols-2 gap-4">
                       <FormField label="Specification">

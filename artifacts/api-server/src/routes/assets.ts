@@ -1,13 +1,14 @@
 import { Router } from "express";
 import { db, assetsTable, insertAssetSchema, auditLogTable, usersTable, executeWithCircuitBreaker } from "@workspace/db";
 import { and, eq, ilike, or, sql, desc } from "drizzle-orm";
-import { z } from "zod";
+import { z } from "zod/v4";
 import { requireAuth, requireRole } from "../middlewares/auth";
 import { validateBody, validateQuery } from "../middlewares/validate";
 import { auditLog } from "../lib/audit";
 
 const ASSET_FIELD_LABELS: Record<string, string> = {
   name:            "Site Name",
+  department:      "Department / Function",
   gardenType:      "Specification",
   standard:        "Standard",
   areaM2:          "Area (m²)",
@@ -36,11 +37,14 @@ function diffAsset(oldD: Record<string, any>, newD: Record<string, any>) {
 
 const router = Router();
 
+const departmentSchema = z.enum(["garden", "mowing", "stormwater", "sportsfields", "city_cleaning"]);
+
 const listQuerySchema = z.object({
   page:       z.coerce.number().int().min(1).default(1),
   limit:      z.coerce.number().int().min(1).max(2000).default(50),
   search:     z.string().optional(),
   gardenType: z.string().optional(),
+  department: departmentSchema.optional(),
   teamId:     z.string().uuid().optional(),
   ward:       z.string().optional(),
   isActive:   z.coerce.boolean().default(true),
@@ -50,12 +54,13 @@ type ListQuery = z.infer<typeof listQuerySchema>;
 
 // GET /api/assets
 router.get("/assets", requireAuth, validateQuery(listQuerySchema), async (req, res) => {
-  const { page, limit, isActive, gardenType, teamId, ward, search } = res.locals.query as ListQuery;
+  const { page, limit, isActive, gardenType, department, teamId, ward, search } = res.locals.query as ListQuery;
   const offset = (page - 1) * limit;
 
   const conditions = [
     eq(assetsTable.isActive, isActive),
     ...(gardenType ? [eq(assetsTable.gardenType, gardenType as any)] : []),
+    ...(department ? [eq(assetsTable.department, department)] : []),
     ...(teamId ? [eq(assetsTable.teamId, teamId)] : []),
     ...(ward ? [eq(assetsTable.ward, ward as any)] : []),
     ...(search ? [or(ilike(assetsTable.name, `%${search}%`), ilike(assetsTable.globalId, `%${search}%`))] : []),
@@ -121,7 +126,7 @@ function coerceAssetNumerics(body: Record<string, unknown>): Record<string, unkn
 // POST /api/assets
 router.post("/assets", requireAuth, requireRole("manager", "supervisor"), async (req, res) => {
   try {
-    const parsed = insertAssetSchema.safeParse(coerceAssetNumerics(req.body));
+    const parsed = insertAssetSchema.extend({ department: departmentSchema }).safeParse(coerceAssetNumerics(req.body));
     if (!parsed.success) {
       res.status(400).json({ error: "Validation error", issues: parsed.error.issues });
       return;
@@ -176,9 +181,14 @@ router.patch("/assets/:id", requireAuth, requireRole("manager", "supervisor"), a
     const id = String(req.params.id);
     const [before] = await executeWithCircuitBreaker(() => db.select().from(assetsTable).where(eq(assetsTable.id, id)).limit(1));
     if (!before) { res.status(404).json({ error: "Asset not found" }); return; }
+    const parsed = insertAssetSchema.partial().extend({ department: departmentSchema.optional() }).safeParse(coerceAssetNumerics(req.body));
+    if (!parsed.success) {
+      res.status(400).json({ error: "Validation error", issues: parsed.error.issues });
+      return;
+    }
     const [updated] = await executeWithCircuitBreaker(() => db
       .update(assetsTable)
-      .set({ ...req.body, updatedAt: new Date() })
+      .set({ ...parsed.data, updatedAt: new Date() })
       .where(eq(assetsTable.id, id))
       .returning());
     await auditLog({ tableName: "assets", recordId: id, action: "UPDATE", changedById: req.auth?.userId ?? null, oldData: before as Record<string, unknown>, newData: updated as Record<string, unknown>, ipAddress: req.ip ?? null });

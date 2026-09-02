@@ -97,6 +97,9 @@ export const ListAssetsQueryParams = zod.object({
       "hedge",
     ])
     .optional(),
+  department: zod
+    .enum(["garden", "mowing", "stormwater", "sportsfields", "city_cleaning"])
+    .optional(),
   teamId: zod.coerce.string().uuid().optional(),
   ward: zod.enum(["eastern", "northern", "western"]).optional(),
   isActive: zod.coerce.boolean().default(listAssetsQueryIsActiveDefault),
@@ -108,6 +111,13 @@ export const ListAssetsResponse = zod.object({
       id: zod.string().uuid(),
       reference: zod.string(),
       name: zod.string(),
+      department: zod.enum([
+        "garden",
+        "mowing",
+        "stormwater",
+        "sportsfields",
+        "city_cleaning",
+      ]),
       gardenType: zod.enum([
         "annuals",
         "roses_perennials",
@@ -155,6 +165,13 @@ export const ListAssetsResponse = zod.object({
 export const CreateAssetBody = zod.object({
   reference: zod.string(),
   name: zod.string(),
+  department: zod.enum([
+    "garden",
+    "mowing",
+    "stormwater",
+    "sportsfields",
+    "city_cleaning",
+  ]),
   gardenType: zod.enum([
     "annuals",
     "roses_perennials",
@@ -199,6 +216,13 @@ export const GetAssetResponse = zod.object({
   id: zod.string().uuid(),
   reference: zod.string(),
   name: zod.string(),
+  department: zod.enum([
+    "garden",
+    "mowing",
+    "stormwater",
+    "sportsfields",
+    "city_cleaning",
+  ]),
   gardenType: zod.enum([
     "annuals",
     "roses_perennials",
@@ -244,6 +268,9 @@ export const UpdateAssetParams = zod.object({
 
 export const UpdateAssetBody = zod.object({
   name: zod.string().optional(),
+  department: zod
+    .enum(["garden", "mowing", "stormwater", "sportsfields", "city_cleaning"])
+    .optional(),
   gardenType: zod
     .enum([
       "annuals",
@@ -277,6 +304,13 @@ export const UpdateAssetResponse = zod.object({
   id: zod.string().uuid(),
   reference: zod.string(),
   name: zod.string(),
+  department: zod.enum([
+    "garden",
+    "mowing",
+    "stormwater",
+    "sportsfields",
+    "city_cleaning",
+  ]),
   gardenType: zod.enum([
     "annuals",
     "roses_perennials",

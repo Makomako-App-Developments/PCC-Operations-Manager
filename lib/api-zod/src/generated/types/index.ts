@@ -34,6 +34,7 @@ export * from "./commitMulchDepthImportBody";
 export * from "./dashboardSummary";
 export * from "./degradedHealthResponse";
 export * from "./degradedHealthResponseCbState";
+export * from "./department";
 export * from "./errorResponse";
 export * from "./forbiddenResponse";
 export * from "./frequency";

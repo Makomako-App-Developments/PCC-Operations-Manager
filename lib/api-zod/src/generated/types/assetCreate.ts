@@ -6,6 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { AssetCreateSiteType } from "./assetCreateSiteType";
+import type { Department } from "./department";
 import type { Frequency } from "./frequency";
 import type { GardenType } from "./gardenType";
 import type { Standard } from "./standard";
@@ -14,6 +15,7 @@ import type { Ward } from "./ward";
 export interface AssetCreate {
   reference: string;
   name: string;
+  department: Department;
   gardenType: GardenType;
   standard: Standard;
   areaM2: number;

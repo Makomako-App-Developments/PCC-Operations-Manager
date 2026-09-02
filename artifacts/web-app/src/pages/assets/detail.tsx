@@ -28,6 +28,15 @@ import BoundaryEditor, { type GeoPolygon as EditorGeoPolygon } from "@/component
 
 const BRAND = "#00AECD";
 const NAVY = "#0f2a36";
+const DEPARTMENTS = [
+  ["garden", "Garden"],
+  ["mowing", "Mowing"],
+  ["stormwater", "Stormwater"],
+  ["sportsfields", "Sportsfields"],
+  ["city_cleaning", "City Cleaning"],
+] as const;
+const departmentLabel = (value?: string | null) =>
+  DEPARTMENTS.find(([key]) => key === value)?.[1] ?? value?.replace(/_/g, " ") ?? "Garden";
 
 type GeoPolygon = { type: "Polygon"; coordinates: number[][][] };
 
@@ -705,7 +714,7 @@ function InfillPlantingTab({ assetId, onJobClick, onNewAssessment }: { assetId: 
 // ─── Edit form ────────────────────────────────────────────────────────────────
 
 type EditForm = {
-  name: string; description: string; gardenType: string; standard: string; areaM2: string;
+  name: string; description: string; department: string; gardenType: string; standard: string; areaM2: string;
   serviceTimeMins: string; frequency: string; siteType: string; ward: string;
   teamId: string; suburb: string; streetAddress: string; notes: string; knownHazards: string;
   lat: string; lng: string;
@@ -728,6 +737,7 @@ function EditPanel({
   const [form, setForm] = useState<EditForm>({
     name:            asset.name || "",
     description:     asset.description || "",
+    department:      asset.department || "garden",
     gardenType:      asset.gardenType || "",
     standard:        asset.standard || "",
     areaM2:          String(asset.areaM2 ?? ""),
@@ -794,6 +804,16 @@ function EditPanel({
         </FormField>
         <FormField label="Description">
           <Input value={form.description} onChange={e => f("description", e.target.value)} className="text-sm" placeholder="e.g. Carpark garden, Playground garden…" />
+        </FormField>
+        <FormField label="Department / Function">
+          <Select value={form.department} onValueChange={v => f("department", v)}>
+            <SelectTrigger className="text-sm"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              {DEPARTMENTS.map(([value, label]) => (
+                <SelectItem key={value} value={value}>{label}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </FormField>
         <div className="grid grid-cols-2 gap-3">
           <FormField label="Specification">
@@ -1494,6 +1514,9 @@ export default function AssetDetail() {
                   <p className="text-[11px] text-white/60 mt-1 leading-snug">{asset.description}</p>
                 )}
                 <div className="flex flex-wrap gap-1.5 mt-3">
+                  <Badge variant="outline" className="text-[10px] text-white/70 border-white/20 bg-white/5">
+                    {departmentLabel(asset.department)}
+                  </Badge>
                   <Badge className={`text-[10px] border-0 capitalize ${TYPE_COLORS[asset.gardenType] ?? "bg-gray-100 text-gray-700"}`}>
                     {asset.gardenType.replace(/_/g, " ")}
                   </Badge>
@@ -1531,6 +1554,7 @@ export default function AssetDetail() {
                 <p className="text-[9px] font-bold text-gray-400 uppercase tracking-widest mb-3">Classification</p>
                 <div className="space-y-2">
                   {[
+                    { label: "Department / Function", value: departmentLabel(asset.department) },
                     { label: "Ward",    value: asset.ward },
                     { label: "Suburb",  value: asset.suburb },
                   ].map(({ label, value }) => (

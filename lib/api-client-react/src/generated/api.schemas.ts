@@ -41,6 +41,16 @@ export const GardenType = {
   hedge: "hedge",
 } as const;
 
+export type Department = (typeof Department)[keyof typeof Department];
+
+export const Department = {
+  garden: "garden",
+  mowing: "mowing",
+  stormwater: "stormwater",
+  sportsfields: "sportsfields",
+  city_cleaning: "city_cleaning",
+} as const;
+
 export type Standard = (typeof Standard)[keyof typeof Standard];
 
 export const Standard = {
@@ -180,6 +190,7 @@ export interface Asset {
   id: string;
   reference: string;
   name: string;
+  department: Department;
   gardenType: GardenType;
   standard: Standard;
   areaM2: number;
@@ -211,6 +222,7 @@ export const AssetCreateSiteType = {
 export interface AssetCreate {
   reference: string;
   name: string;
+  department: Department;
   gardenType: GardenType;
   standard: Standard;
   areaM2: number;
@@ -230,6 +242,7 @@ export interface AssetCreate {
 
 export interface AssetUpdate {
   name?: string;
+  department?: Department;
   gardenType?: GardenType;
   standard?: Standard;
   areaM2?: number;
@@ -872,6 +885,7 @@ export type ListAssetsParams = {
   limit?: number;
   search?: string;
   gardenType?: GardenType;
+  department?: Department;
   teamId?: string;
   ward?: Ward;
   isActive?: boolean;

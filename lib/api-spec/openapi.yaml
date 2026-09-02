@@ -128,6 +128,10 @@ paths:
           in: query
           schema:
             $ref: "#/components/schemas/GardenType"
+        - name: department
+          in: query
+          schema:
+            $ref: "#/components/schemas/Department"
         - name: teamId
           in: query
           schema: { type: string, format: uuid }
@@ -1179,6 +1183,10 @@ components:
         - tree_planter_pits
         - hedge
 
+    Department:
+      type: string
+      enum: [garden, mowing, stormwater, sportsfields, city_cleaning]
+
     Standard:
       type: string
       enum: [high, medium, low]
@@ -1285,6 +1293,8 @@ components:
         id:              { type: string, format: uuid }
         reference:       { type: string }
         name:            { type: string }
+        department:
+          $ref: "#/components/schemas/Department"
         gardenType:
           $ref: "#/components/schemas/GardenType"
         standard:
@@ -1313,6 +1323,7 @@ components:
         - id
         - reference
         - name
+        - department
         - gardenType
         - standard
         - areaM2
@@ -1327,6 +1338,8 @@ components:
       properties:
         reference:       { type: string }
         name:            { type: string }
+        department:
+          $ref: "#/components/schemas/Department"
         gardenType:
           $ref: "#/components/schemas/GardenType"
         standard:
@@ -1349,6 +1362,7 @@ components:
       required:
         - reference
         - name
+        - department
         - gardenType
         - standard
         - areaM2
@@ -1359,6 +1373,8 @@ components:
       type: object
       properties:
         name:            { type: string }
+        department:
+          $ref: "#/components/schemas/Department"
         gardenType:
           $ref: "#/components/schemas/GardenType"
         standard:

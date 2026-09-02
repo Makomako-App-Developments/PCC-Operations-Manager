@@ -15,9 +15,17 @@ import { ArrowLeft } from "lucide-react";
 import BoundaryEditor, { type GeoPolygon } from "@/components/BoundaryEditor";
 
 const BRAND = "#00AECD";
+const DEPARTMENTS = [
+  ["garden", "Garden"],
+  ["mowing", "Mowing"],
+  ["stormwater", "Stormwater"],
+  ["sportsfields", "Sportsfields"],
+  ["city_cleaning", "City Cleaning"],
+] as const;
 
 const assetSchema = z.object({
   name: z.string().min(1, "Name is required"),
+  department: z.enum(["garden", "mowing", "stormwater", "sportsfields", "city_cleaning"]),
   siteType: z.enum(["park","street"]).optional(),
   gardenType: z.enum(["annuals","roses_perennials","ornamental","amenity","rain_garden","reveg","bush","tree_planter_pits","hedge"]),
   standard: z.enum(["high","medium","low"]),
@@ -46,6 +54,7 @@ export default function NewAsset() {
     resolver: zodResolver(assetSchema),
     defaultValues: {
       name: "",
+      department: "garden",
       gardenType: "amenity",
       standard: "medium",
       areaM2: 0,
@@ -94,7 +103,7 @@ export default function NewAsset() {
           <ArrowLeft className="w-5 h-5" />
         </button>
         <div>
-          <h1 className="text-lg font-semibold text-gray-900">Create Garden Asset</h1>
+          <h1 className="text-lg font-semibold text-gray-900">Create Asset</h1>
           <p className="text-xs text-gray-400">Add a new site to the registry</p>
         </div>
       </header>
@@ -114,6 +123,23 @@ export default function NewAsset() {
                     <FormItem>
                       <FormLabel className="text-xs text-gray-500 uppercase tracking-wide">Site Name</FormLabel>
                       <FormControl><Input placeholder="e.g. Aotea Lagoon Entry" {...field} className="h-10" /></FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )} />
+
+                  <FormField control={form.control} name="department" render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="text-xs text-gray-500 uppercase tracking-wide">Department / Function</FormLabel>
+                      <Select onValueChange={field.onChange} value={field.value}>
+                        <FormControl>
+                          <SelectTrigger className="h-10"><SelectValue /></SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {DEPARTMENTS.map(([value, label]) => (
+                            <SelectItem key={value} value={value}>{label}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
                       <FormMessage />
                     </FormItem>
                   )} />

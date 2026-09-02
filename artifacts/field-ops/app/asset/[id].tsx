@@ -32,6 +32,14 @@ const GARDEN_TYPE_LABEL: Record<string, string> = {
   hedge: "Hedge",
 };
 
+const DEPARTMENT_LABEL: Record<string, string> = {
+  garden: "Garden",
+  mowing: "Mowing",
+  stormwater: "Stormwater",
+  sportsfields: "Sportsfields",
+  city_cleaning: "City Cleaning",
+};
+
 const STANDARD_COLOR: Record<string, string> = {
   high: "#22c55e",
   medium: "#f59e0b",
@@ -213,6 +221,28 @@ export default function AssetDetailScreen() {
                 </Text>
               </View>
             ) : null}
+
+            {/* Department / Function */}
+            <View
+              style={[
+                styles.infoTile,
+                {
+                  backgroundColor: colors.card,
+                  borderColor: colors.border,
+                  borderRadius: colors.radius,
+                },
+              ]}
+            >
+              <View style={styles.infoTileHeader}>
+                <Feather name="briefcase" size={13} color={colors.primary} />
+                <Text style={[styles.infoTileLabel, { color: colors.mutedForeground }]}>
+                  Department / Function
+                </Text>
+              </View>
+              <Text style={[styles.infoTileValue, { color: colors.foreground }]}>
+                {DEPARTMENT_LABEL[(asset as any).department] ?? (asset as any).department ?? "Garden"}
+              </Text>
+            </View>
 
             {/* Garden Type */}
             <View

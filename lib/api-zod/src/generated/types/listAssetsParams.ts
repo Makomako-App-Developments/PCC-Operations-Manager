@@ -5,6 +5,7 @@
  * Porirua City Council – Garden Asset Management API
  * OpenAPI spec version: 0.1.0
  */
+import type { Department } from "./department";
 import type { GardenType } from "./gardenType";
 import type { Ward } from "./ward";
 
@@ -16,6 +17,7 @@ export type ListAssetsParams = {
   limit?: number;
   search?: string;
   gardenType?: GardenType;
+  department?: Department;
   teamId?: string;
   ward?: Ward;
   isActive?: boolean;

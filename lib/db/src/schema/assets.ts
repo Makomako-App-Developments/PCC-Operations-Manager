@@ -10,6 +10,7 @@ export const assetsTable = pgTable("assets", {
   id:              uuid("id").primaryKey().defaultRandom(),
   globalId:        varchar("global_id", { length: 100 }),
   name:            varchar("name", { length: 200 }).notNull(),
+  department:      varchar("department", { length: 100 }).notNull().default("garden"),
   gardenType:      gardenTypeEnum("garden_type").notNull(),
   standard:        standardEnum("standard").notNull(),
   areaM2:          numeric("area_m2", { precision: 10, scale: 4 }).notNull(),
@@ -31,6 +32,7 @@ export const assetsTable = pgTable("assets", {
   createdAt:       timestamp("created_at").notNull().defaultNow(),
   updatedAt:       timestamp("updated_at").notNull().defaultNow(),
 }, (t) => [
+  index("assets_department_idx").on(t.department),
   index("assets_team_id_idx").on(t.teamId),
   index("assets_garden_type_idx").on(t.gardenType),
   index("assets_ward_idx").on(t.ward),

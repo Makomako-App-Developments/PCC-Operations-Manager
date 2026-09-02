@@ -6,6 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { AssetSiteType } from "./assetSiteType";
+import type { Department } from "./department";
 import type { Frequency } from "./frequency";
 import type { GardenType } from "./gardenType";
 import type { Standard } from "./standard";
@@ -15,6 +16,7 @@ export interface Asset {
   id: string;
   reference: string;
   name: string;
+  department: Department;
   gardenType: GardenType;
   standard: Standard;
   areaM2: number;

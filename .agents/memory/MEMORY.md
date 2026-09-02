@@ -18,3 +18,4 @@
 - [Safe workbook imports](safe-workbook-imports.md) — validate, then explicitly re-upload the identical file to commit an atomic, fingerprinted manager-only batch.
 - [Python environment cleanup](python-environment-cleanup.md) — an incomplete `.pythonlibs` makes Replit’s deployment prebuild `uv lock` fail before app builds run.
 - [Legacy unclaimed active jobs](legacy-unclaimed-active-jobs.md) — jobs begun before individual claiming can claim atomically on completion, never while still pending.
+- [Asset department classification](asset-department-classification.md) — persist department/function as an extensible string; controlled API/UI options may grow without a PostgreSQL enum migration.
