@@ -15,14 +15,17 @@ import type { Ward } from "./ward";
 
 export interface Asset {
   id: string;
-  reference: string;
+  /** @nullable */
+  globalId?: string | null;
   name: string;
   department: Department;
   gardenType?: GardenType | null;
   standard?: Standard | null;
   areaM2?: number | null;
-  serviceTimeMins: number;
-  frequency: Frequency;
+  /** @nullable */
+  serviceTimeMins?: number | null;
+  frequency?: Frequency | null;
+  isSchedulable: boolean;
   departmentDetails?: DepartmentDetails | null;
   siteType?: AssetSiteType;
   teamId?: string | null;

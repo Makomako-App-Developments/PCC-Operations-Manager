@@ -216,7 +216,7 @@ export function CapBar({
 export interface AssetStub {
   id: string;
   name: string;
-  reference: string;
+  reference?: string;
   serviceTimeMins: number;
   frequency: string;
   teamId?: string | null;

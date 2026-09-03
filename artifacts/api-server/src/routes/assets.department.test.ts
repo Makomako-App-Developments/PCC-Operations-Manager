@@ -111,6 +111,48 @@ describe("asset department/function", () => {
     }
   });
 
+  it("creates register-only Stormwater assets without schedule placeholders", async () => {
+    const created = { id: "asset-sw", department: "stormwater", isSchedulable: false };
+    const returning = vi.fn().mockResolvedValue([created]);
+    const values = vi.fn().mockReturnValue({ returning });
+    insert.mockReturnValue({ values });
+
+    const response = await request(buildApp()).post("/assets").send({
+      name: "Whitby Culvert",
+      department: "stormwater",
+      globalId: "arcgis-123",
+      suburb: "Whitby",
+      streetAddress: "1 Example Road",
+      description: "Beside the reserve entrance",
+      departmentDetails: {
+        placemarkId: "PM-42",
+        contractor: "Parks",
+        assetType: "culvert",
+        priority: "High",
+        hotspot: "Yes",
+      },
+    });
+
+    expect(response.status).toBe(201);
+    expect(values).toHaveBeenCalledWith(expect.objectContaining({
+      department: "stormwater",
+      isSchedulable: false,
+      serviceTimeMins: null,
+      frequency: null,
+      areaM2: null,
+    }));
+  });
+
+  it("rejects incomplete Stormwater classifications", async () => {
+    const response = await request(buildApp()).post("/assets").send({
+      name: "Incomplete inlet",
+      department: "stormwater",
+      departmentDetails: { assetType: "inlet" },
+    });
+    expect(response.status).toBe(400);
+    expect(insert).not.toHaveBeenCalled();
+  });
+
   it("accepts official departments that do not yet have a controlled asset subtype", async () => {
     const returning = vi.fn().mockResolvedValue([{ id: "asset-1" }]);
     const values = vi.fn().mockReturnValue({ returning });

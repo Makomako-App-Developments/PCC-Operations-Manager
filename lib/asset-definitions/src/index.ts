@@ -7,6 +7,7 @@ export const DEPARTMENTS = [
   { value: "city_services_maintenance", label: "City Services Maintenance" },
   { value: "tracks_coastal_rangers", label: "Tracks & Coastal Rangers" },
   { value: "biosecurity_rangers", label: "Biosecurity Rangers" },
+  { value: "stormwater", label: "Stormwater" },
 ] as const;
 
 export type DepartmentValue = (typeof DEPARTMENTS)[number]["value"];
@@ -22,6 +23,7 @@ export type DepartmentRule = {
   areaRequired: boolean;
   serviceTimeLabel: string;
   frequencyLabel: string;
+  schedulable: boolean;
 };
 
 const OPTIONS = {
@@ -53,7 +55,27 @@ const OPTIONS = {
     { value: "graffiti", label: "Graffiti" },
     { value: "pressure_washing", label: "Pressure washing" },
   ],
+  stormwaterAssetType: [
+    { value: "inlet", label: "Inlet" },
+    { value: "outlet", label: "Outlet" },
+    { value: "culvert", label: "Culvert" },
+  ],
 } as const;
+
+export const STORMWATER_OPTIONS = {
+  contractors: ["Parks", "Transport", "WGTN Regional", "Taiki Wai"],
+  priorities: ["High", "Medium", "Low"],
+  hotspots: ["Yes", "No"],
+  suburbs: ["Ascot Park", "Cambourne", "Cannons Creek", "CBD", "Elsdon", "Kenepuru", "Papakowhai", "Paremata", "Plimmerton", "Pukerua Bay", "Ranui", "Takapuwahia", "Titahi Bay", "Waitangarua", "Whitby"],
+} as const;
+
+export const STORMWATER_DETAIL_FIELDS = [
+  { key: "placemarkId", label: "Placemark ID" },
+  { key: "contractor", label: "Contractor" },
+  { key: "assetType", label: "Asset Type" },
+  { key: "priority", label: "Priority" },
+  { key: "hotspot", label: "Hotspot" },
+] as const;
 
 const genericRule = (departmentName: string): DepartmentRule => ({
   specificationLabel: `${departmentName} Asset Type`,
@@ -64,6 +86,7 @@ const genericRule = (departmentName: string): DepartmentRule => ({
   areaRequired: false,
   serviceTimeLabel: "Service Time (mins)",
   frequencyLabel: "Service Frequency",
+  schedulable: true,
 });
 
 export const DEPARTMENT_RULES: Record<DepartmentValue, DepartmentRule> = {
@@ -76,6 +99,7 @@ export const DEPARTMENT_RULES: Record<DepartmentValue, DepartmentRule> = {
     areaRequired: true,
     serviceTimeLabel: "Service Time (mins)",
     frequencyLabel: "Frequency",
+    schedulable: true,
   },
   mowing: {
     specificationLabel: "Mowing Type",
@@ -86,6 +110,7 @@ export const DEPARTMENT_RULES: Record<DepartmentValue, DepartmentRule> = {
     areaRequired: true,
     serviceTimeLabel: "Mowing Time (mins)",
     frequencyLabel: "Mowing Frequency",
+    schedulable: true,
   },
   sportsfields: {
     specificationLabel: "Playing Surface",
@@ -96,6 +121,7 @@ export const DEPARTMENT_RULES: Record<DepartmentValue, DepartmentRule> = {
     areaRequired: true,
     serviceTimeLabel: "Maintenance Time (mins)",
     frequencyLabel: "Maintenance Frequency",
+    schedulable: true,
   },
   litter: {
     specificationLabel: "Cleaning Service",
@@ -106,12 +132,28 @@ export const DEPARTMENT_RULES: Record<DepartmentValue, DepartmentRule> = {
     areaRequired: false,
     serviceTimeLabel: "Service Time (mins)",
     frequencyLabel: "Cleaning Frequency",
+    schedulable: true,
   },
   cemetery: genericRule("Cemetery"),
   city_services_maintenance: genericRule("City Services Maintenance"),
   tracks_coastal_rangers: genericRule("Tracks & Coastal Rangers"),
   biosecurity_rangers: genericRule("Biosecurity Rangers"),
+  stormwater: {
+    specificationLabel: "Asset Type",
+    specificationKey: "assetType",
+    specificationOptions: OPTIONS.stormwaterAssetType,
+    specificationRequired: true,
+    areaLabel: "Area",
+    areaRequired: false,
+    serviceTimeLabel: "Service Time",
+    frequencyLabel: "Frequency",
+    schedulable: false,
+  },
 };
+
+export function isSchedulableDepartment(value?: string | null): boolean {
+  return departmentRule(value).schedulable;
+}
 
 export function departmentRule(value?: string | null): DepartmentRule {
   return DEPARTMENT_RULES[(value as DepartmentValue) ?? "horticulture"] ?? DEPARTMENT_RULES.horticulture;
@@ -140,6 +182,10 @@ const DEPARTMENT_LABELS: Record<DepartmentValue, string> = Object.fromEntries(
 export const DEPARTMENT_VALUES = DEPARTMENTS.map(
   ({ value }) => value,
 ) as [DepartmentValue, ...DepartmentValue[]];
+
+export const TEAM_DEPARTMENT_VALUES = DEPARTMENT_VALUES.filter(
+  value => value !== "stormwater",
+) as [Exclude<DepartmentValue, "stormwater">, ...Exclude<DepartmentValue, "stormwater">[]];
 
 export function departmentLabel(value?: string | null): string {
   return (

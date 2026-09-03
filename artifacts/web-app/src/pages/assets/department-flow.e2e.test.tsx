@@ -227,6 +227,10 @@ describe("signed-in manager department flow", () => {
     const user = userEvent.setup();
     renderManagerFlow();
 
+    await waitFor(() => expect(screen.getByText("Parks & Horticulture")).toBeInTheDocument());
+    await user.click(screen.getByText("Parks & Horticulture"));
+
+    await waitFor(() => expect(screen.getByLabelText("Site Name")).toBeInTheDocument());
     await user.type(screen.getByLabelText("Site Name"), "Harbour Edge Site");
 
     await user.click(screen.getAllByRole("combobox")[0]);
@@ -304,5 +308,94 @@ describe("signed-in manager department flow", () => {
     );
     expect(document.body).toHaveTextContent("horticulture");
     expect(document.body).toHaveTextContent("litter");
+  });
+
+  it("creates, edits, and filters a stormwater asset", async () => {
+    const user = userEvent.setup();
+    renderManagerFlow();
+
+    await waitFor(() => expect(screen.getByText("Stormwater")).toBeInTheDocument());
+    await user.click(screen.getByText("Stormwater"));
+
+    await waitFor(() => expect(screen.getByLabelText("Asset Name")).toBeInTheDocument());
+    await user.type(screen.getByLabelText("Asset Name"), "Stormwater Drain 1");
+
+    // Fill Stormwater specific fields
+    await user.type(screen.getByLabelText("Global ID"), "SW-123");
+
+    await user.click(screen.getAllByRole("combobox")[0]); // Asset Type
+    await user.click(await screen.findByRole("option", { name: "Inlet" }));
+    await user.click(screen.getByLabelText("Contractor"));
+    await user.click(await screen.findByRole("option", { name: "Parks" }));
+    await user.click(screen.getByLabelText("Priority"));
+    await user.click(await screen.findByRole("option", { name: "High" }));
+    await user.click(screen.getByLabelText("Hotspot"));
+    await user.click(await screen.findByRole("option", { name: "Yes" }));
+
+    await user.click(screen.getByRole("button", { name: "Save Asset" }));
+
+    await waitFor(() =>
+      expect(mocks.fetch).toHaveBeenCalledWith(
+        "/api/assets",
+        expect.objectContaining({ method: "POST" }),
+      ),
+    );
+
+    const postCall = mocks.fetch.mock.calls.find(
+      ([url, init]) => url === "/api/assets" && init?.method === "POST"
+    );
+    expect(postCall).toBeDefined();
+    expect(JSON.parse(String(postCall?.[1].body))).toEqual(
+      expect.objectContaining({
+        name: "Stormwater Drain 1",
+        department: "stormwater",
+        globalId: "SW-123",
+        isSchedulable: false,
+        departmentDetails: expect.objectContaining({ assetType: "inlet" })
+      }),
+    );
+
+    cleanup();
+    renderAssetRegister();
+    await waitFor(() => expect(screen.getByText("Asset Register")).toBeInTheDocument());
+
+    // Test filter
+    await user.click(screen.getAllByRole("combobox")[0]); // filter by department
+    await user.click(await screen.findByRole("option", { name: "Stormwater" }));
+    await waitFor(() => {
+      expect(screen.getByTestId(`row-asset-${horticultureAsset.id}`)).toHaveTextContent("Stormwater");
+    });
+
+    cleanup();
+    renderAssetDetails();
+    await waitFor(() => expect(screen.getByText("Asset Register")).toBeInTheDocument());
+
+    // Go to edit mode
+    await user.click(screen.getByRole("button", { name: "Edit" }));
+    await waitFor(() => expect(screen.getByText("Global ID")).toBeInTheDocument());
+
+    // Ensure standard fields are absent
+    expect(screen.queryByText("Mowing Area (m²)")).not.toBeInTheDocument();
+
+    const globalIdInput = screen.getByDisplayValue("SW-123");
+    await user.clear(globalIdInput);
+    await user.type(globalIdInput, "SW-999");
+    await user.click(screen.getByRole("button", { name: "Save Changes" }));
+
+    await waitFor(() => {
+      expect(mocks.fetch).toHaveBeenCalledWith(
+        `/api/assets/${horticultureAsset.id}`,
+        expect.objectContaining({ method: "PATCH" }),
+      );
+    });
+
+    const patchCall = mocks.fetch.mock.calls.find(
+      ([url, init]) => url === `/api/assets/${horticultureAsset.id}` && init?.method === "PATCH"
+    );
+    expect(JSON.parse(String(patchCall?.[1].body))).toEqual(
+      expect.objectContaining({
+        globalId: "SW-999"
+      })
+    );
   });
 });

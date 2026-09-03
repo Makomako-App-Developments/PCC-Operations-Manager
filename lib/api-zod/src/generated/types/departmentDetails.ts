@@ -9,6 +9,7 @@ import type { GenericDepartmentAssetDetails } from "./genericDepartmentAssetDeta
 import type { LitterAssetDetails } from "./litterAssetDetails";
 import type { MowingAssetDetails } from "./mowingAssetDetails";
 import type { SportsfieldsAssetDetails } from "./sportsfieldsAssetDetails";
+import type { StormwaterAssetDetails } from "./stormwaterAssetDetails";
 
 /**
  * Use the details schema matching department. Horticulture assets use gardenType and standard for backwards compatibility.
@@ -17,4 +18,5 @@ export type DepartmentDetails =
   | MowingAssetDetails
   | SportsfieldsAssetDetails
   | LitterAssetDetails
+  | StormwaterAssetDetails
   | GenericDepartmentAssetDetails;

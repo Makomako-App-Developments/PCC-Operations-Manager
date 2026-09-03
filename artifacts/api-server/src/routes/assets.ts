@@ -5,7 +5,7 @@ import { z } from "zod/v4";
 import { requireAuth, requireRole } from "../middlewares/auth";
 import { validateBody, validateQuery } from "../middlewares/validate";
 import { auditLog } from "../lib/audit";
-import { DEPARTMENT_RULES, DEPARTMENT_VALUES } from "@workspace/asset-definitions";
+import { DEPARTMENT_RULES, DEPARTMENT_VALUES, STORMWATER_OPTIONS, isSchedulableDepartment } from "@workspace/asset-definitions";
 import { reconcilePendingScheduledJobDurations } from "../lib/crew-utils";
 
 const ASSET_FIELD_LABELS: Record<string, string> = {
@@ -16,6 +16,8 @@ const ASSET_FIELD_LABELS: Record<string, string> = {
   areaM2:          "Area (m²)",
   serviceTimeMins: "Service Time (mins)",
   frequency:       "Frequency",
+  isSchedulable:   "Recurring schedule",
+  globalId:        "Global ID",
   teamId:          "Team",
   siteType:        "Site Type",
   ward:            "Ward",
@@ -31,7 +33,17 @@ const ASSET_FIELD_LABELS: Record<string, string> = {
 function diffAsset(oldD: Record<string, any>, newD: Record<string, any>) {
   const changes: Array<{ field: string; label: string; old: any; new: any }> = [];
   for (const [field, label] of Object.entries(ASSET_FIELD_LABELS)) {
-    if (String(oldD[field] ?? "") !== String(newD[field] ?? "")) {
+    if (field === "departmentDetails") {
+      const keys = new Set([...Object.keys(oldD.departmentDetails ?? {}), ...Object.keys(newD.departmentDetails ?? {})]);
+      const detailLabels: Record<string, string> = { placemarkId: "Placemark ID", contractor: "Contractor", assetType: "Asset Type", priority: "Priority", hotspot: "Hotspot" };
+      for (const key of keys) {
+        if ((oldD.departmentDetails?.[key] ?? null) !== (newD.departmentDetails?.[key] ?? null)) {
+          changes.push({ field: `departmentDetails.${key}`, label: detailLabels[key] ?? key, old: oldD.departmentDetails?.[key] ?? null, new: newD.departmentDetails?.[key] ?? null });
+        }
+      }
+      continue;
+    }
+    if (JSON.stringify(oldD[field] ?? null) !== JSON.stringify(newD[field] ?? null)) {
       changes.push({ field, label, old: oldD[field] ?? null, new: newD[field] ?? null });
     }
   }
@@ -51,6 +63,8 @@ function validateDepartmentFields(data: {
   standard?: string | null;
   areaM2?: string | null;
   departmentDetails?: Record<string, string | number> | null;
+  serviceTimeMins?: number | null;
+  frequency?: string | null;
 }, ctx: z.RefinementCtx) {
   const department = data.department ?? "horticulture";
   const rule = DEPARTMENT_RULES[department as keyof typeof DEPARTMENT_RULES];
@@ -65,6 +79,21 @@ function validateDepartmentFields(data: {
 
   if (rule.areaRequired && (!data.areaM2 || Number(data.areaM2) <= 0)) {
     ctx.addIssue({ code: "custom", path: ["areaM2"], message: `${rule.areaLabel} must be greater than 0` });
+  }
+  if (rule.schedulable) {
+    if (!data.serviceTimeMins || data.serviceTimeMins <= 0) ctx.addIssue({ code: "custom", path: ["serviceTimeMins"], message: "Service time must be greater than 0" });
+    if (!data.frequency) ctx.addIssue({ code: "custom", path: ["frequency"], message: "Frequency is required" });
+  }
+  if (department === "stormwater") {
+    const details = data.departmentDetails ?? {};
+    const allowed = (values: readonly string[], key: string, label: string) => {
+      const value = details[key];
+      if (!value || !values.includes(String(value))) ctx.addIssue({ code: "custom", path: ["departmentDetails", key], message: `${label} is required` });
+    };
+    allowed(["inlet", "outlet", "culvert"], "assetType", "Asset type");
+    allowed(STORMWATER_OPTIONS.contractors, "contractor", "Contractor");
+    allowed(STORMWATER_OPTIONS.priorities, "priority", "Priority");
+    allowed(STORMWATER_OPTIONS.hotspots, "hotspot", "Hotspot");
   }
 }
 
@@ -172,12 +201,14 @@ function normalizeDepartmentFields<T extends {
   departmentDetails?: unknown;
 }>(data: T): T {
   if (data.department === "horticulture") return { ...data, departmentDetails: null };
-  return { ...data, gardenType: null, standard: null };
+  const schedulable = isSchedulableDepartment(data.department);
+  return { ...data, gardenType: null, standard: null, isSchedulable: schedulable, ...(schedulable ? {} : { serviceTimeMins: null, frequency: null, areaM2: null }) };
 }
 
 function normalizeDepartmentChanges<T extends object>(data: T, department: string): T {
   if (department === "horticulture") return { ...data, departmentDetails: null };
-  return { ...data, gardenType: null, standard: null };
+  const schedulable = isSchedulableDepartment(department);
+  return { ...data, gardenType: null, standard: null, isSchedulable: schedulable, ...(schedulable ? {} : { serviceTimeMins: null, frequency: null, areaM2: null }) };
 }
 
 // POST /api/assets

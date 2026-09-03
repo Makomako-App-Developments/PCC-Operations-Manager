@@ -107,6 +107,7 @@ export const ListAssetsQueryParams = zod.object({
       "city_services_maintenance",
       "tracks_coastal_rangers",
       "biosecurity_rangers",
+      "stormwater",
     ])
     .optional(),
   teamId: zod.coerce.string().uuid().optional(),
@@ -118,7 +119,7 @@ export const ListAssetsResponse = zod.object({
   data: zod.array(
     zod.object({
       id: zod.string().uuid(),
-      reference: zod.string(),
+      globalId: zod.string().nullish(),
       name: zod.string(),
       department: zod.enum([
         "horticulture",
@@ -129,6 +130,7 @@ export const ListAssetsResponse = zod.object({
         "city_services_maintenance",
         "tracks_coastal_rangers",
         "biosecurity_rangers",
+        "stormwater",
       ]),
       gardenType: zod
         .enum([
@@ -145,14 +147,20 @@ export const ListAssetsResponse = zod.object({
         .nullish(),
       standard: zod.enum(["high", "medium", "low"]).nullish(),
       areaM2: zod.number().nullish(),
-      serviceTimeMins: zod.number(),
-      frequency: zod.enum([
-        "weekly",
-        "fortnightly",
-        "monthly",
-        "bimonthly",
-        "quarterly",
-      ]),
+      serviceTimeMins: zod.number().nullish(),
+      frequency: zod
+        .union([
+          zod.enum([
+            "weekly",
+            "fortnightly",
+            "monthly",
+            "bimonthly",
+            "quarterly",
+          ]),
+          zod.null(),
+        ])
+        .optional(),
+      isSchedulable: zod.boolean(),
       departmentDetails: zod
         .union([
           zod
@@ -186,6 +194,18 @@ export const ListAssetsResponse = zod.object({
                   ]),
                 })
                 .describe("Required specification for Litter assets."),
+              zod.object({
+                placemarkId: zod.string().optional(),
+                contractor: zod.enum([
+                  "Parks",
+                  "Transport",
+                  "WGTN Regional",
+                  "Taiki Wai",
+                ]),
+                assetType: zod.enum(["inlet", "outlet", "culvert"]),
+                priority: zod.enum(["High", "Medium", "Low"]),
+                hotspot: zod.enum(["Yes", "No"]),
+              }),
               zod
                 .object({})
                 .describe(
@@ -223,7 +243,7 @@ export const ListAssetsResponse = zod.object({
  */
 export const CreateAssetBody = zod
   .object({
-    reference: zod.string(),
+    globalId: zod.string().nullish(),
     name: zod.string(),
     department: zod.enum([
       "horticulture",
@@ -234,6 +254,7 @@ export const CreateAssetBody = zod
       "city_services_maintenance",
       "tracks_coastal_rangers",
       "biosecurity_rangers",
+      "stormwater",
     ]),
     gardenType: zod
       .enum([
@@ -250,14 +271,20 @@ export const CreateAssetBody = zod
       .nullish(),
     standard: zod.enum(["high", "medium", "low"]).nullish(),
     areaM2: zod.number().nullish(),
-    serviceTimeMins: zod.number(),
-    frequency: zod.enum([
-      "weekly",
-      "fortnightly",
-      "monthly",
-      "bimonthly",
-      "quarterly",
-    ]),
+    serviceTimeMins: zod.number().nullish(),
+    frequency: zod
+      .union([
+        zod.enum([
+          "weekly",
+          "fortnightly",
+          "monthly",
+          "bimonthly",
+          "quarterly",
+        ]),
+        zod.null(),
+      ])
+      .optional(),
+    isSchedulable: zod.boolean().optional(),
     departmentDetails: zod
       .union([
         zod
@@ -289,6 +316,18 @@ export const CreateAssetBody = zod
             ]),
           })
           .describe("Required specification for Litter assets."),
+        zod.object({
+          placemarkId: zod.string().optional(),
+          contractor: zod.enum([
+            "Parks",
+            "Transport",
+            "WGTN Regional",
+            "Taiki Wai",
+          ]),
+          assetType: zod.enum(["inlet", "outlet", "culvert"]),
+          priority: zod.enum(["High", "Medium", "Low"]),
+          hotspot: zod.enum(["Yes", "No"]),
+        }),
         zod
           .object({})
           .describe(
@@ -323,7 +362,7 @@ export const GetAssetParams = zod.object({
 
 export const GetAssetResponse = zod.object({
   id: zod.string().uuid(),
-  reference: zod.string(),
+  globalId: zod.string().nullish(),
   name: zod.string(),
   department: zod.enum([
     "horticulture",
@@ -334,6 +373,7 @@ export const GetAssetResponse = zod.object({
     "city_services_maintenance",
     "tracks_coastal_rangers",
     "biosecurity_rangers",
+    "stormwater",
   ]),
   gardenType: zod
     .enum([
@@ -350,14 +390,14 @@ export const GetAssetResponse = zod.object({
     .nullish(),
   standard: zod.enum(["high", "medium", "low"]).nullish(),
   areaM2: zod.number().nullish(),
-  serviceTimeMins: zod.number(),
-  frequency: zod.enum([
-    "weekly",
-    "fortnightly",
-    "monthly",
-    "bimonthly",
-    "quarterly",
-  ]),
+  serviceTimeMins: zod.number().nullish(),
+  frequency: zod
+    .union([
+      zod.enum(["weekly", "fortnightly", "monthly", "bimonthly", "quarterly"]),
+      zod.null(),
+    ])
+    .optional(),
+  isSchedulable: zod.boolean(),
   departmentDetails: zod
     .union([
       zod
@@ -391,6 +431,18 @@ export const GetAssetResponse = zod.object({
               ]),
             })
             .describe("Required specification for Litter assets."),
+          zod.object({
+            placemarkId: zod.string().optional(),
+            contractor: zod.enum([
+              "Parks",
+              "Transport",
+              "WGTN Regional",
+              "Taiki Wai",
+            ]),
+            assetType: zod.enum(["inlet", "outlet", "culvert"]),
+            priority: zod.enum(["High", "Medium", "Low"]),
+            hotspot: zod.enum(["Yes", "No"]),
+          }),
           zod
             .object({})
             .describe(
@@ -437,6 +489,7 @@ export const UpdateAssetBody = zod.object({
       "city_services_maintenance",
       "tracks_coastal_rangers",
       "biosecurity_rangers",
+      "stormwater",
     ])
     .optional(),
   gardenType: zod
@@ -454,10 +507,14 @@ export const UpdateAssetBody = zod.object({
     .nullish(),
   standard: zod.enum(["high", "medium", "low"]).nullish(),
   areaM2: zod.number().nullish(),
-  serviceTimeMins: zod.number().optional(),
+  serviceTimeMins: zod.number().nullish(),
   frequency: zod
-    .enum(["weekly", "fortnightly", "monthly", "bimonthly", "quarterly"])
+    .union([
+      zod.enum(["weekly", "fortnightly", "monthly", "bimonthly", "quarterly"]),
+      zod.null(),
+    ])
     .optional(),
+  isSchedulable: zod.boolean().optional(),
   departmentDetails: zod
     .union([
       zod
@@ -489,6 +546,18 @@ export const UpdateAssetBody = zod.object({
           ]),
         })
         .describe("Required specification for Litter assets."),
+      zod.object({
+        placemarkId: zod.string().optional(),
+        contractor: zod.enum([
+          "Parks",
+          "Transport",
+          "WGTN Regional",
+          "Taiki Wai",
+        ]),
+        assetType: zod.enum(["inlet", "outlet", "culvert"]),
+        priority: zod.enum(["High", "Medium", "Low"]),
+        hotspot: zod.enum(["Yes", "No"]),
+      }),
       zod
         .object({})
         .describe(
@@ -511,7 +580,7 @@ export const UpdateAssetBody = zod.object({
 
 export const UpdateAssetResponse = zod.object({
   id: zod.string().uuid(),
-  reference: zod.string(),
+  globalId: zod.string().nullish(),
   name: zod.string(),
   department: zod.enum([
     "horticulture",
@@ -522,6 +591,7 @@ export const UpdateAssetResponse = zod.object({
     "city_services_maintenance",
     "tracks_coastal_rangers",
     "biosecurity_rangers",
+    "stormwater",
   ]),
   gardenType: zod
     .enum([
@@ -538,14 +608,14 @@ export const UpdateAssetResponse = zod.object({
     .nullish(),
   standard: zod.enum(["high", "medium", "low"]).nullish(),
   areaM2: zod.number().nullish(),
-  serviceTimeMins: zod.number(),
-  frequency: zod.enum([
-    "weekly",
-    "fortnightly",
-    "monthly",
-    "bimonthly",
-    "quarterly",
-  ]),
+  serviceTimeMins: zod.number().nullish(),
+  frequency: zod
+    .union([
+      zod.enum(["weekly", "fortnightly", "monthly", "bimonthly", "quarterly"]),
+      zod.null(),
+    ])
+    .optional(),
+  isSchedulable: zod.boolean(),
   departmentDetails: zod
     .union([
       zod
@@ -579,6 +649,18 @@ export const UpdateAssetResponse = zod.object({
               ]),
             })
             .describe("Required specification for Litter assets."),
+          zod.object({
+            placemarkId: zod.string().optional(),
+            contractor: zod.enum([
+              "Parks",
+              "Transport",
+              "WGTN Regional",
+              "Taiki Wai",
+            ]),
+            assetType: zod.enum(["inlet", "outlet", "culvert"]),
+            priority: zod.enum(["High", "Medium", "Low"]),
+            hotspot: zod.enum(["Yes", "No"]),
+          }),
           zod
             .object({})
             .describe(
@@ -949,6 +1031,7 @@ export const ListTeamsResponseItem = zod.object({
     "city_services_maintenance",
     "tracks_coastal_rangers",
     "biosecurity_rangers",
+    "stormwater",
   ]),
   createdAt: zod.date(),
 });
@@ -970,6 +1053,7 @@ export const CreateTeamBody = zod.object({
     "city_services_maintenance",
     "tracks_coastal_rangers",
     "biosecurity_rangers",
+    "stormwater",
   ]),
 });
 

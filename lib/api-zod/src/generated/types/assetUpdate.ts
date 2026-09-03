@@ -18,8 +18,10 @@ export interface AssetUpdate {
   gardenType?: GardenType | null;
   standard?: Standard | null;
   areaM2?: number | null;
-  serviceTimeMins?: number;
-  frequency?: Frequency;
+  /** @nullable */
+  serviceTimeMins?: number | null;
+  frequency?: Frequency | null;
+  isSchedulable?: boolean;
   departmentDetails?: DepartmentDetails;
   teamId?: string;
   ward?: Ward;

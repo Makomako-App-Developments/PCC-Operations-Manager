@@ -17,4 +17,5 @@ export const Department = {
   city_services_maintenance: "city_services_maintenance",
   tracks_coastal_rangers: "tracks_coastal_rangers",
   biosecurity_rangers: "biosecurity_rangers",
+  stormwater: "stormwater",
 } as const;

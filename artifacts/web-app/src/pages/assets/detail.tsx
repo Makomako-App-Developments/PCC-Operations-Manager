@@ -25,7 +25,7 @@ import { MapContainer, TileLayer, CircleMarker, Polygon, Tooltip as LeafletToolt
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import BoundaryEditor, { type GeoPolygon as EditorGeoPolygon } from "@/components/BoundaryEditor";
-import { DEPARTMENTS, assetSpecification, departmentLabel, departmentRule } from "@workspace/asset-definitions";
+import { DEPARTMENTS, assetSpecification, departmentLabel, departmentRule, STORMWATER_OPTIONS } from "@workspace/asset-definitions";
 
 const BRAND = "#00AECD";
 const NAVY = "#0f2a36";
@@ -710,6 +710,7 @@ type EditForm = {
   serviceTimeMins: string; frequency: string; siteType: string; ward: string;
   teamId: string; suburb: string; streetAddress: string; notes: string; knownHazards: string;
   lat: string; lng: string;
+  globalId: string; contractor: string; assetType: string; priority: string; hotspot: string; placemarkId: string;
 };
 
 function EditPanel({
@@ -745,6 +746,12 @@ function EditPanel({
     knownHazards:    (asset as any).knownHazards || "",
     lat:             asset.lat != null ? String(Number(asset.lat)) : "",
     lng:             asset.lng != null ? String(Number(asset.lng)) : "",
+    globalId:        asset.globalId || "",
+    contractor:      String(asset.departmentDetails?.contractor || ""),
+    assetType:       String(asset.departmentDetails?.assetType || (asset as any).assetType || ""),
+    priority:        String(asset.departmentDetails?.priority || ""),
+    hotspot:         String(asset.departmentDetails?.hotspot || ""),
+    placemarkId:     String(asset.departmentDetails?.placemarkId || ""),
   });
 
   const f = (key: keyof EditForm, val: any) => setForm(prev => ({ ...prev, [key]: val }));
@@ -753,7 +760,7 @@ function EditPanel({
   const handleSave = async () => {
     setSaving(true);
     try {
-      const payload = {
+      const payload: Record<string, any> = {
         ...form,
         departmentDetails: form.department === "horticulture" ? null : form.departmentDetails,
         gardenType: form.department === "horticulture" ? form.gardenType : null,
@@ -762,7 +769,7 @@ function EditPanel({
         serviceTimeMins: parseInt(form.serviceTimeMins) || 0,
         siteType:        form.siteType      || null,
         ward:            form.ward          || null,
-        teamId:          form.teamId        || null,
+        teamId:          form.teamId && form.teamId !== "unassigned" ? form.teamId : null,
         description:     form.description    || null,
         suburb:          form.suburb        || null,
         streetAddress:   form.streetAddress || null,
@@ -772,6 +779,23 @@ function EditPanel({
         lng:             form.lng ? Number(form.lng) : null,
         boundary:        boundary ?? null,
       };
+
+      if (asset.department === "stormwater") {
+        payload.departmentDetails = {
+          ...asset.departmentDetails,
+          contractor: form.contractor || null,
+          assetType: form.assetType || null,
+          priority: form.priority || null,
+          hotspot: form.hotspot || null,
+          placemarkId: form.placemarkId || null,
+        };
+        payload.gardenType = null;
+        payload.standard = null;
+        payload.areaM2 = null;
+        payload.serviceTimeMins = null;
+        payload.frequency = null;
+      }
+
       const r = await fetch(`/api/assets/${asset.id}`, {
         method: "PATCH", credentials: "include",
         headers: { "Content-Type": "application/json" },
@@ -822,7 +846,7 @@ function EditPanel({
               f("gardenType", asset.gardenType || "amenity");
               f("standard", asset.standard || "medium");
             }
-          }}>
+          }} disabled={asset.department === "stormwater"}>
             <SelectTrigger className="text-sm"><SelectValue /></SelectTrigger>
             <SelectContent>
               {DEPARTMENTS.map(({ value, label }) => (
@@ -831,80 +855,137 @@ function EditPanel({
             </SelectContent>
           </Select>
         </FormField>
-        <div className="grid grid-cols-2 gap-3">
-          {rule.specificationOptions.length > 0 && <FormField label={rule.specificationLabel}>
-            <Select value={form.department === "horticulture" ? form.gardenType : String(form.departmentDetails[rule.specificationKey] ?? "")} onValueChange={v => f(form.department === "horticulture" ? "gardenType" : "departmentDetails", form.department === "horticulture" ? v : { ...form.departmentDetails, [rule.specificationKey]: v })}>
-              <SelectTrigger className="text-sm"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                {rule.specificationOptions.map(option => (
-                  <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </FormField>}
-          {form.department === "horticulture" && <FormField label="Standard">
-            <Select value={form.standard} onValueChange={v => f("standard", v)}>
-              <SelectTrigger className="text-sm"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="high">High</SelectItem>
-                <SelectItem value="medium">Medium</SelectItem>
-                <SelectItem value="low">Low</SelectItem>
-              </SelectContent>
-            </Select>
-          </FormField>}
-        </div>
-        <div className="grid grid-cols-2 gap-3">
-          <FormField label={`${rule.areaLabel}${rule.areaRequired ? "" : " (optional)"}`}>
-            <Input type="number" value={form.areaM2} onChange={e => f("areaM2", e.target.value)} className="text-sm" />
-          </FormField>
-          <FormField label={rule.serviceTimeLabel}>
-            <Input type="number" value={form.serviceTimeMins} onChange={e => f("serviceTimeMins", e.target.value)} className="text-sm" />
-          </FormField>
-        </div>
-        <div className="grid grid-cols-2 gap-3">
-          <FormField label={rule.frequencyLabel}>
-            <Select value={form.frequency} onValueChange={v => f("frequency", v)}>
-              <SelectTrigger className="text-sm"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                {["weekly","fortnightly","monthly","bimonthly","quarterly"].map(v => (
-                  <SelectItem key={v} value={v}>{v}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </FormField>
-          <FormField label="Site Type">
-            <Select value={form.siteType || "__none__"} onValueChange={v => f("siteType", v === "__none__" ? "" : v)}>
-              <SelectTrigger className="text-sm"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="__none__">—</SelectItem>
-                <SelectItem value="park">Park</SelectItem>
-                <SelectItem value="street">Street</SelectItem>
-              </SelectContent>
-            </Select>
-          </FormField>
-        </div>
-        <div className="grid grid-cols-2 gap-3">
-          <FormField label="Ward">
-            <Select value={form.ward || "__none__"} onValueChange={v => f("ward", v === "__none__" ? "" : v)}>
-              <SelectTrigger className="text-sm"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="__none__">—</SelectItem>
-                <SelectItem value="eastern">Eastern</SelectItem>
-                <SelectItem value="northern">Northern</SelectItem>
-                <SelectItem value="western">Western</SelectItem>
-              </SelectContent>
-            </Select>
-          </FormField>
-          <FormField label="Team">
-            <Select value={form.teamId || "__none__"} onValueChange={v => f("teamId", v === "__none__" ? "" : v)}>
-              <SelectTrigger className="text-sm"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="__none__">Unassigned</SelectItem>
-                {teams.map(t => <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>)}
-              </SelectContent>
-            </Select>
-          </FormField>
-        </div>
+
+        {asset.department === "stormwater" ? (
+          <>
+            <FormField label="Global ID"><Input value={form.globalId} onChange={e => f("globalId", e.target.value)} className="text-sm" /></FormField>
+            <FormField label="Placemark ID"><Input value={form.placemarkId} onChange={e => f("placemarkId", e.target.value)} className="text-sm" /></FormField>
+            <div className="grid grid-cols-2 gap-3">
+              <FormField label="Asset Type">
+                <Select value={form.assetType} onValueChange={v => f("assetType", v)}>
+                  <SelectTrigger className="text-sm bg-white"><SelectValue placeholder="Select..." /></SelectTrigger>
+                  <SelectContent>
+                    {departmentRule("stormwater").specificationOptions.map(o => (
+                      <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </FormField>
+              <FormField label="Contractor">
+                <Select value={form.contractor} onValueChange={v => f("contractor", v)}>
+                  <SelectTrigger className="text-sm bg-white"><SelectValue placeholder="Select..." /></SelectTrigger>
+                  <SelectContent>
+                    {STORMWATER_OPTIONS.contractors.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </FormField>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <FormField label="Priority">
+                <Select value={form.priority} onValueChange={v => f("priority", v)}>
+                  <SelectTrigger className="text-sm bg-white"><SelectValue placeholder="Select..." /></SelectTrigger>
+                  <SelectContent>
+                    {STORMWATER_OPTIONS.priorities.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </FormField>
+              <FormField label="Hotspot">
+                <Select value={form.hotspot} onValueChange={v => f("hotspot", v)}>
+                  <SelectTrigger className="text-sm bg-white"><SelectValue placeholder="Select..." /></SelectTrigger>
+                  <SelectContent>
+                    {STORMWATER_OPTIONS.hotspots.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </FormField>
+            </div>
+            <FormField label="Team">
+              <Select value={form.teamId || "unassigned"} onValueChange={v => f("teamId", v === "unassigned" ? "" : v)}>
+                <SelectTrigger className="text-sm bg-white"><SelectValue placeholder="Unassigned" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="unassigned">Unassigned</SelectItem>
+                  {teams.map(t => <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </FormField>
+          </>
+        ) : (
+          <>
+            <div className="grid grid-cols-2 gap-3">
+              {rule.specificationOptions.length > 0 && <FormField label={rule.specificationLabel}>
+                <Select value={form.department === "horticulture" ? form.gardenType : String(form.departmentDetails[rule.specificationKey] ?? "")} onValueChange={v => f(form.department === "horticulture" ? "gardenType" : "departmentDetails", form.department === "horticulture" ? v : { ...form.departmentDetails, [rule.specificationKey]: v })}>
+                  <SelectTrigger className="text-sm"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {rule.specificationOptions.map(option => (
+                      <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </FormField>}
+              {form.department === "horticulture" && <FormField label="Standard">
+                <Select value={form.standard} onValueChange={v => f("standard", v)}>
+                  <SelectTrigger className="text-sm"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="high">High</SelectItem>
+                    <SelectItem value="medium">Medium</SelectItem>
+                    <SelectItem value="low">Low</SelectItem>
+                  </SelectContent>
+                </Select>
+              </FormField>}
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <FormField label={`${rule.areaLabel}${rule.areaRequired ? "" : " (optional)"}`}>
+                <Input type="number" value={form.areaM2} onChange={e => f("areaM2", e.target.value)} className="text-sm" />
+              </FormField>
+              <FormField label={rule.serviceTimeLabel}>
+                <Input type="number" value={form.serviceTimeMins} onChange={e => f("serviceTimeMins", e.target.value)} className="text-sm" />
+              </FormField>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <FormField label={rule.frequencyLabel}>
+                <Select value={form.frequency} onValueChange={v => f("frequency", v)}>
+                  <SelectTrigger className="text-sm"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {["weekly","fortnightly","monthly","bimonthly","quarterly"].map(v => (
+                      <SelectItem key={v} value={v}>{v}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </FormField>
+              <FormField label="Site Type">
+                <Select value={form.siteType || "__none__"} onValueChange={v => f("siteType", v === "__none__" ? "" : v)}>
+                  <SelectTrigger className="text-sm"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none__">—</SelectItem>
+                    <SelectItem value="park">Park</SelectItem>
+                    <SelectItem value="street">Street</SelectItem>
+                  </SelectContent>
+                </Select>
+              </FormField>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <FormField label="Ward">
+                <Select value={form.ward || "__none__"} onValueChange={v => f("ward", v === "__none__" ? "" : v)}>
+                  <SelectTrigger className="text-sm"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none__">—</SelectItem>
+                    <SelectItem value="eastern">Eastern</SelectItem>
+                    <SelectItem value="northern">Northern</SelectItem>
+                    <SelectItem value="western">Western</SelectItem>
+                  </SelectContent>
+                </Select>
+              </FormField>
+              <FormField label="Team">
+                <Select value={form.teamId || "__none__"} onValueChange={v => f("teamId", v === "__none__" ? "" : v)}>
+                  <SelectTrigger className="text-sm"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none__">Unassigned</SelectItem>
+                    {teams.map(t => <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </FormField>
+            </div>
+          </>
+        )}
         <FormField label="Suburb">
           <Input value={form.suburb} onChange={e => f("suburb", e.target.value)} className="text-sm" />
         </FormField>
@@ -1474,13 +1555,23 @@ export default function AssetDetail() {
       .then(r => r.json()).then(d => setMulchingCount((d.data ?? []).length)).catch(() => {});
   }, [id]);
 
-  const tabs = [
+  const allTabs = [
     { id: "scheduled", icon: CalendarCheck, label: "Scheduled Jobs",   count: scheduledCount },
     { id: "history",   icon: Wrench,        label: "Works History",    count: historyCount },
     { id: "changes",   icon: History,       label: "Asset Edits",      count: null },
     { id: "infill",    icon: Sprout,        label: "Infill Planting",  count: infillCount },
     { id: "mulching",  icon: Layers,        label: "Mulching",         count: mulchingCount },
   ] as const;
+
+  const tabs = allTabs.filter(tab => {
+    if (asset?.department === "stormwater") {
+      return ["history", "changes"].includes(tab.id);
+    }
+    if (asset?.department !== "horticulture" && tab.id === "mulching") {
+      return false;
+    }
+    return true;
+  });
 
   if (isLoading || !asset) {
     return (
@@ -1546,21 +1637,23 @@ export default function AssetDetail() {
               </div>
 
               {/* Stats grid */}
-              <div className="grid grid-cols-2 gap-px bg-gray-200 border-b flex-shrink-0">
-                {[
-                  { icon: Ruler,        label: departmentRule(asset.department).areaLabel, value: asset.areaM2 != null ? `${Number(asset.areaM2).toFixed(1)} m²` : "—" },
-                  { icon: Clock,        label: departmentRule(asset.department).serviceTimeLabel, value: `${asset.serviceTimeMins} min` },
-                  { icon: CalendarDays, label: departmentRule(asset.department).frequencyLabel, value: asset.frequency },
-                  { icon: Tag,          label: "Site Type", value: (asset as any).siteType || "—" },
-                ].map(({ icon: Icon, label, value }) => (
-                  <div key={label} className="px-4 py-3 bg-white">
-                    <p className="text-[9px] text-gray-400 uppercase tracking-wide flex items-center gap-1">
-                      <Icon className="w-2.5 h-2.5" />{label}
-                    </p>
-                    <p className="text-[12px] font-semibold text-gray-800 mt-0.5 capitalize">{value}</p>
-                  </div>
-                ))}
-              </div>
+              {asset.department !== "stormwater" && (
+                <div className="grid grid-cols-2 gap-px bg-gray-200 border-b flex-shrink-0">
+                  {[
+                    { icon: Ruler,        label: departmentRule(asset.department).areaLabel, value: asset.areaM2 != null ? `${Number(asset.areaM2).toFixed(1)} m²` : "—" },
+                    { icon: Clock,        label: departmentRule(asset.department).serviceTimeLabel, value: `${asset.serviceTimeMins} min` },
+                    { icon: CalendarDays, label: departmentRule(asset.department).frequencyLabel, value: asset.frequency },
+                    { icon: Tag,          label: "Site Type", value: (asset as any).siteType || "—" },
+                  ].map(({ icon: Icon, label, value }) => (
+                    <div key={label} className="px-4 py-3 bg-white">
+                      <p className="text-[9px] text-gray-400 uppercase tracking-wide flex items-center gap-1">
+                        <Icon className="w-2.5 h-2.5" />{label}
+                      </p>
+                      <p className="text-[12px] font-semibold text-gray-800 mt-0.5 capitalize">{value}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
 
               {/* Map */}
               {(asset.lat || (asset as any).boundary) && <AssetMap asset={asset} />}
@@ -1569,28 +1662,43 @@ export default function AssetDetail() {
               <div className="px-5 py-4 border-b">
                 <p className="text-[9px] font-bold text-gray-400 uppercase tracking-widest mb-3">Classification</p>
                 <div className="space-y-2">
-                  {[
-                    { label: "Department / Function", value: departmentLabel(asset.department) },
-                    { label: departmentRule(asset.department).specificationLabel, value: assetSpecification(asset) },
-                    { label: "Ward",    value: asset.ward },
-                    { label: "Suburb",  value: asset.suburb },
-                  ].map(({ label, value }) => (
-                    <div key={label} className="flex justify-between">
-                      <span className="text-[11px] text-gray-400">{label}</span>
-                      <span className="text-[11px] font-semibold text-gray-700 capitalize">{value || "—"}</span>
-                    </div>
-                  ))}
-                  {asset.routeOrder != null && (
-                    <div className="flex justify-between">
-                      <span className="text-[11px] text-gray-400">Geosequence</span>
-                      <span className="text-[11px] font-semibold text-gray-700">{asset.routeOrder}</span>
-                    </div>
-                  )}
-                  {(asset as any).globalId && (
-                    <div className="flex justify-between">
-                      <span className="text-[11px] text-gray-400">Global ID</span>
-                      <span className="text-[10px] font-mono text-gray-500 break-all text-right max-w-[160px]">{(asset as any).globalId}</span>
-                    </div>
+                  {asset.department === "stormwater" ? (
+                    <>
+                      <div className="flex justify-between"><span className="text-[11px] text-gray-400">Department</span><span className="text-[11px] font-semibold text-gray-700 capitalize">{departmentLabel(asset.department)}</span></div>
+                      <div className="flex justify-between"><span className="text-[11px] text-gray-400">Asset Type</span><span className="text-[11px] font-semibold text-gray-700 capitalize">{(asset.departmentDetails as any)?.assetType || "—"}</span></div>
+                      <div className="flex justify-between"><span className="text-[11px] text-gray-400">Contractor</span><span className="text-[11px] font-semibold text-gray-700 capitalize">{(asset.departmentDetails as any)?.contractor || "—"}</span></div>
+                      <div className="flex justify-between"><span className="text-[11px] text-gray-400">Priority</span><span className="text-[11px] font-semibold text-gray-700 capitalize">{(asset.departmentDetails as any)?.priority || "—"}</span></div>
+                      <div className="flex justify-between"><span className="text-[11px] text-gray-400">Hotspot</span><span className="text-[11px] font-semibold text-gray-700 capitalize">{(asset.departmentDetails as any)?.hotspot || "—"}</span></div>
+                      <div className="flex justify-between"><span className="text-[11px] text-gray-400">Global ID</span><span className="text-[10px] font-mono text-gray-500 break-all text-right max-w-[160px]">{asset.globalId || "—"}</span></div>
+                      <div className="flex justify-between"><span className="text-[11px] text-gray-400">Placemark ID</span><span className="text-[10px] font-mono text-gray-500 break-all text-right max-w-[160px]">{(asset.departmentDetails as any)?.placemarkId || "—"}</span></div>
+                      <div className="flex justify-between"><span className="text-[11px] text-gray-400">Suburb</span><span className="text-[11px] font-semibold text-gray-700 capitalize">{asset.suburb || "—"}</span></div>
+                    </>
+                  ) : (
+                    <>
+                      {[
+                        { label: "Department / Function", value: departmentLabel(asset.department) },
+                        { label: departmentRule(asset.department).specificationLabel, value: assetSpecification(asset) },
+                        { label: "Ward",    value: asset.ward },
+                        { label: "Suburb",  value: asset.suburb },
+                      ].map(({ label, value }) => (
+                        <div key={label} className="flex justify-between">
+                          <span className="text-[11px] text-gray-400">{label}</span>
+                          <span className="text-[11px] font-semibold text-gray-700 capitalize">{value || "—"}</span>
+                        </div>
+                      ))}
+                      {asset.routeOrder != null && (
+                        <div className="flex justify-between">
+                          <span className="text-[11px] text-gray-400">Geosequence</span>
+                          <span className="text-[11px] font-semibold text-gray-700">{asset.routeOrder}</span>
+                        </div>
+                      )}
+                      {asset.globalId && (
+                        <div className="flex justify-between">
+                          <span className="text-[11px] text-gray-400">Global ID</span>
+                          <span className="text-[10px] font-mono text-gray-500 break-all text-right max-w-[160px]">{asset.globalId}</span>
+                        </div>
+                      )}
+                    </>
                   )}
                   {asset.lat != null && (
                     <div className="flex justify-between">

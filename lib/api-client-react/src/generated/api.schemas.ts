@@ -52,6 +52,7 @@ export const Department = {
   city_services_maintenance: "city_services_maintenance",
   tracks_coastal_rangers: "tracks_coastal_rangers",
   biosecurity_rangers: "biosecurity_rangers",
+  stormwater: "stormwater",
 } as const;
 
 export type Standard = (typeof Standard)[keyof typeof Standard];
@@ -244,6 +245,50 @@ export interface LitterAssetDetails {
   cleaningType: LitterAssetDetailsCleaningType;
 }
 
+export type StormwaterAssetDetailsContractor =
+  (typeof StormwaterAssetDetailsContractor)[keyof typeof StormwaterAssetDetailsContractor];
+
+export const StormwaterAssetDetailsContractor = {
+  Parks: "Parks",
+  Transport: "Transport",
+  WGTN_Regional: "WGTN Regional",
+  Taiki_Wai: "Taiki Wai",
+} as const;
+
+export type StormwaterAssetDetailsAssetType =
+  (typeof StormwaterAssetDetailsAssetType)[keyof typeof StormwaterAssetDetailsAssetType];
+
+export const StormwaterAssetDetailsAssetType = {
+  inlet: "inlet",
+  outlet: "outlet",
+  culvert: "culvert",
+} as const;
+
+export type StormwaterAssetDetailsPriority =
+  (typeof StormwaterAssetDetailsPriority)[keyof typeof StormwaterAssetDetailsPriority];
+
+export const StormwaterAssetDetailsPriority = {
+  High: "High",
+  Medium: "Medium",
+  Low: "Low",
+} as const;
+
+export type StormwaterAssetDetailsHotspot =
+  (typeof StormwaterAssetDetailsHotspot)[keyof typeof StormwaterAssetDetailsHotspot];
+
+export const StormwaterAssetDetailsHotspot = {
+  Yes: "Yes",
+  No: "No",
+} as const;
+
+export interface StormwaterAssetDetails {
+  placemarkId?: string;
+  contractor: StormwaterAssetDetailsContractor;
+  assetType: StormwaterAssetDetailsAssetType;
+  priority: StormwaterAssetDetailsPriority;
+  hotspot: StormwaterAssetDetailsHotspot;
+}
+
 /**
  * Optional future department-specific details where PCC has not yet defined a controlled subtype taxonomy.
  */
@@ -258,6 +303,7 @@ export type DepartmentDetails =
   | MowingAssetDetails
   | SportsfieldsAssetDetails
   | LitterAssetDetails
+  | StormwaterAssetDetails
   | GenericDepartmentAssetDetails;
 
 export type AssetSiteType =
@@ -271,14 +317,17 @@ export const AssetSiteType = {
 
 export interface Asset {
   id: string;
-  reference: string;
+  /** @nullable */
+  globalId?: string | null;
   name: string;
   department: Department;
   gardenType?: GardenType | null;
   standard?: Standard | null;
   areaM2?: number | null;
-  serviceTimeMins: number;
-  frequency: Frequency;
+  /** @nullable */
+  serviceTimeMins?: number | null;
+  frequency?: Frequency | null;
+  isSchedulable: boolean;
   departmentDetails?: DepartmentDetails | null;
   siteType?: AssetSiteType;
   teamId?: string | null;
@@ -307,14 +356,17 @@ export const AssetCreateSiteType = {
  * Common fields are required for every asset. Horticulture requires gardenType and standard; Mowing and Sportsfields require areaM2; Mowing, Litter, and Sportsfields require their matching DepartmentDetails specification.
  */
 export interface AssetCreate {
-  reference: string;
+  /** @nullable */
+  globalId?: string | null;
   name: string;
   department: Department;
   gardenType?: GardenType | null;
   standard?: Standard | null;
   areaM2?: number | null;
-  serviceTimeMins: number;
-  frequency: Frequency;
+  /** @nullable */
+  serviceTimeMins?: number | null;
+  frequency?: Frequency | null;
+  isSchedulable?: boolean;
   departmentDetails?: DepartmentDetails;
   siteType?: AssetCreateSiteType;
   teamId?: string;
@@ -334,8 +386,10 @@ export interface AssetUpdate {
   gardenType?: GardenType | null;
   standard?: Standard | null;
   areaM2?: number | null;
-  serviceTimeMins?: number;
-  frequency?: Frequency;
+  /** @nullable */
+  serviceTimeMins?: number | null;
+  frequency?: Frequency | null;
+  isSchedulable?: boolean;
   departmentDetails?: DepartmentDetails;
   teamId?: string;
   ward?: Ward;

@@ -1185,7 +1185,7 @@ components:
 
     Department:
       type: string
-      enum: [horticulture, mowing, litter, sportsfields, cemetery, city_services_maintenance, tracks_coastal_rangers, biosecurity_rangers]
+      enum: [horticulture, mowing, litter, sportsfields, cemetery, city_services_maintenance, tracks_coastal_rangers, biosecurity_rangers, stormwater]
 
     Standard:
       type: string
@@ -1328,6 +1328,16 @@ components:
           enum: [litter_bin, street_sweeping, graffiti, pressure_washing]
       required: [cleaningType]
 
+    StormwaterAssetDetails:
+      type: object
+      properties:
+        placemarkId: { type: string }
+        contractor: { type: string, enum: [Parks, Transport, WGTN Regional, Taiki Wai] }
+        assetType: { type: string, enum: [inlet, outlet, culvert] }
+        priority: { type: string, enum: [High, Medium, Low] }
+        hotspot: { type: string, enum: [Yes, No] }
+      required: [contractor, assetType, priority, hotspot]
+
     GenericDepartmentAssetDetails:
       type: object
       description: Optional future department-specific details where PCC has not yet defined a controlled subtype taxonomy.
@@ -1340,13 +1350,14 @@ components:
         - $ref: "#/components/schemas/MowingAssetDetails"
         - $ref: "#/components/schemas/SportsfieldsAssetDetails"
         - $ref: "#/components/schemas/LitterAssetDetails"
+        - $ref: "#/components/schemas/StormwaterAssetDetails"
         - $ref: "#/components/schemas/GenericDepartmentAssetDetails"
 
     Asset:
       type: object
       properties:
         id:              { type: string, format: uuid }
-        reference:       { type: string }
+        globalId:        { type: ["string", "null"] }
         name:            { type: string }
         department:
           $ref: "#/components/schemas/Department"
@@ -1357,9 +1368,12 @@ components:
           nullable: true
           $ref: "#/components/schemas/Standard"
         areaM2:          { type: number, nullable: true }
-        serviceTimeMins: { type: integer }
+        serviceTimeMins: { type: ["integer", "null"] }
         frequency:
-          $ref: "#/components/schemas/Frequency"
+          oneOf:
+            - $ref: "#/components/schemas/Frequency"
+            - type: "null"
+        isSchedulable:   { type: boolean }
         departmentDetails:
           oneOf:
             - $ref: "#/components/schemas/DepartmentDetails"
@@ -1382,11 +1396,9 @@ components:
         updatedAt:     { type: string, format: date-time }
       required:
         - id
-        - reference
         - name
         - department
-        - serviceTimeMins
-        - frequency
+        - isSchedulable
         - isActive
         - createdAt
         - updatedAt
@@ -1395,7 +1407,7 @@ components:
       type: object
       description: Common fields are required for every asset. Horticulture requires gardenType and standard; Mowing and Sportsfields require areaM2; Mowing, Litter, and Sportsfields require their matching DepartmentDetails specification.
       properties:
-        reference:       { type: string }
+        globalId:        { type: ["string", "null"] }
         name:            { type: string }
         department:
           $ref: "#/components/schemas/Department"
@@ -1406,9 +1418,12 @@ components:
           nullable: true
           $ref: "#/components/schemas/Standard"
         areaM2:          { type: number, nullable: true }
-        serviceTimeMins: { type: integer }
+        serviceTimeMins: { type: ["integer", "null"] }
         frequency:
-          $ref: "#/components/schemas/Frequency"
+          oneOf:
+            - $ref: "#/components/schemas/Frequency"
+            - type: "null"
+        isSchedulable:   { type: boolean }
         departmentDetails:
           $ref: "#/components/schemas/DepartmentDetails"
         siteType: { type: string, enum: [park, street] }
@@ -1423,11 +1438,8 @@ components:
         description:   { type: string }
         notes:         { type: string }
       required:
-        - reference
         - name
         - department
-        - serviceTimeMins
-        - frequency
 
     AssetUpdate:
       type: object
@@ -1442,9 +1454,12 @@ components:
           nullable: true
           $ref: "#/components/schemas/Standard"
         areaM2:          { type: number, nullable: true }
-        serviceTimeMins: { type: integer }
+        serviceTimeMins: { type: ["integer", "null"] }
         frequency:
-          $ref: "#/components/schemas/Frequency"
+          oneOf:
+            - $ref: "#/components/schemas/Frequency"
+            - type: "null"
+        isSchedulable:   { type: boolean }
         departmentDetails:
           $ref: "#/components/schemas/DepartmentDetails"
         teamId:        { type: string, format: uuid }

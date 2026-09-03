@@ -16,7 +16,7 @@ import { useToast } from "@/hooks/use-toast";
 import { MapContainer, TileLayer, CircleMarker, Polygon, Tooltip as LeafletTooltip, useMap } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
-import { assetSpecification, DEPARTMENTS, departmentLabel, departmentRule } from "@workspace/asset-definitions";
+import { assetSpecification, DEPARTMENTS, departmentLabel, departmentRule, STORMWATER_OPTIONS } from "@workspace/asset-definitions";
 
 const BRAND = "#00AECD";
 
@@ -324,7 +324,7 @@ export default function Assets() {
       else if (sortCol === "department") { av = a.department;      bv = b.department; }
       else if (sortCol === "gardenType"){ av = a.gardenType;      bv = b.gardenType; }
       else if (sortCol === "areaM2")    { av = Number(a.areaM2) || 0; bv = Number(b.areaM2) || 0; }
-      else if (sortCol === "serviceTimeMins") { av = a.serviceTimeMins ?? 0; bv = b.serviceTimeMins ?? 0; }
+      else if (sortCol === "serviceTimeMins") { av = a.serviceTimeMins ?? -1; bv = b.serviceTimeMins ?? -1; }
       else if (sortCol === "siteType")  { av = a.siteType || ""; bv = b.siteType || ""; }
       else if (sortCol === "frequency") { av = a.frequency;       bv = b.frequency; }
       else if (sortCol === "team")      { av = getTeamName(a.teamId); bv = getTeamName(b.teamId); }
@@ -481,7 +481,9 @@ export default function Assets() {
                     <td className="px-4 py-3 text-sm text-gray-700 tabular-nums">
                       {asset.areaM2 ? Number(asset.areaM2).toLocaleString() : <span className="text-gray-300">—</span>}
                     </td>
-                    <td className="px-4 py-3 text-sm text-gray-700">{asset.serviceTimeMins} min</td>
+                    <td className="px-4 py-3 text-sm text-gray-700">
+                      {asset.serviceTimeMins != null ? `${asset.serviceTimeMins} min` : <span className="text-gray-300">—</span>}
+                    </td>
                     <td className="px-4 py-3">
                       {asset.siteType ? (
                         <span className={`text-xs font-semibold capitalize ${asset.siteType === "park" ? "text-green-800" : "text-gray-900"}`}>
@@ -489,7 +491,7 @@ export default function Assets() {
                         </span>
                       ) : <span className="text-gray-300 text-xs">—</span>}
                     </td>
-                    <td className="px-4 py-3 text-gray-500 capitalize">{asset.frequency}</td>
+                    <td className="px-4 py-3 text-gray-500 capitalize">{asset.frequency || <span className="text-gray-300">—</span>}</td>
                     <td className="px-4 py-3 text-gray-500">{getTeamName(asset.teamId)}</td>
                   </tr>
                 ))}
@@ -519,6 +521,7 @@ type EditForm = {
   name: string; department: string; gardenType: string; standard: string; areaM2: string;
   serviceTimeMins: string; frequency: string; siteType: string; ward: string;
   teamId: string; suburb: string; streetAddress: string; description: string; notes: string;
+  globalId: string; contractor: string; assetType: string; priority: string; hotspot: string; placemarkId: string;
 };
 
 interface HistoryEntry {
@@ -563,6 +566,7 @@ function AssetDetailDrawer({ assetId, onClose, teamName }: { assetId: string | n
   const [form, setForm] = useState<EditForm>({
     name: "", department: "horticulture", gardenType: "", standard: "", areaM2: "", serviceTimeMins: "",
     frequency: "", siteType: "", ward: "", teamId: "", suburb: "", streetAddress: "", description: "", notes: "",
+    globalId: "", contractor: "", assetType: "", priority: "", hotspot: "", placemarkId: "",
   });
 
   const queryClient = useQueryClient();
@@ -593,6 +597,12 @@ function AssetDetailDrawer({ assetId, onClose, teamName }: { assetId: string | n
         streetAddress:   asset.streetAddress || "",
         description:     asset.description || "",
         notes:           asset.notes || "",
+        globalId:        asset.globalId || "",
+        contractor:      String((asset.departmentDetails as any)?.contractor || ""),
+        assetType:       String((asset.departmentDetails as any)?.assetType || ""),
+        priority:        String((asset.departmentDetails as any)?.priority || ""),
+        hotspot:         String((asset.departmentDetails as any)?.hotspot || ""),
+        placemarkId:     String((asset.departmentDetails as any)?.placemarkId || ""),
       });
     }
   }, [asset]);
@@ -624,18 +634,35 @@ function AssetDetailDrawer({ assetId, onClose, teamName }: { assetId: string | n
   const handleSave = async () => {
     setSaving(true);
     try {
-      const payload = {
+      const payload: Record<string, any> = {
         ...form,
         areaM2:          parseInt(form.areaM2) || 0,
         serviceTimeMins: parseInt(form.serviceTimeMins) || 0,
         siteType:        form.siteType      || null,
         ward:            form.ward          || null,
-        teamId:          form.teamId        || null,
+        teamId:          form.teamId && form.teamId !== "unassigned" ? form.teamId : null,
         suburb:          form.suburb        || null,
         streetAddress:   form.streetAddress || null,
         description:     form.description   || null,
         notes:           form.notes         || null,
       };
+
+      if (asset!.department === "stormwater") {
+        payload.departmentDetails = {
+          ...(asset!.departmentDetails || {}),
+          contractor: form.contractor || null,
+          assetType: form.assetType || null,
+          priority: form.priority || null,
+          hotspot: form.hotspot || null,
+          placemarkId: form.placemarkId || null,
+        };
+        payload.gardenType = null;
+        payload.standard = null;
+        payload.areaM2 = null;
+        payload.serviceTimeMins = null;
+        payload.frequency = null;
+      }
+
       const r = await fetch(`/api/assets/${asset!.id}`, {
         method: "PATCH", credentials: "include",
         headers: { "Content-Type": "application/json" },
@@ -697,7 +724,7 @@ function AssetDetailDrawer({ assetId, onClose, teamName }: { assetId: string | n
             </div>
 
             {/* Stats bar */}
-            {!editing && (
+            {!editing && asset.department !== "stormwater" && (
               <div className="grid grid-cols-4 gap-0 border-b flex-shrink-0 bg-white">
                 {[
                   { label: departmentRule(asset.department).areaLabel, value: asset.areaM2 != null ? `${Number(asset.areaM2).toFixed(1)} m²` : "—" },
@@ -736,16 +763,33 @@ function AssetDetailDrawer({ assetId, onClose, teamName }: { assetId: string | n
                 {(asset.lat || (asset as any).boundary) && <DrawerMap asset={asset} />}
                 <div className="flex-1 overflow-y-auto p-5 space-y-5 bg-white">
                   <section>
-                    <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3">Location Details</p>
+                    <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3">Asset Details</p>
                     <div className="space-y-2">
                       <InfoRow label="Department / Function" value={departmentLabel(asset.department)} />
-                      <InfoRow label="Site Type"   value={(asset as any).siteType} />
-                      <InfoRow label="Global ID"   value={(asset as any).globalId} mono />
-                      <InfoRow label="Suburb"      value={asset.suburb} />
-                      <InfoRow label="Address"     value={asset.streetAddress} />
-                      <InfoRow label="Description" value={asset.description} />
-                      <InfoRow label="Coordinates" mono
-                        value={asset.lat != null ? `${Number(asset.lat).toFixed(4)}, ${Number(asset.lng).toFixed(4)}` : null} />
+                      {asset.department === "stormwater" ? (
+                        <>
+                          <InfoRow label="Global ID" value={asset.globalId} mono />
+                          <InfoRow label="Placemark ID" value={(asset.departmentDetails as any)?.placemarkId} mono />
+                          <InfoRow label="Asset Type" value={(asset.departmentDetails as any)?.assetType} />
+                          <InfoRow label="Contractor" value={(asset.departmentDetails as any)?.contractor} />
+                          <InfoRow label="Priority" value={(asset.departmentDetails as any)?.priority} />
+                          <InfoRow label="Hotspot" value={(asset.departmentDetails as any)?.hotspot} />
+                          <InfoRow label="Assigned Team" value={teamName(asset.teamId)} />
+                          <InfoRow label="Suburb" value={asset.suburb} />
+                          <InfoRow label="Address" value={asset.streetAddress} />
+                          <InfoRow label="Description" value={asset.description} />
+                          <InfoRow label="Coordinates" mono value={asset.lat != null ? `${Number(asset.lat).toFixed(4)}, ${Number(asset.lng).toFixed(4)}` : null} />
+                        </>
+                      ) : (
+                        <>
+                          <InfoRow label="Site Type"   value={(asset as any).siteType} />
+                          <InfoRow label="Global ID"   value={asset.globalId} mono />
+                          <InfoRow label="Suburb"      value={asset.suburb} />
+                          <InfoRow label="Address"     value={asset.streetAddress} />
+                          <InfoRow label="Description" value={asset.description} />
+                          <InfoRow label="Coordinates" mono value={asset.lat != null ? `${Number(asset.lat).toFixed(4)}, ${Number(asset.lng).toFixed(4)}` : null} />
+                        </>
+                      )}
                     </div>
                   </section>
                   {asset.notes && (
@@ -778,7 +822,7 @@ function AssetDetailDrawer({ assetId, onClose, teamName }: { assetId: string | n
                       <Input value={form.name} onChange={e => f("name", e.target.value)} className="text-sm" />
                     </FormField>
                     <FormField label="Department / Function">
-                      <Select value={form.department} onValueChange={v => f("department", v)}>
+                      <Select value={form.department} onValueChange={v => f("department", v)} disabled>
                         <SelectTrigger className="text-sm"><SelectValue /></SelectTrigger>
                         <SelectContent>
                           {DEPARTMENTS.map(({ value, label }) => (
@@ -787,96 +831,161 @@ function AssetDetailDrawer({ assetId, onClose, teamName }: { assetId: string | n
                         </SelectContent>
                       </Select>
                     </FormField>
-                    <div className="grid grid-cols-2 gap-4">
-                      <FormField label="Specification">
-                        <Select value={form.gardenType} onValueChange={v => f("gardenType", v)}>
-                          <SelectTrigger className="text-sm"><SelectValue /></SelectTrigger>
-                          <SelectContent>
-                            {["amenity","annuals","bush","hedge","ornamental","rain_garden","reveg","roses_perennials","tree_planter_pits"].map(g => (
-                              <SelectItem key={g} value={g}>{g.replace(/_/g, " ")}</SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </FormField>
-                      <FormField label="Standard">
-                        <Select value={form.standard} onValueChange={v => f("standard", v)}>
-                          <SelectTrigger className="text-sm"><SelectValue /></SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="high">High</SelectItem>
-                            <SelectItem value="medium">Medium</SelectItem>
-                            <SelectItem value="low">Low</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </FormField>
-                    </div>
-                    <div className="grid grid-cols-2 gap-4">
-                      <FormField label="Area (m²)">
-                        <Input type="number" value={form.areaM2} onChange={e => f("areaM2", e.target.value)} className="text-sm" />
-                      </FormField>
-                      <FormField label="Service Time (mins)">
-                        <Input type="number" value={form.serviceTimeMins} onChange={e => f("serviceTimeMins", e.target.value)} className="text-sm" />
-                      </FormField>
-                    </div>
-                    <div className="grid grid-cols-2 gap-4">
-                      <FormField label="Frequency">
-                        <Select value={form.frequency} onValueChange={v => f("frequency", v)}>
-                          <SelectTrigger className="text-sm"><SelectValue /></SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="weekly">Weekly</SelectItem>
-                            <SelectItem value="fortnightly">Fortnightly</SelectItem>
-                            <SelectItem value="monthly">Monthly</SelectItem>
-                            <SelectItem value="bimonthly">Bimonthly</SelectItem>
-                            <SelectItem value="quarterly">Quarterly</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </FormField>
-                      <FormField label="Site Type">
-                        <Select value={form.siteType || "__none__"} onValueChange={v => f("siteType", v === "__none__" ? "" : v)}>
-                          <SelectTrigger className="text-sm"><SelectValue /></SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="__none__">—</SelectItem>
-                            <SelectItem value="park">Park</SelectItem>
-                            <SelectItem value="street">Street</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </FormField>
-                    </div>
-                    <div className="grid grid-cols-2 gap-4">
-                      <FormField label="Ward">
-                        <Select value={form.ward || "__none__"} onValueChange={v => f("ward", v === "__none__" ? "" : v)}>
-                          <SelectTrigger className="text-sm"><SelectValue /></SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="__none__">—</SelectItem>
-                            <SelectItem value="eastern">Eastern</SelectItem>
-                            <SelectItem value="northern">Northern</SelectItem>
-                            <SelectItem value="western">Western</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </FormField>
-                      <FormField label="Team">
-                        <Select value={form.teamId || "__none__"} onValueChange={v => f("teamId", v === "__none__" ? "" : v)}>
-                          <SelectTrigger className="text-sm"><SelectValue /></SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="__none__">Unassigned</SelectItem>
-                            {teamsData?.map(t => (
-                              <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </FormField>
-                    </div>
-                    <FormField label="Suburb">
-                      <Input value={form.suburb} onChange={e => f("suburb", e.target.value)} className="text-sm" />
-                    </FormField>
-                    <FormField label="Street Address">
-                      <Input value={form.streetAddress} onChange={e => f("streetAddress", e.target.value)} className="text-sm" />
-                    </FormField>
-                    <FormField label="Description">
-                      <Input value={form.description} onChange={e => f("description", e.target.value)} className="text-sm" placeholder="e.g. Corner of Karearea Ave and Bluff Rd" />
-                    </FormField>
-                    <FormField label="Notes">
-                      <Textarea value={form.notes} onChange={e => f("notes", e.target.value)} className="text-sm" rows={3} />
-                    </FormField>
+
+                    {asset.department === "stormwater" ? (
+                      <>
+                        <FormField label="Global ID"><Input value={form.globalId} onChange={e => f("globalId", e.target.value)} className="text-sm" /></FormField>
+                        <FormField label="Placemark ID"><Input value={form.placemarkId} onChange={e => f("placemarkId", e.target.value)} className="text-sm" /></FormField>
+                        <div className="grid grid-cols-2 gap-4">
+                          <FormField label="Asset Type">
+                            <Select value={form.assetType} onValueChange={v => f("assetType", v)}>
+                              <SelectTrigger className="text-sm"><SelectValue placeholder="Select Type..." /></SelectTrigger>
+                              <SelectContent>
+                                {departmentRule("stormwater").specificationOptions.map(o => (
+                                  <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </FormField>
+                          <FormField label="Contractor">
+                            <Select value={form.contractor} onValueChange={v => f("contractor", v)}>
+                              <SelectTrigger className="text-sm"><SelectValue placeholder="Select Contractor..." /></SelectTrigger>
+                              <SelectContent>
+                                {STORMWATER_OPTIONS.contractors.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+                              </SelectContent>
+                            </Select>
+                          </FormField>
+                          <FormField label="Priority">
+                            <Select value={form.priority} onValueChange={v => f("priority", v)}>
+                              <SelectTrigger className="text-sm"><SelectValue placeholder="Select Priority..." /></SelectTrigger>
+                              <SelectContent>
+                                {STORMWATER_OPTIONS.priorities.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+                              </SelectContent>
+                            </Select>
+                          </FormField>
+                          <FormField label="Hotspot">
+                            <Select value={form.hotspot} onValueChange={v => f("hotspot", v)}>
+                              <SelectTrigger className="text-sm"><SelectValue placeholder="Select..." /></SelectTrigger>
+                              <SelectContent>
+                                {STORMWATER_OPTIONS.hotspots.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+                              </SelectContent>
+                            </Select>
+                          </FormField>
+                        </div>
+                        <FormField label="Suburb">
+                          <Select value={form.suburb} onValueChange={v => f("suburb", v)}>
+                            <SelectTrigger className="text-sm"><SelectValue placeholder="Select Suburb..." /></SelectTrigger>
+                            <SelectContent>
+                              {STORMWATER_OPTIONS.suburbs.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+                            </SelectContent>
+                          </Select>
+                        </FormField>
+                        <FormField label="Actual Address"><Input value={form.streetAddress} onChange={e => f("streetAddress", e.target.value)} className="text-sm" /></FormField>
+                        <FormField label="Location Description"><Textarea value={form.description} onChange={e => f("description", e.target.value)} className="text-sm" /></FormField>
+                        <FormField label="Assigned Team">
+                          <Select value={form.teamId || "unassigned"} onValueChange={v => f("teamId", v)}>
+                            <SelectTrigger className="text-sm"><SelectValue placeholder="Unassigned" /></SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="unassigned">Unassigned</SelectItem>
+                              {teamsData?.map(t => <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>)}
+                            </SelectContent>
+                          </Select>
+                        </FormField>
+                      </>
+                    ) : (
+                      <>
+                        <div className="grid grid-cols-2 gap-4">
+                          <FormField label="Specification">
+                            <Select value={form.gardenType} onValueChange={v => f("gardenType", v)}>
+                              <SelectTrigger className="text-sm"><SelectValue /></SelectTrigger>
+                              <SelectContent>
+                                {["amenity","annuals","bush","hedge","ornamental","rain_garden","reveg","roses_perennials","tree_planter_pits"].map(g => (
+                                  <SelectItem key={g} value={g}>{g.replace(/_/g, " ")}</SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </FormField>
+                          <FormField label="Standard">
+                            <Select value={form.standard} onValueChange={v => f("standard", v)}>
+                              <SelectTrigger className="text-sm"><SelectValue /></SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="high">High</SelectItem>
+                                <SelectItem value="medium">Medium</SelectItem>
+                                <SelectItem value="low">Low</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </FormField>
+                        </div>
+                        <div className="grid grid-cols-2 gap-4">
+                          <FormField label="Area (m²)">
+                            <Input type="number" value={form.areaM2} onChange={e => f("areaM2", e.target.value)} className="text-sm" />
+                          </FormField>
+                          <FormField label="Service Time (mins)">
+                            <Input type="number" value={form.serviceTimeMins} onChange={e => f("serviceTimeMins", e.target.value)} className="text-sm" />
+                          </FormField>
+                        </div>
+                        <div className="grid grid-cols-2 gap-4">
+                          <FormField label="Frequency">
+                            <Select value={form.frequency} onValueChange={v => f("frequency", v)}>
+                              <SelectTrigger className="text-sm"><SelectValue /></SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="weekly">Weekly</SelectItem>
+                                <SelectItem value="fortnightly">Fortnightly</SelectItem>
+                                <SelectItem value="monthly">Monthly</SelectItem>
+                                <SelectItem value="bimonthly">Bimonthly</SelectItem>
+                                <SelectItem value="quarterly">Quarterly</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </FormField>
+                          <FormField label="Site Type">
+                            <Select value={form.siteType || "__none__"} onValueChange={v => f("siteType", v === "__none__" ? "" : v)}>
+                              <SelectTrigger className="text-sm"><SelectValue /></SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="__none__">—</SelectItem>
+                                <SelectItem value="park">Park</SelectItem>
+                                <SelectItem value="street">Street</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </FormField>
+                        </div>
+                        <div className="grid grid-cols-2 gap-4">
+                          <FormField label="Ward">
+                            <Select value={form.ward || "__none__"} onValueChange={v => f("ward", v === "__none__" ? "" : v)}>
+                              <SelectTrigger className="text-sm"><SelectValue /></SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="__none__">—</SelectItem>
+                                <SelectItem value="eastern">Eastern</SelectItem>
+                                <SelectItem value="northern">Northern</SelectItem>
+                                <SelectItem value="western">Western</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </FormField>
+                          <FormField label="Team">
+                            <Select value={form.teamId || "__none__"} onValueChange={v => f("teamId", v === "__none__" ? "" : v)}>
+                              <SelectTrigger className="text-sm"><SelectValue /></SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="__none__">Unassigned</SelectItem>
+                                {teamsData?.map(t => (
+                                  <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </FormField>
+                        </div>
+                        <FormField label="Suburb">
+                          <Input value={form.suburb} onChange={e => f("suburb", e.target.value)} className="text-sm" />
+                        </FormField>
+                        <FormField label="Street Address">
+                          <Input value={form.streetAddress} onChange={e => f("streetAddress", e.target.value)} className="text-sm" />
+                        </FormField>
+                        <FormField label="Description">
+                          <Input value={form.description} onChange={e => f("description", e.target.value)} className="text-sm" placeholder="e.g. Corner of Karearea Ave and Bluff Rd" />
+                        </FormField>
+                        <FormField label="Notes">
+                          <Textarea value={form.notes} onChange={e => f("notes", e.target.value)} className="text-sm" rows={3} />
+                        </FormField>
+                      </>
+                    )}
                   </div>
                 </div>
                 <div className="p-4 border-t bg-gray-50 flex items-center justify-end gap-2 flex-shrink-0">

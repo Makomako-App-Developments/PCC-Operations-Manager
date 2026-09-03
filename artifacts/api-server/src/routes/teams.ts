@@ -4,11 +4,11 @@ import { eq, sql, isNull } from "drizzle-orm";
 import { requireAuth, requireRole } from "../middlewares/auth";
 import { validateBody } from "../middlewares/validate";
 import { z } from "zod/v4";
-import { DEPARTMENT_VALUES } from "@workspace/asset-definitions";
+import { TEAM_DEPARTMENT_VALUES } from "@workspace/asset-definitions";
 
 const router = Router();
 const teamCreateSchema = insertTeamSchema.extend({
-  department: z.enum(DEPARTMENT_VALUES),
+  department: z.enum(TEAM_DEPARTMENT_VALUES),
 });
 
 // GET /api/teams

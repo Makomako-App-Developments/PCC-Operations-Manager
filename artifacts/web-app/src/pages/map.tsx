@@ -345,7 +345,7 @@ export default function MapPage() {
     if (typeFilter.size > 0     && !typeFilter.has(asset.gardenType ?? ""))    return false;
     if (scheduleFilter.size > 0 && !scheduleFilter.has(scheduleState))   return false;
     if (jobFilter.size > 0      && !jobTypes.some(j => jobFilter.has(j))) return false;
-    if (freqFilter.size > 0     && !freqFilter.has(asset.frequency))     return false;
+    if (freqFilter.size > 0     && (!asset.frequency || !freqFilter.has(asset.frequency))) return false;
     if (teamFilter.size > 0     && !teamFilter.has(asset.teamId ?? ""))  return false;
     return true;
   }), [enriched, typeFilter, scheduleFilter, jobFilter, freqFilter, teamFilter]);
@@ -753,7 +753,7 @@ export default function MapPage() {
                         ...(asset.standard ? [{ l: "Standard", v: asset.standard.charAt(0).toUpperCase() + asset.standard.slice(1) }] : []),
                         { l: departmentRule(asset.department).areaLabel, v: asset.areaM2 != null ? `${Number(asset.areaM2).toFixed(1)} m²` : "—" },
                         { l: departmentRule(asset.department).serviceTimeLabel, v: `${asset.serviceTimeMins} min` },
-                        { l: departmentRule(asset.department).frequencyLabel, v: FREQ_LABELS[asset.frequency] ?? asset.frequency },
+                        { l: departmentRule(asset.department).frequencyLabel, v: asset.frequency ? (FREQ_LABELS[asset.frequency] ?? asset.frequency) : "—" },
                         { l: "Team",      v: teamName },
                         { l: "Next Due",  v: nextDueJob?.scheduledDate ? new Date(nextDueJob.scheduledDate).toLocaleDateString("en-NZ", { day: "numeric", month: "short", year: "numeric" }) : "—" },
                         { l: "Last Visit",v: lastVisitJob?.scheduledDate ? new Date(lastVisitJob.scheduledDate).toLocaleDateString("en-NZ", { day: "numeric", month: "short", year: "numeric" }) : "—" },
@@ -819,7 +819,7 @@ export default function MapPage() {
                         {asset.name}
                       </div>
                       <div style={{ fontSize: 10, color: "#6b7280", marginTop: 1, whiteSpace: "nowrap" }}>
-                        {asset.serviceTimeMins} min · {FREQ_LABELS[asset.frequency] ?? asset.frequency}
+                        {asset.serviceTimeMins ?? "—"} min · {asset.frequency ? (FREQ_LABELS[asset.frequency] ?? asset.frequency) : "—"}
                       </div>
                     </div>
                   </Tooltip>
@@ -856,7 +856,7 @@ export default function MapPage() {
                         ...(asset.standard ? [{ l: "Standard", v: asset.standard.charAt(0).toUpperCase() + asset.standard.slice(1) }] : []),
                         { l: departmentRule(asset.department).areaLabel, v: asset.areaM2 != null ? `${Number(asset.areaM2).toFixed(1)} m²` : "—" },
                         { l: departmentRule(asset.department).serviceTimeLabel, v: `${asset.serviceTimeMins} min` },
-                        { l: departmentRule(asset.department).frequencyLabel, v: FREQ_LABELS[asset.frequency] ?? asset.frequency },
+                        { l: departmentRule(asset.department).frequencyLabel, v: asset.frequency ? (FREQ_LABELS[asset.frequency] ?? asset.frequency) : "—" },
                         { l: "Team",      v: teamName },
                         { l: "Next Due",  v: nextDueJob?.scheduledDate ? new Date(nextDueJob.scheduledDate).toLocaleDateString("en-NZ", { day: "numeric", month: "short", year: "numeric" }) : "—" },
                         { l: "Last Visit",v: lastVisitJob?.scheduledDate ? new Date(lastVisitJob.scheduledDate).toLocaleDateString("en-NZ", { day: "numeric", month: "short", year: "numeric" }) : "—" },

@@ -336,8 +336,8 @@ router.post(
       .from(assetsTable)
       .where(
         teamId
-          ? and(eq(assetsTable.isActive, true), eq(assetsTable.teamId, teamId))
-          : eq(assetsTable.isActive, true),
+          ? and(eq(assetsTable.isActive, true), eq(assetsTable.isSchedulable, true), eq(assetsTable.teamId, teamId))
+          : and(eq(assetsTable.isActive, true), eq(assetsTable.isSchedulable, true)),
       )
       .orderBy(sql`${assetsTable.routeOrder} NULLS LAST`, assetsTable.name));
 
