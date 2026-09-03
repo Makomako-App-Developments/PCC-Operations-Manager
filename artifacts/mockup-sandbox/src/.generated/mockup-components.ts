@@ -3,7 +3,6 @@ type ModuleMap = Record<string, () => Promise<Record<string, unknown>>>;
 export const modules: ModuleMap = {
   "./components/mockups/day-view-options/RouteList.tsx": () => import("../components/mockups/day-view-options/RouteList.tsx"),
   "./components/mockups/day-view-options/TimelineCards.tsx": () => import("../components/mockups/day-view-options/TimelineCards.tsx"),
-  "./components/mockups/field-ops/UpNextGeosequence.tsx": () => import("../components/mockups/field-ops/UpNextGeosequence.tsx"),
   "./components/mockups/garden-app/AssetDetailRedesign.tsx": () => import("../components/mockups/garden-app/AssetDetailRedesign.tsx"),
   "./components/mockups/garden-app/AssetDetailView.tsx": () => import("../components/mockups/garden-app/AssetDetailView.tsx"),
   "./components/mockups/garden-app/AssetList.tsx": () => import("../components/mockups/garden-app/AssetList.tsx"),
@@ -22,6 +21,7 @@ export const modules: ModuleMap = {
   "./components/mockups/garden-app/Reports.tsx": () => import("../components/mockups/garden-app/Reports.tsx"),
   "./components/mockups/garden-app/RoleMatrix.tsx": () => import("../components/mockups/garden-app/RoleMatrix.tsx"),
   "./components/mockups/garden-app/Specification.tsx": () => import("../components/mockups/garden-app/Specification.tsx"),
+  "./components/mockups/field-ops/UpNextGeosequence.tsx": () => import("../components/mockups/field-ops/UpNextGeosequence.tsx"),
   "./components/mockups/mulch-panel/VariantA.tsx": () => import("../components/mockups/mulch-panel/VariantA.tsx"),
   "./components/mockups/mulch-panel/VariantB.tsx": () => import("../components/mockups/mulch-panel/VariantB.tsx"),
   "./components/mockups/mulch-panel/VariantC.tsx": () => import("../components/mockups/mulch-panel/VariantC.tsx"),
