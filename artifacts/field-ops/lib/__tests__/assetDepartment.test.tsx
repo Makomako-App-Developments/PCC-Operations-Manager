@@ -75,7 +75,7 @@ vi.mock("@/lib/jobDetailCache", () => ({
   saveCachedAsset: vi.fn().mockResolvedValue(undefined),
 }));
 
-import AssetDetailScreen from "./[id]";
+import AssetDetailScreen from "../../app/asset/[id]";
 
 const fieldAsset = {
   id: "asset-field-department",
