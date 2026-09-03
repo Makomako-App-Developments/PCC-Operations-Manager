@@ -1,5 +1,5 @@
 import { db, executeWithCircuitBreaker, teamMembersTable, teamAvailabilityTable, jobsTable, assetsTable, systemSettingsTable } from "@workspace/db";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 
 export const FREQ_DAYS: Record<string, number> = {
   weekly:      7,
@@ -69,6 +69,86 @@ export function calcCrewAdjustment(
 
   // All normal members present — crew is "full" from this team's perspective
   return { estimatedTimeMins: adjusted, crewStatus: "full" };
+}
+
+/**
+ * Recalculate pending scheduled-job estimates from the current asset service
+ * time and the crew availability on each job date.
+ *
+ * This is set-based so it can safely repair a bulk asset-time import without
+ * issuing one query per job. Passing an asset ID limits the repair to that
+ * asset, which keeps ordinary asset edits cheap.
+ */
+export async function reconcilePendingScheduledJobDurations(assetId?: string): Promise<number> {
+  const result = await executeWithCircuitBreaker(() => db.execute<{ id: string }>(sql`
+    WITH settings AS (
+      SELECT COALESCE(
+        (SELECT standard_crew_size FROM system_settings LIMIT 1),
+        2
+      )::numeric AS standard_crew_size
+    ),
+    team_sizes AS (
+      SELECT team_id, COUNT(*)::integer AS normal_size
+      FROM team_members
+      GROUP BY team_id
+    ),
+    absent_people AS (
+      SELECT tm.team_id, ta.date, ta.person_name
+      FROM team_availability ta
+      INNER JOIN team_members tm ON tm.person_name = ta.person_name
+      WHERE ta.status <> 'available'
+      GROUP BY tm.team_id, ta.date, ta.person_name
+      HAVING COUNT(*) >= ${ABSENT_HOUR_THRESHOLD}
+    ),
+    absence_counts AS (
+      SELECT team_id, date, COUNT(*)::integer AS absent_count
+      FROM absent_people
+      GROUP BY team_id, date
+    ),
+    expected AS (
+      SELECT
+        j.id,
+        CASE
+          WHEN j.team_id IS NULL THEN a.service_time_mins
+          WHEN COALESCE(ts.normal_size, 0) - COALESCE(ac.absent_count, 0) <= 0
+            THEN a.service_time_mins
+          ELSE CEIL(
+            a.service_time_mins::numeric * s.standard_crew_size
+            / (ts.normal_size - COALESCE(ac.absent_count, 0))
+          )::integer
+        END AS estimated_time_mins,
+        CASE
+          WHEN j.team_id IS NULL THEN 'full'::crew_status
+          WHEN COALESCE(ts.normal_size, 0) - COALESCE(ac.absent_count, 0) <= 0
+            THEN 'none'::crew_status
+          WHEN COALESCE(ac.absent_count, 0) > 0 THEN 'reduced'::crew_status
+          ELSE 'full'::crew_status
+        END AS crew_status
+      FROM jobs j
+      INNER JOIN assets a ON a.id = j.asset_id
+      CROSS JOIN settings s
+      LEFT JOIN team_sizes ts ON ts.team_id = j.team_id
+      LEFT JOIN absence_counts ac
+        ON ac.team_id = j.team_id AND ac.date = j.scheduled_date
+      WHERE j.job_type = 'scheduled'
+        AND j.status = 'pending'
+        ${assetId ? sql`AND j.asset_id = ${assetId}` : sql``}
+    )
+    UPDATE jobs j
+    SET
+      estimated_time_mins = e.estimated_time_mins,
+      crew_status = e.crew_status,
+      updated_at = NOW()
+    FROM expected e
+    WHERE j.id = e.id
+      AND (
+        j.estimated_time_mins IS DISTINCT FROM e.estimated_time_mins
+        OR j.crew_status IS DISTINCT FROM e.crew_status
+      )
+    RETURNING j.id
+  `));
+
+  return result.rows?.length ?? 0;
 }
 
 /**

@@ -23,3 +23,4 @@
 - [Team department ownership](team-department-ownership.md) — every team belongs to one official PCC department; existing teams are Horticulture.
 - [Web UI test harness](web-ui-test-harness.md) — jsdom needs pointer-capture and scrollIntoView shims for real Radix Select interactions.
 - [Expo Router test placement](expo-router-test-placement.md) — never place Vitest files under an Expo app/ route tree; production export treats them as routes and bundles Node-only test tooling.
+- [Service-time schedule reconciliation](service-time-schedule-reconciliation.md) — asset service-time changes must recalculate pending schedule estimates with crew availability; never overwrite active or historical work.

@@ -1,6 +1,7 @@
 import { db, plantPaletteTable } from "@workspace/db";
 import { sql } from "drizzle-orm";
 import { count } from "drizzle-orm";
+import { reconcilePendingScheduledJobDurations } from "./crew-utils";
 
 /**
  * One-time idempotent data patch: sets correct decimal area_m2 for 66 assets
@@ -171,6 +172,12 @@ export async function runStartupPatches() {
   await seedPlantPalette();
   await patchServiceTimes();
   await patchServiceTimes2();
+  try {
+    const refreshed = await reconcilePendingScheduledJobDurations();
+    console.log(`[startup-patch] Pending schedule durations reconciled (${refreshed} updated).`);
+  } catch (err) {
+    console.error("[startup-patch] Pending schedule duration reconciliation failed (non-fatal):", err);
+  }
   await patchReactiveJobCoords();
 }
 

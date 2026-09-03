@@ -6,6 +6,7 @@ import { requireAuth, requireRole } from "../middlewares/auth";
 import { validateBody, validateQuery } from "../middlewares/validate";
 import { auditLog } from "../lib/audit";
 import { DEPARTMENT_RULES, DEPARTMENT_VALUES } from "@workspace/asset-definitions";
+import { reconcilePendingScheduledJobDurations } from "../lib/crew-utils";
 
 const ASSET_FIELD_LABELS: Record<string, string> = {
   name:            "Site Name",
@@ -255,6 +256,12 @@ router.patch("/assets/:id", requireAuth, requireRole("manager", "supervisor"), a
       .set({ ...changes, updatedAt: new Date() })
       .where(eq(assetsTable.id, id))
       .returning());
+    if (
+      changes.serviceTimeMins !== undefined
+      && changes.serviceTimeMins !== before.serviceTimeMins
+    ) {
+      await reconcilePendingScheduledJobDurations(id);
+    }
     await auditLog({ tableName: "assets", recordId: id, action: "UPDATE", changedById: req.auth?.userId ?? null, oldData: before as Record<string, unknown>, newData: updated as Record<string, unknown>, ipAddress: req.ip ?? null });
     res.json(updated);
   } catch (err) {
