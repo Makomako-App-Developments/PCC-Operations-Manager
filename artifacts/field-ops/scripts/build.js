@@ -1,8 +1,13 @@
 const { execSync } = require("child_process");
 const fs = require("fs");
 const path = require("path");
+const { assertNoRouteTests } = require("./check-route-tests");
 
 const projectRoot = path.resolve(__dirname, "..");
+
+if (!assertNoRouteTests()) {
+  process.exit(1);
+}
 
 function getProductionDomain() {
   const raw =
