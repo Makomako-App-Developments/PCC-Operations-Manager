@@ -51,14 +51,14 @@ function validateDepartmentFields(data: {
   areaM2?: string | null;
   departmentDetails?: Record<string, string | number> | null;
 }, ctx: z.RefinementCtx) {
-  const department = data.department ?? "garden";
+  const department = data.department ?? "horticulture";
   const rule = DEPARTMENT_RULES[department as keyof typeof DEPARTMENT_RULES];
   if (!rule) return;
 
-  if (department === "garden") {
-    if (!data.gardenType) ctx.addIssue({ code: "custom", path: ["gardenType"], message: "Garden type is required for Garden assets" });
-    if (!data.standard) ctx.addIssue({ code: "custom", path: ["standard"], message: "Standard is required for Garden assets" });
-  } else if (!data.departmentDetails?.[rule.specificationKey]) {
+  if (department === "horticulture") {
+    if (!data.gardenType) ctx.addIssue({ code: "custom", path: ["gardenType"], message: "Garden type is required for Horticulture assets" });
+    if (!data.standard) ctx.addIssue({ code: "custom", path: ["standard"], message: "Standard is required for Horticulture assets" });
+  } else if (rule.specificationRequired && !data.departmentDetails?.[rule.specificationKey]) {
     ctx.addIssue({ code: "custom", path: ["departmentDetails", rule.specificationKey], message: `${rule.specificationLabel} is required` });
   }
 
@@ -170,12 +170,12 @@ function normalizeDepartmentFields<T extends {
   standard?: unknown;
   departmentDetails?: unknown;
 }>(data: T): T {
-  if (data.department === "garden") return { ...data, departmentDetails: null };
+  if (data.department === "horticulture") return { ...data, departmentDetails: null };
   return { ...data, gardenType: null, standard: null };
 }
 
 function normalizeDepartmentChanges<T extends object>(data: T, department: string): T {
-  if (department === "garden") return { ...data, departmentDetails: null };
+  if (department === "horticulture") return { ...data, departmentDetails: null };
   return { ...data, gardenType: null, standard: null };
 }
 

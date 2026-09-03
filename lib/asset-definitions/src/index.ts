@@ -1,9 +1,12 @@
 export const DEPARTMENTS = [
-  { value: "garden", label: "Garden" },
+  { value: "horticulture", label: "Horticulture" },
   { value: "mowing", label: "Mowing" },
-  { value: "stormwater", label: "Stormwater" },
+  { value: "litter", label: "Litter" },
   { value: "sportsfields", label: "Sportsfields" },
-  { value: "city_cleaning", label: "City Cleaning" },
+  { value: "cemetery", label: "Cemetery" },
+  { value: "city_services_maintenance", label: "City Services Maintenance" },
+  { value: "tracks_coastal_rangers", label: "Tracks & Coastal Rangers" },
+  { value: "biosecurity_rangers", label: "Biosecurity Rangers" },
 ] as const;
 
 export type DepartmentValue = (typeof DEPARTMENTS)[number]["value"];
@@ -14,6 +17,7 @@ export type DepartmentRule = {
   specificationLabel: string;
   specificationKey: string;
   specificationOptions: readonly { value: string; label: string }[];
+  specificationRequired: boolean;
   areaLabel: string;
   areaRequired: boolean;
   serviceTimeLabel: string;
@@ -38,13 +42,6 @@ const OPTIONS = {
     { value: "roadside_verge", label: "Roadside verge" },
     { value: "rough_grass", label: "Rough grass" },
   ],
-  stormwaterType: [
-    { value: "swale", label: "Swale" },
-    { value: "detention_basin", label: "Detention basin" },
-    { value: "wetland", label: "Wetland" },
-    { value: "rain_garden", label: "Rain garden" },
-    { value: "catchpit", label: "Catchpit" },
-  ],
   surfaceType: [
     { value: "natural_turf", label: "Natural turf" },
     { value: "artificial_turf", label: "Artificial turf" },
@@ -58,11 +55,23 @@ const OPTIONS = {
   ],
 } as const;
 
+const genericRule = (departmentName: string): DepartmentRule => ({
+  specificationLabel: `${departmentName} Asset Type`,
+  specificationKey: "assetType",
+  specificationOptions: [],
+  specificationRequired: false,
+  areaLabel: "Service Area (m²)",
+  areaRequired: false,
+  serviceTimeLabel: "Service Time (mins)",
+  frequencyLabel: "Service Frequency",
+});
+
 export const DEPARTMENT_RULES: Record<DepartmentValue, DepartmentRule> = {
-  garden: {
+  horticulture: {
     specificationLabel: "Garden Type",
     specificationKey: "gardenType",
     specificationOptions: OPTIONS.gardenType,
+    specificationRequired: true,
     areaLabel: "Area (m²)",
     areaRequired: true,
     serviceTimeLabel: "Service Time (mins)",
@@ -72,42 +81,40 @@ export const DEPARTMENT_RULES: Record<DepartmentValue, DepartmentRule> = {
     specificationLabel: "Mowing Type",
     specificationKey: "mowingType",
     specificationOptions: OPTIONS.mowingType,
+    specificationRequired: true,
     areaLabel: "Mowing Area (m²)",
     areaRequired: true,
     serviceTimeLabel: "Mowing Time (mins)",
     frequencyLabel: "Mowing Frequency",
   },
-  stormwater: {
-    specificationLabel: "Stormwater Facility",
-    specificationKey: "stormwaterType",
-    specificationOptions: OPTIONS.stormwaterType,
-    areaLabel: "Catchment / Footprint (m²)",
-    areaRequired: false,
-    serviceTimeLabel: "Inspection Time (mins)",
-    frequencyLabel: "Inspection Frequency",
-  },
   sportsfields: {
     specificationLabel: "Playing Surface",
     specificationKey: "surfaceType",
     specificationOptions: OPTIONS.surfaceType,
+    specificationRequired: true,
     areaLabel: "Playing Area (m²)",
     areaRequired: true,
     serviceTimeLabel: "Maintenance Time (mins)",
     frequencyLabel: "Maintenance Frequency",
   },
-  city_cleaning: {
+  litter: {
     specificationLabel: "Cleaning Service",
     specificationKey: "cleaningType",
     specificationOptions: OPTIONS.cleaningType,
+    specificationRequired: true,
     areaLabel: "Service Area (m²)",
     areaRequired: false,
     serviceTimeLabel: "Service Time (mins)",
     frequencyLabel: "Cleaning Frequency",
   },
+  cemetery: genericRule("Cemetery"),
+  city_services_maintenance: genericRule("City Services Maintenance"),
+  tracks_coastal_rangers: genericRule("Tracks & Coastal Rangers"),
+  biosecurity_rangers: genericRule("Biosecurity Rangers"),
 };
 
 export function departmentRule(value?: string | null): DepartmentRule {
-  return DEPARTMENT_RULES[(value as DepartmentValue) ?? "garden"] ?? DEPARTMENT_RULES.garden;
+  return DEPARTMENT_RULES[(value as DepartmentValue) ?? "horticulture"] ?? DEPARTMENT_RULES.horticulture;
 }
 
 export function assetSpecification(asset: {
@@ -138,6 +145,6 @@ export function departmentLabel(value?: string | null): string {
   return (
     (value && DEPARTMENT_LABELS[value as DepartmentValue]) ??
     value?.replace(/_/g, " ") ??
-    "Garden"
+    "Horticulture"
   );
 }

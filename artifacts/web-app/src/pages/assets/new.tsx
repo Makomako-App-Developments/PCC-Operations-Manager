@@ -37,13 +37,13 @@ const assetSchema = z.object({
   knownHazards: z.string().optional(),
 }).superRefine((data, ctx) => {
   const rule = departmentRule(data.department);
-  if (data.department === "garden" && !data.gardenType) {
+  if (data.department === "horticulture" && !data.gardenType) {
     ctx.addIssue({ code: "custom", path: ["gardenType"], message: "Garden type is required" });
   }
-  if (data.department === "garden" && !data.standard) {
+  if (data.department === "horticulture" && !data.standard) {
     ctx.addIssue({ code: "custom", path: ["standard"], message: "Standard is required" });
   }
-  if (data.department !== "garden" && !data.departmentDetails[rule.specificationKey]) {
+  if (data.department !== "horticulture" && rule.specificationRequired && !data.departmentDetails[rule.specificationKey]) {
     ctx.addIssue({ code: "custom", path: ["departmentDetails"], message: `${rule.specificationLabel} is required` });
   }
   if (rule.areaRequired && (!data.areaM2 || data.areaM2 <= 0)) {
@@ -63,7 +63,7 @@ export default function NewAsset() {
     resolver: zodResolver(assetSchema),
     defaultValues: {
       name: "",
-      department: "garden",
+      department: "horticulture",
       gardenType: "amenity",
       standard: "medium",
       areaM2: 0,
@@ -81,8 +81,8 @@ export default function NewAsset() {
     setSubmitting(true);
     try {
       const payload: Record<string, unknown> = { ...data };
-      payload.departmentDetails = data.department === "garden" ? null : data.departmentDetails;
-      if (data.department !== "garden") {
+      payload.departmentDetails = data.department === "horticulture" ? null : data.departmentDetails;
+      if (data.department !== "horticulture") {
         payload.gardenType = null;
         payload.standard = null;
       }
@@ -151,7 +151,7 @@ export default function NewAsset() {
                       <Select onValueChange={(value) => {
                         field.onChange(value);
                         form.setValue("departmentDetails", {});
-                        if (value === "garden") {
+                        if (value === "horticulture") {
                           form.setValue("gardenType", "amenity");
                           form.setValue("standard", "medium");
                         } else {
@@ -172,7 +172,7 @@ export default function NewAsset() {
                     </FormItem>
                   )} />
 
-                  <div className={`grid gap-4 ${selectedDepartment === "garden" ? "grid-cols-3" : "grid-cols-2"}`}>
+                  <div className={`grid gap-4 ${selectedDepartment === "horticulture" ? "grid-cols-3" : "grid-cols-2"}`}>
                     <FormField control={form.control} name="siteType" render={({ field }) => (
                       <FormItem>
                         <FormLabel className="text-xs text-gray-500 uppercase tracking-wide">Site Type</FormLabel>
@@ -189,7 +189,7 @@ export default function NewAsset() {
                       </FormItem>
                     )} />
 
-                    {selectedDepartment === "garden" ? <FormField control={form.control} name="gardenType" render={({ field }) => (
+                    {selectedDepartment === "horticulture" ? <FormField control={form.control} name="gardenType" render={({ field }) => (
                       <FormItem>
                         <FormLabel className="text-xs text-gray-500 uppercase tracking-wide">{selectedRule.specificationLabel}</FormLabel>
                         <Select onValueChange={field.onChange} defaultValue={field.value}>
@@ -204,7 +204,7 @@ export default function NewAsset() {
                         </Select>
                         <FormMessage />
                       </FormItem>
-                    )} /> : <FormField control={form.control} name={"departmentDetails" as any} render={({ field }) => (
+                    )} /> : selectedRule.specificationOptions.length > 0 ? <FormField control={form.control} name={"departmentDetails" as any} render={({ field }) => (
                       <FormItem>
                         <FormLabel className="text-xs text-gray-500 uppercase tracking-wide">{selectedRule.specificationLabel}</FormLabel>
                         <Select value={String(field.value?.[selectedRule.specificationKey] ?? "")} onValueChange={value => field.onChange({ ...(field.value ?? {}), [selectedRule.specificationKey]: value })}>
@@ -217,9 +217,9 @@ export default function NewAsset() {
                         </Select>
                         <FormMessage />
                       </FormItem>
-                    )} />}
+                    )} /> : null}
 
-                    {selectedDepartment === "garden" && <FormField control={form.control} name="standard" render={({ field }) => (
+                    {selectedDepartment === "horticulture" && <FormField control={form.control} name="standard" render={({ field }) => (
                       <FormItem>
                         <FormLabel className="text-xs text-gray-500 uppercase tracking-wide">Standard</FormLabel>
                         <Select onValueChange={field.onChange} defaultValue={field.value}>

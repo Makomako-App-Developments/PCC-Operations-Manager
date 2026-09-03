@@ -13,7 +13,7 @@ tags:
   - name: auth
     description: Authentication
   - name: assets
-    description: Garden assets
+    description: Operational assets
   - name: jobs
     description: Scheduled and reactive jobs
   - name: teams
@@ -1185,7 +1185,7 @@ components:
 
     Department:
       type: string
-      enum: [garden, mowing, stormwater, sportsfields, city_cleaning]
+      enum: [horticulture, mowing, litter, sportsfields, cemetery, city_services_maintenance, tracks_coastal_rangers, biosecurity_rangers]
 
     Standard:
       type: string
@@ -1287,9 +1287,9 @@ components:
       required: [name]
 
     # ─── Assets ─────────────────────────────────────────────────────────────
-    GardenAssetDetails:
+    HorticultureAssetDetails:
       type: object
-      description: Garden-only fields. Required when department is garden; legacy assets use these top-level fields.
+      description: Horticulture-only fields. Required when department is horticulture; legacy assets use these top-level fields.
       properties:
         gardenType:
           $ref: "#/components/schemas/GardenType"
@@ -1306,15 +1306,6 @@ components:
           enum: [amenity_turf, sports_turf, roadside_verge, rough_grass]
       required: [mowingType]
 
-    StormwaterAssetDetails:
-      type: object
-      description: Required specification for stormwater assets.
-      properties:
-        stormwaterType:
-          type: string
-          enum: [swale, detention_basin, wetland, rain_garden, catchpit]
-      required: [stormwaterType]
-
     SportsfieldsAssetDetails:
       type: object
       description: Required specification for sportsfield assets.
@@ -1324,22 +1315,28 @@ components:
           enum: [natural_turf, artificial_turf, hard_court]
       required: [surfaceType]
 
-    CityCleaningAssetDetails:
+    LitterAssetDetails:
       type: object
-      description: Required specification for City Cleaning assets.
+      description: Required specification for Litter assets.
       properties:
         cleaningType:
           type: string
           enum: [litter_bin, street_sweeping, graffiti, pressure_washing]
       required: [cleaningType]
 
+    GenericDepartmentAssetDetails:
+      type: object
+      description: Optional future department-specific details where PCC has not yet defined a controlled subtype taxonomy.
+      maxProperties: 0
+      additionalProperties: false
+
     DepartmentDetails:
-      description: Use the details schema matching department. Garden assets use gardenType and standard for backwards compatibility.
+      description: Use the details schema matching department. Horticulture assets use gardenType and standard for backwards compatibility.
       oneOf:
         - $ref: "#/components/schemas/MowingAssetDetails"
-        - $ref: "#/components/schemas/StormwaterAssetDetails"
         - $ref: "#/components/schemas/SportsfieldsAssetDetails"
-        - $ref: "#/components/schemas/CityCleaningAssetDetails"
+        - $ref: "#/components/schemas/LitterAssetDetails"
+        - $ref: "#/components/schemas/GenericDepartmentAssetDetails"
 
     Asset:
       type: object
@@ -1392,7 +1389,7 @@ components:
 
     AssetCreate:
       type: object
-      description: Common fields are required for every asset. Garden requires gardenType and standard; Mowing and Sportsfields require areaM2; all non-Garden departments require their matching DepartmentDetails specification.
+      description: Common fields are required for every asset. Horticulture requires gardenType and standard; Mowing and Sportsfields require areaM2; Mowing, Litter, and Sportsfields require their matching DepartmentDetails specification.
       properties:
         reference:       { type: string }
         name:            { type: string }

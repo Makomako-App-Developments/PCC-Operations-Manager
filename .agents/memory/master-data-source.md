@@ -9,7 +9,7 @@ description: Authoritative asset data file and how it maps to the DB for PCC Gar
 **Location**: `attached_assets/` (original upload filename includes a timestamp suffix)  
 **Seed script**: `scripts/seed-assets.mjs` reads from this file and populates the `assets` table.
 
-This file is THE authoritative source of truth for all garden asset data — used in both dev and production.
+This file is THE authoritative source of truth for the current Horticulture asset data — used in both dev and production. The spreadsheet filename remains historical.
 
 ## Team column values in the spreadsheet
 

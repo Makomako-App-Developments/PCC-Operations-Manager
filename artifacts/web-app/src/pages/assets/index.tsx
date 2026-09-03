@@ -561,7 +561,7 @@ function AssetDetailDrawer({ assetId, onClose, teamName }: { assetId: string | n
   const [history, setHistory]     = useState<HistoryEntry[]>([]);
   const [histLoading, setHistLoading] = useState(false);
   const [form, setForm] = useState<EditForm>({
-    name: "", department: "garden", gardenType: "", standard: "", areaM2: "", serviceTimeMins: "",
+    name: "", department: "horticulture", gardenType: "", standard: "", areaM2: "", serviceTimeMins: "",
     frequency: "", siteType: "", ward: "", teamId: "", suburb: "", streetAddress: "", description: "", notes: "",
   });
 
@@ -580,7 +580,7 @@ function AssetDetailDrawer({ assetId, onClose, teamName }: { assetId: string | n
     if (asset) {
       setForm({
         name:            asset.name || "",
-        department:      asset.department || "garden",
+        department:      asset.department || "horticulture",
         gardenType:      asset.gardenType || "",
         standard:        asset.standard || "",
         areaM2:          String(asset.areaM2 ?? ""),

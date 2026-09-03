@@ -36,8 +36,8 @@ function buildApp() {
 }
 
 const validAsset = {
-  name: "Test Garden",
-  department: "garden",
+  name: "Test Horticulture Site",
+  department: "horticulture",
   gardenType: "amenity",
   standard: "medium",
   areaM2: 10,
@@ -75,10 +75,10 @@ describe("asset department/function", () => {
 
     expect(response.status).toBe(201);
     expect(values).toHaveBeenCalledWith(expect.objectContaining({
-      department: "garden",
+      department: "horticulture",
       areaM2: "10",
     }));
-    expect(response.body.department).toBe("garden");
+    expect(response.body.department).toBe("horticulture");
   });
 
   it("validates and normalizes department-specific specifications", async () => {
@@ -88,9 +88,8 @@ describe("asset department/function", () => {
 
     const departments = [
       ["mowing", "mowingType", "amenity_turf", { areaM2: 20 }],
-      ["stormwater", "stormwaterType", "swale", {}],
       ["sportsfields", "surfaceType", "natural_turf", { areaM2: 20 }],
-      ["city_cleaning", "cleaningType", "litter_bin", {}],
+      ["litter", "cleaningType", "litter_bin", {}],
     ] as const;
 
     for (const [department, key, value, extra] of departments) {
@@ -112,10 +111,40 @@ describe("asset department/function", () => {
     }
   });
 
+  it("accepts official departments that do not yet have a controlled asset subtype", async () => {
+    const returning = vi.fn().mockResolvedValue([{ id: "asset-1" }]);
+    const values = vi.fn().mockReturnValue({ returning });
+    insert.mockReturnValue({ values });
+
+    for (const department of [
+      "cemetery",
+      "city_services_maintenance",
+      "tracks_coastal_rangers",
+      "biosecurity_rangers",
+    ]) {
+      const response = await request(buildApp()).post("/assets").send({
+        ...validAsset,
+        department,
+        gardenType: undefined,
+        standard: undefined,
+        areaM2: undefined,
+        departmentDetails: {},
+      });
+
+      expect(response.status).toBe(201);
+      expect(values).toHaveBeenLastCalledWith(expect.objectContaining({
+        department,
+        gardenType: null,
+        standard: null,
+        departmentDetails: {},
+      }));
+    }
+  });
+
   it("rejects missing specifications and required areas", async () => {
     const missingSpecification = await request(buildApp()).post("/assets").send({
       ...validAsset,
-      department: "stormwater",
+      department: "litter",
       gardenType: undefined,
       standard: undefined,
       departmentDetails: {},
@@ -134,9 +163,9 @@ describe("asset department/function", () => {
     expect(insert).not.toHaveBeenCalled();
   });
 
-  it("does not clear Garden fields on an unrelated partial edit", async () => {
+  it("does not clear Horticulture fields on an unrelated partial edit", async () => {
     const before = { id: "asset-1", ...validAsset, areaM2: "10", departmentDetails: null };
-    const updated = { ...before, name: "Renamed Garden" };
+    const updated = { ...before, name: "Renamed Horticulture Site" };
     const firstSelect = {
       from: vi.fn().mockReturnThis(),
       where: vi.fn().mockReturnThis(),
@@ -151,11 +180,11 @@ describe("asset department/function", () => {
 
     const response = await request(buildApp())
       .patch("/assets/asset-1")
-      .send({ name: "Renamed Garden" });
+      .send({ name: "Renamed Horticulture Site" });
 
     expect(response.status).toBe(200);
     expect(set).toHaveBeenCalledWith(expect.objectContaining({
-      name: "Renamed Garden",
+      name: "Renamed Horticulture Site",
       departmentDetails: null,
     }));
     expect(set.mock.calls[0][0]).not.toHaveProperty("gardenType");
@@ -175,7 +204,7 @@ describe("asset department/function", () => {
     };
     select.mockReturnValueOnce(listQuery).mockReturnValueOnce(countQuery);
 
-    const valid = await request(buildApp()).get("/assets?department=stormwater");
+    const valid = await request(buildApp()).get("/assets?department=biosecurity_rangers");
     const invalid = await request(buildApp()).get("/assets?department=unknown_operation");
 
     expect(valid.status).toBe(200);
@@ -194,7 +223,7 @@ describe("asset department/function", () => {
         action: "UPDATE",
         changedAt: new Date("2026-09-03T00:00:00Z"),
         changedByName: "Test Manager",
-        oldData: { ...validAsset, department: "garden" },
+        oldData: { ...validAsset, department: "horticulture" },
         newData: { ...validAsset, department: "mowing" },
       }]),
     };
@@ -206,7 +235,7 @@ describe("asset department/function", () => {
     expect(response.body[0].changes).toContainEqual({
       field: "department",
       label: "Department / Function",
-      old: "garden",
+      old: "horticulture",
       new: "mowing",
     });
   });

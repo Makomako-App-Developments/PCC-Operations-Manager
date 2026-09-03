@@ -729,7 +729,7 @@ function EditPanel({
   const [form, setForm] = useState<EditForm>({
     name:            asset.name || "",
     description:     asset.description || "",
-    department:      asset.department || "garden",
+    department:      asset.department || "horticulture",
     gardenType:      asset.gardenType || "",
     standard:        asset.standard || "",
     areaM2:          String(asset.areaM2 ?? ""),
@@ -755,9 +755,9 @@ function EditPanel({
     try {
       const payload = {
         ...form,
-        departmentDetails: form.department === "garden" ? null : form.departmentDetails,
-        gardenType: form.department === "garden" ? form.gardenType : null,
-        standard: form.department === "garden" ? form.standard : null,
+        departmentDetails: form.department === "horticulture" ? null : form.departmentDetails,
+        gardenType: form.department === "horticulture" ? form.gardenType : null,
+        standard: form.department === "horticulture" ? form.standard : null,
         areaM2:          form.areaM2 ? parseFloat(form.areaM2) : null,
         serviceTimeMins: parseInt(form.serviceTimeMins) || 0,
         siteType:        form.siteType      || null,
@@ -806,7 +806,7 @@ function EditPanel({
           <Select value={form.department} onValueChange={v => {
             f("department", v);
             f("departmentDetails", {});
-            if (v !== "garden") {
+            if (v !== "horticulture") {
               f("gardenType", "");
               f("standard", "");
             } else {
@@ -823,8 +823,8 @@ function EditPanel({
           </Select>
         </FormField>
         <div className="grid grid-cols-2 gap-3">
-          <FormField label={rule.specificationLabel}>
-            <Select value={form.department === "garden" ? form.gardenType : String(form.departmentDetails[rule.specificationKey] ?? "")} onValueChange={v => f(form.department === "garden" ? "gardenType" : "departmentDetails", form.department === "garden" ? v : { ...form.departmentDetails, [rule.specificationKey]: v })}>
+          {rule.specificationOptions.length > 0 && <FormField label={rule.specificationLabel}>
+            <Select value={form.department === "horticulture" ? form.gardenType : String(form.departmentDetails[rule.specificationKey] ?? "")} onValueChange={v => f(form.department === "horticulture" ? "gardenType" : "departmentDetails", form.department === "horticulture" ? v : { ...form.departmentDetails, [rule.specificationKey]: v })}>
               <SelectTrigger className="text-sm"><SelectValue /></SelectTrigger>
               <SelectContent>
                 {rule.specificationOptions.map(option => (
@@ -832,8 +832,8 @@ function EditPanel({
                 ))}
               </SelectContent>
             </Select>
-          </FormField>
-          {form.department === "garden" && <FormField label="Standard">
+          </FormField>}
+          {form.department === "horticulture" && <FormField label="Standard">
             <Select value={form.standard} onValueChange={v => f("standard", v)}>
               <SelectTrigger className="text-sm"><SelectValue /></SelectTrigger>
               <SelectContent>

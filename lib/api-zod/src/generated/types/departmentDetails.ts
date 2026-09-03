@@ -5,16 +5,16 @@
  * Porirua City Council – Garden Asset Management API
  * OpenAPI spec version: 0.1.0
  */
-import type { CityCleaningAssetDetails } from "./cityCleaningAssetDetails";
+import type { GenericDepartmentAssetDetails } from "./genericDepartmentAssetDetails";
+import type { LitterAssetDetails } from "./litterAssetDetails";
 import type { MowingAssetDetails } from "./mowingAssetDetails";
 import type { SportsfieldsAssetDetails } from "./sportsfieldsAssetDetails";
-import type { StormwaterAssetDetails } from "./stormwaterAssetDetails";
 
 /**
- * Use the details schema matching department. Garden assets use gardenType and standard for backwards compatibility.
+ * Use the details schema matching department. Horticulture assets use gardenType and standard for backwards compatibility.
  */
 export type DepartmentDetails =
   | MowingAssetDetails
-  | StormwaterAssetDetails
   | SportsfieldsAssetDetails
-  | CityCleaningAssetDetails;
+  | LitterAssetDetails
+  | GenericDepartmentAssetDetails;

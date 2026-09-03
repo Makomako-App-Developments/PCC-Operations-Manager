@@ -6,10 +6,10 @@
  * OpenAPI spec version: 0.1.0
  */
 
-export type CityCleaningAssetDetailsCleaningType =
-  (typeof CityCleaningAssetDetailsCleaningType)[keyof typeof CityCleaningAssetDetailsCleaningType];
+export type LitterAssetDetailsCleaningType =
+  (typeof LitterAssetDetailsCleaningType)[keyof typeof LitterAssetDetailsCleaningType];
 
-export const CityCleaningAssetDetailsCleaningType = {
+export const LitterAssetDetailsCleaningType = {
   litter_bin: "litter_bin",
   street_sweeping: "street_sweeping",
   graffiti: "graffiti",

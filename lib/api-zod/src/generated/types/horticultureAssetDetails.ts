@@ -9,9 +9,9 @@ import type { GardenType } from "./gardenType";
 import type { Standard } from "./standard";
 
 /**
- * Garden-only fields. Required when department is garden; legacy assets use these top-level fields.
+ * Horticulture-only fields. Required when department is horticulture; legacy assets use these top-level fields.
  */
-export interface GardenAssetDetails {
+export interface HorticultureAssetDetails {
   gardenType: GardenType;
   standard: Standard;
 }

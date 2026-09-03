@@ -126,11 +126,11 @@ function renderAssetDetails() {
   );
 }
 
-const gardenAsset = {
+const horticultureAsset = {
   id: "asset-department-flow",
   name: "Harbour Edge Site",
   description: "Created by the manager flow",
-  department: "garden",
+  department: "horticulture",
   gardenType: "amenity",
   standard: "medium",
   areaM2: "180",
@@ -180,17 +180,17 @@ beforeEach(() => {
 
     if (url === "/api/assets" && init?.method === "POST") {
       const body = JSON.parse(String(init.body));
-      mocks.currentAsset = { ...gardenAsset, ...body };
+      mocks.currentAsset = { ...horticultureAsset, ...body };
       return { ok: true, json: async () => mocks.currentAsset };
     }
 
-    if (url === `/api/assets/${gardenAsset.id}` && init?.method === "PATCH") {
+    if (url === `/api/assets/${horticultureAsset.id}` && init?.method === "PATCH") {
       const body = JSON.parse(String(init.body));
       Object.assign(mocks.currentAsset!, body);
       return { ok: true, json: async () => mocks.currentAsset };
     }
 
-    if (url === `/api/assets/${gardenAsset.id}/history`) {
+    if (url === `/api/assets/${horticultureAsset.id}/history`) {
       return {
         ok: true,
         json: async () => [
@@ -203,8 +203,8 @@ beforeEach(() => {
               {
                 field: "department",
                 label: "Department / Function",
-                old: "garden",
-                new: "stormwater",
+                old: "horticulture",
+                new: "litter",
               },
             ],
           },
@@ -260,41 +260,41 @@ describe("signed-in manager department flow", () => {
     cleanup();
     renderAssetRegister();
     await waitFor(() => expect(screen.getByText("Asset Register")).toBeInTheDocument());
-    expect(screen.getByTestId(`row-asset-${gardenAsset.id}`)).toHaveTextContent("Mowing");
+    expect(screen.getByTestId(`row-asset-${horticultureAsset.id}`)).toHaveTextContent("Mowing");
 
     await user.click(screen.getAllByRole("combobox")[0]);
     await user.click(await screen.findByRole("option", { name: "Mowing" }));
     await waitFor(() => {
-      expect(screen.getByTestId(`row-asset-${gardenAsset.id}`)).toHaveTextContent("Mowing");
+      expect(screen.getByTestId(`row-asset-${horticultureAsset.id}`)).toHaveTextContent("Mowing");
     });
 
     await user.click(screen.getByRole("button", { name: "Clear Filters" }));
-    fireEvent.click(screen.getByTestId(`row-asset-${gardenAsset.id}`));
+    fireEvent.click(screen.getByTestId(`row-asset-${horticultureAsset.id}`));
     cleanup();
     renderAssetDetails();
     await waitFor(() => expect(screen.getByText("Asset Register")).toBeInTheDocument());
     await user.click(screen.getByRole("button", { name: "Edit" }));
 
     await user.click(screen.getAllByRole("combobox")[0]);
-    await user.click(await screen.findByRole("option", { name: "Stormwater" }));
+    await user.click(await screen.findByRole("option", { name: "Litter" }));
     await user.click(screen.getAllByRole("combobox")[1]);
-    await user.click(await screen.findByRole("option", { name: "Swale" }));
+    await user.click(await screen.findByRole("option", { name: "Litter bin" }));
     await user.click(screen.getByRole("button", { name: "Save Changes" }));
 
     await waitFor(() => {
       expect(mocks.fetch).toHaveBeenCalledWith(
-        `/api/assets/${gardenAsset.id}`,
+        `/api/assets/${horticultureAsset.id}`,
         expect.objectContaining({ method: "PATCH" }),
       );
     });
     const patchCall = mocks.fetch.mock.calls.find(
-      ([url, init]) => url === `/api/assets/${gardenAsset.id}` && init?.method === "PATCH",
+      ([url, init]) => url === `/api/assets/${horticultureAsset.id}` && init?.method === "PATCH",
     );
     expect(patchCall).toBeDefined();
     expect(JSON.parse(String(patchCall?.[1].body))).toEqual(
       expect.objectContaining({
-        department: "stormwater",
-        departmentDetails: { stormwaterType: "swale" },
+        department: "litter",
+        departmentDetails: { cleaningType: "litter_bin" },
       }),
     );
 
@@ -302,7 +302,7 @@ describe("signed-in manager department flow", () => {
     await waitFor(() =>
       expect(screen.getAllByText("Department / Function").length).toBeGreaterThan(1),
     );
-    expect(document.body).toHaveTextContent("garden");
-    expect(document.body).toHaveTextContent("stormwater");
+    expect(document.body).toHaveTextContent("horticulture");
+    expect(document.body).toHaveTextContent("litter");
   });
 });

@@ -44,11 +44,14 @@ export const GardenType = {
 export type Department = (typeof Department)[keyof typeof Department];
 
 export const Department = {
-  garden: "garden",
+  horticulture: "horticulture",
   mowing: "mowing",
-  stormwater: "stormwater",
+  litter: "litter",
   sportsfields: "sportsfields",
-  city_cleaning: "city_cleaning",
+  cemetery: "cemetery",
+  city_services_maintenance: "city_services_maintenance",
+  tracks_coastal_rangers: "tracks_coastal_rangers",
+  biosecurity_rangers: "biosecurity_rangers",
 } as const;
 
 export type Standard = (typeof Standard)[keyof typeof Standard];
@@ -178,9 +181,9 @@ export interface TeamCreate {
 }
 
 /**
- * Garden-only fields. Required when department is garden; legacy assets use these top-level fields.
+ * Horticulture-only fields. Required when department is horticulture; legacy assets use these top-level fields.
  */
-export interface GardenAssetDetails {
+export interface HorticultureAssetDetails {
   gardenType: GardenType;
   standard: Standard;
 }
@@ -202,24 +205,6 @@ export interface MowingAssetDetails {
   mowingType: MowingAssetDetailsMowingType;
 }
 
-export type StormwaterAssetDetailsStormwaterType =
-  (typeof StormwaterAssetDetailsStormwaterType)[keyof typeof StormwaterAssetDetailsStormwaterType];
-
-export const StormwaterAssetDetailsStormwaterType = {
-  swale: "swale",
-  detention_basin: "detention_basin",
-  wetland: "wetland",
-  rain_garden: "rain_garden",
-  catchpit: "catchpit",
-} as const;
-
-/**
- * Required specification for stormwater assets.
- */
-export interface StormwaterAssetDetails {
-  stormwaterType: StormwaterAssetDetailsStormwaterType;
-}
-
 export type SportsfieldsAssetDetailsSurfaceType =
   (typeof SportsfieldsAssetDetailsSurfaceType)[keyof typeof SportsfieldsAssetDetailsSurfaceType];
 
@@ -236,10 +221,10 @@ export interface SportsfieldsAssetDetails {
   surfaceType: SportsfieldsAssetDetailsSurfaceType;
 }
 
-export type CityCleaningAssetDetailsCleaningType =
-  (typeof CityCleaningAssetDetailsCleaningType)[keyof typeof CityCleaningAssetDetailsCleaningType];
+export type LitterAssetDetailsCleaningType =
+  (typeof LitterAssetDetailsCleaningType)[keyof typeof LitterAssetDetailsCleaningType];
 
-export const CityCleaningAssetDetailsCleaningType = {
+export const LitterAssetDetailsCleaningType = {
   litter_bin: "litter_bin",
   street_sweeping: "street_sweeping",
   graffiti: "graffiti",
@@ -247,20 +232,27 @@ export const CityCleaningAssetDetailsCleaningType = {
 } as const;
 
 /**
- * Required specification for City Cleaning assets.
+ * Required specification for Litter assets.
  */
-export interface CityCleaningAssetDetails {
-  cleaningType: CityCleaningAssetDetailsCleaningType;
+export interface LitterAssetDetails {
+  cleaningType: LitterAssetDetailsCleaningType;
 }
 
 /**
- * Use the details schema matching department. Garden assets use gardenType and standard for backwards compatibility.
+ * Optional future department-specific details where PCC has not yet defined a controlled subtype taxonomy.
+ */
+export interface GenericDepartmentAssetDetails {
+  [key: string]: unknown;
+}
+
+/**
+ * Use the details schema matching department. Horticulture assets use gardenType and standard for backwards compatibility.
  */
 export type DepartmentDetails =
   | MowingAssetDetails
-  | StormwaterAssetDetails
   | SportsfieldsAssetDetails
-  | CityCleaningAssetDetails;
+  | LitterAssetDetails
+  | GenericDepartmentAssetDetails;
 
 export type AssetSiteType =
   | (typeof AssetSiteType)[keyof typeof AssetSiteType]
@@ -306,7 +298,7 @@ export const AssetCreateSiteType = {
 } as const;
 
 /**
- * Common fields are required for every asset. Garden requires gardenType and standard; Mowing and Sportsfields require areaM2; all non-Garden departments require their matching DepartmentDetails specification.
+ * Common fields are required for every asset. Horticulture requires gardenType and standard; Mowing and Sportsfields require areaM2; Mowing, Litter, and Sportsfields require their matching DepartmentDetails specification.
  */
 export interface AssetCreate {
   reference: string;

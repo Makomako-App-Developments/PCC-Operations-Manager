@@ -419,7 +419,7 @@ export default function AssetDetailScreen() {
               <Feather name="check-square" size={18} color="#fff" />
               <Text style={styles.auditBtnText}>Start Audit</Text>
             </TouchableOpacity>
-            {(asset as any).department === "garden" && <View style={styles.actionRow}>
+            {(asset as any).department === "horticulture" && <View style={styles.actionRow}>
               <TouchableOpacity
                 style={[
                   styles.actionSecondaryBtn,

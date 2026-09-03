@@ -14,7 +14,7 @@ import type { Standard } from "./standard";
 import type { Ward } from "./ward";
 
 /**
- * Common fields are required for every asset. Garden requires gardenType and standard; Mowing and Sportsfields require areaM2; all non-Garden departments require their matching DepartmentDetails specification.
+ * Common fields are required for every asset. Horticulture requires gardenType and standard; Mowing and Sportsfields require areaM2; Mowing, Litter, and Sportsfields require their matching DepartmentDetails specification.
  */
 export interface AssetCreate {
   reference: string;

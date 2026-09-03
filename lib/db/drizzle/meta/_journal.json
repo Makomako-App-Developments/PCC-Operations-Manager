@@ -57,6 +57,13 @@
       "when": 1788383613244,
       "tag": "0011_department_asset_details",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1788394800000,
+      "tag": "0012_official_pcc_departments",
+      "breakpoints": true
     }
   ]
 }

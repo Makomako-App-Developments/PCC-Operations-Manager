@@ -3,8 +3,8 @@ name: Asset department classification
 description: Durable storage and compatibility rule for classifying assets across operational departments.
 ---
 
-Persist an asset's department/function as a non-null extensible string, with `garden` as the default for legacy and existing assets. Enforce the currently supported values at the API and UI boundaries rather than with a PostgreSQL enum.
+Persist an asset's department/function as a non-null extensible string, with `horticulture` as the default for legacy and existing assets. Enforce the currently supported values at the API and UI boundaries rather than with a PostgreSQL enum.
 
-**Why:** The system is expanding beyond gardens into Mowing, Stormwater, Sportsfields, City Cleaning, and future operations. A database enum would require a schema migration for every new function and would unnecessarily couple broad operational classification to the garden-specific specification model.
+**Why:** PCC's official departments are Horticulture, Mowing, Litter, Sportsfields, Cemetery, City Services Maintenance, Tracks & Coastal Rangers, and Biosecurity Rangers. A database enum would require a schema migration for every future function and would unnecessarily couple broad operational classification to horticulture-specific fields.
 
-**How to apply:** When adding a department, update the shared API contract and every controlled selector/label mapping. Keep existing garden-specific fields and workflows separate until a department explicitly receives its own rules.
+**How to apply:** Use the official names and shared snake-case values everywhere. Keep existing garden-specific asset fields under Horticulture, and do not invent mandatory subtype taxonomies for departments until PCC defines them.

@@ -81,8 +81,8 @@ const fieldAsset = {
   id: "asset-field-department",
   name: "Harbour Edge Site",
   description: "Created by the manager flow",
-  department: "stormwater",
-  departmentDetails: { stormwaterType: "swale" },
+  department: "litter",
+  departmentDetails: { cleaningType: "litter_bin" },
   areaM2: "180",
   serviceTimeMins: 45,
   frequency: "monthly",
@@ -123,8 +123,8 @@ describe("signed-in Field Ops department display", () => {
 
     const rendered = document.body.textContent ?? "";
     expect(rendered).toContain("Department / Function");
-    expect(rendered).toContain("Stormwater");
-    expect(rendered).toContain("Swale");
+    expect(rendered).toContain("Litter");
+    expect(rendered).toContain("Litter bin");
     expect(rendered).not.toContain("Edit");
   });
 });

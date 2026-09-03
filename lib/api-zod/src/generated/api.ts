@@ -98,7 +98,16 @@ export const ListAssetsQueryParams = zod.object({
     ])
     .optional(),
   department: zod
-    .enum(["garden", "mowing", "stormwater", "sportsfields", "city_cleaning"])
+    .enum([
+      "horticulture",
+      "mowing",
+      "litter",
+      "sportsfields",
+      "cemetery",
+      "city_services_maintenance",
+      "tracks_coastal_rangers",
+      "biosecurity_rangers",
+    ])
     .optional(),
   teamId: zod.coerce.string().uuid().optional(),
   ward: zod.enum(["eastern", "northern", "western"]).optional(),
@@ -112,11 +121,14 @@ export const ListAssetsResponse = zod.object({
       reference: zod.string(),
       name: zod.string(),
       department: zod.enum([
-        "garden",
+        "horticulture",
         "mowing",
-        "stormwater",
+        "litter",
         "sportsfields",
-        "city_cleaning",
+        "cemetery",
+        "city_services_maintenance",
+        "tracks_coastal_rangers",
+        "biosecurity_rangers",
       ]),
       gardenType: zod
         .enum([
@@ -157,17 +169,6 @@ export const ListAssetsResponse = zod.object({
                 .describe("Required specification for mowing assets."),
               zod
                 .object({
-                  stormwaterType: zod.enum([
-                    "swale",
-                    "detention_basin",
-                    "wetland",
-                    "rain_garden",
-                    "catchpit",
-                  ]),
-                })
-                .describe("Required specification for stormwater assets."),
-              zod
-                .object({
                   surfaceType: zod.enum([
                     "natural_turf",
                     "artificial_turf",
@@ -184,10 +185,15 @@ export const ListAssetsResponse = zod.object({
                     "pressure_washing",
                   ]),
                 })
-                .describe("Required specification for City Cleaning assets."),
+                .describe("Required specification for Litter assets."),
+              zod
+                .object({})
+                .describe(
+                  "Optional future department-specific details where PCC has not yet defined a controlled subtype taxonomy.",
+                ),
             ])
             .describe(
-              "Use the details schema matching department. Garden assets use gardenType and standard for backwards compatibility.",
+              "Use the details schema matching department. Horticulture assets use gardenType and standard for backwards compatibility.",
             ),
           zod.null(),
         ])
@@ -220,11 +226,14 @@ export const CreateAssetBody = zod
     reference: zod.string(),
     name: zod.string(),
     department: zod.enum([
-      "garden",
+      "horticulture",
       "mowing",
-      "stormwater",
+      "litter",
       "sportsfields",
-      "city_cleaning",
+      "cemetery",
+      "city_services_maintenance",
+      "tracks_coastal_rangers",
+      "biosecurity_rangers",
     ]),
     gardenType: zod
       .enum([
@@ -263,17 +272,6 @@ export const CreateAssetBody = zod
           .describe("Required specification for mowing assets."),
         zod
           .object({
-            stormwaterType: zod.enum([
-              "swale",
-              "detention_basin",
-              "wetland",
-              "rain_garden",
-              "catchpit",
-            ]),
-          })
-          .describe("Required specification for stormwater assets."),
-        zod
-          .object({
             surfaceType: zod.enum([
               "natural_turf",
               "artificial_turf",
@@ -290,11 +288,16 @@ export const CreateAssetBody = zod
               "pressure_washing",
             ]),
           })
-          .describe("Required specification for City Cleaning assets."),
+          .describe("Required specification for Litter assets."),
+        zod
+          .object({})
+          .describe(
+            "Optional future department-specific details where PCC has not yet defined a controlled subtype taxonomy.",
+          ),
       ])
       .optional()
       .describe(
-        "Use the details schema matching department. Garden assets use gardenType and standard for backwards compatibility.",
+        "Use the details schema matching department. Horticulture assets use gardenType and standard for backwards compatibility.",
       ),
     siteType: zod.enum(["park", "street"]).optional(),
     teamId: zod.string().uuid().optional(),
@@ -308,7 +311,7 @@ export const CreateAssetBody = zod
     notes: zod.string().optional(),
   })
   .describe(
-    "Common fields are required for every asset. Garden requires gardenType and standard; Mowing and Sportsfields require areaM2; all non-Garden departments require their matching DepartmentDetails specification.",
+    "Common fields are required for every asset. Horticulture requires gardenType and standard; Mowing and Sportsfields require areaM2; Mowing, Litter, and Sportsfields require their matching DepartmentDetails specification.",
   );
 
 /**
@@ -323,11 +326,14 @@ export const GetAssetResponse = zod.object({
   reference: zod.string(),
   name: zod.string(),
   department: zod.enum([
-    "garden",
+    "horticulture",
     "mowing",
-    "stormwater",
+    "litter",
     "sportsfields",
-    "city_cleaning",
+    "cemetery",
+    "city_services_maintenance",
+    "tracks_coastal_rangers",
+    "biosecurity_rangers",
   ]),
   gardenType: zod
     .enum([
@@ -368,17 +374,6 @@ export const GetAssetResponse = zod.object({
             .describe("Required specification for mowing assets."),
           zod
             .object({
-              stormwaterType: zod.enum([
-                "swale",
-                "detention_basin",
-                "wetland",
-                "rain_garden",
-                "catchpit",
-              ]),
-            })
-            .describe("Required specification for stormwater assets."),
-          zod
-            .object({
               surfaceType: zod.enum([
                 "natural_turf",
                 "artificial_turf",
@@ -395,10 +390,15 @@ export const GetAssetResponse = zod.object({
                 "pressure_washing",
               ]),
             })
-            .describe("Required specification for City Cleaning assets."),
+            .describe("Required specification for Litter assets."),
+          zod
+            .object({})
+            .describe(
+              "Optional future department-specific details where PCC has not yet defined a controlled subtype taxonomy.",
+            ),
         ])
         .describe(
-          "Use the details schema matching department. Garden assets use gardenType and standard for backwards compatibility.",
+          "Use the details schema matching department. Horticulture assets use gardenType and standard for backwards compatibility.",
         ),
       zod.null(),
     ])
@@ -428,7 +428,16 @@ export const UpdateAssetParams = zod.object({
 export const UpdateAssetBody = zod.object({
   name: zod.string().optional(),
   department: zod
-    .enum(["garden", "mowing", "stormwater", "sportsfields", "city_cleaning"])
+    .enum([
+      "horticulture",
+      "mowing",
+      "litter",
+      "sportsfields",
+      "cemetery",
+      "city_services_maintenance",
+      "tracks_coastal_rangers",
+      "biosecurity_rangers",
+    ])
     .optional(),
   gardenType: zod
     .enum([
@@ -463,17 +472,6 @@ export const UpdateAssetBody = zod.object({
         .describe("Required specification for mowing assets."),
       zod
         .object({
-          stormwaterType: zod.enum([
-            "swale",
-            "detention_basin",
-            "wetland",
-            "rain_garden",
-            "catchpit",
-          ]),
-        })
-        .describe("Required specification for stormwater assets."),
-      zod
-        .object({
           surfaceType: zod.enum([
             "natural_turf",
             "artificial_turf",
@@ -490,11 +488,16 @@ export const UpdateAssetBody = zod.object({
             "pressure_washing",
           ]),
         })
-        .describe("Required specification for City Cleaning assets."),
+        .describe("Required specification for Litter assets."),
+      zod
+        .object({})
+        .describe(
+          "Optional future department-specific details where PCC has not yet defined a controlled subtype taxonomy.",
+        ),
     ])
     .optional()
     .describe(
-      "Use the details schema matching department. Garden assets use gardenType and standard for backwards compatibility.",
+      "Use the details schema matching department. Horticulture assets use gardenType and standard for backwards compatibility.",
     ),
   teamId: zod.string().uuid().optional(),
   ward: zod.enum(["eastern", "northern", "western"]).optional(),
@@ -511,11 +514,14 @@ export const UpdateAssetResponse = zod.object({
   reference: zod.string(),
   name: zod.string(),
   department: zod.enum([
-    "garden",
+    "horticulture",
     "mowing",
-    "stormwater",
+    "litter",
     "sportsfields",
-    "city_cleaning",
+    "cemetery",
+    "city_services_maintenance",
+    "tracks_coastal_rangers",
+    "biosecurity_rangers",
   ]),
   gardenType: zod
     .enum([
@@ -556,17 +562,6 @@ export const UpdateAssetResponse = zod.object({
             .describe("Required specification for mowing assets."),
           zod
             .object({
-              stormwaterType: zod.enum([
-                "swale",
-                "detention_basin",
-                "wetland",
-                "rain_garden",
-                "catchpit",
-              ]),
-            })
-            .describe("Required specification for stormwater assets."),
-          zod
-            .object({
               surfaceType: zod.enum([
                 "natural_turf",
                 "artificial_turf",
@@ -583,10 +578,15 @@ export const UpdateAssetResponse = zod.object({
                 "pressure_washing",
               ]),
             })
-            .describe("Required specification for City Cleaning assets."),
+            .describe("Required specification for Litter assets."),
+          zod
+            .object({})
+            .describe(
+              "Optional future department-specific details where PCC has not yet defined a controlled subtype taxonomy.",
+            ),
         ])
         .describe(
-          "Use the details schema matching department. Garden assets use gardenType and standard for backwards compatibility.",
+          "Use the details schema matching department. Horticulture assets use gardenType and standard for backwards compatibility.",
         ),
       zod.null(),
     ])

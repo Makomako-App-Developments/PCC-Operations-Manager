@@ -9,9 +9,12 @@
 export type Department = (typeof Department)[keyof typeof Department];
 
 export const Department = {
-  garden: "garden",
+  horticulture: "horticulture",
   mowing: "mowing",
-  stormwater: "stormwater",
+  litter: "litter",
   sportsfields: "sportsfields",
-  city_cleaning: "city_cleaning",
+  cemetery: "cemetery",
+  city_services_maintenance: "city_services_maintenance",
+  tracks_coastal_rangers: "tracks_coastal_rangers",
+  biosecurity_rangers: "biosecurity_rangers",
 } as const;

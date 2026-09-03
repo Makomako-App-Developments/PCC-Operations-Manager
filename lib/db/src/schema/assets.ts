@@ -10,8 +10,8 @@ export const assetsTable = pgTable("assets", {
   id:              uuid("id").primaryKey().defaultRandom(),
   globalId:        varchar("global_id", { length: 100 }),
   name:            varchar("name", { length: 200 }).notNull(),
-  department:      varchar("department", { length: 100 }).notNull().default("garden"),
-  // Garden fields stay available for backwards compatibility, but are not
+  department:      varchar("department", { length: 100 }).notNull().default("horticulture"),
+  // Horticulture fields stay available for backwards compatibility, but are not
   // applicable to every department. Department-specific specifications live
   // in departmentDetails.
   gardenType:      gardenTypeEnum("garden_type"),
