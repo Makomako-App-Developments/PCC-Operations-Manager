@@ -20,4 +20,5 @@
 - [Legacy unclaimed active jobs](legacy-unclaimed-active-jobs.md) — jobs begun before individual claiming can claim atomically on completion, never while still pending.
 - [Asset department classification](asset-department-classification.md) — persist department/function as an extensible string; controlled API/UI options may grow without a PostgreSQL enum migration.
 - [Shared department definitions](shared-department-definitions.md) — keep asset department values, labels, validation, and selectors aligned through one cross-platform module.
+- [Team department ownership](team-department-ownership.md) — every team belongs to one official PCC department; existing teams are Horticulture.
 - [Web UI test harness](web-ui-test-harness.md) — jsdom needs pointer-capture and scrollIntoView shims for real Radix Select interactions.

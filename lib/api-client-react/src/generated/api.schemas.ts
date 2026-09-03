@@ -173,11 +173,17 @@ export interface User {
 export interface Team {
   id: string;
   name: string;
+  department: Department;
   createdAt: string;
 }
 
 export interface TeamCreate {
+  /**
+   * @minLength 1
+   * @maxLength 100
+   */
   name: string;
+  department: Department;
 }
 
 /**

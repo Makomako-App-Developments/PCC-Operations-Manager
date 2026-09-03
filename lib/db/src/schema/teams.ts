@@ -6,6 +6,7 @@ import { roleEnum } from "./enums";
 export const teamsTable = pgTable("teams", {
   id:        uuid("id").primaryKey().defaultRandom(),
   name:      varchar("name", { length: 100 }).notNull().unique(),
+  department: varchar("department", { length: 50 }).notNull().default("horticulture"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 

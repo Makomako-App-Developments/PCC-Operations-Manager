@@ -5,9 +5,11 @@
  * Porirua City Council – Garden Asset Management API
  * OpenAPI spec version: 0.1.0
  */
+import type { Department } from "./department";
 
 export interface Team {
   id: string;
   name: string;
+  department: Department;
   createdAt: Date;
 }

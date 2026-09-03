@@ -3,9 +3,13 @@ import { db, teamsTable, teamMembersTable, usersTable, assetsTable, systemSettin
 import { eq, sql, isNull } from "drizzle-orm";
 import { requireAuth, requireRole } from "../middlewares/auth";
 import { validateBody } from "../middlewares/validate";
-import { z } from "zod";
+import { z } from "zod/v4";
+import { DEPARTMENT_VALUES } from "@workspace/asset-definitions";
 
 const router = Router();
+const teamCreateSchema = insertTeamSchema.extend({
+  department: z.enum(DEPARTMENT_VALUES),
+});
 
 // GET /api/teams
 router.get("/teams", requireAuth, async (_req, res) => {
@@ -93,12 +97,13 @@ router.get("/teams/with-counts", requireAuth, async (_req, res) => {
     .select({
       id:           teamsTable.id,
       name:         teamsTable.name,
+      department:   teamsTable.department,
       createdAt:    teamsTable.createdAt,
       memberCount:  sql<number>`cast(count(${usersTable.id}) filter (where ${usersTable.isActive} = true) as int)`,
     })
     .from(teamsTable)
     .leftJoin(usersTable, eq(usersTable.teamId, teamsTable.id))
-    .groupBy(teamsTable.id, teamsTable.name, teamsTable.createdAt));
+    .groupBy(teamsTable.id, teamsTable.name, teamsTable.department, teamsTable.createdAt));
   res.json(rows);
 });
 
@@ -210,7 +215,7 @@ router.get("/teams/:id/members", requireAuth, requireRole("manager", "supervisor
 });
 
 // POST /api/teams
-router.post("/teams", requireAuth, requireRole("manager"), validateBody(insertTeamSchema), async (req, res) => {
+router.post("/teams", requireAuth, requireRole("manager"), validateBody(teamCreateSchema), async (req, res) => {
   const [created] = await executeWithCircuitBreaker(() => db.insert(teamsTable).values(req.body).returning());
   res.status(201).json(created);
 });

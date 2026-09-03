@@ -940,6 +940,16 @@ export const UpdateReactiveJobResponse = zod.object({
 export const ListTeamsResponseItem = zod.object({
   id: zod.string().uuid(),
   name: zod.string(),
+  department: zod.enum([
+    "horticulture",
+    "mowing",
+    "litter",
+    "sportsfields",
+    "cemetery",
+    "city_services_maintenance",
+    "tracks_coastal_rangers",
+    "biosecurity_rangers",
+  ]),
   createdAt: zod.date(),
 });
 export const ListTeamsResponse = zod.array(ListTeamsResponseItem);
@@ -947,8 +957,20 @@ export const ListTeamsResponse = zod.array(ListTeamsResponseItem);
 /**
  * @summary Create a team
  */
+export const createTeamBodyNameMax = 100;
+
 export const CreateTeamBody = zod.object({
-  name: zod.string(),
+  name: zod.string().min(1).max(createTeamBodyNameMax),
+  department: zod.enum([
+    "horticulture",
+    "mowing",
+    "litter",
+    "sportsfields",
+    "cemetery",
+    "city_services_maintenance",
+    "tracks_coastal_rangers",
+    "biosecurity_rangers",
+  ]),
 });
 
 /**

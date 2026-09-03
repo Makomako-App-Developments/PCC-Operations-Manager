@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { ChevronLeft, ChevronRight, ChevronDown, Users, UsersRound, BarChart3, MapPin, Ruler, Clock, UserCheck, AlertTriangle, Loader2, RefreshCw, Pencil, Trash2, Plus, Check, X, UserPlus, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   Popover,
   PopoverContent,
@@ -10,6 +11,7 @@ import {
 } from "@/components/ui/popover";
 import { useAuth } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
+import { DEPARTMENTS, departmentLabel, type DepartmentValue } from "@workspace/asset-definitions";
 
 const BRAND = "#00AECD";
 const NAVY  = "#0f2a36";
@@ -157,6 +159,7 @@ function useLivePeople(): LivePerson[] {
 interface TeamWithCount {
   id:          string;
   name:        string;
+  department:  DepartmentValue;
   createdAt:   string;
   memberCount: number;
 }
@@ -232,6 +235,7 @@ function CompositionTab() {
   const [editName, setEditName]   = useState("");
   const [creating, setCreating]   = useState(false);
   const [newName, setNewName]     = useState("");
+  const [newDepartment, setNewDepartment] = useState<DepartmentValue | "">("");
 
   // Member management state
   const [addingToTeam, setAddingToTeam] = useState<string | null>(null);
@@ -260,16 +264,16 @@ function CompositionTab() {
   });
 
   const createTeam = useMutation({
-    mutationFn: async (name: string) => {
+    mutationFn: async ({ name, department }: { name: string; department: DepartmentValue }) => {
       const res = await fetch("/api/teams", {
         method: "POST", credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name }),
+        body: JSON.stringify({ name, department }),
       });
       if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error((e as any).error ?? "Failed to create"); }
       return res.json();
     },
-    onSuccess: (t: TeamWithCount) => { qc.invalidateQueries({ queryKey: ["teams-with-counts"] }); qc.invalidateQueries({ queryKey: ["teams"] }); setCreating(false); setNewName(""); toast({ title: "Team created", description: t.name }); },
+    onSuccess: (t: TeamWithCount) => { qc.invalidateQueries({ queryKey: ["teams-with-counts"] }); qc.invalidateQueries({ queryKey: ["teams"] }); setCreating(false); setNewName(""); setNewDepartment(""); toast({ title: "Team created", description: `${t.name} · ${departmentLabel(t.department)}` }); },
     onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
   });
 
@@ -438,7 +442,10 @@ function CompositionTab() {
                     ) : (
                       <>
                         <UsersRound className="w-4 h-4 text-gray-300 flex-shrink-0" />
-                        <span className="flex-1 text-sm font-semibold text-gray-800">{team.name}</span>
+                        <div className="flex-1 min-w-0">
+                          <div className="text-sm font-semibold text-gray-800">{team.name}</div>
+                          <div className="text-[11px] text-gray-400">{departmentLabel(team.department)}</div>
+                        </div>
                         <span className="text-xs text-gray-400 mr-1">{members.length} member{members.length !== 1 ? "s" : ""}</span>
                         <button onClick={() => startEdit(team)} className="p-1.5 rounded-md opacity-0 group-hover:opacity-100 hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-all" title="Rename">
                           <Pencil className="w-3.5 h-3.5" />
@@ -629,24 +636,45 @@ function CompositionTab() {
 
             {/* New team input */}
             {creating && (
-              <div className="bg-white rounded-xl border border-gray-200 shadow-sm flex items-center gap-3 px-5 py-3.5">
+              <div className="bg-white rounded-xl border border-gray-200 shadow-sm flex items-end gap-3 px-5 py-4">
                 <UsersRound className="w-4 h-4 text-gray-300 flex-shrink-0" />
-                <Input
-                  id="new-team-input"
-                  autoFocus
-                  placeholder="Team name…"
-                  value={newName}
-                  onChange={e => setNewName(e.target.value)}
-                  onKeyDown={e => {
-                    if (e.key === "Enter") { e.preventDefault(); if (newName.trim()) createTeam.mutate(newName.trim()); }
-                    if (e.key === "Escape") { setCreating(false); setNewName(""); }
-                  }}
-                  className="h-8 text-sm flex-1 max-w-xs"
-                />
-                <button onClick={() => { if (newName.trim()) createTeam.mutate(newName.trim()); }} disabled={createTeam.isPending || !newName.trim()} className="p-1.5 rounded-md hover:bg-emerald-50 text-emerald-600 disabled:opacity-40 transition-colors" title="Create">
+                <div className="grid flex-1 grid-cols-1 sm:grid-cols-2 gap-3">
+                  <label className="space-y-1">
+                    <span className="text-[11px] font-medium text-gray-500">Team name</span>
+                    <Input
+                      id="new-team-input"
+                      autoFocus
+                      placeholder="Team name…"
+                      value={newName}
+                      onChange={e => setNewName(e.target.value)}
+                      onKeyDown={e => {
+                        if (e.key === "Enter") {
+                          e.preventDefault();
+                          if (newName.trim() && newDepartment) createTeam.mutate({ name: newName.trim(), department: newDepartment });
+                        }
+                        if (e.key === "Escape") { setCreating(false); setNewName(""); setNewDepartment(""); }
+                      }}
+                      className="h-9 text-sm"
+                    />
+                  </label>
+                  <label className="space-y-1">
+                    <span className="text-[11px] font-medium text-gray-500">Department</span>
+                    <Select value={newDepartment} onValueChange={value => setNewDepartment(value as DepartmentValue)}>
+                      <SelectTrigger className="h-9 text-sm">
+                        <SelectValue placeholder="Select department…" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {DEPARTMENTS.map(({ value, label }) => (
+                          <SelectItem key={value} value={value}>{label}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </label>
+                </div>
+                <button onClick={() => { if (newName.trim() && newDepartment) createTeam.mutate({ name: newName.trim(), department: newDepartment }); }} disabled={createTeam.isPending || !newName.trim() || !newDepartment} className="p-1.5 rounded-md hover:bg-emerald-50 text-emerald-600 disabled:opacity-40 transition-colors" title="Create">
                   {createTeam.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
                 </button>
-                <button onClick={() => { setCreating(false); setNewName(""); }} className="p-1.5 rounded-md hover:bg-gray-100 text-gray-400 transition-colors" title="Cancel">
+                <button onClick={() => { setCreating(false); setNewName(""); setNewDepartment(""); }} className="p-1.5 rounded-md hover:bg-gray-100 text-gray-400 transition-colors" title="Cancel">
                   <X className="w-4 h-4" />
                 </button>
               </div>

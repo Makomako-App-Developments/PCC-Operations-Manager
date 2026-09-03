@@ -64,6 +64,13 @@
       "when": 1788394800000,
       "tag": "0012_official_pcc_departments",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1788399000000,
+      "tag": "0013_add_team_department",
+      "breakpoints": true
     }
   ]
 }

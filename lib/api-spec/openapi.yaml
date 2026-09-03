@@ -1277,14 +1277,18 @@ components:
       properties:
         id:        { type: string, format: uuid }
         name:      { type: string }
+        department:
+          $ref: "#/components/schemas/Department"
         createdAt: { type: string, format: date-time }
-      required: [id, name, createdAt]
+      required: [id, name, department, createdAt]
 
     TeamCreate:
       type: object
       properties:
-        name: { type: string }
-      required: [name]
+        name: { type: string, minLength: 1, maxLength: 100 }
+        department:
+          $ref: "#/components/schemas/Department"
+      required: [name, department]
 
     # ─── Assets ─────────────────────────────────────────────────────────────
     HorticultureAssetDetails:
