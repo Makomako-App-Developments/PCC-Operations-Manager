@@ -278,6 +278,15 @@ app.get("/api/uploads/*splat", requireAuth, async (req: Request, res: Response) 
   }
 });
 
+// Authenticated JSON is live operational data. Explicitly prevent browsers and
+// intermediary proxies from reusing a pre-edit response. The uploads handler
+// above remains cacheable because it completes before this middleware.
+app.use("/api", (_req, res, next) => {
+  res.setHeader("Cache-Control", "private, no-store, max-age=0, must-revalidate");
+  res.setHeader("Surrogate-Control", "no-store");
+  next();
+});
+
 // ── Routes ────────────────────────────────────────────────────────────────────
 app.use("/api", router);
 

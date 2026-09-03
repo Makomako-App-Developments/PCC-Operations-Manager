@@ -642,9 +642,18 @@ function AssetDetailDrawer({ assetId, onClose, teamName }: { assetId: string | n
         body: JSON.stringify(payload),
       });
       if (!r.ok) throw new Error(await r.text());
+      const updatedAsset = await r.json();
+      queryClient.setQueryData(getGetAssetQueryKey(asset!.id), updatedAsset);
+      queryClient.setQueriesData({ queryKey: ["/api/assets"] }, (current: any) => {
+        if (!current || !Array.isArray(current.data)) return current;
+        return {
+          ...current,
+          data: current.data.map((item: any) => item.id === updatedAsset.id ? updatedAsset : item),
+        };
+      });
       toast({ title: "Asset updated" });
-      queryClient.invalidateQueries({ queryKey: ["/api/assets"] });
-      queryClient.invalidateQueries({ queryKey: getGetAssetQueryKey(asset!.id) });
+      void queryClient.invalidateQueries({ queryKey: ["/api/assets"] });
+      void queryClient.invalidateQueries({ queryKey: getGetAssetQueryKey(asset!.id) });
       setEditing(false);
       setHistory([]); // reset so history reloads fresh
     } catch {
