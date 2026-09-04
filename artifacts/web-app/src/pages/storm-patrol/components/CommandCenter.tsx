@@ -8,7 +8,6 @@ import {
   usePublishStormPatrolPackage,
   useCloseStormPatrolEvent,
   useCreateStormPatrolAlert,
-  useCreateStormPatrolObservation,
   useAcknowledgeStormPatrolAlert,
   useRetryStormPatrolAlertEmail,
   getGetStormPatrolReportUrl,
@@ -68,7 +67,6 @@ export default function CommandCenter({ data }: CommandCenterProps) {
   
   const publishPackage = usePublishStormPatrolPackage();
   const closeEvent = useCloseStormPatrolEvent();
-  const createObservation = useCreateStormPatrolObservation();
   const ackAlert = useAcknowledgeStormPatrolAlert();
   const createAlert = useCreateStormPatrolAlert();
   const retryEmail = useRetryStormPatrolAlertEmail();
@@ -88,8 +86,6 @@ export default function CommandCenter({ data }: CommandCenterProps) {
 
   // Alerts & Observations State
   const [alertMessage, setAlertMessage] = useState("");
-  const [obsDesc, setObsDesc] = useState("");
-  const [obsNotes, setObsNotes] = useState("");
 
   const handlePublishPackage = async () => {
     if (!selectedTeam || selectedAssets.size === 0) return;
@@ -373,61 +369,6 @@ export default function CommandCenter({ data }: CommandCenterProps) {
                 </form>
               </div>
 
-              {/* Log Observation */}
-              <div className="bg-white/5 border border-white/10 rounded-2xl p-5">
-                <div className="flex items-center gap-2 mb-3">
-                  <Eye className="w-5 h-5 text-white/70" />
-                  <h3 className="text-sm font-semibold text-white/70 uppercase tracking-wider">Log Observation</h3>
-                </div>
-                <form 
-                  onSubmit={async (e) => {
-                    e.preventDefault();
-                    if (!obsDesc.trim()) return;
-                    try {
-                      await createObservation.mutateAsync({
-                        data: {
-                          eventId: event.id,
-                          description: obsDesc,
-                          notes: obsNotes,
-                          locationLat: -41.133, // Defaulting to Porirua center for manual entry
-                          locationLng: 174.833,
-                          idempotencyKey: crypto.randomUUID(),
-                        }
-                      });
-                      toast({ title: "Observation logged" });
-                      setObsDesc("");
-                      setObsNotes("");
-                    } catch(err: any) {
-                      toast({ title: "Failed to log", description: err.message, variant: "destructive" });
-                    }
-                  }} 
-                  className="space-y-3"
-                >
-                  <Input 
-                    value={obsDesc}
-                    onChange={e => setObsDesc(e.target.value)}
-                    placeholder="Short description (e.g. Tree down)"
-                    className="bg-black/20 border-white/10 text-white placeholder:text-white/30"
-                    data-testid="input-obs-desc"
-                    required
-                  />
-                  <Textarea 
-                    value={obsNotes}
-                    onChange={e => setObsNotes(e.target.value)}
-                    placeholder="Additional details..."
-                    className="bg-black/20 border-white/10 text-white placeholder:text-white/30 resize-none h-16"
-                    data-testid="input-obs-notes"
-                  />
-                  <Button 
-                    type="submit" 
-                    disabled={createObservation.isPending || !obsDesc.trim()}
-                    className="w-full bg-white/10 hover:bg-white/20 text-white"
-                    data-testid="btn-save-obs"
-                  >
-                    Save Observation
-                  </Button>
-                </form>
-              </div>
             </div>
 
             {/* Right Column: Work Packages & Jobs */}
