@@ -1785,7 +1785,12 @@ export const CreateUserBody = zod.object({
   email: zod.string().email(),
   name: zod.string(),
   initials: zod.string(),
-  password: zod.string().min(createUserBodyPasswordMin),
+  password: zod
+    .string()
+    .min(createUserBodyPasswordMin)
+    .describe(
+      "A manager-set account password. The plaintext value is never returned by the API.",
+    ),
   role: zod.enum([
     "administrator",
     "manager",
@@ -1797,7 +1802,8 @@ export const CreateUserBody = zod.object({
 });
 
 /**
- * @summary Update a user account (manager only)
+ * Password values are hashed before storage and are never returned. Managers cannot modify administrator accounts.
+ * @summary Update a user account or replace its password (manager only)
  */
 export const UpdateUserParams = zod.object({
   id: zod.coerce.string().uuid(),
@@ -1819,7 +1825,13 @@ export const UpdateUserBody = zod.object({
     .optional(),
   teamId: zod.string().uuid().nullish(),
   isActive: zod.boolean().optional(),
-  password: zod.string().min(updateUserBodyPasswordMin).optional(),
+  password: zod
+    .string()
+    .min(updateUserBodyPasswordMin)
+    .optional()
+    .describe(
+      "Replaces the account password. The plaintext value is hashed and never returned by the API.",
+    ),
 });
 
 export const UpdateUserResponse = zod.object({

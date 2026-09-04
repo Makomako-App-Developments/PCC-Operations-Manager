@@ -1,6 +1,17 @@
 import { useState } from "react";
 import { format } from "date-fns";
-import { Users as UsersIcon, Plus, ToggleLeft, ToggleRight, Loader2, Search } from "lucide-react";
+import {
+  Users as UsersIcon,
+  Plus,
+  ToggleLeft,
+  ToggleRight,
+  Loader2,
+  Search,
+  Eye,
+  EyeOff,
+  KeyRound,
+  RefreshCw,
+} from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -22,41 +33,52 @@ import {
 } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/lib/auth";
 
 const BRAND = "#00AECD";
-const NAVY  = "#0f2a36";
+const NAVY = "#0f2a36";
+const PASSWORD_ALPHABET =
+  "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%";
+
+export function generateStaffPassword(length = 14): string {
+  const values = new Uint32Array(Math.max(8, length));
+  globalThis.crypto.getRandomValues(values);
+  return Array.from(
+    values,
+    (value) => PASSWORD_ALPHABET[value % PASSWORD_ALPHABET.length],
+  ).join("");
+}
 
 interface UserSafe {
-  id:        string;
-  email:     string;
-  name:      string;
-  initials:  string;
-  role:      "administrator" | "manager" | "supervisor" | "field_worker";
-  teamId:    string | null;
-  isActive:  boolean;
+  id: string;
+  email: string;
+  name: string;
+  initials: string;
+  role: "administrator" | "manager" | "supervisor" | "field_worker";
+  teamId: string | null;
+  isActive: boolean;
   createdAt: string;
   updatedAt: string;
 }
 
 interface Team {
-  id:   string;
+  id: string;
   name: string;
 }
 
 const ROLE_LABELS: Record<string, string> = {
   administrator: "Administrator",
-  manager:       "Manager",
-  supervisor:    "Supervisor",
-  field_worker:  "Field Worker",
+  manager: "Manager",
+  supervisor: "Supervisor",
+  field_worker: "Field Worker",
 };
 
 const ROLE_COLOURS: Record<string, { bg: string; text: string }> = {
   administrator: { bg: "#fef3c7", text: "#92400e" },
-  manager:       { bg: "#e0f2fe", text: "#0369a1" },
-  supervisor:    { bg: "#ede9fe", text: "#7c3aed" },
-  field_worker:  { bg: "#dcfce7", text: "#16a34a" },
+  manager: { bg: "#e0f2fe", text: "#0369a1" },
+  supervisor: { bg: "#ede9fe", text: "#7c3aed" },
+  field_worker: { bg: "#dcfce7", text: "#16a34a" },
 };
-
 
 function useUsers() {
   return useQuery<{ data: UserSafe[]; total: number }>({
@@ -68,7 +90,6 @@ function useUsers() {
     },
   });
 }
-
 
 function useTeams() {
   return useQuery<Team[]>({
@@ -84,14 +105,22 @@ function useTeams() {
 function useUpdateUser() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async ({ id, ...body }: Partial<UserSafe> & { id: string; password?: string }) => {
+    mutationFn: async ({
+      id,
+      ...body
+    }: Partial<UserSafe> & { id: string; password?: string }) => {
       const res = await fetch(`/api/users/${id}`, {
         method: "PATCH",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       });
-      if (!res.ok) throw new Error("Failed to update user");
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(
+          (err as { error?: string }).error ?? "Failed to update user",
+        );
+      }
       return res.json();
     },
     onSuccess: () => {
@@ -120,7 +149,9 @@ function useCreateUser() {
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
-        throw new Error((err as { error?: string }).error ?? "Failed to create user");
+        throw new Error(
+          (err as { error?: string }).error ?? "Failed to create user",
+        );
       }
       return res.json();
     },
@@ -131,15 +162,153 @@ function useCreateUser() {
   });
 }
 
+const EMPTY_FORM = {
+  name: "",
+  email: "",
+  initials: "",
+  password: "",
+  role: "field_worker",
+  teamId: "",
+};
 
-const EMPTY_FORM = { name: "", email: "", initials: "", password: "", role: "field_worker", teamId: "" };
+function PasswordField({
+  value,
+  onChange,
+  visible,
+  onVisibleChange,
+  inputTestId,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  visible: boolean;
+  onVisibleChange: (visible: boolean) => void;
+  inputTestId: string;
+}) {
+  return (
+    <div className="space-y-2">
+      <div className="relative">
+        <Input
+          required
+          minLength={8}
+          type={visible ? "text" : "password"}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder="Min 8 characters"
+          className="pr-11"
+          data-testid={inputTestId}
+          autoComplete="new-password"
+        />
+        <button
+          type="button"
+          onClick={() => onVisibleChange(!visible)}
+          className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+          aria-label={visible ? "Hide password" : "Show password"}
+        >
+          {visible ? (
+            <EyeOff className="w-4 h-4" />
+          ) : (
+            <Eye className="w-4 h-4" />
+          )}
+        </button>
+      </div>
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        className="gap-1.5"
+        onClick={() => {
+          onChange(generateStaffPassword());
+          onVisibleChange(true);
+        }}
+      >
+        <RefreshCw className="w-3.5 h-3.5" />
+        Generate password
+      </Button>
+    </div>
+  );
+}
 
-function CreateUserDialog({ open, onClose, teams }: { open: boolean; onClose: () => void; teams: Team[] }) {
+function PasswordConfirmation({
+  title,
+  name,
+  password,
+  onDone,
+}: {
+  title: string;
+  name: string;
+  password: string;
+  onDone: () => void;
+}) {
+  const [visible, setVisible] = useState(true);
+  return (
+    <>
+      <DialogHeader>
+        <DialogTitle>{title}</DialogTitle>
+      </DialogHeader>
+      <div className="space-y-4 py-2">
+        <p className="text-sm text-gray-600">
+          Share this password securely with {name}. It cannot be viewed again
+          after this dialog is closed.
+        </p>
+        <div className="relative">
+          <Input
+            readOnly
+            type={visible ? "text" : "password"}
+            value={password}
+            className="pr-11 font-mono"
+            data-testid="confirmed-password"
+          />
+          <button
+            type="button"
+            onClick={() => setVisible((v) => !v)}
+            className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+            aria-label={visible ? "Hide password" : "Show password"}
+          >
+            {visible ? (
+              <EyeOff className="w-4 h-4" />
+            ) : (
+              <Eye className="w-4 h-4" />
+            )}
+          </button>
+        </div>
+        <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+          GardenOps stores only a secure password hash. Closing this dialog
+          permanently removes this visible copy.
+        </p>
+      </div>
+      <DialogFooter>
+        <Button
+          type="button"
+          onClick={onDone}
+          style={{ backgroundColor: BRAND }}
+        >
+          Done
+        </Button>
+      </DialogFooter>
+    </>
+  );
+}
+
+function CreateUserDialog({
+  open,
+  onClose,
+  teams,
+}: {
+  open: boolean;
+  onClose: () => void;
+  teams: Team[];
+}) {
   const [form, setForm] = useState(EMPTY_FORM);
+  const [showPassword, setShowPassword] = useState(false);
+  const [createdAccount, setCreatedAccount] = useState<{
+    name: string;
+    password: string;
+  } | null>(null);
   const createUser = useCreateUser();
   const { toast } = useToast();
+  const { user: currentUser } = useAuth();
 
-  const set = (k: string) => (v: string) => setForm(f => ({ ...f, [k]: v }));
+  const set = (k: string) => (v: string) => setForm((f) => ({ ...f, [k]: v }));
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -147,72 +316,256 @@ function CreateUserDialog({ open, onClose, teams }: { open: boolean; onClose: ()
       const payload: Record<string, string> = { ...form };
       if (payload.teamId === "__none__") payload.teamId = "";
       if (!payload.teamId) delete payload.teamId;
-      await createUser.mutateAsync(payload as Parameters<typeof createUser.mutateAsync>[0]);
-      toast({ title: "Account created", description: `${form.name} can now sign in.` });
+      await createUser.mutateAsync(
+        payload as Parameters<typeof createUser.mutateAsync>[0],
+      );
+      setCreatedAccount({ name: form.name, password: form.password });
+      toast({
+        title: "Account created",
+        description: `${form.name} can now sign in with the password shown.`,
+      });
       setForm(EMPTY_FORM);
-      onClose();
     } catch (err) {
-      toast({ title: "Error", description: (err as Error).message, variant: "destructive" });
+      toast({
+        title: "Error",
+        description: (err as Error).message,
+        variant: "destructive",
+      });
     }
   };
 
   return (
-    <Dialog open={open} onOpenChange={o => { if (!o) onClose(); }}>
+    <Dialog
+      open={open}
+      onOpenChange={(o) => {
+        if (!o) onClose();
+      }}
+    >
       <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle>Create Staff Account</DialogTitle>
-        </DialogHeader>
-        <form onSubmit={handleSubmit} className="space-y-4 py-2">
-          <div className="grid grid-cols-2 gap-3">
-            <div className="col-span-2 space-y-1">
-              <Label>Full name</Label>
-              <Input required value={form.name} onChange={e => set("name")(e.target.value)} placeholder="Jane Smith" />
-            </div>
-            <div className="col-span-2 space-y-1">
-              <Label>Email address</Label>
-              <Input required type="email" value={form.email} onChange={e => set("email")(e.target.value)} placeholder="jane.smith@poriruacity.govt.nz" />
-            </div>
-            <div className="space-y-1">
-              <Label>Initials</Label>
-              <Input required maxLength={4} value={form.initials} onChange={e => set("initials")(e.target.value.toUpperCase())} placeholder="JS" className="uppercase" />
-            </div>
-            <div className="space-y-1">
-              <Label>Role</Label>
-              <Select value={form.role} onValueChange={set("role")}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="field_worker">Field Worker</SelectItem>
-                  <SelectItem value="supervisor">Supervisor</SelectItem>
-                  <SelectItem value="manager">Manager</SelectItem>
-                  <SelectItem value="administrator">Administrator</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            {teams.length > 0 && (
-              <div className="col-span-2 space-y-1">
-                <Label>Team <span className="text-gray-400 font-normal">(optional)</span></Label>
-                <Select value={form.teamId} onValueChange={set("teamId")}>
-                  <SelectTrigger><SelectValue placeholder="Unassigned" /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="__none__">Unassigned</SelectItem>
-                    {teams.map(t => <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>)}
-                  </SelectContent>
-                </Select>
+        {createdAccount ? (
+          <PasswordConfirmation
+            title="Account created"
+            name={createdAccount.name}
+            password={createdAccount.password}
+            onDone={onClose}
+          />
+        ) : (
+          <>
+            <DialogHeader>
+              <DialogTitle>Create Staff Account</DialogTitle>
+            </DialogHeader>
+            <form onSubmit={handleSubmit} className="space-y-4 py-2">
+              <div className="grid grid-cols-2 gap-3">
+                <div className="col-span-2 space-y-1">
+                  <Label>Full name</Label>
+                  <Input
+                    required
+                    value={form.name}
+                    onChange={(e) => set("name")(e.target.value)}
+                    placeholder="Jane Smith"
+                  />
+                </div>
+                <div className="col-span-2 space-y-1">
+                  <Label>Email address</Label>
+                  <Input
+                    required
+                    type="email"
+                    value={form.email}
+                    onChange={(e) => set("email")(e.target.value)}
+                    placeholder="jane.smith@poriruacity.govt.nz"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label>Initials</Label>
+                  <Input
+                    required
+                    maxLength={4}
+                    value={form.initials}
+                    onChange={(e) =>
+                      set("initials")(e.target.value.toUpperCase())
+                    }
+                    placeholder="JS"
+                    className="uppercase"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label>Role</Label>
+                  <Select value={form.role} onValueChange={set("role")}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="field_worker">Field Worker</SelectItem>
+                      <SelectItem value="supervisor">Supervisor</SelectItem>
+                      <SelectItem value="manager">Manager</SelectItem>
+                      {currentUser?.role === "administrator" && (
+                        <SelectItem value="administrator">
+                          Administrator
+                        </SelectItem>
+                      )}
+                    </SelectContent>
+                  </Select>
+                </div>
+                {teams.length > 0 && (
+                  <div className="col-span-2 space-y-1">
+                    <Label>
+                      Team{" "}
+                      <span className="text-gray-400 font-normal">
+                        (optional)
+                      </span>
+                    </Label>
+                    <Select value={form.teamId} onValueChange={set("teamId")}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Unassigned" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__none__">Unassigned</SelectItem>
+                        {teams.map((t) => (
+                          <SelectItem key={t.id} value={t.id}>
+                            {t.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
+                <div className="col-span-2 space-y-1">
+                  <Label>Account password</Label>
+                  <PasswordField
+                    value={form.password}
+                    onChange={set("password")}
+                    visible={showPassword}
+                    onVisibleChange={setShowPassword}
+                    inputTestId="create-user-password"
+                  />
+                  <p className="text-[11px] text-gray-400">
+                    You can view this password during account creation. It
+                    cannot be recovered later.
+                  </p>
+                </div>
               </div>
-            )}
-            <div className="col-span-2 space-y-1">
-              <Label>Temporary password</Label>
-              <Input required minLength={8} type="password" value={form.password} onChange={e => set("password")(e.target.value)} placeholder="Min 8 characters" />
-              <p className="text-[11px] text-gray-400">Ask the staff member to change this after first sign-in.</p>
-            </div>
-          </div>
-          <DialogFooter>
-            <Button type="button" variant="outline" onClick={onClose} disabled={createUser.isPending}>Cancel</Button>
-            <Button type="submit" disabled={createUser.isPending} style={{ backgroundColor: BRAND }}>
-              {createUser.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : "Create Account"}
-            </Button>
-          </DialogFooter>
-        </form>
+              <DialogFooter>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={onClose}
+                  disabled={createUser.isPending}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="submit"
+                  disabled={createUser.isPending}
+                  style={{ backgroundColor: BRAND }}
+                >
+                  {createUser.isPending ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    "Create Account"
+                  )}
+                </Button>
+              </DialogFooter>
+            </form>
+          </>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function ResetPasswordDialog({
+  user,
+  onClose,
+}: {
+  user: UserSafe;
+  onClose: () => void;
+}) {
+  const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [confirmedPassword, setConfirmedPassword] = useState<string | null>(
+    null,
+  );
+  const updateUser = useUpdateUser();
+  const { toast } = useToast();
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      await updateUser.mutateAsync({ id: user.id, password });
+      setConfirmedPassword(password);
+      setPassword("");
+      toast({
+        title: "Password updated",
+        description: `${user.name} can sign in with the new password.`,
+      });
+    } catch (err) {
+      toast({
+        title: "Could not update password",
+        description: (err as Error).message,
+        variant: "destructive",
+      });
+    }
+  };
+
+  return (
+    <Dialog
+      open
+      onOpenChange={(open) => {
+        if (!open) onClose();
+      }}
+    >
+      <DialogContent className="sm:max-w-md">
+        {confirmedPassword ? (
+          <PasswordConfirmation
+            title="Password updated"
+            name={user.name}
+            password={confirmedPassword}
+            onDone={onClose}
+          />
+        ) : (
+          <>
+            <DialogHeader>
+              <DialogTitle>Set password for {user.name}</DialogTitle>
+            </DialogHeader>
+            <form onSubmit={handleSubmit} className="space-y-4 py-2">
+              <div className="space-y-1">
+                <Label>New password</Label>
+                <PasswordField
+                  value={password}
+                  onChange={setPassword}
+                  visible={showPassword}
+                  onVisibleChange={setShowPassword}
+                  inputTestId="reset-user-password"
+                />
+              </div>
+              <p className="text-xs text-gray-500">
+                The existing password cannot be viewed. Saving replaces it
+                immediately with this new password.
+              </p>
+              <DialogFooter>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={onClose}
+                  disabled={updateUser.isPending}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="submit"
+                  disabled={updateUser.isPending || password.length < 8}
+                  style={{ backgroundColor: BRAND }}
+                >
+                  {updateUser.isPending ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    "Save new password"
+                  )}
+                </Button>
+              </DialogFooter>
+            </form>
+          </>
+        )}
       </DialogContent>
     </Dialog>
   );
@@ -223,15 +576,18 @@ export default function UsersPage({ embedded }: { embedded?: boolean } = {}) {
   const { data: teams = [] } = useTeams();
   const updateUser = useUpdateUser();
   const { toast } = useToast();
+  const { user: currentUser } = useAuth();
   const [search, setSearch] = useState("");
   const [creating, setCreating] = useState(false);
+  const [passwordUser, setPasswordUser] = useState<UserSafe | null>(null);
 
   const users = data?.data ?? [];
   const filtered = search
-    ? users.filter(u =>
-        u.name.toLowerCase().includes(search.toLowerCase()) ||
-        u.email.toLowerCase().includes(search.toLowerCase()) ||
-        u.role.includes(search.toLowerCase())
+    ? users.filter(
+        (u) =>
+          u.name.toLowerCase().includes(search.toLowerCase()) ||
+          u.email.toLowerCase().includes(search.toLowerCase()) ||
+          u.role.includes(search.toLowerCase()),
       )
     : users;
 
@@ -243,7 +599,11 @@ export default function UsersPage({ embedded }: { embedded?: boolean } = {}) {
         description: user.name,
       });
     } catch {
-      toast({ title: "Error", description: "Could not update account.", variant: "destructive" });
+      toast({
+        title: "Error",
+        description: "Could not update account.",
+        variant: "destructive",
+      });
     }
   };
 
@@ -252,16 +612,25 @@ export default function UsersPage({ embedded }: { embedded?: boolean } = {}) {
       {!embedded && (
         <header className="bg-white border-b px-8 py-4 flex items-center justify-between sticky top-0 z-10">
           <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: NAVY }}>
+            <div
+              className="w-8 h-8 rounded-lg flex items-center justify-center"
+              style={{ background: NAVY }}
+            >
               <UsersIcon className="w-4 h-4 text-white" />
             </div>
             <div>
               <h1 className="text-lg font-semibold text-gray-900">Users</h1>
-              <p className="text-xs text-gray-400">Manage staff accounts and access</p>
+              <p className="text-xs text-gray-400">
+                Manage staff accounts and access
+              </p>
             </div>
           </div>
           <div className="flex items-center gap-3">
-            <Badge variant="outline" className="text-xs" style={{ color: BRAND, borderColor: BRAND }}>
+            <Badge
+              variant="outline"
+              className="text-xs"
+              style={{ color: BRAND, borderColor: BRAND }}
+            >
               Manager only
             </Badge>
             <Button
@@ -296,7 +665,7 @@ export default function UsersPage({ embedded }: { embedded?: boolean } = {}) {
           <Input
             placeholder="Search by name, email or role…"
             value={search}
-            onChange={e => setSearch(e.target.value)}
+            onChange={(e) => setSearch(e.target.value)}
             className="pl-8 h-9 w-72 text-sm"
           />
         </div>
@@ -306,7 +675,9 @@ export default function UsersPage({ embedded }: { embedded?: boolean } = {}) {
         <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
           {isLoading ? (
             <div className="p-6 space-y-3">
-              {Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-14 w-full" />)}
+              {Array.from({ length: 5 }).map((_, i) => (
+                <Skeleton key={i} className="h-14 w-full" />
+              ))}
             </div>
           ) : filtered.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-20 text-gray-400">
@@ -317,35 +688,65 @@ export default function UsersPage({ embedded }: { embedded?: boolean } = {}) {
             <table className="w-full text-sm">
               <thead className="border-b bg-gray-50">
                 <tr>
-                  <th className="px-5 py-3 text-left text-[10px] font-bold uppercase tracking-wider text-gray-500">Staff Member</th>
-                  <th className="px-4 py-3 text-left text-[10px] font-bold uppercase tracking-wider text-gray-500">Email</th>
-                  <th className="px-4 py-3 text-left text-[10px] font-bold uppercase tracking-wider text-gray-500">Role</th>
+                  <th className="px-5 py-3 text-left text-[10px] font-bold uppercase tracking-wider text-gray-500">
+                    Staff Member
+                  </th>
+                  <th className="px-4 py-3 text-left text-[10px] font-bold uppercase tracking-wider text-gray-500">
+                    Email
+                  </th>
+                  <th className="px-4 py-3 text-left text-[10px] font-bold uppercase tracking-wider text-gray-500">
+                    Role
+                  </th>
                   <th className="px-4 py-3 text-left text-[10px] font-bold uppercase tracking-wider text-gray-500">
                     <span>Team</span>
-                    <span className="ml-1.5 text-[9px] font-normal text-gray-400 normal-case tracking-normal">(manage in Teams → Composition)</span>
+                    <span className="ml-1.5 text-[9px] font-normal text-gray-400 normal-case tracking-normal">
+                      (manage in Teams → Composition)
+                    </span>
                   </th>
-                  <th className="px-4 py-3 text-left text-[10px] font-bold uppercase tracking-wider text-gray-500">Since</th>
-                  <th className="px-4 py-3 text-left text-[10px] font-bold uppercase tracking-wider text-gray-500">Status</th>
+                  <th className="px-4 py-3 text-left text-[10px] font-bold uppercase tracking-wider text-gray-500">
+                    Since
+                  </th>
+                  <th className="px-4 py-3 text-left text-[10px] font-bold uppercase tracking-wider text-gray-500">
+                    Status
+                  </th>
                   <th className="px-4 py-3" />
                 </tr>
               </thead>
               <tbody>
-                {filtered.map(user => {
-                  const roleConf = ROLE_COLOURS[user.role] ?? { bg: "#f3f4f6", text: "#6b7280" };
+                {filtered.map((user) => {
+                  const roleConf = ROLE_COLOURS[user.role] ?? {
+                    bg: "#f3f4f6",
+                    text: "#6b7280",
+                  };
+                  const canManagePassword =
+                    currentUser?.role === "administrator" ||
+                    (currentUser?.role === "manager" &&
+                      user.role !== "administrator");
                   return (
-                    <tr key={user.id} className="border-b border-gray-100 hover:bg-gray-50">
+                    <tr
+                      key={user.id}
+                      className="border-b border-gray-100 hover:bg-gray-50"
+                    >
                       <td className="px-5 py-3.5">
                         <div className="flex items-center gap-3">
                           <div
                             className="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold flex-shrink-0"
-                            style={{ backgroundColor: user.isActive ? BRAND : "#9ca3af" }}
+                            style={{
+                              backgroundColor: user.isActive
+                                ? BRAND
+                                : "#9ca3af",
+                            }}
                           >
                             {user.initials}
                           </div>
-                          <span className="font-medium text-gray-900">{user.name}</span>
+                          <span className="font-medium text-gray-900">
+                            {user.name}
+                          </span>
                         </div>
                       </td>
-                      <td className="px-4 py-3.5 text-gray-500 text-xs">{user.email}</td>
+                      <td className="px-4 py-3.5 text-gray-500 text-xs">
+                        {user.email}
+                      </td>
                       <td className="px-4 py-3.5">
                         <span className="text-xs text-gray-600">
                           {ROLE_LABELS[user.role] ?? user.role}
@@ -353,9 +754,11 @@ export default function UsersPage({ embedded }: { embedded?: boolean } = {}) {
                       </td>
                       <td className="px-4 py-3.5">
                         {(() => {
-                          const t = teams.find(tm => tm.id === user.teamId);
+                          const t = teams.find((tm) => tm.id === user.teamId);
                           return (
-                            <span className={`text-xs ${t ? "text-gray-700 font-medium" : "text-gray-400 italic"}`}>
+                            <span
+                              className={`text-xs ${t ? "text-gray-700 font-medium" : "text-gray-400 italic"}`}
+                            >
                               {t?.name ?? "Unassigned"}
                             </span>
                           );
@@ -367,32 +770,50 @@ export default function UsersPage({ embedded }: { embedded?: boolean } = {}) {
                       <td className="px-4 py-3.5">
                         <span
                           className="text-[11px] font-semibold px-2.5 py-1 rounded-full"
-                          style={user.isActive
-                            ? { background: "#dcfce7", color: "#16a34a" }
-                            : { background: "#fee2e2", color: "#dc2626" }
+                          style={
+                            user.isActive
+                              ? { background: "#dcfce7", color: "#16a34a" }
+                              : { background: "#fee2e2", color: "#dc2626" }
                           }
                         >
                           {user.isActive ? "Active" : "Inactive"}
                         </span>
                       </td>
                       <td className="px-4 py-3.5 text-right">
-                        <button
-                          onClick={() => toggleActive(user)}
-                          disabled={updateUser.isPending}
-                          className="flex items-center gap-1.5 text-xs text-gray-400 hover:text-gray-700 transition-colors ml-auto"
-                          title={user.isActive ? "Deactivate account" : "Reactivate account"}
-                        >
-                          {user.isActive
-                            ? <ToggleRight className="w-5 h-5 text-green-500" />
-                            : <ToggleLeft className="w-5 h-5 text-gray-400" />
-                          }
-                          {user.isActive ? "Deactivate" : "Reactivate"}
-                        </button>
+                        <div className="flex items-center justify-end gap-3">
+                          {canManagePassword && (
+                            <button
+                              onClick={() => setPasswordUser(user)}
+                              className="flex items-center gap-1.5 text-xs text-gray-400 hover:text-[#0097b2] transition-colors"
+                              title={`Set password for ${user.name}`}
+                              data-testid={`manage-password-${user.id}`}
+                            >
+                              <KeyRound className="w-4 h-4" />
+                              Password
+                            </button>
+                          )}
+                          <button
+                            onClick={() => toggleActive(user)}
+                            disabled={updateUser.isPending}
+                            className="flex items-center gap-1.5 text-xs text-gray-400 hover:text-gray-700 transition-colors"
+                            title={
+                              user.isActive
+                                ? "Deactivate account"
+                                : "Reactivate account"
+                            }
+                          >
+                            {user.isActive ? (
+                              <ToggleRight className="w-5 h-5 text-green-500" />
+                            ) : (
+                              <ToggleLeft className="w-5 h-5 text-gray-400" />
+                            )}
+                            {user.isActive ? "Deactivate" : "Reactivate"}
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   );
                 })}
-
               </tbody>
             </table>
           )}
@@ -405,7 +826,19 @@ export default function UsersPage({ embedded }: { embedded?: boolean } = {}) {
         )}
       </div>
 
-      {creating && <CreateUserDialog open onClose={() => setCreating(false)} teams={teams} />}
+      {creating && (
+        <CreateUserDialog
+          open
+          onClose={() => setCreating(false)}
+          teams={teams}
+        />
+      )}
+      {passwordUser && (
+        <ResetPasswordDialog
+          user={passwordUser}
+          onClose={() => setPasswordUser(null)}
+        />
+      )}
     </div>
   );
 }

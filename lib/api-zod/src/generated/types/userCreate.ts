@@ -11,7 +11,10 @@ export interface UserCreate {
   email: string;
   name: string;
   initials: string;
-  /** @minLength 8 */
+  /**
+   * A manager-set account password. The plaintext value is never returned by the API.
+   * @minLength 8
+   */
   password: string;
   role: UserRole;
   teamId?: string;

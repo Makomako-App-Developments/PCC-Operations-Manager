@@ -1205,7 +1205,10 @@ export interface UserCreate {
   email: string;
   name: string;
   initials: string;
-  /** @minLength 8 */
+  /**
+   * A manager-set account password. The plaintext value is never returned by the API.
+   * @minLength 8
+   */
   password: string;
   role: UserRole;
   teamId?: string;
@@ -1217,7 +1220,10 @@ export interface UserUpdate {
   role?: UserRole;
   teamId?: string | null;
   isActive?: boolean;
-  /** @minLength 8 */
+  /**
+   * Replaces the account password. The plaintext value is hashed and never returned by the API.
+   * @minLength 8
+   */
   password?: string;
 }
 

@@ -13,6 +13,9 @@ export interface UserUpdate {
   role?: UserRole;
   teamId?: string | null;
   isActive?: boolean;
-  /** @minLength 8 */
+  /**
+   * Replaces the account password. The plaintext value is hashed and never returned by the API.
+   * @minLength 8
+   */
   password?: string;
 }

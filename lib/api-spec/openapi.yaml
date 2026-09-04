@@ -996,7 +996,8 @@ paths:
     patch:
       operationId: updateUser
       tags: [users]
-      summary: Update a user account (manager only)
+      summary: Update a user account or replace its password (manager only)
+      description: Password values are hashed before storage and are never returned. Managers cannot modify administrator accounts.
       requestBody:
         required: true
         content:
@@ -1123,62 +1124,236 @@ paths:
       operationId: getCurrentStormPatrol
       tags: [storm-patrol]
       summary: Active storm context, team jobs and summary
-      responses: { "200": { description: Current event and ordered jobs, content: { application/json: { schema: { $ref: "#/components/schemas/StormCurrentResponse" } } } } }
+      responses:
+        {
+          "200":
+            {
+              description: Current event and ordered jobs,
+              content:
+                {
+                  application/json:
+                    {
+                      schema:
+                        { $ref: "#/components/schemas/StormCurrentResponse" },
+                    },
+                },
+            },
+        }
   /storm-patrol/events:
     get:
       operationId: listStormPatrolEvents
       tags: [storm-patrol]
-      responses: { "200": { description: Storm event history, content: { application/json: { schema: { $ref: "#/components/schemas/StormEventListResponse" } } } } }
+      responses:
+        {
+          "200":
+            {
+              description: Storm event history,
+              content:
+                {
+                  application/json:
+                    {
+                      schema:
+                        { $ref: "#/components/schemas/StormEventListResponse" },
+                    },
+                },
+            },
+        }
     post:
       operationId: createStormPatrolEvent
       tags: [storm-patrol]
       requestBody:
         required: true
-        content: { application/json: { schema: { $ref: "#/components/schemas/StormEventCreate" } } }
-      responses: { "201": { description: Created, content: { application/json: { schema: { $ref: "#/components/schemas/StormEvent" } } } } }
+        content:
+          {
+            application/json:
+              { schema: { $ref: "#/components/schemas/StormEventCreate" } },
+          }
+      responses:
+        {
+          "201":
+            {
+              description: Created,
+              content:
+                {
+                  application/json:
+                    { schema: { $ref: "#/components/schemas/StormEvent" } },
+                },
+            },
+        }
   /storm-patrol/events/{id}/close:
     post:
       operationId: closeStormPatrolEvent
       tags: [storm-patrol]
-      parameters: [{ name: id, in: path, required: true, schema: { type: string, format: uuid } }]
-      responses: { "200": { description: Closed, content: { application/json: { schema: { $ref: "#/components/schemas/StormEvent" } } } } }
+      parameters:
+        [
+          {
+            name: id,
+            in: path,
+            required: true,
+            schema: { type: string, format: uuid },
+          },
+        ]
+      responses:
+        {
+          "200":
+            {
+              description: Closed,
+              content:
+                {
+                  application/json:
+                    { schema: { $ref: "#/components/schemas/StormEvent" } },
+                },
+            },
+        }
   /storm-patrol/events/{id}/packages:
     post:
       operationId: publishStormPatrolPackage
       tags: [storm-patrol]
-      parameters: [{ name: id, in: path, required: true, schema: { type: string, format: uuid } }]
+      parameters:
+        [
+          {
+            name: id,
+            in: path,
+            required: true,
+            schema: { type: string, format: uuid },
+          },
+        ]
       requestBody:
         required: true
-        content: { application/json: { schema: { $ref: "#/components/schemas/StormPackagePublish" } } }
-      responses: { "201": { description: Package and jobs published atomically, content: { application/json: { schema: { $ref: "#/components/schemas/StormPackagePublishResponse" } } } } }
+        content:
+          {
+            application/json:
+              { schema: { $ref: "#/components/schemas/StormPackagePublish" } },
+          }
+      responses:
+        {
+          "201":
+            {
+              description: Package and jobs published atomically,
+              content:
+                {
+                  application/json:
+                    {
+                      schema:
+                        {
+                          $ref: "#/components/schemas/StormPackagePublishResponse",
+                        },
+                    },
+                },
+            },
+        }
   /storm-patrol/jobs:
     get:
       operationId: listStormPatrolJobs
       tags: [storm-patrol]
-      responses: { "200": { description: Ordered jobs visible to caller, content: { application/json: { schema: { $ref: "#/components/schemas/StormJobListResponse" } } } } }
+      responses:
+        {
+          "200":
+            {
+              description: Ordered jobs visible to caller,
+              content:
+                {
+                  application/json:
+                    {
+                      schema:
+                        { $ref: "#/components/schemas/StormJobListResponse" },
+                    },
+                },
+            },
+        }
   /storm-patrol/jobs/{id}/claim:
     post:
       operationId: claimStormPatrolJob
       tags: [storm-patrol]
-      parameters: [{ name: id, in: path, required: true, schema: { type: string, format: uuid } }]
-      responses: { "200": { description: Claimed, content: { application/json: { schema: { $ref: "#/components/schemas/StormJob" } } } }, "409": { description: Already claimed } }
+      parameters:
+        [
+          {
+            name: id,
+            in: path,
+            required: true,
+            schema: { type: string, format: uuid },
+          },
+        ]
+      responses:
+        {
+          "200":
+            {
+              description: Claimed,
+              content:
+                {
+                  application/json:
+                    { schema: { $ref: "#/components/schemas/StormJob" } },
+                },
+            },
+          "409": { description: Already claimed },
+        }
   /storm-patrol/jobs/{id}/complete:
     post:
       operationId: completeStormPatrolJob
       tags: [storm-patrol]
-      parameters: [{ name: id, in: path, required: true, schema: { type: string, format: uuid } }]
+      parameters:
+        [
+          {
+            name: id,
+            in: path,
+            required: true,
+            schema: { type: string, format: uuid },
+          },
+        ]
       requestBody:
         required: true
-        content: { application/json: { schema: { $ref: "#/components/schemas/StormCompletion" } } }
-      responses: { "200": { description: Completed idempotently, content: { application/json: { schema: { $ref: "#/components/schemas/StormCompletionResponse" } } } } }
+        content:
+          {
+            application/json:
+              { schema: { $ref: "#/components/schemas/StormCompletion" } },
+          }
+      responses:
+        {
+          "200":
+            {
+              description: Completed idempotently,
+              content:
+                {
+                  application/json:
+                    {
+                      schema:
+                        {
+                          $ref: "#/components/schemas/StormCompletionResponse",
+                        },
+                    },
+                },
+            },
+        }
   /storm-patrol/observations:
     post:
       operationId: createStormPatrolObservation
       tags: [storm-patrol]
       requestBody:
         required: true
-        content: { application/json: { schema: { $ref: "#/components/schemas/StormObservationCreate" } } }
-      responses: { "201": { description: Observation and linked reactive work created, content: { application/json: { schema: { $ref: "#/components/schemas/StormObservationResponse" } } } } }
+        content:
+          {
+            application/json:
+              {
+                schema: { $ref: "#/components/schemas/StormObservationCreate" },
+              },
+          }
+      responses:
+        {
+          "201":
+            {
+              description: Observation and linked reactive work created,
+              content:
+                {
+                  application/json:
+                    {
+                      schema:
+                        {
+                          $ref: "#/components/schemas/StormObservationResponse",
+                        },
+                    },
+                },
+            },
+        }
   /storm-patrol/alerts:
     get:
       operationId: listStormPatrolAlerts
@@ -1187,32 +1362,120 @@ paths:
         - name: eventId
           in: query
           schema: { type: string, format: uuid }
-      responses: { "200": { description: Alerts, content: { application/json: { schema: { $ref: "#/components/schemas/StormAlertListResponse" } } } } }
+      responses:
+        {
+          "200":
+            {
+              description: Alerts,
+              content:
+                {
+                  application/json:
+                    {
+                      schema:
+                        { $ref: "#/components/schemas/StormAlertListResponse" },
+                    },
+                },
+            },
+        }
     post:
       operationId: createStormPatrolAlert
       tags: [storm-patrol]
       requestBody:
         required: true
-        content: { application/json: { schema: { $ref: "#/components/schemas/StormAlertCreate" } } }
-      responses: { "201": { description: Alert created, content: { application/json: { schema: { $ref: "#/components/schemas/StormAlert" } } } } }
+        content:
+          {
+            application/json:
+              { schema: { $ref: "#/components/schemas/StormAlertCreate" } },
+          }
+      responses:
+        {
+          "201":
+            {
+              description: Alert created,
+              content:
+                {
+                  application/json:
+                    { schema: { $ref: "#/components/schemas/StormAlert" } },
+                },
+            },
+        }
   /storm-patrol/alerts/{id}/acknowledge:
     post:
       operationId: acknowledgeStormPatrolAlert
       tags: [storm-patrol]
-      parameters: [{ name: id, in: path, required: true, schema: { type: string, format: uuid } }]
-      responses: { "200": { description: Acknowledged alert, content: { application/json: { schema: { $ref: "#/components/schemas/StormAlert" } } } } }
+      parameters:
+        [
+          {
+            name: id,
+            in: path,
+            required: true,
+            schema: { type: string, format: uuid },
+          },
+        ]
+      responses:
+        {
+          "200":
+            {
+              description: Acknowledged alert,
+              content:
+                {
+                  application/json:
+                    { schema: { $ref: "#/components/schemas/StormAlert" } },
+                },
+            },
+        }
   /storm-patrol/alerts/{id}/retry-email:
     post:
       operationId: retryStormPatrolAlertEmail
       tags: [storm-patrol]
-      parameters: [{ name: id, in: path, required: true, schema: { type: string, format: uuid } }]
-      responses: { "200": { description: Alert with refreshed email delivery state, content: { application/json: { schema: { $ref: "#/components/schemas/StormAlert" } } } } }
+      parameters:
+        [
+          {
+            name: id,
+            in: path,
+            required: true,
+            schema: { type: string, format: uuid },
+          },
+        ]
+      responses:
+        {
+          "200":
+            {
+              description: Alert with refreshed email delivery state,
+              content:
+                {
+                  application/json:
+                    { schema: { $ref: "#/components/schemas/StormAlert" } },
+                },
+            },
+        }
   /storm-patrol/events/{id}/report:
     get:
       operationId: getStormPatrolReport
       tags: [storm-patrol]
-      parameters: [{ name: id, in: path, required: true, schema: { type: string, format: uuid } }]
-      responses: { "200": { description: JSON report or CSV when format=csv, content: { application/json: { schema: { $ref: "#/components/schemas/StormReport" } }, text/csv: { schema: { type: string } }, application/pdf: { schema: { type: string, format: binary } } } } }
+      parameters:
+        [
+          {
+            name: id,
+            in: path,
+            required: true,
+            schema: { type: string, format: uuid },
+          },
+        ]
+      responses:
+        {
+          "200":
+            {
+              description: JSON report or CSV when format=csv,
+              content:
+                {
+                  application/json:
+                    { schema: { $ref: "#/components/schemas/StormReport" } },
+                  text/csv: { schema: { type: string } },
+                  application/pdf: { schema: { type: string, format: binary } },
+                },
+            },
+        }
 
 # ─── Shared responses ──────────────────────────────────────────────────────────
 components:
@@ -1265,7 +1528,11 @@ components:
         teamId: { type: string, format: uuid }
         assignedUserId: { type: string, format: uuid, nullable: true }
         routeOrder: { type: integer, nullable: true }
-        status: { type: string, enum: [pending, in_progress, completed, too_dangerous] }
+        status:
+          {
+            type: string,
+            enum: [pending, in_progress, completed, too_dangerous],
+          }
         actualTimeMins: { type: integer, nullable: true }
         comments: { type: string, nullable: true }
         assetName: { type: string }
@@ -1281,11 +1548,19 @@ components:
     StormEventListResponse:
       type: object
       required: [data]
-      properties: { data: { type: array, items: { $ref: "#/components/schemas/StormEvent" } } }
+      properties:
+        {
+          data:
+            { type: array, items: { $ref: "#/components/schemas/StormEvent" } },
+        }
     StormJobListResponse:
       type: object
       required: [data]
-      properties: { data: { type: array, items: { $ref: "#/components/schemas/StormJob" } } }
+      properties:
+        {
+          data:
+            { type: array, items: { $ref: "#/components/schemas/StormJob" } },
+        }
     StormCurrentResponse:
       type: object
       required: [data]
@@ -1296,10 +1571,23 @@ components:
           required: [event, jobs, summary]
           properties:
             event: { $ref: "#/components/schemas/StormEvent" }
-            jobs: { type: array, items: { $ref: "#/components/schemas/StormJob" } }
-            observations: { type: array, items: { type: object, additionalProperties: true } }
-            followUps: { type: array, items: { type: object, additionalProperties: true } }
-            alerts: { type: array, items: { $ref: "#/components/schemas/StormAlert" } }
+            jobs:
+              { type: array, items: { $ref: "#/components/schemas/StormJob" } }
+            observations:
+              {
+                type: array,
+                items: { type: object, additionalProperties: true },
+              }
+            followUps:
+              {
+                type: array,
+                items: { type: object, additionalProperties: true },
+              }
+            alerts:
+              {
+                type: array,
+                items: { $ref: "#/components/schemas/StormAlert" },
+              }
             summary: { type: object, additionalProperties: { type: integer } }
     StormPackagePublishResponse:
       type: object
@@ -1346,10 +1634,23 @@ components:
     StormAlertListResponse:
       type: object
       required: [data]
-      properties: { data: { type: array, items: { $ref: "#/components/schemas/StormAlert" } } }
+      properties:
+        {
+          data:
+            { type: array, items: { $ref: "#/components/schemas/StormAlert" } },
+        }
     StormReport:
       type: object
-      required: [event, selectedCount, checkedCount, totalMinutes, totalHours, labourChargeCents, jobs]
+      required:
+        [
+          event,
+          selectedCount,
+          checkedCount,
+          totalMinutes,
+          totalHours,
+          labourChargeCents,
+          jobs,
+        ]
       properties:
         event: { $ref: "#/components/schemas/StormEvent" }
         selectedCount: { type: integer }
@@ -1371,7 +1672,8 @@ components:
       properties:
         phase: { type: string, enum: [pre, mid, post] }
         teamId: { type: string, format: uuid }
-        assetIds: { type: array, minItems: 1, items: { type: string, format: uuid } }
+        assetIds:
+          { type: array, minItems: 1, items: { type: string, format: uuid } }
         idempotencyKey: { type: string }
     StormCompletion:
       type: object
@@ -1379,8 +1681,31 @@ components:
       properties:
         outcome: { type: string, enum: [completed, too_dangerous] }
         actualTimeMins: { type: integer, minimum: 0 }
-        comments: { type: string, maxLength: 10000, description: Required and non-blank when workTypes contains visual_check_only. }
-        workTypes: { type: array, description: Selecting visual_check_only requires comments describing the observation., items: { type: string, enum: [silt_clearance, litter_clearance, debris_clearance, visual_check_only, litter_debris_removed_from_site, site_too_dangerous, site_made_safe] } }
+        comments:
+          {
+            type: string,
+            maxLength: 10000,
+            description: Required and non-blank when workTypes contains visual_check_only.,
+          }
+        workTypes:
+          {
+            type: array,
+            description: Selecting visual_check_only requires comments describing the observation.,
+            items:
+              {
+                type: string,
+                enum:
+                  [
+                    silt_clearance,
+                    litter_clearance,
+                    debris_clearance,
+                    visual_check_only,
+                    litter_debris_removed_from_site,
+                    site_too_dangerous,
+                    site_made_safe,
+                  ],
+              },
+          }
         dangerousReason: { type: string }
         locationLat: { type: number }
         locationLng: { type: number }
@@ -1502,35 +1827,36 @@ components:
     User:
       type: object
       properties:
-        id:        { type: string, format: uuid }
-        email:     { type: string, format: email }
-        name:      { type: string }
-        initials:  { type: string }
+        id: { type: string, format: uuid }
+        email: { type: string, format: email }
+        name: { type: string }
+        initials: { type: string }
         role:
           $ref: "#/components/schemas/Role"
-        teamId:    { type: string, format: uuid, nullable: true }
-        isActive:  { type: boolean }
+        teamId: { type: string, format: uuid, nullable: true }
+        isActive: { type: boolean }
         createdAt: { type: string, format: date-time }
         updatedAt: { type: string, format: date-time }
-      required: [id, email, name, initials, role, isActive, createdAt, updatedAt]
+      required:
+        [id, email, name, initials, role, isActive, createdAt, updatedAt]
 
     UserSummary:
       type: object
       properties:
-        id:       { type: string, format: uuid }
-        name:     { type: string }
+        id: { type: string, format: uuid }
+        name: { type: string }
         initials: { type: string }
         role:
           $ref: "#/components/schemas/Role"
-        teamId:   { type: string, format: uuid, nullable: true }
+        teamId: { type: string, format: uuid, nullable: true }
       required: [id, name, initials, role]
 
     # ─── Teams ──────────────────────────────────────────────────────────────
     Team:
       type: object
       properties:
-        id:        { type: string, format: uuid }
-        name:      { type: string }
+        id: { type: string, format: uuid }
+        name: { type: string }
         department:
           $ref: "#/components/schemas/Department"
         createdAt: { type: string, format: date-time }
@@ -1586,7 +1912,8 @@ components:
       type: object
       properties:
         placemarkId: { type: string }
-        contractor: { type: string, enum: [Parks, Transport, WGTN Regional, Taiki Wai] }
+        contractor:
+          { type: string, enum: [Parks, Transport, WGTN Regional, Taiki Wai] }
         assetType: { type: string, enum: [inlet, outlet, culvert] }
         priority: { type: string, enum: [High, Medium, Low] }
         hotspot: { type: string, enum: [Yes, No] }
@@ -1610,9 +1937,9 @@ components:
     Asset:
       type: object
       properties:
-        id:              { type: string, format: uuid }
-        globalId:        { type: ["string", "null"] }
-        name:            { type: string }
+        id: { type: string, format: uuid }
+        globalId: { type: ["string", "null"] }
+        name: { type: string }
         department:
           $ref: "#/components/schemas/Department"
         gardenType:
@@ -1621,33 +1948,33 @@ components:
         standard:
           nullable: true
           $ref: "#/components/schemas/Standard"
-        areaM2:          { type: number, nullable: true }
+        areaM2: { type: number, nullable: true }
         serviceTimeMins: { type: ["integer", "null"] }
         frequency:
           oneOf:
             - $ref: "#/components/schemas/Frequency"
             - type: "null"
-        isSchedulable:   { type: boolean }
+        isSchedulable: { type: boolean }
         departmentDetails:
           oneOf:
             - $ref: "#/components/schemas/DepartmentDetails"
             - type: "null"
         siteType: { type: string, enum: [park, street], nullable: true }
-        teamId:          { type: string, format: uuid, nullable: true }
+        teamId: { type: string, format: uuid, nullable: true }
         ward:
           allOf:
             - $ref: "#/components/schemas/Ward"
           nullable: true
-        suburb:        { type: string, nullable: true }
+        suburb: { type: string, nullable: true }
         streetAddress: { type: string, nullable: true }
-        lat:           { type: number, nullable: true }
-        lng:           { type: number, nullable: true }
-        routeOrder:    { type: integer, nullable: true }
-        description:   { type: string, nullable: true }
-        notes:         { type: string, nullable: true }
-        isActive:      { type: boolean }
-        createdAt:     { type: string, format: date-time }
-        updatedAt:     { type: string, format: date-time }
+        lat: { type: number, nullable: true }
+        lng: { type: number, nullable: true }
+        routeOrder: { type: integer, nullable: true }
+        description: { type: string, nullable: true }
+        notes: { type: string, nullable: true }
+        isActive: { type: boolean }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
       required:
         - id
         - name
@@ -1661,8 +1988,8 @@ components:
       type: object
       description: Common fields are required for every asset. Horticulture requires gardenType and standard; Mowing and Sportsfields require areaM2; Mowing, Litter, and Sportsfields require their matching DepartmentDetails specification.
       properties:
-        globalId:        { type: ["string", "null"] }
-        name:            { type: string }
+        globalId: { type: ["string", "null"] }
+        name: { type: string }
         department:
           $ref: "#/components/schemas/Department"
         gardenType:
@@ -1671,26 +1998,26 @@ components:
         standard:
           nullable: true
           $ref: "#/components/schemas/Standard"
-        areaM2:          { type: number, nullable: true }
+        areaM2: { type: number, nullable: true }
         serviceTimeMins: { type: ["integer", "null"] }
         frequency:
           oneOf:
             - $ref: "#/components/schemas/Frequency"
             - type: "null"
-        isSchedulable:   { type: boolean }
+        isSchedulable: { type: boolean }
         departmentDetails:
           $ref: "#/components/schemas/DepartmentDetails"
         siteType: { type: string, enum: [park, street] }
-        teamId:        { type: string, format: uuid }
+        teamId: { type: string, format: uuid }
         ward:
           $ref: "#/components/schemas/Ward"
-        suburb:        { type: string }
+        suburb: { type: string }
         streetAddress: { type: string }
-        lat:           { type: number }
-        lng:           { type: number }
-        routeOrder:    { type: integer }
-        description:   { type: string }
-        notes:         { type: string }
+        lat: { type: number }
+        lng: { type: number }
+        routeOrder: { type: integer }
+        description: { type: string }
+        notes: { type: string }
       required:
         - name
         - department
@@ -1698,7 +2025,7 @@ components:
     AssetUpdate:
       type: object
       properties:
-        name:            { type: string }
+        name: { type: string }
         department:
           $ref: "#/components/schemas/Department"
         gardenType:
@@ -1707,31 +2034,31 @@ components:
         standard:
           nullable: true
           $ref: "#/components/schemas/Standard"
-        areaM2:          { type: number, nullable: true }
+        areaM2: { type: number, nullable: true }
         serviceTimeMins: { type: ["integer", "null"] }
         frequency:
           oneOf:
             - $ref: "#/components/schemas/Frequency"
             - type: "null"
-        isSchedulable:   { type: boolean }
+        isSchedulable: { type: boolean }
         departmentDetails:
           $ref: "#/components/schemas/DepartmentDetails"
-        teamId:        { type: string, format: uuid }
+        teamId: { type: string, format: uuid }
         ward:
           $ref: "#/components/schemas/Ward"
-        suburb:        { type: string }
+        suburb: { type: string }
         streetAddress: { type: string }
-        lat:           { type: number }
-        lng:           { type: number }
-        notes:         { type: string }
-        isActive:      { type: boolean }
+        lat: { type: number }
+        lng: { type: number }
+        notes: { type: string }
+        isActive: { type: boolean }
 
     AssetListResponse:
       type: object
       properties:
-        data:  { type: array, items: { $ref: "#/components/schemas/Asset" } }
+        data: { type: array, items: { $ref: "#/components/schemas/Asset" } }
         total: { type: integer }
-        page:  { type: integer }
+        page: { type: integer }
         limit: { type: integer }
       required: [data, total, page, limit]
 
@@ -1739,22 +2066,27 @@ components:
     Job:
       type: object
       properties:
-        id:             { type: string, format: uuid }
-        assetId:        { type: string, format: uuid }
+        id: { type: string, format: uuid }
+        assetId: { type: string, format: uuid }
         jobType:
           $ref: "#/components/schemas/JobType"
         status:
           $ref: "#/components/schemas/JobStatus"
-        teamId:         { type: string, format: uuid, nullable: true }
+        teamId: { type: string, format: uuid, nullable: true }
         assignedUserId: { type: string, format: uuid, nullable: true }
-        assignedUserName: { type: string, nullable: true, description: "Name of the worker who claimed this job." }
-        scheduledDate:  { type: string, format: date }
-        startedAt:      { type: string, format: date-time, nullable: true }
-        completedAt:    { type: string, format: date-time, nullable: true }
+        assignedUserName:
+          {
+            type: string,
+            nullable: true,
+            description: "Name of the worker who claimed this job.",
+          }
+        scheduledDate: { type: string, format: date }
+        startedAt: { type: string, format: date-time, nullable: true }
+        completedAt: { type: string, format: date-time, nullable: true }
         actualTimeMins: { type: integer, nullable: true }
-        notes:          { type: string, nullable: true }
-        createdAt:      { type: string, format: date-time }
-        updatedAt:      { type: string, format: date-time }
+        notes: { type: string, nullable: true }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
       required:
         - id
         - assetId
@@ -1767,13 +2099,13 @@ components:
     JobCreate:
       type: object
       properties:
-        assetId:        { type: string, format: uuid }
+        assetId: { type: string, format: uuid }
         jobType:
           $ref: "#/components/schemas/JobType"
-        teamId:         { type: string, format: uuid }
+        teamId: { type: string, format: uuid }
         assignedUserId: { type: string, format: uuid }
-        scheduledDate:  { type: string, format: date }
-        notes:          { type: string }
+        scheduledDate: { type: string, format: date }
+        notes: { type: string }
       required: [assetId, jobType, scheduledDate]
 
     JobUpdate:
@@ -1782,10 +2114,10 @@ components:
         status:
           $ref: "#/components/schemas/JobStatus"
         assignedUserId: { type: string, format: uuid }
-        startedAt:      { type: string, format: date-time }
-        completedAt:    { type: string, format: date-time }
+        startedAt: { type: string, format: date-time }
+        completedAt: { type: string, format: date-time }
         actualTimeMins: { type: integer }
-        notes:          { type: string }
+        notes: { type: string }
 
     SkipReviewOutcome:
       type: string
@@ -1802,85 +2134,105 @@ components:
     TaskSkipReason:
       type: object
       properties:
-        id:          { type: string, format: uuid }
-        jobId:       { type: string, format: uuid }
-        taskIndex:   { type: integer }
-        taskLabel:   { type: string }
-        reason:      { type: string }
+        id: { type: string, format: uuid }
+        jobId: { type: string, format: uuid }
+        taskIndex: { type: integer }
+        taskLabel: { type: string }
+        reason: { type: string }
         createdById: { type: string, format: uuid, nullable: true }
-        createdAt:   { type: string, format: date-time }
+        createdAt: { type: string, format: date-time }
       required: [id, jobId, taskIndex, taskLabel, reason, createdAt]
 
     SkippedJob:
       type: object
       properties:
-        id:                { type: string, format: uuid }
-        assetId:           { type: string, format: uuid }
+        id: { type: string, format: uuid }
+        assetId: { type: string, format: uuid }
         jobType:
           $ref: "#/components/schemas/JobType"
         status:
           $ref: "#/components/schemas/JobStatus"
-        teamId:            { type: string, format: uuid, nullable: true }
-        scheduledDate:     { type: string, format: date }
-        skipReason:        { type: string, nullable: true }
-        notes:             { type: string, nullable: true }
-        skipReviewedAt:    { type: string, format: date-time, nullable: true }
-        skipReviewedById:  { type: string, format: uuid, nullable: true }
+        teamId: { type: string, format: uuid, nullable: true }
+        scheduledDate: { type: string, format: date }
+        skipReason: { type: string, nullable: true }
+        notes: { type: string, nullable: true }
+        skipReviewedAt: { type: string, format: date-time, nullable: true }
+        skipReviewedById: { type: string, format: uuid, nullable: true }
         skipReviewOutcome:
           allOf:
             - $ref: "#/components/schemas/SkipReviewOutcome"
           nullable: true
-        skipReviewNotes:   { type: string, nullable: true }
-        reviewerName:      { type: string, nullable: true }
-        reviewerInitials:  { type: string, nullable: true }
-        createdAt:         { type: string, format: date-time }
-        updatedAt:         { type: string, format: date-time }
-        taskSkipReasons:   { type: array, items: { $ref: "#/components/schemas/TaskSkipReason" } }
-      required: [id, assetId, jobType, status, scheduledDate, createdAt, updatedAt, taskSkipReasons]
+        skipReviewNotes: { type: string, nullable: true }
+        reviewerName: { type: string, nullable: true }
+        reviewerInitials: { type: string, nullable: true }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+        taskSkipReasons:
+          {
+            type: array,
+            items: { $ref: "#/components/schemas/TaskSkipReason" },
+          }
+      required:
+        [
+          id,
+          assetId,
+          jobType,
+          status,
+          scheduledDate,
+          createdAt,
+          updatedAt,
+          taskSkipReasons,
+        ]
 
     SkippedJobListResponse:
       type: object
       properties:
-        data:  { type: array, items: { $ref: "#/components/schemas/SkippedJob" } }
-        page:  { type: integer }
+        data:
+          { type: array, items: { $ref: "#/components/schemas/SkippedJob" } }
+        page: { type: integer }
         limit: { type: integer }
       required: [data, page, limit]
 
     JobListResponse:
       type: object
       properties:
-        data:  { type: array, items: { $ref: "#/components/schemas/Job" } }
-        page:  { type: integer }
+        data: { type: array, items: { $ref: "#/components/schemas/Job" } }
+        page: { type: integer }
         limit: { type: integer }
       required: [data, page, limit]
 
     ReactiveJob:
       type: object
       properties:
-        id:             { type: string, format: uuid }
-        assetId:        { type: string, format: uuid, nullable: true }
-        raisedById:     { type: string, format: uuid }
+        id: { type: string, format: uuid }
+        assetId: { type: string, format: uuid, nullable: true }
+        raisedById: { type: string, format: uuid }
         assignedTeamId: { type: string, format: uuid, nullable: true }
         assignedUserId: { type: string, format: uuid, nullable: true }
-        assignedUserName: { type: string, nullable: true, description: "Name of the worker who claimed this job." }
-        issueType:      { type: string }
-        description:    { type: string }
-        location:       { type: string, nullable: true }
-        locationLat:    { type: number, nullable: true }
-        locationLng:    { type: number, nullable: true }
-        scheduledDate:  { type: string, format: date, nullable: true }
+        assignedUserName:
+          {
+            type: string,
+            nullable: true,
+            description: "Name of the worker who claimed this job.",
+          }
+        issueType: { type: string }
+        description: { type: string }
+        location: { type: string, nullable: true }
+        locationLat: { type: number, nullable: true }
+        locationLng: { type: number, nullable: true }
+        scheduledDate: { type: string, format: date, nullable: true }
         estimatedTimeMins: { type: integer, nullable: true }
         status:
           $ref: "#/components/schemas/ReactiveJobStatus"
         priority:
           $ref: "#/components/schemas/ReactivePriority"
-        raisedAt:       { type: string, format: date-time }
-        startedAt:      { type: string, format: date-time, nullable: true }
-        completedAt:    { type: string, format: date-time, nullable: true }
+        raisedAt: { type: string, format: date-time }
+        startedAt: { type: string, format: date-time, nullable: true }
+        completedAt: { type: string, format: date-time, nullable: true }
         actualTimeMins: { type: integer, nullable: true }
-        notes:          { type: string, nullable: true }
-        createdAt:      { type: string, format: date-time }
-        updatedAt:      { type: string, format: date-time }
+        notes: { type: string, nullable: true }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
       required:
         - id
         - raisedById
@@ -1895,9 +2247,9 @@ components:
     ReactiveJobCreate:
       type: object
       properties:
-        assetId:        { type: string, format: uuid }
-        issueType:      { type: string }
-        description:    { type: string }
+        assetId: { type: string, format: uuid }
+        issueType: { type: string }
+        description: { type: string }
         priority:
           $ref: "#/components/schemas/ReactivePriority"
         assignedTeamId: { type: string, format: uuid }
@@ -1912,34 +2264,35 @@ components:
           $ref: "#/components/schemas/ReactivePriority"
         assignedTeamId: { type: string, format: uuid }
         assignedUserId: { type: string, format: uuid }
-        startedAt:      { type: string, format: date-time }
-        completedAt:    { type: string, format: date-time }
+        startedAt: { type: string, format: date-time }
+        completedAt: { type: string, format: date-time }
         actualTimeMins: { type: integer }
-        notes:          { type: string }
+        notes: { type: string }
 
     ReactiveJobListResponse:
       type: object
       properties:
-        data: { type: array, items: { $ref: "#/components/schemas/ReactiveJob" } }
+        data:
+          { type: array, items: { $ref: "#/components/schemas/ReactiveJob" } }
       required: [data]
 
     # ─── Audits ─────────────────────────────────────────────────────────────
     Audit:
       type: object
       properties:
-        id:            { type: string, format: uuid }
-        assetId:       { type: string, format: uuid }
-        auditorId:     { type: string, format: uuid }
-        teamId:        { type: string, format: uuid, nullable: true }
+        id: { type: string, format: uuid }
+        assetId: { type: string, format: uuid }
+        auditorId: { type: string, format: uuid }
+        teamId: { type: string, format: uuid, nullable: true }
         scheduledDate: { type: string, format: date, nullable: true }
-        conductedAt:   { type: string, format: date-time }
+        conductedAt: { type: string, format: date-time }
         completedDate: { type: string, format: date, nullable: true }
-        overallScore:  { type: number, minimum: 0, maximum: 100, nullable: true }
+        overallScore: { type: number, minimum: 0, maximum: 100, nullable: true }
         status:
           $ref: "#/components/schemas/AuditStatus"
-        notes:         { type: string, nullable: true }
-        createdAt:     { type: string, format: date-time }
-        updatedAt:     { type: string, format: date-time }
+        notes: { type: string, nullable: true }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
       required:
         - id
         - assetId
@@ -1952,34 +2305,34 @@ components:
     AuditCreate:
       type: object
       properties:
-        assetId:    { type: string, format: uuid }
-        teamId:     { type: string, format: uuid }
+        assetId: { type: string, format: uuid }
+        teamId: { type: string, format: uuid }
         conductedAt: { type: string, format: date-time }
-        notes:      { type: string }
+        notes: { type: string }
       required: [assetId]
 
     AuditUpdate:
       type: object
       properties:
-        teamId:       { type: string, format: uuid }
-        conductedAt:  { type: string, format: date-time }
+        teamId: { type: string, format: uuid }
+        conductedAt: { type: string, format: date-time }
         completedDate: { type: string, format: date }
         overallScore: { type: number, minimum: 0, maximum: 100 }
         status:
           $ref: "#/components/schemas/AuditStatus"
-        notes:        { type: string }
+        notes: { type: string }
 
     AuditItem:
       type: object
       properties:
-        id:        { type: string, format: uuid }
-        auditId:   { type: string, format: uuid }
+        id: { type: string, format: uuid }
+        auditId: { type: string, format: uuid }
         criterion: { type: string }
         result:
           $ref: "#/components/schemas/AuditResult"
-        notes:     { type: string, nullable: true }
-        failLat:   { type: number, nullable: true }
-        failLng:   { type: number, nullable: true }
+        notes: { type: string, nullable: true }
+        failLat: { type: number, nullable: true }
+        failLng: { type: number, nullable: true }
         createdAt: { type: string, format: date-time }
         updatedAt: { type: string, format: date-time }
         photos:
@@ -1994,9 +2347,9 @@ components:
         criterion: { type: string }
         result:
           $ref: "#/components/schemas/AuditResult"
-        notes:     { type: string }
-        failLat:   { type: number }
-        failLng:   { type: number }
+        notes: { type: string }
+        failLat: { type: number }
+        failLng: { type: number }
       required: [criterion, result]
 
     AuditResponsesBulk:
@@ -2011,11 +2364,11 @@ components:
     AuditPhoto:
       type: object
       properties:
-        id:          { type: string, format: uuid }
+        id: { type: string, format: uuid }
         auditItemId: { type: string, format: uuid }
-        uploadedBy:  { type: string, format: uuid }
-        blobUrl:     { type: string }
-        createdAt:   { type: string, format: date-time }
+        uploadedBy: { type: string, format: uuid }
+        blobUrl: { type: string }
+        createdAt: { type: string, format: date-time }
       required: [id, auditItemId, uploadedBy, blobUrl, createdAt]
 
     AuditDetail:
@@ -2040,27 +2393,27 @@ components:
       type: object
       properties:
         gardenType: { type: string }
-        count:      { type: integer }
+        count: { type: integer }
       required: [gardenType, count]
 
     TeamJobCount:
       type: object
       properties:
-        teamId:         { type: string, format: uuid }
-        teamName:       { type: string }
-        jobCount:       { type: integer }
+        teamId: { type: string, format: uuid }
+        teamName: { type: string }
+        jobCount: { type: integer }
         completedCount: { type: integer }
       required: [teamId, teamName, jobCount, completedCount]
 
     DashboardSummary:
       type: object
       properties:
-        totalAssets:        { type: integer }
-        activeAssets:       { type: integer }
-        jobsThisWeek:       { type: integer }
-        completedThisWeek:  { type: integer }
-        overdueJobs:        { type: integer }
-        openReactiveJobs:   { type: integer }
+        totalAssets: { type: integer }
+        activeAssets: { type: integer }
+        jobsThisWeek: { type: integer }
+        completedThisWeek: { type: integer }
+        overdueJobs: { type: integer }
+        openReactiveJobs: { type: integer }
         assetsByType:
           type: array
           items: { $ref: "#/components/schemas/AssetTypeCount" }
@@ -2082,16 +2435,16 @@ components:
       type: object
       properties:
         fromDate: { type: string, format: date }
-        toDate:   { type: string, format: date }
-        teamId:   { type: string, format: uuid }
+        toDate: { type: string, format: date }
+        teamId: { type: string, format: uuid }
       required: [fromDate, toDate]
 
     ScheduleGenerateResult:
       type: object
       properties:
         jobsCreated: { type: integer }
-        fromDate:    { type: string, format: date }
-        toDate:      { type: string, format: date }
+        fromDate: { type: string, format: date }
+        toDate: { type: string, format: date }
       required: [jobsCreated, fromDate, toDate]
 
     JobWithAsset:
@@ -2099,10 +2452,10 @@ components:
         - $ref: "#/components/schemas/Job"
         - type: object
           properties:
-            assetName:    { type: string }
-            assetRef:     { type: string }
-            gardenType:   { type: string }
-            suburb:       { type: string, nullable: true }
+            assetName: { type: string }
+            assetRef: { type: string }
+            gardenType: { type: string }
+            suburb: { type: string, nullable: true }
             serviceTimeMins: { type: integer }
             priority:
               $ref: "#/components/schemas/ReactivePriority"
@@ -2121,12 +2474,12 @@ components:
       type: object
       properties:
         weekStart: { type: string, format: date }
-        weekEnd:   { type: string, format: date }
+        weekEnd: { type: string, format: date }
         days:
           type: array
           items: { $ref: "#/components/schemas/ScheduleWeekDay" }
-        totalJobs:      { type: integer }
-        completedJobs:  { type: integer }
+        totalJobs: { type: integer }
+        completedJobs: { type: integer }
       required: [weekStart, weekEnd, days, totalJobs, completedJobs]
 
     # ─── Programmes ──────────────────────────────────────────────────────────
@@ -2141,98 +2494,109 @@ components:
     InfillOrder:
       type: object
       properties:
-        id:              { type: string, format: uuid }
-        assetId:         { type: string, format: uuid }
-        assetName:       { type: string, nullable: true }
-        assetRef:        { type: string, nullable: true }
-        speciesName:     { type: string }
+        id: { type: string, format: uuid }
+        assetId: { type: string, format: uuid }
+        assetName: { type: string, nullable: true }
+        assetRef: { type: string, nullable: true }
+        speciesName: { type: string }
         speciesCategory: { type: string }
-        quantity:        { type: integer }
+        quantity: { type: integer }
         status:
           $ref: "#/components/schemas/InfillStatus"
-        orderedById:  { type: string, format: uuid, nullable: true }
-        orderDate:    { type: string, format: date, nullable: true }
+        orderedById: { type: string, format: uuid, nullable: true }
+        orderDate: { type: string, format: date, nullable: true }
         deliveryDate: { type: string, format: date, nullable: true }
-        plantedDate:  { type: string, format: date, nullable: true }
-        supplierRef:  { type: string, nullable: true }
-        unitCostNzd:  { type: string, nullable: true }
-        notes:        { type: string, nullable: true }
-        createdAt:    { type: string, format: date-time }
-        updatedAt:    { type: string, format: date-time }
-      required: [id, assetId, speciesName, speciesCategory, quantity, status, createdAt, updatedAt]
+        plantedDate: { type: string, format: date, nullable: true }
+        supplierRef: { type: string, nullable: true }
+        unitCostNzd: { type: string, nullable: true }
+        notes: { type: string, nullable: true }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+      required:
+        [
+          id,
+          assetId,
+          speciesName,
+          speciesCategory,
+          quantity,
+          status,
+          createdAt,
+          updatedAt,
+        ]
 
     InfillOrderCreate:
       type: object
       properties:
-        assetId:         { type: string, format: uuid }
-        speciesName:     { type: string }
+        assetId: { type: string, format: uuid }
+        speciesName: { type: string }
         speciesCategory: { type: string }
-        quantity:        { type: integer }
+        quantity: { type: integer }
         status:
           $ref: "#/components/schemas/InfillStatus"
-        orderDate:    { type: string, format: date }
+        orderDate: { type: string, format: date }
         deliveryDate: { type: string, format: date }
-        plantedDate:  { type: string, format: date }
-        supplierRef:  { type: string }
-        unitCostNzd:  { type: string }
-        notes:        { type: string }
+        plantedDate: { type: string, format: date }
+        supplierRef: { type: string }
+        unitCostNzd: { type: string }
+        notes: { type: string }
       required: [assetId, speciesName, speciesCategory, quantity]
 
     InfillOrderUpdate:
       type: object
       properties:
-        speciesName:     { type: string }
+        speciesName: { type: string }
         speciesCategory: { type: string }
-        quantity:        { type: integer }
+        quantity: { type: integer }
         status:
           $ref: "#/components/schemas/InfillStatus"
-        orderDate:    { type: string, format: date }
+        orderDate: { type: string, format: date }
         deliveryDate: { type: string, format: date }
-        plantedDate:  { type: string, format: date }
-        supplierRef:  { type: string }
-        unitCostNzd:  { type: string }
-        notes:        { type: string }
+        plantedDate: { type: string, format: date }
+        supplierRef: { type: string }
+        unitCostNzd: { type: string }
+        notes: { type: string }
 
     InfillOrderListResponse:
       type: object
       properties:
-        data:  { type: array, items: { $ref: "#/components/schemas/InfillOrder" } }
+        data:
+          { type: array, items: { $ref: "#/components/schemas/InfillOrder" } }
         total: { type: integer }
       required: [data, total]
 
     MulchingRecord:
       type: object
       properties:
-        id:            { type: string, format: uuid }
-        assetId:       { type: string, format: uuid }
-        assetName:     { type: string, nullable: true }
-        assetRef:      { type: string, nullable: true }
+        id: { type: string, format: uuid }
+        assetId: { type: string, format: uuid }
+        assetName: { type: string, nullable: true }
+        assetRef: { type: string, nullable: true }
         scheduledDate: { type: string, format: date, nullable: true }
         completedDate: { type: string, format: date, nullable: true }
-        volumeM3:      { type: string, nullable: true }
+        volumeM3: { type: string, nullable: true }
         status:
           $ref: "#/components/schemas/MulchingStatus"
-        mulchType:  { type: string, nullable: true }
+        mulchType: { type: string, nullable: true }
         contractor: { type: string, nullable: true }
-        costNzd:    { type: string, nullable: true }
-        notes:      { type: string, nullable: true }
-        createdAt:  { type: string, format: date-time }
-        updatedAt:  { type: string, format: date-time }
+        costNzd: { type: string, nullable: true }
+        notes: { type: string, nullable: true }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
       required: [id, assetId, status, createdAt, updatedAt]
 
     MulchingRecordCreate:
       type: object
       properties:
-        assetId:       { type: string, format: uuid }
+        assetId: { type: string, format: uuid }
         scheduledDate: { type: string, format: date }
         completedDate: { type: string, format: date }
-        volumeM3:      { type: string }
+        volumeM3: { type: string }
         status:
           $ref: "#/components/schemas/MulchingStatus"
-        mulchType:  { type: string }
+        mulchType: { type: string }
         contractor: { type: string }
-        costNzd:    { type: string }
-        notes:      { type: string }
+        costNzd: { type: string }
+        notes: { type: string }
       required: [assetId]
 
     MulchingRecordUpdate:
@@ -2240,18 +2604,22 @@ components:
       properties:
         scheduledDate: { type: string, format: date }
         completedDate: { type: string, format: date }
-        volumeM3:      { type: string }
+        volumeM3: { type: string }
         status:
           $ref: "#/components/schemas/MulchingStatus"
-        mulchType:  { type: string }
+        mulchType: { type: string }
         contractor: { type: string }
-        costNzd:    { type: string }
-        notes:      { type: string }
+        costNzd: { type: string }
+        notes: { type: string }
 
     MulchingRecordListResponse:
       type: object
       properties:
-        data:  { type: array, items: { $ref: "#/components/schemas/MulchingRecord" } }
+        data:
+          {
+            type: array,
+            items: { $ref: "#/components/schemas/MulchingRecord" },
+          }
         total: { type: integer }
       required: [data, total]
 
@@ -2280,7 +2648,8 @@ components:
             invalidRows: { type: integer }
             warnings: { type: integer }
             alreadyImported: { type: boolean }
-          required: [totalRows, validRows, invalidRows, warnings, alreadyImported]
+          required:
+            [totalRows, validRows, invalidRows, warnings, alreadyImported]
         rows:
           type: array
           items: { $ref: "#/components/schemas/MulchDepthImportRow" }
@@ -2297,48 +2666,65 @@ components:
         updatedDrafts: { type: integer }
         alreadyImported: { type: boolean }
         message: { type: string }
-      required: [batchKey, createdReadings, createdDrafts, updatedDrafts, alreadyImported, message]
+      required:
+        [
+          batchKey,
+          createdReadings,
+          createdDrafts,
+          updatedDrafts,
+          alreadyImported,
+          message,
+        ]
 
     # ─── Health (extended) ─────────────────────────────────────────────────────
     ReadinessResponse:
       type: object
       properties:
-        status:      { type: string }
+        status: { type: string }
         dbLatencyMs: { type: number }
-        cbState:     { type: string, enum: [CLOSED, OPEN, HALF_OPEN] }
+        cbState: { type: string, enum: [CLOSED, OPEN, HALF_OPEN] }
       required: [status, dbLatencyMs, cbState]
 
     ReadinessErrorResponse:
       type: object
       properties:
-        status:         { type: string }
-        error:          { type: string }
-        cbState:        { type: string, enum: [CLOSED, OPEN, HALF_OPEN] }
-        openedAt:       { type: string, format: date-time }
+        status: { type: string }
+        error: { type: string }
+        cbState: { type: string, enum: [CLOSED, OPEN, HALF_OPEN] }
+        openedAt: { type: string, format: date-time }
         timeSinceOpenMs: { type: number }
       required: [status, error, cbState]
 
     HealthDetailResponse:
       type: object
       properties:
-        status:       { type: string }
-        version:      { type: string }
-        uptimeMs:     { type: number }
-        dbLatencyMs:  { type: number }
-        nodeVersion:  { type: string }
-        cbState:      { type: string, enum: [CLOSED, OPEN, HALF_OPEN] }
+        status: { type: string }
+        version: { type: string }
+        uptimeMs: { type: number }
+        dbLatencyMs: { type: number }
+        nodeVersion: { type: string }
+        cbState: { type: string, enum: [CLOSED, OPEN, HALF_OPEN] }
         auditFailures: { type: integer }
-      required: [status, version, uptimeMs, dbLatencyMs, nodeVersion, cbState, auditFailures]
+      required:
+        [
+          status,
+          version,
+          uptimeMs,
+          dbLatencyMs,
+          nodeVersion,
+          cbState,
+          auditFailures,
+        ]
 
     DegradedHealthResponse:
       type: object
       properties:
-        status:          { type: string }
-        uptimeMs:        { type: number }
-        db:              { type: string }
-        cbState:         { type: string, enum: [CLOSED, OPEN, HALF_OPEN] }
-        auditFailures:   { type: integer }
-        openedAt:        { type: string, format: date-time }
+        status: { type: string }
+        uptimeMs: { type: number }
+        db: { type: string }
+        cbState: { type: string, enum: [CLOSED, OPEN, HALF_OPEN] }
+        auditFailures: { type: integer }
+        openedAt: { type: string, format: date-time }
         timeSinceOpenMs: { type: number }
       required: [status, uptimeMs, db, cbState, auditFailures]
 
@@ -2346,23 +2732,24 @@ components:
     AuditLogEntry:
       type: object
       properties:
-        id:            { type: string, format: uuid }
-        tableName:     { type: string }
-        recordId:      { type: string, format: uuid, nullable: true }
-        action:        { type: string, enum: [INSERT, UPDATE, DELETE] }
-        changedAt:     { type: string, format: date-time }
-        ipAddress:     { type: string, nullable: true }
-        oldData:       { type: object, nullable: true }
-        newData:       { type: object, nullable: true }
-        changedById:   { type: string, format: uuid, nullable: true }
+        id: { type: string, format: uuid }
+        tableName: { type: string }
+        recordId: { type: string, format: uuid, nullable: true }
+        action: { type: string, enum: [INSERT, UPDATE, DELETE] }
+        changedAt: { type: string, format: date-time }
+        ipAddress: { type: string, nullable: true }
+        oldData: { type: object, nullable: true }
+        newData: { type: object, nullable: true }
+        changedById: { type: string, format: uuid, nullable: true }
         changedByName: { type: string, nullable: true }
       required: [id, tableName, action, changedAt]
 
     AuditLogListResponse:
       type: object
       properties:
-        data:   { type: array, items: { $ref: "#/components/schemas/AuditLogEntry" } }
-        limit:  { type: integer }
+        data:
+          { type: array, items: { $ref: "#/components/schemas/AuditLogEntry" } }
+        limit: { type: integer }
         offset: { type: integer }
       required: [data, limit, offset]
 
@@ -2374,42 +2761,53 @@ components:
     UserSafe:
       type: object
       properties:
-        id:        { type: string, format: uuid }
-        email:     { type: string }
-        name:      { type: string }
-        initials:  { type: string }
-        role:      { $ref: "#/components/schemas/UserRole" }
-        teamId:    { type: string, format: uuid, nullable: true }
-        isActive:  { type: boolean }
+        id: { type: string, format: uuid }
+        email: { type: string }
+        name: { type: string }
+        initials: { type: string }
+        role: { $ref: "#/components/schemas/UserRole" }
+        teamId: { type: string, format: uuid, nullable: true }
+        isActive: { type: boolean }
         createdAt: { type: string, format: date-time }
         updatedAt: { type: string, format: date-time }
-      required: [id, email, name, initials, role, isActive, createdAt, updatedAt]
+      required:
+        [id, email, name, initials, role, isActive, createdAt, updatedAt]
 
     UserCreate:
       type: object
       properties:
-        email:    { type: string, format: email }
-        name:     { type: string }
+        email: { type: string, format: email }
+        name: { type: string }
         initials: { type: string }
-        password: { type: string, minLength: 8 }
-        role:     { $ref: "#/components/schemas/UserRole" }
-        teamId:   { type: string, format: uuid }
+        password:
+          {
+            type: string,
+            minLength: 8,
+            description: A manager-set account password. The plaintext value is never returned by the API.,
+          }
+        role: { $ref: "#/components/schemas/UserRole" }
+        teamId: { type: string, format: uuid }
       required: [email, name, initials, password, role]
 
     UserUpdate:
       type: object
       properties:
-        name:     { type: string }
+        name: { type: string }
         initials: { type: string }
-        role:     { $ref: "#/components/schemas/UserRole" }
-        teamId:   { type: string, format: uuid, nullable: true }
+        role: { $ref: "#/components/schemas/UserRole" }
+        teamId: { type: string, format: uuid, nullable: true }
         isActive: { type: boolean }
-        password: { type: string, minLength: 8 }
+        password:
+          {
+            type: string,
+            minLength: 8,
+            description: Replaces the account password. The plaintext value is hashed and never returned by the API.,
+          }
 
     UserListResponse:
       type: object
       properties:
-        data:  { type: array, items: { $ref: "#/components/schemas/UserSafe" } }
+        data: { type: array, items: { $ref: "#/components/schemas/UserSafe" } }
         total: { type: integer }
       required: [data, total]
 
@@ -2417,13 +2815,13 @@ components:
     JobPhoto:
       type: object
       properties:
-        id:            { type: string, format: uuid }
-        jobId:         { type: string, format: uuid, nullable: true }
+        id: { type: string, format: uuid }
+        jobId: { type: string, format: uuid, nullable: true }
         reactiveJobId: { type: string, format: uuid, nullable: true }
-        uploadedBy:    { type: string, format: uuid }
-        blobUrl:       { type: string }
-        caption:       { type: string, nullable: true }
-        createdAt:     { type: string, format: date-time }
+        uploadedBy: { type: string, format: uuid }
+        blobUrl: { type: string }
+        caption: { type: string, nullable: true }
+        createdAt: { type: string, format: date-time }
       required: [id, uploadedBy, blobUrl, createdAt]
 
     JobPhotoListResponse:

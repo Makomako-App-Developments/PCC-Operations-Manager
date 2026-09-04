@@ -4098,7 +4098,8 @@ export const useCreateUser = <
 };
 
 /**
- * @summary Update a user account (manager only)
+ * Password values are hashed before storage and are never returned. Managers cannot modify administrator accounts.
+ * @summary Update a user account or replace its password (manager only)
  */
 export const getUpdateUserUrl = (id: string) => {
   return `/api/users/${id}`;
@@ -4162,7 +4163,7 @@ export type UpdateUserMutationBody = BodyType<UserUpdate>;
 export type UpdateUserMutationError = ErrorType<NotFoundResponse>;
 
 /**
- * @summary Update a user account (manager only)
+ * @summary Update a user account or replace its password (manager only)
  */
 export const useUpdateUser = <
   TError = ErrorType<NotFoundResponse>,
