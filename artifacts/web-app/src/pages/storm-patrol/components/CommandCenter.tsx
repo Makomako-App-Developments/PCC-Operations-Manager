@@ -1,0 +1,682 @@
+import React, { useState, useMemo } from "react";
+import { 
+  StormCurrentResponseData, 
+  StormJob,
+  StormwaterAssetDetails, 
+  useListTeams, 
+  useListAssets,
+  usePublishStormPatrolPackage,
+  useCloseStormPatrolEvent,
+  createStormPatrolAlert,
+  useCreateStormPatrolObservation,
+  useAcknowledgeStormPatrolAlert,
+  getGetCurrentStormPatrolQueryKey,
+  getListStormPatrolEventsQueryKey,
+} from "@workspace/api-client-react";
+import { useQueryClient } from "@tanstack/react-query";
+import { 
+  CloudLightning, Loader2, X, Plus, Users, MapPin, Search, Check, 
+  AlertTriangle, Eye, ArrowRight, Save, Download, Navigation
+} from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { useToast } from "@/hooks/use-toast";
+import { format } from "date-fns";
+import { MapContainer, TileLayer, CircleMarker, Popup, useMap } from "react-leaflet";
+import "leaflet/dist/leaflet.css";
+
+const BRAND = "#00AECD";
+const RED = "#ef4444";
+const ORANGE = "#f97316";
+const YELLOW = "#eab308";
+const GREEN = "#22c55e";
+
+function FitBounds({ assets }: { assets: any[] }) {
+  const map = useMap();
+  React.useEffect(() => {
+    if (assets.length === 0) return;
+    const lats = assets.map(a => a.lat).filter(Boolean);
+    const lngs = assets.map(a => a.lng).filter(Boolean);
+    if (lats.length === 0 || lngs.length === 0) return;
+    
+    const minLat = Math.min(...lats);
+    const maxLat = Math.max(...lats);
+    const minLng = Math.min(...lngs);
+    const maxLng = Math.max(...lngs);
+    
+    map.fitBounds([[minLat, minLng], [maxLat, maxLng]], { padding: [20, 20], maxZoom: 16 });
+  }, [assets, map]);
+  return null;
+}
+
+interface CommandCenterProps {
+  data: StormCurrentResponseData;
+}
+
+export default function CommandCenter({ data }: CommandCenterProps) {
+  const { event, jobs, summary } = data!;
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+
+  const { data: teamsData } = useListTeams();
+  const { data: assetsData } = useListAssets({ department: "stormwater", limit: 2000 });
+  
+  const publishPackage = usePublishStormPatrolPackage();
+  const closeEvent = useCloseStormPatrolEvent();
+  const createObservation = useCreateStormPatrolObservation();
+  const ackAlert = useAcknowledgeStormPatrolAlert();
+  
+  const [isAlerting, setIsAlerting] = useState(false);
+
+  const teams = teamsData || [];
+  const assets = assetsData?.data || [];
+
+  const [activeTab, setActiveTab] = useState<"overview" | "jobs" | "packages">("overview");
+
+  // Create Work Package State
+  const [selectedPhase, setSelectedPhase] = useState<"pre" | "mid" | "post">("pre");
+  const [selectedTeam, setSelectedTeam] = useState<string>("");
+  const [assetSearch, setAssetSearch] = useState("");
+  const [selectedAssets, setSelectedAssets] = useState<Set<string>>(new Set());
+
+  // Alerts & Observations State
+  const [alertMessage, setAlertMessage] = useState("");
+  const [obsDesc, setObsDesc] = useState("");
+  const [obsNotes, setObsNotes] = useState("");
+
+  const handlePublishPackage = async () => {
+    if (!selectedTeam || selectedAssets.size === 0) return;
+    try {
+      await publishPackage.mutateAsync({
+        id: event.id,
+        data: {
+          phase: selectedPhase,
+          teamId: selectedTeam,
+          assetIds: Array.from(selectedAssets),
+          idempotencyKey: crypto.randomUUID(),
+        }
+      });
+      toast({ title: "Work package published", description: `${selectedAssets.size} jobs assigned.` });
+      setSelectedAssets(new Set());
+      queryClient.invalidateQueries({ queryKey: getGetCurrentStormPatrolQueryKey() });
+    } catch (err: any) {
+      toast({ title: "Failed to publish", description: err.message, variant: "destructive" });
+    }
+  };
+
+  const handleCloseEvent = async () => {
+    if (!window.confirm(`Are you sure you want to close "${event.name}"?`)) return;
+    try {
+      await closeEvent.mutateAsync({ id: event.id });
+      toast({ title: "Storm event closed" });
+      queryClient.invalidateQueries({ queryKey: getGetCurrentStormPatrolQueryKey() });
+      queryClient.invalidateQueries({ queryKey: getListStormPatrolEventsQueryKey() });
+    } catch (err: any) {
+      toast({ title: "Failed to close event", description: err.message, variant: "destructive" });
+    }
+  };
+
+  const handleCreateAlert = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!alertMessage.trim()) return;
+    try {
+      setIsAlerting(true);
+      await createStormPatrolAlert({
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          eventId: event.id,
+          message: alertMessage,
+        })
+      });
+      toast({ title: "Alert broadcasted" });
+      setAlertMessage("");
+      queryClient.invalidateQueries({ queryKey: getGetCurrentStormPatrolQueryKey() });
+    } catch (err: any) {
+      toast({ title: "Failed to create alert", description: err.message, variant: "destructive" });
+    } finally {
+      setIsAlerting(false);
+    }
+  };
+
+  const filteredAssets = useMemo(() => {
+    if (!assetSearch.trim()) return assets;
+    const q = assetSearch.toLowerCase();
+    return assets.filter(a => a.name.toLowerCase().includes(q) || a.streetAddress?.toLowerCase().includes(q));
+  }, [assets, assetSearch]);
+
+  const toggleAsset = (id: string) => {
+    const next = new Set(selectedAssets);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    setSelectedAssets(next);
+  };
+
+  const selectAllFiltered = () => {
+    const next = new Set(selectedAssets);
+    const allAdded = filteredAssets.every(a => next.has(a.id));
+    if (allAdded) {
+      filteredAssets.forEach(a => next.delete(a.id));
+    } else {
+      filteredAssets.forEach(a => next.add(a.id));
+    }
+    setSelectedAssets(next);
+  };
+
+  return (
+    <div className="flex-1 flex flex-col h-full bg-[#0f2a36] text-white overflow-hidden">
+      {/* Header */}
+      <header className="px-6 py-5 border-b border-white/10 flex-shrink-0 flex items-center justify-between bg-black/20">
+        <div className="flex items-center gap-4">
+          <div className="w-12 h-12 rounded-xl bg-red-500/20 flex items-center justify-center border border-red-500/30">
+            <CloudLightning className="w-6 h-6 text-red-500 animate-pulse" />
+          </div>
+          <div>
+            <div className="flex items-center gap-3">
+              <h1 className="text-xl font-bold text-white tracking-tight">{event.name}</h1>
+              <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-red-500 text-white">Active</span>
+            </div>
+            <div className="flex items-center gap-4 mt-1 text-xs text-white/50">
+              <span>Activated: {event.activatedAt ? format(new Date(event.activatedAt), "HH:mm, d MMM") : "Unknown"}</span>
+              <span>•</span>
+              <span>Rate: ${(event.hourlyRateCents / 100).toFixed(2)}/hr</span>
+              <span>•</span>
+              <span>ID: {event.id.split("-")[0]}</span>
+            </div>
+          </div>
+        </div>
+        <div className="flex items-center gap-3">
+          <Button 
+            variant="outline" 
+            className="bg-transparent border-white/10 text-white hover:bg-white/10"
+            onClick={async () => {
+              try {
+                const res = await fetch(`/api/storm-patrol/events/${event.id}/report`, { credentials: "include" });
+                if (!res.ok) throw new Error("Failed to load report");
+                const report = await res.json();
+                
+                const escapeCsv = (val: any) => val == null ? '""' : `"${String(val).replace(/"/g, '""')}"`;
+                
+                const csv = [
+                  ["Event Name", "Status", "Total Jobs", "Completed Jobs", "Total Hours", "Labour Charge ($)"],
+                  [
+                    escapeCsv(report.event.name),
+                    escapeCsv(report.event.status),
+                    escapeCsv(report.selectedCount),
+                    escapeCsv(report.checkedCount),
+                    escapeCsv(report.totalHours.toFixed(2)),
+                    escapeCsv((report.labourChargeCents / 100).toFixed(2))
+                  ],
+                  [],
+                  ["Jobs"],
+                  ["ID", "Phase", "Asset ID", "Team ID", "Status", "Time (Mins)", "Comments"],
+                  ...(report.jobs || []).map((j: any) => [
+                    escapeCsv(j.id),
+                    escapeCsv(j.phase),
+                    escapeCsv(j.assetId),
+                    escapeCsv(j.teamId),
+                    escapeCsv(j.status),
+                    escapeCsv(j.actualTimeMins),
+                    escapeCsv(j.comments)
+                  ])
+                ].map(r => r.join(",")).join("\n");
+
+                const blob = new Blob([csv], { type: "text/csv" });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement("a");
+                a.href = url; 
+                a.download = `Storm-Report-${event.name.replace(/[^a-z0-9]/gi, '_')}.csv`; 
+                a.click();
+                URL.revokeObjectURL(url);
+              } catch (err: any) {
+                toast({ title: "Report generation failed", description: err.message, variant: "destructive" });
+              }
+            }}
+            data-testid="btn-download-active-report"
+          >
+            <Download className="w-4 h-4 mr-2" />
+            Report
+          </Button>
+          <Button 
+            variant="outline" 
+            className="bg-red-500/20 border-red-500/30 text-red-500 hover:bg-red-500/30 hover:text-red-400"
+            onClick={handleCloseEvent}
+            disabled={closeEvent.isPending}
+            data-testid="btn-close-event"
+          >
+            {closeEvent.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <X className="w-4 h-4 mr-2" />}
+            Close Event
+          </Button>
+        </div>
+      </header>
+
+      <div className="flex-1 flex overflow-hidden">
+        {/* Main Content Area */}
+        <main className="flex-1 overflow-y-auto p-6 space-y-6">
+          
+          <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+            
+            {/* Left Column: Stats & Alerts */}
+            <div className="lg:col-span-1 space-y-6">
+              {/* Stats */}
+              <div className="bg-white/5 border border-white/10 rounded-2xl p-5">
+                <h3 className="text-sm font-semibold text-white/60 uppercase tracking-wider mb-4">Live Status</h3>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <p className="text-3xl font-black text-white">{jobs.length}</p>
+                    <p className="text-xs text-white/40 font-medium">Total Jobs</p>
+                  </div>
+                  <div>
+                    <p className="text-3xl font-black text-[#00AECD]">{jobs.filter(j => j.status === 'completed').length}</p>
+                    <p className="text-xs text-[#00AECD]/60 font-medium">Completed</p>
+                  </div>
+                  <div>
+                    <p className="text-3xl font-black text-orange-500">{jobs.filter(j => j.status === 'in_progress').length}</p>
+                    <p className="text-xs text-orange-500/60 font-medium">In Progress</p>
+                  </div>
+                  <div>
+                    <p className="text-3xl font-black text-red-500">{jobs.filter(j => j.comments?.includes('dangerous') || j.actualTimeMins === 0 && j.status === 'completed').length}</p>
+                    <p className="text-xs text-red-500/60 font-medium">Escalations</p>
+                  </div>
+                </div>
+              </div>
+
+              
+              {/* Active Alerts */}
+              {data?.alerts && data.alerts.length > 0 && (
+                <div className="bg-white/5 border border-white/10 rounded-2xl p-5">
+                  <h3 className="text-sm font-semibold text-white/60 uppercase tracking-wider mb-4 flex items-center gap-2">
+                    <AlertTriangle className="w-4 h-4" /> Active Alerts
+                  </h3>
+                  <div className="space-y-3 max-h-[300px] overflow-y-auto pr-1">
+                    {data.alerts.map(alert => (
+                      <div key={alert.id} className={`p-3 rounded-lg border ${!alert.acknowledgedAt ? "bg-orange-500/10 border-orange-500/30" : "bg-black/20 border-white/5"}`}>
+                        <div className="flex items-start justify-between gap-2">
+                          <p className={`text-sm ${!alert.acknowledgedAt ? "text-orange-100" : "text-white/60"}`}>{alert.message}</p>
+                          {!alert.acknowledgedAt && (
+                            <Button 
+                              size="sm" 
+                              variant="outline"
+                              onClick={async () => {
+                                try {
+                                  await ackAlert.mutateAsync({ id: alert.id });
+                                  queryClient.invalidateQueries({ queryKey: getGetCurrentStormPatrolQueryKey() });
+                                } catch (e) {
+                                  console.error(e);
+                                }
+                              }}
+                              className="h-6 text-[10px] px-2 bg-orange-500/20 hover:bg-orange-500/30 text-orange-400 border-orange-500/30"
+                            >
+                              Ack
+                            </Button>
+                          )}
+                        </div>
+                        {alert.acknowledgedAt && (
+                          <p className="text-[10px] text-white/40 mt-1">Ack'd {format(new Date(alert.acknowledgedAt), "HH:mm")}</p>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Field Observations */}
+              {data?.observations && data.observations.length > 0 && (
+                <div className="bg-white/5 border border-white/10 rounded-2xl p-5">
+                  <h3 className="text-sm font-semibold text-white/60 uppercase tracking-wider mb-4 flex items-center gap-2">
+                    <Eye className="w-4 h-4" /> Field Observations
+                  </h3>
+                  <div className="space-y-3 max-h-[300px] overflow-y-auto pr-1">
+                    {data.observations.map((obs: any) => (
+                      <div key={obs.id} className="p-3 rounded-lg bg-black/20 border border-white/5">
+                        <p className="text-sm font-medium text-white/90 mb-1">{obs.description}</p>
+                        {obs.notes && <p className="text-xs text-white/60 mb-2">{obs.notes}</p>}
+                        
+                        {/* Check if a follow-up job exists */}
+                        {data.followUps?.find((f: any) => f.id === obs.reactiveJobId) ? (
+                          <span className="inline-flex items-center gap-1 text-[10px] font-medium text-green-400 bg-green-400/10 px-2 py-0.5 rounded">
+                            <Check className="w-3 h-3" /> Job Created
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 text-[10px] font-medium text-white/40">
+                            Logged {obs.createdAt ? format(new Date(obs.createdAt), "HH:mm") : ""}
+                          </span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Broadcast Alert */}
+              <div className="bg-orange-500/10 border border-orange-500/20 rounded-2xl p-5">
+                <div className="flex items-center gap-2 mb-3">
+                  <AlertTriangle className="w-5 h-5 text-orange-500" />
+                  <h3 className="text-sm font-semibold text-orange-500 uppercase tracking-wider">Broadcast Alert</h3>
+                </div>
+                <form onSubmit={handleCreateAlert} className="space-y-3">
+                  <Textarea 
+                    value={alertMessage}
+                    onChange={e => setAlertMessage(e.target.value)}
+                    placeholder="Urgent message for all field teams..."
+                    className="bg-black/20 border-orange-500/20 text-white placeholder:text-white/30 resize-none h-20"
+                    data-testid="input-alert-message"
+                    required
+                  />
+                  <Button 
+                    type="submit" 
+                    disabled={isAlerting || !alertMessage.trim()}
+                    className="w-full bg-orange-500 hover:bg-orange-600 text-white font-semibold"
+                    data-testid="btn-send-alert"
+                  >
+                    {isAlerting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
+                    Send to Field
+                  </Button>
+                </form>
+              </div>
+
+              {/* Log Observation */}
+              <div className="bg-white/5 border border-white/10 rounded-2xl p-5">
+                <div className="flex items-center gap-2 mb-3">
+                  <Eye className="w-5 h-5 text-white/70" />
+                  <h3 className="text-sm font-semibold text-white/70 uppercase tracking-wider">Log Observation</h3>
+                </div>
+                <form 
+                  onSubmit={async (e) => {
+                    e.preventDefault();
+                    if (!obsDesc.trim()) return;
+                    try {
+                      await createObservation.mutateAsync({
+                        data: {
+                          eventId: event.id,
+                          description: obsDesc,
+                          notes: obsNotes,
+                          locationLat: -41.133, // Defaulting to Porirua center for manual entry
+                          locationLng: 174.833,
+                          idempotencyKey: crypto.randomUUID(),
+                        }
+                      });
+                      toast({ title: "Observation logged" });
+                      setObsDesc("");
+                      setObsNotes("");
+                    } catch(err: any) {
+                      toast({ title: "Failed to log", description: err.message, variant: "destructive" });
+                    }
+                  }} 
+                  className="space-y-3"
+                >
+                  <Input 
+                    value={obsDesc}
+                    onChange={e => setObsDesc(e.target.value)}
+                    placeholder="Short description (e.g. Tree down)"
+                    className="bg-black/20 border-white/10 text-white placeholder:text-white/30"
+                    data-testid="input-obs-desc"
+                    required
+                  />
+                  <Textarea 
+                    value={obsNotes}
+                    onChange={e => setObsNotes(e.target.value)}
+                    placeholder="Additional details..."
+                    className="bg-black/20 border-white/10 text-white placeholder:text-white/30 resize-none h-16"
+                    data-testid="input-obs-notes"
+                  />
+                  <Button 
+                    type="submit" 
+                    disabled={createObservation.isPending || !obsDesc.trim()}
+                    className="w-full bg-white/10 hover:bg-white/20 text-white"
+                    data-testid="btn-save-obs"
+                  >
+                    Save Observation
+                  </Button>
+                </form>
+              </div>
+            </div>
+
+            {/* Right Column: Work Packages & Jobs */}
+            <div className="lg:col-span-3 space-y-6">
+              
+              {/* Package Creator */}
+              <div className="bg-white/5 border border-white/10 rounded-2xl p-6">
+                <div className="flex items-center justify-between mb-6">
+                  <div className="flex items-center gap-3">
+                    <Navigation className="w-5 h-5 text-[#00AECD]" />
+                    <h2 className="text-lg font-semibold text-white">Create Work Package</h2>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
+                  <div className="space-y-2">
+                    <Label className="text-white/60">Response Phase</Label>
+                    <Select value={selectedPhase} onValueChange={v => setSelectedPhase(v as any)}>
+                      <SelectTrigger className="bg-black/20 border-white/10 h-10">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="pre">Pre-Storm Preparation</SelectItem>
+                        <SelectItem value="mid">Mid-Storm Response</SelectItem>
+                        <SelectItem value="post">Post-Storm Recovery</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  
+                  <div className="space-y-2">
+                    <Label className="text-white/60">Assign To Team</Label>
+                    <Select value={selectedTeam} onValueChange={setSelectedTeam}>
+                      <SelectTrigger className="bg-black/20 border-white/10 h-10">
+                        <SelectValue placeholder="Select team..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {teams.map(t => (
+                          <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="space-y-2 flex flex-col justify-end">
+                    <Button 
+                      onClick={handlePublishPackage}
+                      disabled={publishPackage.isPending || !selectedTeam || selectedAssets.size === 0}
+                      className="bg-[#00AECD] hover:bg-[#00AECD]/90 text-white h-10 font-semibold"
+                      data-testid="btn-publish-package"
+                    >
+                      {publishPackage.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Plus className="w-4 h-4 mr-2" />}
+                      Publish ({selectedAssets.size} Sites)
+                    </Button>
+                  </div>
+                </div>
+
+                {/* Asset Selector & Map Preview */}
+                <div className="border border-white/10 rounded-xl overflow-hidden bg-black/20 flex flex-col h-[400px]">
+                  <div className="p-3 border-b border-white/10 bg-white/5 flex items-center justify-between">
+                    <div className="relative w-64">
+                      <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-white/40" />
+                      <Input 
+                        value={assetSearch}
+                        onChange={e => setAssetSearch(e.target.value)}
+                        placeholder="Search stormwater assets..."
+                        className="pl-9 h-8 bg-black/20 border-white/10 text-xs text-white placeholder:text-white/30"
+                      />
+                    </div>
+                    <div className="flex items-center gap-3 text-sm">
+                      <span className="text-white/60">Selected: <strong className="text-white">{selectedAssets.size}</strong></span>
+                      <Button 
+                        variant="ghost" 
+                        size="sm" 
+                        onClick={selectAllFiltered}
+                        className="h-8 text-xs text-white/60 hover:text-white hover:bg-white/10"
+                      >
+                        {filteredAssets.length > 0 && filteredAssets.every(a => selectedAssets.has(a.id)) ? "Deselect All" : "Select All Filtered"}
+                      </Button>
+                    </div>
+                  </div>
+                  
+                  <div className="flex-1 flex overflow-hidden">
+                    {/* List */}
+                    <div className="w-[40%] flex-shrink-0 border-r border-white/10 overflow-y-auto p-2 space-y-1">
+                      {filteredAssets.length === 0 ? (
+                        <div className="text-center py-8 text-white/40 text-sm">No assets match search.</div>
+                      ) : (
+                        filteredAssets.map(asset => (
+                          <label 
+                            key={asset.id} 
+                            className={`flex items-start gap-3 p-2 rounded-lg cursor-pointer transition-colors ${selectedAssets.has(asset.id) ? 'bg-[#00AECD]/20 border-[#00AECD]/30' : 'hover:bg-white/5 border-transparent'} border`}
+                          >
+                            <input 
+                              type="checkbox" 
+                              className="mt-1 flex-shrink-0 accent-[#00AECD] border-white/20 rounded bg-black/40"
+                              checked={selectedAssets.has(asset.id)}
+                              onChange={() => toggleAsset(asset.id)}
+                            />
+                            <div className="min-w-0 flex-1">
+                              <p className="text-sm font-medium text-white truncate">{asset.name}</p>
+                              <p className="text-xs text-white/40 truncate">{asset.streetAddress || "No address"}</p>
+                            </div>
+                            {(asset.departmentDetails as StormwaterAssetDetails)?.hotspot === "Yes" && (
+                              <span className="px-2 py-0.5 rounded bg-red-500/20 text-red-500 text-[10px] font-bold">HOTSPOT</span>
+                            )}
+                          </label>
+                        ))
+                      )}
+                    </div>
+                    
+                    {/* Map */}
+                    <div className="flex-1 relative bg-black">
+                      <MapContainer
+                        center={[-41.133, 174.833]}
+                        zoom={12}
+                        style={{ width: "100%", height: "100%" }}
+                        zoomControl={true}
+                        attributionControl={false}
+                      >
+                        <TileLayer
+                          url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
+                          attribution="&copy; OpenStreetMap &copy; CARTO"
+                        />
+                        <FitBounds assets={filteredAssets.filter(a => selectedAssets.has(a.id))} />
+                        
+                        {filteredAssets.map(asset => {
+                          if (!asset.lat || !asset.lng) return null;
+                          const isSelected = selectedAssets.has(asset.id);
+                          const isHotspot = (asset.departmentDetails as StormwaterAssetDetails)?.hotspot === "Yes";
+                          
+                          let color = "#475569"; // gray-600
+                          let fillColor = "#1e293b";
+                          if (isSelected) {
+                            color = "#00AECD";
+                            fillColor = "#00AECD";
+                          } else if (isHotspot) {
+                            color = "#ef4444"; // red-500
+                            fillColor = "transparent";
+                          }
+
+                          return (
+                            <CircleMarker
+                              key={asset.id}
+                              center={[asset.lat, asset.lng]}
+                              radius={isSelected ? 6 : 4}
+                              color={color}
+                              fillColor={fillColor}
+                              fillOpacity={isSelected ? 0.7 : 0.4}
+                              weight={2}
+                              eventHandlers={{
+                                click: () => toggleAsset(asset.id)
+                              }}
+                            >
+                              <Popup className="bg-[#0f2a36] text-white border border-white/10 rounded-lg">
+                                <div className="p-1">
+                                  <h4 className="font-bold text-sm text-gray-900">{asset.name}</h4>
+                                  <p className="text-xs text-gray-500 mb-2">{asset.streetAddress}</p>
+                                  <Button 
+                                    size="sm"
+                                    onClick={() => toggleAsset(asset.id)}
+                                    className={`w-full h-7 text-xs ${isSelected ? 'bg-red-500/10 text-red-500 hover:bg-red-500/20' : 'bg-[#00AECD] text-white hover:bg-[#00AECD]/90'}`}
+                                  >
+                                    {isSelected ? "Remove from Package" : "Add to Package"}
+                                  </Button>
+                                </div>
+                              </Popup>
+                            </CircleMarker>
+                          );
+                        })}
+                      </MapContainer>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Live Jobs Table */}
+              <div className="bg-white/5 border border-white/10 rounded-2xl overflow-hidden flex flex-col h-[400px]">
+                <div className="p-4 border-b border-white/10 bg-white/5 flex items-center justify-between">
+                  <h2 className="text-base font-semibold text-white">Live Field Operations</h2>
+                  <div className="flex items-center gap-2">
+                    <span className="flex items-center gap-1.5 text-xs text-white/60">
+                      <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span>
+                      Auto-syncing
+                    </span>
+                  </div>
+                </div>
+                <div className="flex-1 overflow-auto">
+                  <table className="w-full text-left text-sm whitespace-nowrap">
+                    <thead className="bg-black/20 text-white/50 sticky top-0 z-10">
+                      <tr>
+                        <th className="px-4 py-3 font-medium">Phase</th>
+                        <th className="px-4 py-3 font-medium">Site</th>
+                        <th className="px-4 py-3 font-medium">Team</th>
+                        <th className="px-4 py-3 font-medium">Status</th>
+                        <th className="px-4 py-3 font-medium">Comments</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-white/5">
+                      {jobs.length === 0 ? (
+                        <tr>
+                          <td colSpan={5} className="px-4 py-8 text-center text-white/40">No jobs dispatched yet.</td>
+                        </tr>
+                      ) : (
+                        jobs.map(job => {
+                          return (
+                            <tr key={job.id} className="hover:bg-white/5 transition-colors">
+                              <td className="px-4 py-3">
+                                <span className={`px-2 py-1 rounded text-xs font-bold uppercase ${
+                                  job.phase === 'pre' ? 'bg-yellow-500/20 text-yellow-500' :
+                                  job.phase === 'mid' ? 'bg-orange-500/20 text-orange-500' :
+                                  'bg-green-500/20 text-green-500'
+                                }`}>
+                                  {job.phase}
+                                </span>
+                              </td>
+                              <td className="px-4 py-3 font-medium text-white/90">
+                                {job.assetName || "Unknown Asset"}
+                                {job.workerName && <span className="block text-[10px] text-white/40 font-normal">Assigned: {job.workerName}</span>}
+                              </td>
+                              <td className="px-4 py-3 text-white/60">
+                                {job.teamName || "Unknown Team"}
+                              </td>
+                              <td className="px-4 py-3">
+                                <span className="text-xs font-medium text-white/80 flex items-center gap-1.5">
+                                  {job.status === 'completed' && <Check className="w-3.5 h-3.5 text-green-500" />}
+                                  {job.status === 'in_progress' && <Loader2 className="w-3.5 h-3.5 text-orange-500 animate-spin" />}
+                                  {job.status === 'pending' && <span className="w-2 h-2 rounded-full bg-white/30" />}
+                                  {job.status.replace("_", " ")}
+                                </span>
+                              </td>
+                              <td className="px-4 py-3 text-white/60 truncate max-w-[200px]" title={job.comments || ""}>
+                                {job.comments || "-"}
+                              </td>
+                            </tr>
+                          );
+                        })
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          </div>
+        </main>
+      </div>
+    </div>
+  );
+}

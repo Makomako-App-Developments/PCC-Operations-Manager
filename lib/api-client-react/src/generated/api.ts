@@ -55,6 +55,7 @@ import type {
   ListJobsParams,
   ListMulchingRecordsParams,
   ListSkippedJobsParams,
+  ListStormPatrolAlertsParams,
   LoginRequest,
   LoginResponse,
   MulchDepthImportCommit,
@@ -77,6 +78,21 @@ import type {
   ScheduleWeekResponse,
   SkipReviewRequest,
   SkippedJobListResponse,
+  StormAlert,
+  StormAlertListResponse,
+  StormCompletion,
+  StormCompletionResponse,
+  StormCurrentResponse,
+  StormEvent,
+  StormEventCreate,
+  StormEventListResponse,
+  StormJob,
+  StormJobListResponse,
+  StormObservationCreate,
+  StormObservationResponse,
+  StormPackagePublish,
+  StormPackagePublishResponse,
+  StormReport,
   Team,
   TeamCreate,
   UnauthorisedResponse,
@@ -4526,3 +4542,1036 @@ export const useUploadJobPhoto = <
 > => {
   return useMutation(getUploadJobPhotoMutationOptions(options));
 };
+
+/**
+ * @summary Active storm context, team jobs and summary
+ */
+export const getGetCurrentStormPatrolUrl = () => {
+  return `/api/storm-patrol/current`;
+};
+
+export const getCurrentStormPatrol = async (
+  options?: RequestInit,
+): Promise<StormCurrentResponse> => {
+  return customFetch<StormCurrentResponse>(getGetCurrentStormPatrolUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetCurrentStormPatrolQueryKey = () => {
+  return [`/api/storm-patrol/current`] as const;
+};
+
+export const getGetCurrentStormPatrolQueryOptions = <
+  TData = Awaited<ReturnType<typeof getCurrentStormPatrol>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getCurrentStormPatrol>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetCurrentStormPatrolQueryKey();
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getCurrentStormPatrol>>
+  > = ({ signal }) => getCurrentStormPatrol({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getCurrentStormPatrol>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetCurrentStormPatrolQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getCurrentStormPatrol>>
+>;
+export type GetCurrentStormPatrolQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Active storm context, team jobs and summary
+ */
+
+export function useGetCurrentStormPatrol<
+  TData = Awaited<ReturnType<typeof getCurrentStormPatrol>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getCurrentStormPatrol>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetCurrentStormPatrolQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+export const getListStormPatrolEventsUrl = () => {
+  return `/api/storm-patrol/events`;
+};
+
+export const listStormPatrolEvents = async (
+  options?: RequestInit,
+): Promise<StormEventListResponse> => {
+  return customFetch<StormEventListResponse>(getListStormPatrolEventsUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getListStormPatrolEventsQueryKey = () => {
+  return [`/api/storm-patrol/events`] as const;
+};
+
+export const getListStormPatrolEventsQueryOptions = <
+  TData = Awaited<ReturnType<typeof listStormPatrolEvents>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof listStormPatrolEvents>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getListStormPatrolEventsQueryKey();
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof listStormPatrolEvents>>
+  > = ({ signal }) => listStormPatrolEvents({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listStormPatrolEvents>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListStormPatrolEventsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listStormPatrolEvents>>
+>;
+export type ListStormPatrolEventsQueryError = ErrorType<unknown>;
+
+export function useListStormPatrolEvents<
+  TData = Awaited<ReturnType<typeof listStormPatrolEvents>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof listStormPatrolEvents>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListStormPatrolEventsQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+export const getCreateStormPatrolEventUrl = () => {
+  return `/api/storm-patrol/events`;
+};
+
+export const createStormPatrolEvent = async (
+  stormEventCreate: StormEventCreate,
+  options?: RequestInit,
+): Promise<StormEvent> => {
+  return customFetch<StormEvent>(getCreateStormPatrolEventUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(stormEventCreate),
+  });
+};
+
+export const getCreateStormPatrolEventMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createStormPatrolEvent>>,
+    TError,
+    { data: BodyType<StormEventCreate> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof createStormPatrolEvent>>,
+  TError,
+  { data: BodyType<StormEventCreate> },
+  TContext
+> => {
+  const mutationKey = ["createStormPatrolEvent"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof createStormPatrolEvent>>,
+    { data: BodyType<StormEventCreate> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return createStormPatrolEvent(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type CreateStormPatrolEventMutationResult = NonNullable<
+  Awaited<ReturnType<typeof createStormPatrolEvent>>
+>;
+export type CreateStormPatrolEventMutationBody = BodyType<StormEventCreate>;
+export type CreateStormPatrolEventMutationError = ErrorType<unknown>;
+
+export const useCreateStormPatrolEvent = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createStormPatrolEvent>>,
+    TError,
+    { data: BodyType<StormEventCreate> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof createStormPatrolEvent>>,
+  TError,
+  { data: BodyType<StormEventCreate> },
+  TContext
+> => {
+  return useMutation(getCreateStormPatrolEventMutationOptions(options));
+};
+
+export const getCloseStormPatrolEventUrl = (id: string) => {
+  return `/api/storm-patrol/events/${id}/close`;
+};
+
+export const closeStormPatrolEvent = async (
+  id: string,
+  options?: RequestInit,
+): Promise<StormEvent> => {
+  return customFetch<StormEvent>(getCloseStormPatrolEventUrl(id), {
+    ...options,
+    method: "POST",
+  });
+};
+
+export const getCloseStormPatrolEventMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof closeStormPatrolEvent>>,
+    TError,
+    { id: string },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof closeStormPatrolEvent>>,
+  TError,
+  { id: string },
+  TContext
+> => {
+  const mutationKey = ["closeStormPatrolEvent"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof closeStormPatrolEvent>>,
+    { id: string }
+  > = (props) => {
+    const { id } = props ?? {};
+
+    return closeStormPatrolEvent(id, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type CloseStormPatrolEventMutationResult = NonNullable<
+  Awaited<ReturnType<typeof closeStormPatrolEvent>>
+>;
+
+export type CloseStormPatrolEventMutationError = ErrorType<unknown>;
+
+export const useCloseStormPatrolEvent = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof closeStormPatrolEvent>>,
+    TError,
+    { id: string },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof closeStormPatrolEvent>>,
+  TError,
+  { id: string },
+  TContext
+> => {
+  return useMutation(getCloseStormPatrolEventMutationOptions(options));
+};
+
+export const getPublishStormPatrolPackageUrl = (id: string) => {
+  return `/api/storm-patrol/events/${id}/packages`;
+};
+
+export const publishStormPatrolPackage = async (
+  id: string,
+  stormPackagePublish: StormPackagePublish,
+  options?: RequestInit,
+): Promise<StormPackagePublishResponse> => {
+  return customFetch<StormPackagePublishResponse>(
+    getPublishStormPatrolPackageUrl(id),
+    {
+      ...options,
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...options?.headers },
+      body: JSON.stringify(stormPackagePublish),
+    },
+  );
+};
+
+export const getPublishStormPatrolPackageMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof publishStormPatrolPackage>>,
+    TError,
+    { id: string; data: BodyType<StormPackagePublish> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof publishStormPatrolPackage>>,
+  TError,
+  { id: string; data: BodyType<StormPackagePublish> },
+  TContext
+> => {
+  const mutationKey = ["publishStormPatrolPackage"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof publishStormPatrolPackage>>,
+    { id: string; data: BodyType<StormPackagePublish> }
+  > = (props) => {
+    const { id, data } = props ?? {};
+
+    return publishStormPatrolPackage(id, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type PublishStormPatrolPackageMutationResult = NonNullable<
+  Awaited<ReturnType<typeof publishStormPatrolPackage>>
+>;
+export type PublishStormPatrolPackageMutationBody =
+  BodyType<StormPackagePublish>;
+export type PublishStormPatrolPackageMutationError = ErrorType<unknown>;
+
+export const usePublishStormPatrolPackage = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof publishStormPatrolPackage>>,
+    TError,
+    { id: string; data: BodyType<StormPackagePublish> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof publishStormPatrolPackage>>,
+  TError,
+  { id: string; data: BodyType<StormPackagePublish> },
+  TContext
+> => {
+  return useMutation(getPublishStormPatrolPackageMutationOptions(options));
+};
+
+export const getListStormPatrolJobsUrl = () => {
+  return `/api/storm-patrol/jobs`;
+};
+
+export const listStormPatrolJobs = async (
+  options?: RequestInit,
+): Promise<StormJobListResponse> => {
+  return customFetch<StormJobListResponse>(getListStormPatrolJobsUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getListStormPatrolJobsQueryKey = () => {
+  return [`/api/storm-patrol/jobs`] as const;
+};
+
+export const getListStormPatrolJobsQueryOptions = <
+  TData = Awaited<ReturnType<typeof listStormPatrolJobs>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof listStormPatrolJobs>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getListStormPatrolJobsQueryKey();
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof listStormPatrolJobs>>
+  > = ({ signal }) => listStormPatrolJobs({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listStormPatrolJobs>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListStormPatrolJobsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listStormPatrolJobs>>
+>;
+export type ListStormPatrolJobsQueryError = ErrorType<unknown>;
+
+export function useListStormPatrolJobs<
+  TData = Awaited<ReturnType<typeof listStormPatrolJobs>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof listStormPatrolJobs>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListStormPatrolJobsQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+export const getClaimStormPatrolJobUrl = (id: string) => {
+  return `/api/storm-patrol/jobs/${id}/claim`;
+};
+
+export const claimStormPatrolJob = async (
+  id: string,
+  options?: RequestInit,
+): Promise<StormJob> => {
+  return customFetch<StormJob>(getClaimStormPatrolJobUrl(id), {
+    ...options,
+    method: "POST",
+  });
+};
+
+export const getClaimStormPatrolJobMutationOptions = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof claimStormPatrolJob>>,
+    TError,
+    { id: string },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof claimStormPatrolJob>>,
+  TError,
+  { id: string },
+  TContext
+> => {
+  const mutationKey = ["claimStormPatrolJob"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof claimStormPatrolJob>>,
+    { id: string }
+  > = (props) => {
+    const { id } = props ?? {};
+
+    return claimStormPatrolJob(id, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type ClaimStormPatrolJobMutationResult = NonNullable<
+  Awaited<ReturnType<typeof claimStormPatrolJob>>
+>;
+
+export type ClaimStormPatrolJobMutationError = ErrorType<void>;
+
+export const useClaimStormPatrolJob = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof claimStormPatrolJob>>,
+    TError,
+    { id: string },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof claimStormPatrolJob>>,
+  TError,
+  { id: string },
+  TContext
+> => {
+  return useMutation(getClaimStormPatrolJobMutationOptions(options));
+};
+
+export const getCompleteStormPatrolJobUrl = (id: string) => {
+  return `/api/storm-patrol/jobs/${id}/complete`;
+};
+
+export const completeStormPatrolJob = async (
+  id: string,
+  stormCompletion: StormCompletion,
+  options?: RequestInit,
+): Promise<StormCompletionResponse> => {
+  return customFetch<StormCompletionResponse>(
+    getCompleteStormPatrolJobUrl(id),
+    {
+      ...options,
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...options?.headers },
+      body: JSON.stringify(stormCompletion),
+    },
+  );
+};
+
+export const getCompleteStormPatrolJobMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof completeStormPatrolJob>>,
+    TError,
+    { id: string; data: BodyType<StormCompletion> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof completeStormPatrolJob>>,
+  TError,
+  { id: string; data: BodyType<StormCompletion> },
+  TContext
+> => {
+  const mutationKey = ["completeStormPatrolJob"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof completeStormPatrolJob>>,
+    { id: string; data: BodyType<StormCompletion> }
+  > = (props) => {
+    const { id, data } = props ?? {};
+
+    return completeStormPatrolJob(id, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type CompleteStormPatrolJobMutationResult = NonNullable<
+  Awaited<ReturnType<typeof completeStormPatrolJob>>
+>;
+export type CompleteStormPatrolJobMutationBody = BodyType<StormCompletion>;
+export type CompleteStormPatrolJobMutationError = ErrorType<unknown>;
+
+export const useCompleteStormPatrolJob = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof completeStormPatrolJob>>,
+    TError,
+    { id: string; data: BodyType<StormCompletion> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof completeStormPatrolJob>>,
+  TError,
+  { id: string; data: BodyType<StormCompletion> },
+  TContext
+> => {
+  return useMutation(getCompleteStormPatrolJobMutationOptions(options));
+};
+
+export const getCreateStormPatrolObservationUrl = () => {
+  return `/api/storm-patrol/observations`;
+};
+
+export const createStormPatrolObservation = async (
+  stormObservationCreate: StormObservationCreate,
+  options?: RequestInit,
+): Promise<StormObservationResponse> => {
+  return customFetch<StormObservationResponse>(
+    getCreateStormPatrolObservationUrl(),
+    {
+      ...options,
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...options?.headers },
+      body: JSON.stringify(stormObservationCreate),
+    },
+  );
+};
+
+export const getCreateStormPatrolObservationMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createStormPatrolObservation>>,
+    TError,
+    { data: BodyType<StormObservationCreate> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof createStormPatrolObservation>>,
+  TError,
+  { data: BodyType<StormObservationCreate> },
+  TContext
+> => {
+  const mutationKey = ["createStormPatrolObservation"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof createStormPatrolObservation>>,
+    { data: BodyType<StormObservationCreate> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return createStormPatrolObservation(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type CreateStormPatrolObservationMutationResult = NonNullable<
+  Awaited<ReturnType<typeof createStormPatrolObservation>>
+>;
+export type CreateStormPatrolObservationMutationBody =
+  BodyType<StormObservationCreate>;
+export type CreateStormPatrolObservationMutationError = ErrorType<unknown>;
+
+export const useCreateStormPatrolObservation = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createStormPatrolObservation>>,
+    TError,
+    { data: BodyType<StormObservationCreate> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof createStormPatrolObservation>>,
+  TError,
+  { data: BodyType<StormObservationCreate> },
+  TContext
+> => {
+  return useMutation(getCreateStormPatrolObservationMutationOptions(options));
+};
+
+export const getListStormPatrolAlertsUrl = (
+  params?: ListStormPatrolAlertsParams,
+) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/storm-patrol/alerts?${stringifiedParams}`
+    : `/api/storm-patrol/alerts`;
+};
+
+export const listStormPatrolAlerts = async (
+  params?: ListStormPatrolAlertsParams,
+  options?: RequestInit,
+): Promise<StormAlertListResponse> => {
+  return customFetch<StormAlertListResponse>(
+    getListStormPatrolAlertsUrl(params),
+    {
+      ...options,
+      method: "GET",
+    },
+  );
+};
+
+export const getListStormPatrolAlertsQueryKey = (
+  params?: ListStormPatrolAlertsParams,
+) => {
+  return [`/api/storm-patrol/alerts`, ...(params ? [params] : [])] as const;
+};
+
+export const getListStormPatrolAlertsQueryOptions = <
+  TData = Awaited<ReturnType<typeof listStormPatrolAlerts>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: ListStormPatrolAlertsParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listStormPatrolAlerts>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getListStormPatrolAlertsQueryKey(params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof listStormPatrolAlerts>>
+  > = ({ signal }) =>
+    listStormPatrolAlerts(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listStormPatrolAlerts>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListStormPatrolAlertsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listStormPatrolAlerts>>
+>;
+export type ListStormPatrolAlertsQueryError = ErrorType<unknown>;
+
+export function useListStormPatrolAlerts<
+  TData = Awaited<ReturnType<typeof listStormPatrolAlerts>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: ListStormPatrolAlertsParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listStormPatrolAlerts>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListStormPatrolAlertsQueryOptions(params, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+export const getCreateStormPatrolAlertUrl = () => {
+  return `/api/storm-patrol/alerts`;
+};
+
+export const createStormPatrolAlert = async (
+  options?: RequestInit,
+): Promise<StormAlert> => {
+  return customFetch<StormAlert>(getCreateStormPatrolAlertUrl(), {
+    ...options,
+    method: "POST",
+  });
+};
+
+export const getCreateStormPatrolAlertMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createStormPatrolAlert>>,
+    TError,
+    void,
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof createStormPatrolAlert>>,
+  TError,
+  void,
+  TContext
+> => {
+  const mutationKey = ["createStormPatrolAlert"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof createStormPatrolAlert>>,
+    void
+  > = () => {
+    return createStormPatrolAlert(requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type CreateStormPatrolAlertMutationResult = NonNullable<
+  Awaited<ReturnType<typeof createStormPatrolAlert>>
+>;
+
+export type CreateStormPatrolAlertMutationError = ErrorType<unknown>;
+
+export const useCreateStormPatrolAlert = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createStormPatrolAlert>>,
+    TError,
+    void,
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof createStormPatrolAlert>>,
+  TError,
+  void,
+  TContext
+> => {
+  return useMutation(getCreateStormPatrolAlertMutationOptions(options));
+};
+
+export const getAcknowledgeStormPatrolAlertUrl = (id: string) => {
+  return `/api/storm-patrol/alerts/${id}/acknowledge`;
+};
+
+export const acknowledgeStormPatrolAlert = async (
+  id: string,
+  options?: RequestInit,
+): Promise<StormAlert> => {
+  return customFetch<StormAlert>(getAcknowledgeStormPatrolAlertUrl(id), {
+    ...options,
+    method: "POST",
+  });
+};
+
+export const getAcknowledgeStormPatrolAlertMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof acknowledgeStormPatrolAlert>>,
+    TError,
+    { id: string },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof acknowledgeStormPatrolAlert>>,
+  TError,
+  { id: string },
+  TContext
+> => {
+  const mutationKey = ["acknowledgeStormPatrolAlert"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof acknowledgeStormPatrolAlert>>,
+    { id: string }
+  > = (props) => {
+    const { id } = props ?? {};
+
+    return acknowledgeStormPatrolAlert(id, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type AcknowledgeStormPatrolAlertMutationResult = NonNullable<
+  Awaited<ReturnType<typeof acknowledgeStormPatrolAlert>>
+>;
+
+export type AcknowledgeStormPatrolAlertMutationError = ErrorType<unknown>;
+
+export const useAcknowledgeStormPatrolAlert = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof acknowledgeStormPatrolAlert>>,
+    TError,
+    { id: string },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof acknowledgeStormPatrolAlert>>,
+  TError,
+  { id: string },
+  TContext
+> => {
+  return useMutation(getAcknowledgeStormPatrolAlertMutationOptions(options));
+};
+
+export const getGetStormPatrolReportUrl = (id: string) => {
+  return `/api/storm-patrol/events/${id}/report`;
+};
+
+export const getStormPatrolReport = async (
+  id: string,
+  options?: RequestInit,
+): Promise<StormReport | string | Blob> => {
+  return customFetch<StormReport | string | Blob>(
+    getGetStormPatrolReportUrl(id),
+    {
+      ...options,
+      method: "GET",
+    },
+  );
+};
+
+export const getGetStormPatrolReportQueryKey = (id: string) => {
+  return [`/api/storm-patrol/events/${id}/report`] as const;
+};
+
+export const getGetStormPatrolReportQueryOptions = <
+  TData = Awaited<ReturnType<typeof getStormPatrolReport>>,
+  TError = ErrorType<unknown>,
+>(
+  id: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getStormPatrolReport>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getGetStormPatrolReportQueryKey(id);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getStormPatrolReport>>
+  > = ({ signal }) => getStormPatrolReport(id, { signal, ...requestOptions });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!id,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof getStormPatrolReport>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetStormPatrolReportQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getStormPatrolReport>>
+>;
+export type GetStormPatrolReportQueryError = ErrorType<unknown>;
+
+export function useGetStormPatrolReport<
+  TData = Awaited<ReturnType<typeof getStormPatrolReport>>,
+  TError = ErrorType<unknown>,
+>(
+  id: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getStormPatrolReport>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetStormPatrolReportQueryOptions(id, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}

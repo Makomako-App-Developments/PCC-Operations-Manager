@@ -1,6 +1,6 @@
 import { Router } from "express";
 import path from "path";
-import { db, executeWithCircuitBreaker, jobsTable, reactiveJobsTable, insertJobSchema, insertReactiveJobSchema, assetsTable, teamsTable, usersTable, jobTeamCompletionsTable, jobTaskSkipReasonsTable, mulchingRecordsTable, jobPhotosTable, auditLogTable } from "@workspace/db";
+import { db, executeWithCircuitBreaker, jobsTable, reactiveJobsTable, insertJobSchema, insertReactiveJobSchema, assetsTable, teamsTable, usersTable, jobTeamCompletionsTable, jobTaskSkipReasonsTable, mulchingRecordsTable, jobPhotosTable, auditLogTable, stormJobsTable, stormEventsTable, stormCheckResultsTable } from "@workspace/db";
 import { eq, and, inArray, notInArray, or, isNull, gte, lte, ilike, desc, sql } from "drizzle-orm";
 import { z } from "zod";
 import { z as zV4 } from "zod/v4";
@@ -264,6 +264,7 @@ const completedWorksQuerySchema = z.object({
   from:       z.string().optional(),
   to:         z.string().optional(),
   search:     z.string().optional(),
+  workSource: z.enum(["garden", "storm_patrol", "all"]).default("all"),
   page:       z.coerce.number().int().min(1).default(1),
   limit:      z.coerce.number().int().min(1).max(1000).default(100),
 });
@@ -292,7 +293,7 @@ router.get("/completed-works", requireAuth, validateQuery(completedWorksQuerySch
 
   const offset = (q.page - 1) * q.limit;
 
-  const rows = await executeWithCircuitBreaker(() => db
+  const rows = q.workSource === "storm_patrol" ? [] : await executeWithCircuitBreaker(() => db
     .select({
       id:               jobsTable.id,
       jobType:          jobsTable.jobType,
@@ -325,7 +326,32 @@ router.get("/completed-works", requireAuth, validateQuery(completedWorksQuerySch
     .limit(q.limit)
     .offset(offset));
 
-  res.json({ data: rows, page: q.page, limit: q.limit });
+  // Storm Patrol is deliberately a separate workflow, exposed alongside—not
+  // converted into—Horticulture maintenance records.
+  const stormConditions: any[] = [inArray(stormJobsTable.status, ["completed", "too_dangerous"] as any[])];
+  if (q.teamId) stormConditions.push(eq(stormJobsTable.teamId, q.teamId));
+  if (!isPrivilegedRole(req.auth!.role)) stormConditions.push(eq(stormJobsTable.teamId, req.auth!.teamId ?? ""));
+  const stormRows = q.workSource === "garden" ? [] : await executeWithCircuitBreaker(() => db
+    .select({
+      id: stormJobsTable.id, phase: stormJobsTable.phase, outcome: stormJobsTable.status,
+      completedAt: stormJobsTable.completedAt, actualTimeMins: stormJobsTable.actualTimeMins,
+      comments: stormJobsTable.comments, teamId: stormJobsTable.teamId, assignedUserId: stormJobsTable.assignedUserId,
+      teamName: teamsTable.name, workerName: usersTable.name, assetId: assetsTable.id,
+      assetName: assetsTable.name, assetDescription: assetsTable.description, stormName: stormEventsTable.name,
+      hourlyRateCents: stormEventsTable.hourlyRateCents,
+    }).from(stormJobsTable)
+    .innerJoin(stormEventsTable, eq(stormJobsTable.eventId, stormEventsTable.id))
+    .innerJoin(assetsTable, eq(stormJobsTable.assetId, assetsTable.id))
+    .leftJoin(teamsTable, eq(stormJobsTable.teamId, teamsTable.id))
+    .leftJoin(usersTable, eq(stormJobsTable.assignedUserId, usersTable.id))
+    .where(and(...stormConditions))
+    .orderBy(desc(stormJobsTable.completedAt))
+    .limit(q.limit));
+  const workTypes = stormRows.length ? await executeWithCircuitBreaker(() => db.select().from(stormCheckResultsTable).where(inArray(stormCheckResultsTable.stormJobId, stormRows.map(r => r.id)))) : [];
+  const typesByJob = new Map<string, string[]>();
+  for (const row of workTypes) typesByJob.set(row.stormJobId, [...(typesByJob.get(row.stormJobId) ?? []), row.workType]);
+  const mappedStorm = stormRows.map(row => ({ ...row, workSource: "storm_patrol", workTypes: typesByJob.get(row.id) ?? [], chargeCents: Math.round((row.actualTimeMins ?? 0) * row.hourlyRateCents / 60) }));
+  res.json({ data: [...rows.map(row => ({ ...row, workSource: "garden" })), ...mappedStorm], page: q.page, limit: q.limit });
 });
 
 // GET /api/jobs/:id/pdf

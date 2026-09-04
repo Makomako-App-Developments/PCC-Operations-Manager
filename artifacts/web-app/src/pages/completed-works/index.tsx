@@ -14,25 +14,36 @@ import { Checkbox } from "@/components/ui/checkbox";
 
 interface CompletedWork {
   id: string;
-  jobType: string;
-  scheduledDate: string;
-  startedAt: string | null;
+  jobType?: string;
+  scheduledDate?: string;
+  startedAt?: string | null;
   completedAt: string | null;
   actualTimeMins: number | null;
-  estimatedTimeMins: number | null;
-  notes: string | null;
-  crewStatus: string;
-  isAllTeams: boolean;
+  estimatedTimeMins?: number | null;
+  notes?: string | null;
+  crewStatus?: string;
+  isAllTeams?: boolean;
   teamId: string | null;
   teamName: string | null;
-  assignedUserName: string | null;
+  assignedUserName?: string | null;
+  workerName?: string | null;
   assetId: string | null;
   assetName: string | null;
   assetDescription: string | null;
-  gardenType: string | null;
-  ward: string | null;
-  suburb: string | null;
-  areaM2: number | null;
+  gardenType?: string | null;
+  ward?: string | null;
+  suburb?: string | null;
+  areaM2?: number | null;
+
+  // Storm Patrol Specific
+  workSource: "garden" | "storm_patrol";
+  phase?: string;
+  outcome?: string;
+  comments?: string | null;
+  stormName?: string;
+  hourlyRateCents?: number;
+  workTypes?: string[];
+  chargeCents?: number;
 }
 
 interface Photo {
@@ -95,9 +106,11 @@ function varianceMins(actual: number | null, estimated: number | null): number |
 // ─── detail panel ────────────────────────────────────────────────────────────
 
 function DetailPanel({ job, onClose }: { job: CompletedWork; onClose: () => void }) {
+  const isStorm = job.workSource === "storm_patrol";
   const { data: photosData } = useQuery<{ data: Photo[] }>({
-    queryKey: ["job-photos", job.id],
+    queryKey: ["job-photos", job.id, job.workSource],
     queryFn: async () => {
+      if (isStorm) return { data: [] };
       const res = await fetch(`/api/jobs/${job.id}/photos`, { credentials: "include" });
       if (!res.ok) throw new Error("Failed");
       return res.json();
@@ -105,7 +118,7 @@ function DetailPanel({ job, onClose }: { job: CompletedWork; onClose: () => void
   });
 
   const photos = photosData?.data ?? [];
-  const variance = varianceMins(job.actualTimeMins, job.estimatedTimeMins);
+  const variance = varianceMins(job.actualTimeMins, job.estimatedTimeMins ?? null);
 
   return (
     <div className="w-[420px] flex-shrink-0 flex flex-col h-full bg-white border-l border-gray-200 overflow-hidden">
@@ -114,11 +127,16 @@ function DetailPanel({ job, onClose }: { job: CompletedWork; onClose: () => void
         <div className="flex-1 min-w-0 pr-3">
           <div className="flex items-center gap-2 mb-1">
             <CheckCircle2 className="w-4 h-4 text-green-600 flex-shrink-0" />
-            <span className="text-xs font-medium text-green-700 uppercase tracking-wide">Completed</span>
+            <span className="text-xs font-medium text-green-700 uppercase tracking-wide">
+              {job.outcome === "too_dangerous" ? "Too Dangerous" : "Completed"}
+            </span>
           </div>
           <h2 className="text-base font-semibold text-gray-900 leading-tight truncate">
             {job.assetName ?? "Unknown Site"}
           </h2>
+          {isStorm && (
+            <p className="text-xs text-red-500 font-medium mt-1">{job.stormName}</p>
+          )}
         </div>
         <button
           onClick={onClose}
@@ -133,21 +151,53 @@ function DetailPanel({ job, onClose }: { job: CompletedWork; onClose: () => void
 
         {/* Key info grid */}
         <div className="grid grid-cols-2 gap-3">
-          <InfoBlock label="Scheduled Date" value={formatDate(job.scheduledDate)} />
-          <InfoBlock label="Start Time" value={formatDateTime(job.startedAt)} />
-          <InfoBlock label="Completed" value={formatDateTime(job.completedAt)} />
+          {isStorm ? (
+             <InfoBlock label="Completed" value={formatDate(job.completedAt)} />
+          ) : (
+            <InfoBlock label="Scheduled Date" value={formatDate(job.scheduledDate ?? null)} />
+          )}
+          {isStorm ? null : <InfoBlock label="Start Time" value={formatDateTime(job.startedAt ?? null)} />}
+          {isStorm ? null : <InfoBlock label="Completed" value={formatDateTime(job.completedAt)} />}
           <InfoBlock label="Team" value={job.isAllTeams ? "All Teams" : (job.teamName ?? "—")} />
-          <InfoBlock label="Completed by" value={job.isAllTeams ? "Team sign-off" : (job.assignedUserName ?? "—")} />
-          <InfoBlock label="Job Type" value={JOB_TYPE_LABELS[job.jobType] ?? job.jobType} />
+          <InfoBlock label="Completed by" value={job.isAllTeams ? "Team sign-off" : (job.assignedUserName || job.workerName || "—")} />
+
+          {isStorm ? (
+            <>
+              <InfoBlock label="Phase" value={<span className="uppercase text-xs font-bold">{job.phase}</span>} />
+              <InfoBlock label="Charge" value={job.chargeCents != null ? `${(job.chargeCents/100).toFixed(2)}` : "—"} />
+            </>
+          ) : (
+            <InfoBlock label="Job Type" value={job.jobType ? (JOB_TYPE_LABELS[job.jobType] ?? job.jobType) : "—"} />
+          )}
+
           <InfoBlock label="Ward" value={job.ward ? WARD_LABELS[job.ward] ?? job.ward : "—"} />
-          <InfoBlock label="Garden Type" value={job.gardenType ? GARDEN_TYPE_LABELS[job.gardenType] ?? job.gardenType : "—"} />
+
+          {isStorm ? null : <InfoBlock label="Garden Type" value={job.gardenType ? GARDEN_TYPE_LABELS[job.gardenType] ?? job.gardenType : "—"} />}
+
           {job.suburb && <InfoBlock label="Suburb" value={job.suburb} />}
           {job.areaM2 != null && <InfoBlock label="Area" value={`${Number(job.areaM2).toFixed(1)} m²`} />}
-          <InfoBlock
-            label="Team"
-            value={job.crewStatus === "full" ? "Full crew" : job.crewStatus === "reduced" ? "Reduced crew" : "No crew"}
-          />
+
+          {isStorm ? null : (
+            <InfoBlock
+              label="Crew"
+              value={job.crewStatus === "full" ? "Full crew" : job.crewStatus === "reduced" ? "Reduced crew" : "No crew"}
+            />
+          )}
         </div>
+
+        {/* Work Types */}
+        {isStorm && job.workTypes && job.workTypes.length > 0 && (
+          <section>
+            <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-widest mb-2">Work Performed</h3>
+            <div className="flex flex-wrap gap-2">
+              {job.workTypes.map(t => (
+                <span key={t} className="px-2 py-1 bg-gray-100 border border-gray-200 rounded text-xs text-gray-700">
+                  {t.replace(/_/g, " ")}
+                </span>
+              ))}
+            </div>
+          </section>
+        )}
 
         {/* Time breakdown */}
         <section>
@@ -155,9 +205,9 @@ function DetailPanel({ job, onClose }: { job: CompletedWork; onClose: () => void
             <Clock className="w-3.5 h-3.5" /> Time
           </h3>
           <div className="bg-gray-50 rounded-lg p-3 space-y-2.5">
-            <TimeRow label="Scheduled" mins={job.estimatedTimeMins} />
+            {isStorm ? null : <TimeRow label="Scheduled" mins={job.estimatedTimeMins ?? null} />}
             <TimeRow label="Actual" mins={job.actualTimeMins} highlight />
-            {variance != null && (
+            {!isStorm && variance != null && (
               <div className="pt-1.5 border-t border-gray-200">
                 <div className="flex items-center justify-between">
                   <span className="text-xs text-gray-500">Variance</span>
@@ -179,13 +229,13 @@ function DetailPanel({ job, onClose }: { job: CompletedWork; onClose: () => void
         </section>
 
         {/* Notes */}
-        {job.notes && (
+        {(job.notes || job.comments) && (
           <section>
             <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-widest mb-2 flex items-center gap-1.5">
               <FileText className="w-3.5 h-3.5" /> Worker Notes
             </h3>
             <div className="bg-amber-50 border border-amber-100 rounded-lg p-3">
-              <p className="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">{job.notes}</p>
+              <p className="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">{job.notes || job.comments}</p>
             </div>
           </section>
         )}
@@ -245,7 +295,7 @@ function DetailPanel({ job, onClose }: { job: CompletedWork; onClose: () => void
   );
 }
 
-function InfoBlock({ label, value }: { label: string; value: string }) {
+function InfoBlock({ label, value }: { label: string; value: React.ReactNode }) {
   return (
     <div>
       <p className="text-[10px] font-medium text-gray-400 uppercase tracking-wide mb-0.5">{label}</p>
@@ -274,6 +324,7 @@ export default function CompletedWorks() {
   const [search, setSearch] = useState("");
   const [teamId, setTeamId] = useState("all");
   const [gardenType, setGardenType] = useState("all");
+  const [workSource, setWorkSource] = useState("garden");
   const [dateRange, setDateRange] = useState<"all" | "this-week" | "this-month" | "custom">("all");
   const [customFrom, setCustomFrom] = useState("");
   const [customTo, setCustomTo] = useState("");
@@ -311,11 +362,12 @@ export default function CompletedWorks() {
   const params = new URLSearchParams({ limit: "500" });
   if (teamId !== "all")     params.set("teamId", teamId);
   if (gardenType !== "all") params.set("gardenType", gardenType);
+  if (workSource !== "all") params.set("workSource", workSource);
   if (computedFrom)         params.set("from", computedFrom);
   if (computedTo)           params.set("to", computedTo);
 
   const { data, isLoading } = useQuery<{ data: CompletedWork[] }>({
-    queryKey: ["completed-works", teamId, gardenType, computedFrom, computedTo],
+    queryKey: ["completed-works", teamId, gardenType, workSource, computedFrom, computedTo],
     queryFn: async () => {
       const res = await fetch(`/api/completed-works?${params}`, { credentials: "include" });
       if (!res.ok) throw new Error("Failed");
@@ -370,13 +422,13 @@ export default function CompletedWorks() {
     return [...filtered].sort((a, b) => {
       let av: string | number | null = null;
       let bv: string | number | null = null;
-      if (sortKey === "scheduledDate")      { av = a.scheduledDate; bv = b.scheduledDate; }
+      if (sortKey === "scheduledDate")      { av = a.scheduledDate ?? null; bv = b.scheduledDate ?? null; }
       else if (sortKey === "assetName")     { av = a.assetName; bv = b.assetName; }
       else if (sortKey === "assetDescription") { av = a.assetDescription; bv = b.assetDescription; }
-      else if (sortKey === "gardenType")    { av = a.gardenType; bv = b.gardenType; }
-      else if (sortKey === "ward")          { av = a.ward; bv = b.ward; }
+      else if (sortKey === "gardenType")    { av = a.gardenType ?? null; bv = b.gardenType ?? null; }
+      else if (sortKey === "ward")          { av = a.ward ?? null; bv = b.ward ?? null; }
       else if (sortKey === "teamName")      { av = a.isAllTeams ? "All Teams" : (a.teamName ?? ""); bv = b.isAllTeams ? "All Teams" : (b.teamName ?? ""); }
-      else if (sortKey === "estimatedTimeMins") { av = a.estimatedTimeMins; bv = b.estimatedTimeMins; }
+      else if (sortKey === "estimatedTimeMins") { av = a.estimatedTimeMins ?? null; bv = b.estimatedTimeMins ?? null; }
       else if (sortKey === "actualTimeMins")    { av = a.actualTimeMins; bv = b.actualTimeMins; }
       else if (sortKey === "variance") {
         av = a.actualTimeMins != null && a.estimatedTimeMins != null ? a.actualTimeMins - a.estimatedTimeMins : null;
@@ -398,7 +450,7 @@ export default function CompletedWorks() {
     let totalScheduledMins = 0;
     for (const r of rows) {
       if (r.assetId && !uniqueAssets.has(r.assetId)) {
-        uniqueAssets.set(r.assetId, r.areaM2);
+        uniqueAssets.set(r.assetId, r.areaM2 ?? null);
       }
       totalActualMins += r.actualTimeMins ?? 0;
       totalScheduledMins += r.estimatedTimeMins ?? 0;
@@ -429,6 +481,7 @@ export default function CompletedWorks() {
       const params = new URLSearchParams({ limit: "10000" });
       if (exportFrom) params.set("from", exportFrom);
       if (exportTo)   params.set("to", exportTo);
+      if (workSource !== "all") params.set("workSource", workSource);
 
       const res = await fetch(`/api/completed-works?${params}`, { credentials: "include" });
       if (!res.ok) throw new Error("Failed to fetch data");
@@ -439,24 +492,26 @@ export default function CompletedWorks() {
         ? allRows.filter(r => r.teamId != null && exportTeamIds.has(r.teamId))
         : allRows;
 
-      const headers = ["Date", "Site", "Description", "Specification", "Ward", "Suburb", "Team", "Completed by", "Estimated (min)", "Actual (min)", "Variance (min)", "Status", "Notes"];
+      const headers = ["Date", "Source", "Site", "Description", "Specification", "Ward", "Suburb", "Team", "Completed by", "Estimated (min)", "Actual (min)", "Variance (min)", "Status", "Charge ($)", "Notes"];
       const csvRows = filtered.map(r => {
         const est = r.estimatedTimeMins ?? 0;
         const act = r.actualTimeMins ?? est;
         return [
-          r.scheduledDate ?? "",
+          r.workSource === "storm_patrol" ? (r.completedAt ? r.completedAt.slice(0, 10) : "") : (r.scheduledDate ?? ""),
+          r.workSource === "storm_patrol" ? `Storm: ${r.stormName}` : "Maintenance",
           r.assetName ?? "",
           r.assetDescription ?? "",
-          GARDEN_TYPE_LABELS[r.gardenType ?? ""] ?? r.gardenType ?? "",
+          r.workSource === "storm_patrol" ? r.workTypes?.join("; ") : (GARDEN_TYPE_LABELS[r.gardenType ?? ""] ?? r.gardenType ?? ""),
           WARD_LABELS[r.ward ?? ""] ?? r.ward ?? "",
           r.suburb ?? "",
           r.isAllTeams ? "All Teams" : (r.teamName ?? ""),
-           r.isAllTeams ? "Team sign-off" : (r.assignedUserName ?? ""),
+           r.isAllTeams ? "Team sign-off" : (r.assignedUserName || r.workerName || ""),
           est,
           act,
-          act - est,
-          r.crewStatus,
-          (r.notes ?? "").replace(/"/g, '""'),
+          r.workSource === "storm_patrol" ? 0 : (act - est),
+          r.crewStatus || r.outcome || "completed",
+          r.chargeCents ? (r.chargeCents / 100).toFixed(2) : "",
+          (r.notes || r.comments || "").replace(/"/g, '""'),
         ];
       });
 
@@ -601,6 +656,16 @@ export default function CompletedWorks() {
               ))}
             </SelectContent>
           </Select>
+          <Select value={workSource} onValueChange={setWorkSource}>
+            <SelectTrigger className="h-9 text-sm w-[160px]">
+              <SelectValue placeholder="All Sources" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Sources</SelectItem>
+              <SelectItem value="garden">Routine Maintenance</SelectItem>
+              <SelectItem value="storm_patrol">Storm Patrol</SelectItem>
+            </SelectContent>
+          </Select>
           <Select value={gardenType} onValueChange={setGardenType}>
             <SelectTrigger className="h-9 text-sm w-[180px]">
               <SelectValue placeholder="All specifications" />
@@ -659,13 +724,13 @@ export default function CompletedWorks() {
                   <tr className="text-xs font-bold text-gray-500 uppercase tracking-wide">
                     {[
                       { key: "scheduledDate", label: "Date", align: "left", nowrap: true },
+                      { key: "workSource", label: "Source", align: "left", nowrap: true },
                       { key: "assetName", label: "Site", align: "left", nowrap: false },
-                      { key: "gardenType", label: "Specification", align: "left", nowrap: true },
-                      { key: "ward", label: "Ward", align: "left", nowrap: false },
+                      { key: "gardenType", label: "Specification/Work", align: "left", nowrap: true },
                       { key: "teamName", label: "Team", align: "left", nowrap: false },
                       { key: "estimatedTimeMins", label: "Scheduled", align: "right", nowrap: true },
                       { key: "actualTimeMins", label: "Actual", align: "right", nowrap: true },
-                      { key: "variance", label: "+/−", align: "right", nowrap: true },
+                      { key: "chargeCents", label: "Charge ($)", align: "right", nowrap: true },
                     ].map(col => {
                       const active = sortKey === col.key;
                       const Icon = active ? (sortDir === "asc" ? ChevronUp : ChevronDown) : ChevronsUpDown;
@@ -687,7 +752,7 @@ export default function CompletedWorks() {
                 </thead>
                 <tbody className="divide-y divide-gray-100">
                   {rows.map(row => {
-                    const v = varianceMins(row.actualTimeMins, row.estimatedTimeMins);
+                    const isStorm = row.workSource === "storm_patrol";
                     const isSelected = selectedJob?.id === row.id;
                     return (
                       <tr
@@ -698,7 +763,10 @@ export default function CompletedWorks() {
                         }`}
                       >
                         <td className="px-5 py-3 text-gray-600 whitespace-nowrap text-xs">
-                          {formatDate(row.scheduledDate)}
+                          {formatDate(isStorm ? (row.completedAt ? row.completedAt.slice(0, 10) : "") : (row.scheduledDate ?? ""))}
+                        </td>
+                        <td className="px-5 py-3 whitespace-nowrap text-xs text-gray-600">
+                          {isStorm ? <span className="text-red-500 font-semibold">{row.stormName}</span> : "Routine Maintenance"}
                         </td>
                         <td className="px-5 py-3">
                           <div className="font-medium text-gray-900 truncate max-w-[220px]">{row.assetName ?? "—"}</div>
@@ -707,34 +775,30 @@ export default function CompletedWorks() {
                           )}
                         </td>
                         <td className="px-5 py-3 whitespace-nowrap text-xs text-gray-600">
-                          {GARDEN_TYPE_LABELS[row.gardenType ?? ""] ?? row.gardenType ?? "—"}
-                        </td>
-                        <td className="px-5 py-3 whitespace-nowrap text-xs text-gray-600">
-                          {row.ward ? WARD_LABELS[row.ward] : "—"}
+                          {isStorm ? (
+                            <div className="flex flex-col gap-0.5">
+                              <span className="font-medium uppercase tracking-wider text-[10px]">{row.phase}</span>
+                              <span className="text-gray-400 truncate max-w-[150px]">{row.workTypes?.join("; ") || "—"}</span>
+                            </div>
+                          ) : (
+                            GARDEN_TYPE_LABELS[row.gardenType ?? ""] ?? row.gardenType ?? "—"
+                          )}
                         </td>
                         <td className="px-5 py-3 whitespace-nowrap text-xs text-gray-600">
                           {row.isAllTeams ? "All Teams" : (row.teamName ?? "—")}
                         </td>
                         <td className="px-5 py-3 text-right text-xs text-gray-500 whitespace-nowrap">
-                          {formatMins(row.estimatedTimeMins)}
+                          {isStorm ? "—" : formatMins(row.estimatedTimeMins ?? null)}
                         </td>
                         <td className="px-5 py-3 text-right text-xs font-medium text-gray-900 whitespace-nowrap">
                           {formatMins(row.actualTimeMins)}
                         </td>
-                        <td className="px-5 py-3 text-right whitespace-nowrap">
-                          {v == null ? (
-                            <span className="text-xs text-gray-300">—</span>
-                          ) : v === 0 ? (
-                            <span className="text-xs text-gray-400">0</span>
-                          ) : v > 0 ? (
-                            <span className="text-xs font-medium text-red-600">+{formatMins(v)}</span>
-                          ) : (
-                            <span className="text-xs font-medium text-green-600">−{formatMins(Math.abs(v))}</span>
-                          )}
+                        <td className="px-5 py-3 text-right text-xs text-gray-900 whitespace-nowrap">
+                          {row.chargeCents != null ? `$${(row.chargeCents / 100).toFixed(2)}` : "—"}
                         </td>
                         <td className="px-4 py-3">
                           <div className="flex items-center gap-1 justify-end">
-                            {row.notes && <FileText className="w-3 h-3 text-amber-400 flex-shrink-0" aria-label="Has notes" />}
+                            {(row.notes || row.comments) && <FileText className="w-3 h-3 text-amber-400 flex-shrink-0" aria-label="Has notes" />}
                             <button
                               title="Download PDF"
                               onClick={e => { e.stopPropagation(); window.open(`/api/jobs/${row.id}/pdf`, "_blank"); }}

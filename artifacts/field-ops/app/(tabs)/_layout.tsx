@@ -72,6 +72,12 @@ function NativeTabLayout({
           <Label>Report</Label>
         </NativeTabs.Trigger>
       )}
+      {!isManager && (
+        <NativeTabs.Trigger name="storm-patrol">
+          <Icon sf={{ default: "cloud.rain", selected: "cloud.rain.fill" }} />
+          <Label>Storm</Label>
+        </NativeTabs.Trigger>
+      )}
       <NativeTabs.Trigger name="me">
         <Icon sf={{ default: "person", selected: "person.fill" }} />
         <Label>Me</Label>
@@ -199,6 +205,14 @@ function ClassicTabLayout({
             ) : (
               <Feather name="alert-circle" size={22} color={color} />
             ),
+        }}
+      />
+      <Tabs.Screen
+        name="storm-patrol"
+        options={isManager ? { href: null } : {
+          title: "Storm",
+          tabBarIcon: ({ color }) =>
+            isIOS ? <SymbolView name="cloud.rain" tintColor={color} size={24} /> : <Feather name="cloud-rain" size={22} color={color} />,
         }}
       />
       <Tabs.Screen

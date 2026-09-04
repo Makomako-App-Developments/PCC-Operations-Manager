@@ -5,6 +5,214 @@
  * Porirua City Council – Garden Asset Management API
  * OpenAPI spec version: 0.1.0
  */
+export type StormEventStatus =
+  (typeof StormEventStatus)[keyof typeof StormEventStatus];
+
+export const StormEventStatus = {
+  draft: "draft",
+  active: "active",
+  closed: "closed",
+} as const;
+
+export interface StormEvent {
+  id: string;
+  name: string;
+  status: StormEventStatus;
+  hourlyRateCents: number;
+  activatedAt?: string | null;
+  closedAt?: string | null;
+}
+
+export type StormJobPhase = (typeof StormJobPhase)[keyof typeof StormJobPhase];
+
+export const StormJobPhase = {
+  pre: "pre",
+  mid: "mid",
+  post: "post",
+} as const;
+
+export type StormJobStatus =
+  (typeof StormJobStatus)[keyof typeof StormJobStatus];
+
+export const StormJobStatus = {
+  pending: "pending",
+  in_progress: "in_progress",
+  completed: "completed",
+  too_dangerous: "too_dangerous",
+} as const;
+
+export interface StormJob {
+  id: string;
+  eventId: string;
+  workPackageId: string;
+  phase: StormJobPhase;
+  assetId: string;
+  teamId: string;
+  assignedUserId?: string | null;
+  routeOrder?: number | null;
+  status: StormJobStatus;
+  actualTimeMins?: number | null;
+  comments?: string | null;
+  assetName?: string;
+  assetDescription?: string | null;
+  streetAddress?: string | null;
+  suburb?: string | null;
+  lat?: number | null;
+  lng?: number | null;
+  departmentDetails?: unknown | null;
+  teamName?: string | null;
+  workerName?: string | null;
+  workTypes?: string[];
+}
+
+export interface StormEventListResponse {
+  data: StormEvent[];
+}
+
+export interface StormJobListResponse {
+  data: StormJob[];
+}
+
+export type StormCurrentResponseDataObservationsItem = {
+  [key: string]: unknown;
+};
+
+export type StormCurrentResponseDataFollowUpsItem = { [key: string]: unknown };
+
+export type StormCurrentResponseDataSummary = { [key: string]: number };
+
+export interface StormAlert {
+  id: string;
+  eventId: string;
+  message: string;
+  acknowledgedAt?: string | null;
+}
+
+export type StormCurrentResponseData = {
+  event: StormEvent;
+  jobs: StormJob[];
+  observations?: StormCurrentResponseDataObservationsItem[];
+  followUps?: StormCurrentResponseDataFollowUpsItem[];
+  alerts?: StormAlert[];
+  summary: StormCurrentResponseDataSummary;
+} | null;
+
+export interface StormCurrentResponse {
+  data: StormCurrentResponseData;
+}
+
+export type StormPackagePublishResponsePackage = { [key: string]: unknown };
+
+export interface StormPackagePublishResponse {
+  package: StormPackagePublishResponsePackage;
+  jobs: StormJob[];
+}
+
+export type StormCompletionResponseFollowUp = { [key: string]: unknown } | null;
+
+export interface StormCompletionResponse {
+  job: StormJob;
+  followUp?: StormCompletionResponseFollowUp;
+  replayed: boolean;
+}
+
+export type StormObservationResponseObservation = { [key: string]: unknown };
+
+export type StormObservationResponseReactiveJob = { [key: string]: unknown };
+
+export interface StormObservationResponse {
+  observation: StormObservationResponseObservation;
+  reactiveJob?: StormObservationResponseReactiveJob;
+  replayed: boolean;
+}
+
+export interface StormAlertListResponse {
+  data: StormAlert[];
+}
+
+export interface StormReport {
+  event: StormEvent;
+  selectedCount: number;
+  checkedCount: number;
+  totalMinutes: number;
+  totalHours: number;
+  labourChargeCents: number;
+  jobs: StormJob[];
+}
+
+export interface StormEventCreate {
+  /**
+   * @minLength 1
+   * @maxLength 200
+   */
+  name: string;
+  activate?: boolean;
+  /** @minimum 0 */
+  hourlyRateCents?: number;
+}
+
+export type StormPackagePublishPhase =
+  (typeof StormPackagePublishPhase)[keyof typeof StormPackagePublishPhase];
+
+export const StormPackagePublishPhase = {
+  pre: "pre",
+  mid: "mid",
+  post: "post",
+} as const;
+
+export interface StormPackagePublish {
+  phase: StormPackagePublishPhase;
+  teamId: string;
+  /** @minItems 1 */
+  assetIds: string[];
+  idempotencyKey?: string;
+}
+
+export type StormCompletionOutcome =
+  (typeof StormCompletionOutcome)[keyof typeof StormCompletionOutcome];
+
+export const StormCompletionOutcome = {
+  completed: "completed",
+  too_dangerous: "too_dangerous",
+} as const;
+
+export type StormCompletionWorkTypesItem =
+  (typeof StormCompletionWorkTypesItem)[keyof typeof StormCompletionWorkTypesItem];
+
+export const StormCompletionWorkTypesItem = {
+  silt_clearance: "silt_clearance",
+  litter_clearance: "litter_clearance",
+  debris_clearance: "debris_clearance",
+  visual_check_only: "visual_check_only",
+  litter_debris_removed_from_site: "litter_debris_removed_from_site",
+  site_too_dangerous: "site_too_dangerous",
+  site_made_safe: "site_made_safe",
+} as const;
+
+export interface StormCompletion {
+  outcome: StormCompletionOutcome;
+  /** @minimum 0 */
+  actualTimeMins: number;
+  comments?: string;
+  workTypes?: StormCompletionWorkTypesItem[];
+  dangerousReason?: string;
+  locationLat?: number;
+  locationLng?: number;
+  /** @minLength 1 */
+  idempotencyKey: string;
+}
+
+export interface StormObservationCreate {
+  eventId: string;
+  assetId?: string;
+  sourceJobId?: string;
+  description: string;
+  notes?: string;
+  locationLat: number;
+  locationLng: number;
+  idempotencyKey: string;
+}
+
 export interface HealthStatus {
   status: string;
 }
@@ -1116,4 +1324,8 @@ export const ListSkippedJobsReviewed = {
 export type UploadJobPhotoBody = {
   photo: Blob;
   caption?: string;
+};
+
+export type ListStormPatrolAlertsParams = {
+  eventId?: string;
 };

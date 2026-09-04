@@ -119,4 +119,17 @@ export const reactiveJobOriginEnum = pgEnum("reactive_job_origin", [
   "supervisor",
   "field_worker",
   "manager",
+  "storm_patrol",
+]);
+
+export const stormEventStatusEnum = pgEnum("storm_event_status", ["draft", "active", "closed"]);
+export const stormPackagePhaseEnum = pgEnum("storm_package_phase", ["pre", "mid", "post"]);
+export const stormPackageStatusEnum = pgEnum("storm_package_status", ["draft", "published"]);
+export const stormJobStatusEnum = pgEnum("storm_job_status", ["pending", "in_progress", "completed", "too_dangerous"]);
+export const stormPhotoPurposeEnum = pgEnum("storm_photo_purpose", [
+  "before", "after", "urgent_issue", "new_flooding", "new_slip", "observation",
+]);
+export const stormWorkTypeEnum = pgEnum("storm_work_type", [
+  "silt_clearance", "litter_clearance", "debris_clearance", "visual_check_only",
+  "litter_debris_removed_from_site", "site_too_dangerous", "site_made_safe",
 ]);

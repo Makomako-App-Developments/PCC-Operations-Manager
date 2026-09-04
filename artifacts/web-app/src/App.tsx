@@ -31,6 +31,7 @@ import Settings from "@/pages/settings/index";
 import MapPage from "@/pages/map";
 import CompletedWorks from "@/pages/completed-works/index";
 import SkipsPage from "@/pages/skips/index";
+import StormPatrol from "@/pages/storm-patrol/index";
 import HelpPage from "@/pages/help";
 
 const queryClient = new QueryClient();
@@ -93,6 +94,7 @@ function Router() {
       <Route path="/specification"><ProtectedRoute path="/specification" component={Specification} /></Route>
       <Route path="/completed-works"><ProtectedRoute path="/completed-works" component={CompletedWorks} /></Route>
        <Route path="/skips"><ProtectedRoute path="/skips" component={SkipsPage} /></Route>
+       <Route path="/storm-patrol"><ProtectedRoute path="/storm-patrol" component={StormPatrol} /></Route>
        <Route path="/help"><ProtectedRoute path="/help" component={HelpPage} /></Route>
       <Route path="/">
         <ProtectedRoute path="/" component={() => {

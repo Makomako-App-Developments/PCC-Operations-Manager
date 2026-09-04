@@ -1983,3 +1983,322 @@ export const UploadJobPhotoBody = zod.object({
   photo: zod.instanceof(File),
   caption: zod.string().optional(),
 });
+
+/**
+ * @summary Active storm context, team jobs and summary
+ */
+export const GetCurrentStormPatrolResponse = zod.object({
+  data: zod
+    .object({
+      event: zod.object({
+        id: zod.string().uuid(),
+        name: zod.string(),
+        status: zod.enum(["draft", "active", "closed"]),
+        hourlyRateCents: zod.number(),
+        activatedAt: zod.date().nullish(),
+        closedAt: zod.date().nullish(),
+      }),
+      jobs: zod.array(
+        zod.object({
+          id: zod.string().uuid(),
+          eventId: zod.string().uuid(),
+          workPackageId: zod.string().uuid(),
+          phase: zod.enum(["pre", "mid", "post"]),
+          assetId: zod.string().uuid(),
+          teamId: zod.string().uuid(),
+          assignedUserId: zod.string().uuid().nullish(),
+          routeOrder: zod.number().nullish(),
+          status: zod.enum([
+            "pending",
+            "in_progress",
+            "completed",
+            "too_dangerous",
+          ]),
+          actualTimeMins: zod.number().nullish(),
+          comments: zod.string().nullish(),
+          assetName: zod.string().optional(),
+          assetDescription: zod.string().nullish(),
+          streetAddress: zod.string().nullish(),
+          suburb: zod.string().nullish(),
+          lat: zod.number().nullish(),
+          lng: zod.number().nullish(),
+          departmentDetails: zod.unknown().nullish(),
+          teamName: zod.string().nullish(),
+          workerName: zod.string().nullish(),
+          workTypes: zod.array(zod.string()).optional(),
+        }),
+      ),
+      observations: zod
+        .array(zod.record(zod.string(), zod.unknown()))
+        .optional(),
+      followUps: zod.array(zod.record(zod.string(), zod.unknown())).optional(),
+      alerts: zod
+        .array(
+          zod.object({
+            id: zod.string().uuid(),
+            eventId: zod.string().uuid(),
+            message: zod.string(),
+            acknowledgedAt: zod.date().nullish(),
+          }),
+        )
+        .optional(),
+      summary: zod.record(zod.string(), zod.number()),
+    })
+    .nullable(),
+});
+
+export const ListStormPatrolEventsResponse = zod.object({
+  data: zod.array(
+    zod.object({
+      id: zod.string().uuid(),
+      name: zod.string(),
+      status: zod.enum(["draft", "active", "closed"]),
+      hourlyRateCents: zod.number(),
+      activatedAt: zod.date().nullish(),
+      closedAt: zod.date().nullish(),
+    }),
+  ),
+});
+
+export const createStormPatrolEventBodyNameMax = 200;
+
+export const createStormPatrolEventBodyActivateDefault = true;
+export const createStormPatrolEventBodyHourlyRateCentsMin = 0;
+
+export const CreateStormPatrolEventBody = zod.object({
+  name: zod.string().min(1).max(createStormPatrolEventBodyNameMax),
+  activate: zod.boolean().default(createStormPatrolEventBodyActivateDefault),
+  hourlyRateCents: zod
+    .number()
+    .min(createStormPatrolEventBodyHourlyRateCentsMin)
+    .optional(),
+});
+
+export const CloseStormPatrolEventParams = zod.object({
+  id: zod.coerce.string().uuid(),
+});
+
+export const CloseStormPatrolEventResponse = zod.object({
+  id: zod.string().uuid(),
+  name: zod.string(),
+  status: zod.enum(["draft", "active", "closed"]),
+  hourlyRateCents: zod.number(),
+  activatedAt: zod.date().nullish(),
+  closedAt: zod.date().nullish(),
+});
+
+export const PublishStormPatrolPackageParams = zod.object({
+  id: zod.coerce.string().uuid(),
+});
+
+export const PublishStormPatrolPackageBody = zod.object({
+  phase: zod.enum(["pre", "mid", "post"]),
+  teamId: zod.string().uuid(),
+  assetIds: zod.array(zod.string().uuid()).min(1),
+  idempotencyKey: zod.string().optional(),
+});
+
+export const ListStormPatrolJobsResponse = zod.object({
+  data: zod.array(
+    zod.object({
+      id: zod.string().uuid(),
+      eventId: zod.string().uuid(),
+      workPackageId: zod.string().uuid(),
+      phase: zod.enum(["pre", "mid", "post"]),
+      assetId: zod.string().uuid(),
+      teamId: zod.string().uuid(),
+      assignedUserId: zod.string().uuid().nullish(),
+      routeOrder: zod.number().nullish(),
+      status: zod.enum([
+        "pending",
+        "in_progress",
+        "completed",
+        "too_dangerous",
+      ]),
+      actualTimeMins: zod.number().nullish(),
+      comments: zod.string().nullish(),
+      assetName: zod.string().optional(),
+      assetDescription: zod.string().nullish(),
+      streetAddress: zod.string().nullish(),
+      suburb: zod.string().nullish(),
+      lat: zod.number().nullish(),
+      lng: zod.number().nullish(),
+      departmentDetails: zod.unknown().nullish(),
+      teamName: zod.string().nullish(),
+      workerName: zod.string().nullish(),
+      workTypes: zod.array(zod.string()).optional(),
+    }),
+  ),
+});
+
+export const ClaimStormPatrolJobParams = zod.object({
+  id: zod.coerce.string().uuid(),
+});
+
+export const ClaimStormPatrolJobResponse = zod.object({
+  id: zod.string().uuid(),
+  eventId: zod.string().uuid(),
+  workPackageId: zod.string().uuid(),
+  phase: zod.enum(["pre", "mid", "post"]),
+  assetId: zod.string().uuid(),
+  teamId: zod.string().uuid(),
+  assignedUserId: zod.string().uuid().nullish(),
+  routeOrder: zod.number().nullish(),
+  status: zod.enum(["pending", "in_progress", "completed", "too_dangerous"]),
+  actualTimeMins: zod.number().nullish(),
+  comments: zod.string().nullish(),
+  assetName: zod.string().optional(),
+  assetDescription: zod.string().nullish(),
+  streetAddress: zod.string().nullish(),
+  suburb: zod.string().nullish(),
+  lat: zod.number().nullish(),
+  lng: zod.number().nullish(),
+  departmentDetails: zod.unknown().nullish(),
+  teamName: zod.string().nullish(),
+  workerName: zod.string().nullish(),
+  workTypes: zod.array(zod.string()).optional(),
+});
+
+export const CompleteStormPatrolJobParams = zod.object({
+  id: zod.coerce.string().uuid(),
+});
+
+export const completeStormPatrolJobBodyActualTimeMinsMin = 0;
+
+export const CompleteStormPatrolJobBody = zod.object({
+  outcome: zod.enum(["completed", "too_dangerous"]),
+  actualTimeMins: zod.number().min(completeStormPatrolJobBodyActualTimeMinsMin),
+  comments: zod.string().optional(),
+  workTypes: zod
+    .array(
+      zod.enum([
+        "silt_clearance",
+        "litter_clearance",
+        "debris_clearance",
+        "visual_check_only",
+        "litter_debris_removed_from_site",
+        "site_too_dangerous",
+        "site_made_safe",
+      ]),
+    )
+    .optional(),
+  dangerousReason: zod.string().optional(),
+  locationLat: zod.number().optional(),
+  locationLng: zod.number().optional(),
+  idempotencyKey: zod.string().min(1),
+});
+
+export const CompleteStormPatrolJobResponse = zod.object({
+  job: zod.object({
+    id: zod.string().uuid(),
+    eventId: zod.string().uuid(),
+    workPackageId: zod.string().uuid(),
+    phase: zod.enum(["pre", "mid", "post"]),
+    assetId: zod.string().uuid(),
+    teamId: zod.string().uuid(),
+    assignedUserId: zod.string().uuid().nullish(),
+    routeOrder: zod.number().nullish(),
+    status: zod.enum(["pending", "in_progress", "completed", "too_dangerous"]),
+    actualTimeMins: zod.number().nullish(),
+    comments: zod.string().nullish(),
+    assetName: zod.string().optional(),
+    assetDescription: zod.string().nullish(),
+    streetAddress: zod.string().nullish(),
+    suburb: zod.string().nullish(),
+    lat: zod.number().nullish(),
+    lng: zod.number().nullish(),
+    departmentDetails: zod.unknown().nullish(),
+    teamName: zod.string().nullish(),
+    workerName: zod.string().nullish(),
+    workTypes: zod.array(zod.string()).optional(),
+  }),
+  followUp: zod.record(zod.string(), zod.unknown()).nullish(),
+  replayed: zod.boolean(),
+});
+
+export const CreateStormPatrolObservationBody = zod.object({
+  eventId: zod.string().uuid(),
+  assetId: zod.string().uuid().optional(),
+  sourceJobId: zod.string().uuid().optional(),
+  description: zod.string(),
+  notes: zod.string().optional(),
+  locationLat: zod.number(),
+  locationLng: zod.number(),
+  idempotencyKey: zod.string(),
+});
+
+export const ListStormPatrolAlertsQueryParams = zod.object({
+  eventId: zod.coerce.string().uuid().optional(),
+});
+
+export const ListStormPatrolAlertsResponse = zod.object({
+  data: zod.array(
+    zod.object({
+      id: zod.string().uuid(),
+      eventId: zod.string().uuid(),
+      message: zod.string(),
+      acknowledgedAt: zod.date().nullish(),
+    }),
+  ),
+});
+
+export const AcknowledgeStormPatrolAlertParams = zod.object({
+  id: zod.coerce.string().uuid(),
+});
+
+export const AcknowledgeStormPatrolAlertResponse = zod.object({
+  id: zod.string().uuid(),
+  eventId: zod.string().uuid(),
+  message: zod.string(),
+  acknowledgedAt: zod.date().nullish(),
+});
+
+export const GetStormPatrolReportParams = zod.object({
+  id: zod.coerce.string().uuid(),
+});
+
+export const GetStormPatrolReportResponse = zod.object({
+  event: zod.object({
+    id: zod.string().uuid(),
+    name: zod.string(),
+    status: zod.enum(["draft", "active", "closed"]),
+    hourlyRateCents: zod.number(),
+    activatedAt: zod.date().nullish(),
+    closedAt: zod.date().nullish(),
+  }),
+  selectedCount: zod.number(),
+  checkedCount: zod.number(),
+  totalMinutes: zod.number(),
+  totalHours: zod.number(),
+  labourChargeCents: zod.number(),
+  jobs: zod.array(
+    zod.object({
+      id: zod.string().uuid(),
+      eventId: zod.string().uuid(),
+      workPackageId: zod.string().uuid(),
+      phase: zod.enum(["pre", "mid", "post"]),
+      assetId: zod.string().uuid(),
+      teamId: zod.string().uuid(),
+      assignedUserId: zod.string().uuid().nullish(),
+      routeOrder: zod.number().nullish(),
+      status: zod.enum([
+        "pending",
+        "in_progress",
+        "completed",
+        "too_dangerous",
+      ]),
+      actualTimeMins: zod.number().nullish(),
+      comments: zod.string().nullish(),
+      assetName: zod.string().optional(),
+      assetDescription: zod.string().nullish(),
+      streetAddress: zod.string().nullish(),
+      suburb: zod.string().nullish(),
+      lat: zod.number().nullish(),
+      lng: zod.number().nullish(),
+      departmentDetails: zod.unknown().nullish(),
+      teamName: zod.string().nullish(),
+      workerName: zod.string().nullish(),
+      workTypes: zod.array(zod.string()).optional(),
+    }),
+  ),
+});

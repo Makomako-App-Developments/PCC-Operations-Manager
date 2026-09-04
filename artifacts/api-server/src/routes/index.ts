@@ -18,6 +18,7 @@ import reportsRouter     from "./reports";
 import adminPatchesRouter from "./admin-patches";
 import plantPaletteRouter from "./plant-palette";
 import bugReportsRouter from "./bug-reports";
+import stormPatrolRouter from "./storm-patrol";
 
 const router: IRouter = Router();
 
@@ -40,5 +41,6 @@ router.use(reportsRouter);
 router.use("/admin", adminPatchesRouter);
 router.use(plantPaletteRouter);
 router.use(bugReportsRouter);
+router.use(stormPatrolRouter);
 
 export default router;

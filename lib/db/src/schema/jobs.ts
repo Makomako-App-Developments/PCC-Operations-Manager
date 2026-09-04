@@ -106,6 +106,10 @@ export const reactiveJobsTable = pgTable("reactive_jobs", {
   notes:              text("notes"),
   pestPlantsPresent:  text("pest_plants_present"),
   origin:             reactiveJobOriginEnum("origin"),
+  // Retains Storm Patrol provenance after reactive work is assigned or completed.
+  stormEventId:        uuid("storm_event_id"),
+  stormSourceJobId:    uuid("storm_source_job_id"),
+  idempotencyKey:      text("idempotency_key"),
   createdAt:          timestamp("created_at").notNull().defaultNow(),
   updatedAt:          timestamp("updated_at").notNull().defaultNow(),
 }, (t) => [
@@ -114,6 +118,8 @@ export const reactiveJobsTable = pgTable("reactive_jobs", {
   index("reactive_jobs_priority_idx").on(t.priority),
   index("reactive_jobs_raised_by_id_idx").on(t.raisedById),
   index("reactive_jobs_assigned_team_id_idx").on(t.assignedTeamId),
+  index("reactive_jobs_storm_event_id_idx").on(t.stormEventId),
+  index("reactive_jobs_storm_source_job_id_idx").on(t.stormSourceJobId),
 ]);
 
 // Photo evidence attached to jobs
