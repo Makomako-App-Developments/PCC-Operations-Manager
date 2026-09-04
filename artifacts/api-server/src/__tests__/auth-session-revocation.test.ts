@@ -158,6 +158,43 @@ describe("password reset session revocation", () => {
     ).toBe(200);
   });
 
+  it.each([
+    ["0", "a string"],
+    [-1, "a negative number"],
+    [0.5, "a fractional number"],
+  ])("rejects access and refresh tokens with %s as the session version before looking up the user", async (sessionVersion) => {
+    selectMock.mockClear();
+
+    const malformedAccessToken = jwt.sign(
+      {
+        userId: state.user!.id,
+        role: state.user!.role,
+        teamId: null,
+        sessionVersion,
+        tokenType: "access",
+      },
+      "test-secret",
+    );
+    const malformedRefreshToken = jwt.sign(
+      {
+        userId: state.user!.id,
+        role: state.user!.role,
+        teamId: null,
+        sessionVersion,
+        tokenType: "refresh",
+      },
+      "test-secret",
+    );
+
+    expect(
+      (await request(app).get("/protected").set("Authorization", `Bearer ${malformedAccessToken}`)).status,
+    ).toBe(401);
+    expect(
+      (await request(app).post("/auth/refresh").set("Cookie", `refresh_token=${malformedRefreshToken}`)).status,
+    ).toBe(401);
+    expect(selectMock).not.toHaveBeenCalled();
+  });
+
   it("revokes only the reset user's sessions through the manager password reset API", async () => {
     const manager = {
       id: "22222222-2222-4222-8222-222222222222",

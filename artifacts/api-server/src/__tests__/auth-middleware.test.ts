@@ -1,19 +1,20 @@
 import { describe, it, expect, vi } from "vitest";
 import type { Request, Response, NextFunction } from "express";
 
-const { sessionRows } = vi.hoisted(() => ({
+const { sessionRows, selectMock } = vi.hoisted(() => ({
   sessionRows: [{ sessionVersion: 0 }],
+  selectMock: vi.fn(() => ({
+    from: () => ({
+      where: () => ({
+        limit: async () => sessionRows,
+      }),
+    }),
+  })),
 }));
 
 vi.mock("@workspace/db", () => ({
   db: {
-    select: vi.fn(() => ({
-      from: () => ({
-        where: () => ({
-          limit: async () => sessionRows,
-        }),
-      }),
-    })),
+    select: selectMock,
   },
   executeWithCircuitBreaker: async <T>(fn: () => Promise<T>) => fn(),
   usersTable: {
@@ -33,6 +34,9 @@ vi.mock("jsonwebtoken", () => ({
       if (token === "valid-token") return { userId: "user-1", role: "manager", sessionVersion: 0, tokenType: "access" };
       if (token === "refresh-token") return { userId: "user-1", role: "manager", sessionVersion: 0, tokenType: "refresh" };
       if (token === "legacy-token") return { userId: "user-1", role: "manager", tokenType: "access" };
+      if (token === "string-session-version") return { userId: "user-1", role: "manager", sessionVersion: "0", tokenType: "access" };
+      if (token === "negative-session-version") return { userId: "user-1", role: "manager", sessionVersion: -1, tokenType: "access" };
+      if (token === "fractional-session-version") return { userId: "user-1", role: "manager", sessionVersion: 0.5, tokenType: "access" };
       throw new Error("invalid");
     }),
   },
@@ -103,6 +107,24 @@ describe("requireAuth middleware", () => {
 
     expect(n).not.toHaveBeenCalled();
     expect(res.status).toHaveBeenCalledWith(401);
+  });
+
+  it.each([
+    ["string-session-version"],
+    ["negative-session-version"],
+    ["fractional-session-version"],
+  ])("returns 401 for an access token with %s and skips the user lookup", async (token) => {
+    const { requireAuth } = await import("../middlewares/auth");
+    const req = mockReq(`Bearer ${token}`);
+    const res = mockRes();
+    const n = vi.fn() as NextFunction;
+    selectMock.mockClear();
+
+    await requireAuth(req, res, n);
+
+    expect(n).not.toHaveBeenCalled();
+    expect(res.status).toHaveBeenCalledWith(401);
+    expect(selectMock).not.toHaveBeenCalled();
   });
 
   it("returns 401 when a refresh token is presented instead of an access token", async () => {
