@@ -32,6 +32,7 @@ vi.mock("jsonwebtoken", () => ({
     verify: vi.fn((token: string, _secret: string) => {
       if (token === "valid-token") return { userId: "user-1", role: "manager", sessionVersion: 0, tokenType: "access" };
       if (token === "refresh-token") return { userId: "user-1", role: "manager", sessionVersion: 0, tokenType: "refresh" };
+      if (token === "legacy-token") return { userId: "user-1", role: "manager", tokenType: "access" };
       throw new Error("invalid");
     }),
   },
@@ -85,6 +86,18 @@ describe("requireAuth middleware", () => {
     const req = mockReq("Bearer bad-token");
     const res = mockRes();
     const n   = vi.fn() as NextFunction;
+
+    await requireAuth(req, res, n);
+
+    expect(n).not.toHaveBeenCalled();
+    expect(res.status).toHaveBeenCalledWith(401);
+  });
+
+  it("returns 401 for an access token issued before session versions existed", async () => {
+    const { requireAuth } = await import("../middlewares/auth");
+    const req = mockReq("Bearer legacy-token");
+    const res = mockRes();
+    const n = vi.fn() as NextFunction;
 
     await requireAuth(req, res, n);
 

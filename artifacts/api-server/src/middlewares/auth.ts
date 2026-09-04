@@ -13,6 +13,10 @@ export interface AuthPayload {
   tokenType: "access" | "refresh";
 }
 
+export function hasValidSessionVersion(payload: Partial<AuthPayload>): payload is AuthPayload {
+  return Number.isInteger(payload.sessionVersion) && payload.sessionVersion >= 0;
+}
+
 declare global {
   namespace Express {
     interface Request {
@@ -40,6 +44,10 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
   }
   if (payload.tokenType !== "access") {
     res.status(401).json({ error: "Invalid token type" });
+    return;
+  }
+  if (!hasValidSessionVersion(payload)) {
+    res.status(401).json({ error: "Invalid or expired token" });
     return;
   }
 

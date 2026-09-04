@@ -4,7 +4,7 @@ import { db, usersTable, executeWithCircuitBreaker } from "@workspace/db";
 import { eq, sql } from "drizzle-orm";
 import { z } from "zod";
 import { verifyPassword, hashPassword } from "../lib/password";
-import { signTokens, requireAuth } from "../middlewares/auth";
+import { hasValidSessionVersion, signTokens, requireAuth } from "../middlewares/auth";
 import { validateBody } from "../middlewares/validate";
 
 const router = Router();
@@ -123,6 +123,10 @@ router.post("/auth/refresh", async (req, res) => {
   }
   if (payload.tokenType !== "refresh") {
     res.status(401).json({ error: "Invalid token type" });
+    return;
+  }
+  if (!hasValidSessionVersion(payload)) {
+    res.status(401).json({ error: "Invalid or expired refresh token" });
     return;
   }
   // Check user still active

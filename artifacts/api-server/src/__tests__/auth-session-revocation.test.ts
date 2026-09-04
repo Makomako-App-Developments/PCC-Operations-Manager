@@ -1,5 +1,6 @@
 import express from "express";
 import cookieParser from "cookie-parser";
+import jwt from "jsonwebtoken";
 import request from "supertest";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { hashPassword } from "../lib/password";
@@ -29,6 +30,8 @@ vi.mock("@workspace/db", async (importOriginal) => {
 vi.mock("../lib/audit", () => ({
   auditLog: vi.fn().mockResolvedValue(true),
 }));
+
+process.env["JWT_SECRET"] = "test-secret";
 
 const app = express();
 app.use(express.json());
@@ -111,6 +114,47 @@ describe("password reset session revocation", () => {
     expect(loginResponse.body.accessToken).toEqual(expect.any(String));
     expect(
       (await request(app).get("/protected").set("Authorization", `Bearer ${loginResponse.body.accessToken}`)).status,
+    ).toBe(200);
+  });
+
+  it("rejects unversioned access and refresh tokens while allowing newly issued versioned tokens", async () => {
+    const legacyAccessToken = jwt.sign(
+      {
+        userId: state.user!.id,
+        role: state.user!.role,
+        teamId: null,
+        tokenType: "access",
+      },
+      "test-secret",
+    );
+    const legacyRefreshToken = jwt.sign(
+      {
+        userId: state.user!.id,
+        role: state.user!.role,
+        teamId: null,
+        tokenType: "refresh",
+      },
+      "test-secret",
+    );
+
+    expect(
+      (await request(app).get("/protected").set("Authorization", `Bearer ${legacyAccessToken}`)).status,
+    ).toBe(401);
+    expect(
+      (await request(app).post("/auth/refresh").set("Cookie", `refresh_token=${legacyRefreshToken}`)).status,
+    ).toBe(401);
+
+    const versionedTokens = signTokens({
+      userId: state.user!.id as string,
+      role: state.user!.role as string,
+      teamId: null,
+      sessionVersion: 0,
+    });
+    expect(
+      (await request(app).get("/protected").set("Authorization", `Bearer ${versionedTokens.accessToken}`)).status,
+    ).toBe(200);
+    expect(
+      (await request(app).post("/auth/refresh").set("Cookie", `refresh_token=${versionedTokens.refreshToken}`)).status,
     ).toBe(200);
   });
 
