@@ -1,12 +1,37 @@
 import { describe, it, expect, vi } from "vitest";
 import type { Request, Response, NextFunction } from "express";
 
+const { sessionRows } = vi.hoisted(() => ({
+  sessionRows: [{ sessionVersion: 0 }],
+}));
+
+vi.mock("@workspace/db", () => ({
+  db: {
+    select: vi.fn(() => ({
+      from: () => ({
+        where: () => ({
+          limit: async () => sessionRows,
+        }),
+      }),
+    })),
+  },
+  executeWithCircuitBreaker: async <T>(fn: () => Promise<T>) => fn(),
+  usersTable: {
+    id: {},
+    sessionVersion: {},
+  },
+}));
+
+vi.mock("drizzle-orm", () => ({
+  eq: vi.fn(),
+}));
+
 // We test the middleware logic in isolation — no real JWT signing
 vi.mock("jsonwebtoken", () => ({
   default: {
     verify: vi.fn((token: string, _secret: string) => {
-      if (token === "valid-token") return { userId: "user-1", role: "manager", tokenType: "access" };
-      if (token === "refresh-token") return { userId: "user-1", role: "manager", tokenType: "refresh" };
+      if (token === "valid-token") return { userId: "user-1", role: "manager", sessionVersion: 0, tokenType: "access" };
+      if (token === "refresh-token") return { userId: "user-1", role: "manager", sessionVersion: 0, tokenType: "refresh" };
       throw new Error("invalid");
     }),
   },
@@ -37,7 +62,7 @@ describe("requireAuth middleware", () => {
     const res = mockRes();
     const n   = vi.fn() as NextFunction;
 
-    requireAuth(req, res, n);
+    await requireAuth(req, res, n);
 
     expect(n).toHaveBeenCalledOnce();
     expect((req as unknown as Record<string, unknown>)["auth"]).toMatchObject({ userId: "user-1", role: "manager" });
@@ -49,7 +74,7 @@ describe("requireAuth middleware", () => {
     const res = mockRes();
     const n   = vi.fn() as NextFunction;
 
-    requireAuth(req, res, n);
+    await requireAuth(req, res, n);
 
     expect(n).not.toHaveBeenCalled();
     expect(res.status).toHaveBeenCalledWith(401);
@@ -61,7 +86,7 @@ describe("requireAuth middleware", () => {
     const res = mockRes();
     const n   = vi.fn() as NextFunction;
 
-    requireAuth(req, res, n);
+    await requireAuth(req, res, n);
 
     expect(n).not.toHaveBeenCalled();
     expect(res.status).toHaveBeenCalledWith(401);
@@ -73,10 +98,24 @@ describe("requireAuth middleware", () => {
     const res = mockRes();
     const n   = vi.fn() as NextFunction;
 
-    requireAuth(req, res, n);
+    await requireAuth(req, res, n);
 
     expect(n).not.toHaveBeenCalled();
     expect(res.status).toHaveBeenCalledWith(401);
+  });
+
+  it("rejects an access token after its session version is revoked", async () => {
+    const { requireAuth } = await import("../middlewares/auth");
+    sessionRows[0] = { sessionVersion: 1 };
+    const req = mockReq("Bearer valid-token");
+    const res = mockRes();
+    const n = vi.fn() as NextFunction;
+
+    await requireAuth(req, res, n);
+
+    expect(n).not.toHaveBeenCalled();
+    expect(res.status).toHaveBeenCalledWith(401);
+    sessionRows[0] = { sessionVersion: 0 };
   });
 });
 

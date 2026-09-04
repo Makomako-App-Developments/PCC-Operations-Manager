@@ -29,7 +29,12 @@ router.post("/auth/handoff/create", requireAuth, async (req, res) => {
     return;
   }
 
-  const { accessToken } = signTokens({ userId: user.id, role: user.role, teamId: user.teamId });
+  const { accessToken } = signTokens({
+    userId: user.id,
+    role: user.role,
+    teamId: user.teamId,
+    sessionVersion: user.sessionVersion,
+  });
   const code = randomBytes(32).toString("hex");
   const expiresAt = Date.now() + 60_000;
 
@@ -88,6 +93,7 @@ router.post("/auth/login", validateBody(loginSchema), async (req, res) => {
     userId: user.id,
     role:   user.role,
     teamId: user.teamId,
+    sessionVersion: user.sessionVersion,
   });
 
   res
@@ -125,10 +131,15 @@ router.post("/auth/refresh", async (req, res) => {
     res.status(403).json({ error: "Account disabled" });
     return;
   }
+  if (user.sessionVersion !== payload.sessionVersion) {
+    res.status(401).json({ error: "Invalid or expired refresh token" });
+    return;
+  }
   const { accessToken, refreshToken } = signTokens({
     userId: user.id,
     role:   user.role,
     teamId: user.teamId,
+    sessionVersion: user.sessionVersion,
   });
   res
     .cookie("access_token",  accessToken,  { httpOnly: true, secure: true, sameSite: "strict", maxAge: 15 * 60 * 1000 })
@@ -145,7 +156,7 @@ router.post("/auth/logout", (_req, res) => {
 router.get("/auth/me", requireAuth, async (req, res) => {
   const [user] = await executeWithCircuitBreaker(() => db.select().from(usersTable).where(eq(usersTable.id, req.auth!.userId)).limit(1));
   if (!user) { res.status(404).json({ error: "User not found" }); return; }
-  const { passwordHash: _, ...safe } = user;
+  const { passwordHash: _, sessionVersion: __, ...safe } = user;
   res.json(safe);
 });
 

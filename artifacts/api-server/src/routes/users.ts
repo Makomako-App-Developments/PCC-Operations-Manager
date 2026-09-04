@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db, usersTable, executeWithCircuitBreaker } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { z } from "zod";
 import { requireAuth, requireRole } from "../middlewares/auth";
 import { validateBody } from "../middlewares/validate";
@@ -137,6 +137,7 @@ router.patch(
     const updates: Record<string, unknown> = { ...rest, updatedAt: new Date() };
     if (password) {
       updates.passwordHash = await hashPassword(password);
+      updates.sessionVersion = sql`${usersTable.sessionVersion} + 1`;
     }
     const [updated] = await executeWithCircuitBreaker(() =>
       db

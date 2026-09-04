@@ -1,5 +1,7 @@
 import { Request, Response, NextFunction } from "express";
 import jwt from "jsonwebtoken";
+import { db, executeWithCircuitBreaker, usersTable } from "@workspace/db";
+import { eq } from "drizzle-orm";
 
 const JWT_SECRET = process.env.JWT_SECRET ?? "dev-secret-change-in-production";
 
@@ -7,6 +9,7 @@ export interface AuthPayload {
   userId: string;
   role: string;
   teamId: string | null;
+  sessionVersion: number;
   tokenType: "access" | "refresh";
 }
 
@@ -18,7 +21,7 @@ declare global {
   }
 }
 
-export function requireAuth(req: Request, res: Response, next: NextFunction) {
+export async function requireAuth(req: Request, res: Response, next: NextFunction) {
   const token =
     req.cookies?.["access_token"] ??
     req.headers.authorization?.replace("Bearer ", "");
@@ -28,16 +31,34 @@ export function requireAuth(req: Request, res: Response, next: NextFunction) {
     return;
   }
 
+  let payload: AuthPayload;
   try {
-    const payload = jwt.verify(token, JWT_SECRET) as AuthPayload;
-    if (payload.tokenType !== "access") {
-      res.status(401).json({ error: "Invalid token type" });
+    payload = jwt.verify(token, JWT_SECRET) as AuthPayload;
+  } catch {
+    res.status(401).json({ error: "Invalid or expired token" });
+    return;
+  }
+  if (payload.tokenType !== "access") {
+    res.status(401).json({ error: "Invalid token type" });
+    return;
+  }
+
+  try {
+    const [user] = await executeWithCircuitBreaker(() =>
+      db
+        .select({ sessionVersion: usersTable.sessionVersion })
+        .from(usersTable)
+        .where(eq(usersTable.id, payload.userId))
+        .limit(1),
+    );
+    if (!user || user.sessionVersion !== payload.sessionVersion) {
+      res.status(401).json({ error: "Invalid or expired token" });
       return;
     }
     req.auth = payload;
     next();
-  } catch {
-    res.status(401).json({ error: "Invalid or expired token" });
+  } catch (error) {
+    next(error);
   }
 }
 
