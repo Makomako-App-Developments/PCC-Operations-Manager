@@ -6,6 +6,7 @@ import {
   useCreateStormPatrolEvent,
   getGetCurrentStormPatrolQueryKey,
   getListStormPatrolEventsQueryKey,
+  getGetStormPatrolReportUrl,
 } from "@workspace/api-client-react";
 import { Loader2, Plus, CloudLightning, Archive, Calendar, DollarSign, Download, ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -14,15 +15,6 @@ import { Label } from "@/components/ui/label";
 import { format } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
 import CommandCenter from "./components/CommandCenter";
-
-function escapeCsv(val: any) {
-  if (val == null) return '""';
-  const str = String(val);
-  if (str.includes('"') || str.includes(',')) {
-    return `"${str.replace(/"/g, '""')}"`;
-  }
-  return `"${str}"`;
-}
 
 export default function StormPatrol() {
   const { data: currentData, isLoading: currentLoading } = useGetCurrentStormPatrol({
@@ -63,46 +55,10 @@ export default function StormPatrol() {
     }
   };
 
-  const handleDownloadReport = async (eventId: string, eventName: string) => {
-    try {
-      const res = await fetch(`/api/storm-patrol/events/${eventId}/report`, { credentials: "include" });
-      if (!res.ok) throw new Error("Failed to load report");
-      const report = await res.json();
-      
-      const csv = [
-        ["Event Name", "Status", "Total Jobs", "Completed Jobs", "Total Hours", "Labour Charge ($)"],
-        [
-          escapeCsv(report.event.name),
-          escapeCsv(report.event.status),
-          escapeCsv(report.selectedCount),
-          escapeCsv(report.checkedCount),
-          escapeCsv(report.totalHours.toFixed(2)),
-          escapeCsv((report.labourChargeCents / 100).toFixed(2))
-        ],
-        [],
-        ["Jobs"],
-        ["ID", "Phase", "Asset ID", "Team ID", "Status", "Time (Mins)", "Comments"],
-        ...(report.jobs || []).map((j: any) => [
-          escapeCsv(j.id),
-          escapeCsv(j.phase),
-          escapeCsv(j.assetId),
-          escapeCsv(j.teamId),
-          escapeCsv(j.status),
-          escapeCsv(j.actualTimeMins),
-          escapeCsv(j.comments)
-        ])
-      ].map(r => r.join(",")).join("\n");
-
-      const blob = new Blob([csv], { type: "text/csv" });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url; 
-      a.download = `Storm-Report-${eventName.replace(/[^a-z0-9]/gi, '_')}.csv`; 
-      a.click();
-      URL.revokeObjectURL(url);
-    } catch (err: any) {
-      toast({ title: "Report generation failed", description: err.message, variant: "destructive" });
-    }
+  const handleDownloadReport = (eventId: string, format: "csv" | "pdf") => {
+    const a = document.createElement("a");
+    a.href = `${getGetStormPatrolReportUrl(eventId)}?format=${format}`;
+    a.click();
   };
 
   if (currentLoading || eventsLoading) {
@@ -215,12 +171,19 @@ export default function StormPatrol() {
                     </div>
                     <div className="flex items-center gap-2">
                       <button 
-                        onClick={() => handleDownloadReport(event.id, event.name)}
+                        onClick={() => handleDownloadReport(event.id, "csv")}
                         className="p-2 rounded-lg bg-white/5 text-white/60 hover:text-white hover:bg-white/10 transition-colors"
                         title="Download Report CSV"
                         data-testid={`btn-download-${event.id}`}
                       >
                         <Download className="w-4 h-4" />
+                      </button>
+                      <button
+                        onClick={() => handleDownloadReport(event.id, "pdf")}
+                        className="px-2 rounded-lg bg-white/5 text-xs text-white/60 hover:text-white hover:bg-white/10 transition-colors"
+                        title="Download Report PDF"
+                      >
+                        PDF
                       </button>
                     </div>
                   </div>

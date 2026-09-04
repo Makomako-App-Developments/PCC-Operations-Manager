@@ -2039,6 +2039,11 @@ export const GetCurrentStormPatrolResponse = zod.object({
             eventId: zod.string().uuid(),
             message: zod.string(),
             acknowledgedAt: zod.date().nullish(),
+            emailStatus: zod.enum(["pending", "sent", "failed"]),
+            emailAttempts: zod.number(),
+            emailLastError: zod.string().nullish(),
+            emailLastAttemptAt: zod.date().nullish(),
+            emailSentAt: zod.date().nullish(),
           }),
         )
         .optional(),
@@ -2238,8 +2243,26 @@ export const ListStormPatrolAlertsResponse = zod.object({
       eventId: zod.string().uuid(),
       message: zod.string(),
       acknowledgedAt: zod.date().nullish(),
+      emailStatus: zod.enum(["pending", "sent", "failed"]),
+      emailAttempts: zod.number(),
+      emailLastError: zod.string().nullish(),
+      emailLastAttemptAt: zod.date().nullish(),
+      emailSentAt: zod.date().nullish(),
     }),
   ),
+});
+
+export const createStormPatrolAlertBodyIdempotencyKeyMax = 200;
+
+export const CreateStormPatrolAlertBody = zod.object({
+  eventId: zod.string().uuid(),
+  stormJobId: zod.string().uuid().optional(),
+  message: zod.string().min(1),
+  photoUrl: zod.string().optional(),
+  idempotencyKey: zod
+    .string()
+    .min(1)
+    .max(createStormPatrolAlertBodyIdempotencyKeyMax),
 });
 
 export const AcknowledgeStormPatrolAlertParams = zod.object({
@@ -2251,6 +2274,27 @@ export const AcknowledgeStormPatrolAlertResponse = zod.object({
   eventId: zod.string().uuid(),
   message: zod.string(),
   acknowledgedAt: zod.date().nullish(),
+  emailStatus: zod.enum(["pending", "sent", "failed"]),
+  emailAttempts: zod.number(),
+  emailLastError: zod.string().nullish(),
+  emailLastAttemptAt: zod.date().nullish(),
+  emailSentAt: zod.date().nullish(),
+});
+
+export const RetryStormPatrolAlertEmailParams = zod.object({
+  id: zod.coerce.string().uuid(),
+});
+
+export const RetryStormPatrolAlertEmailResponse = zod.object({
+  id: zod.string().uuid(),
+  eventId: zod.string().uuid(),
+  message: zod.string(),
+  acknowledgedAt: zod.date().nullish(),
+  emailStatus: zod.enum(["pending", "sent", "failed"]),
+  emailAttempts: zod.number(),
+  emailLastError: zod.string().nullish(),
+  emailLastAttemptAt: zod.date().nullish(),
+  emailSentAt: zod.date().nullish(),
 });
 
 export const GetStormPatrolReportParams = zod.object({

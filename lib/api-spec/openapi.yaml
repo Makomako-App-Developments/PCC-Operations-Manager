@@ -1191,6 +1191,9 @@ paths:
     post:
       operationId: createStormPatrolAlert
       tags: [storm-patrol]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/StormAlertCreate" } } }
       responses: { "201": { description: Alert created, content: { application/json: { schema: { $ref: "#/components/schemas/StormAlert" } } } } }
   /storm-patrol/alerts/{id}/acknowledge:
     post:
@@ -1198,6 +1201,12 @@ paths:
       tags: [storm-patrol]
       parameters: [{ name: id, in: path, required: true, schema: { type: string, format: uuid } }]
       responses: { "200": { description: Acknowledged alert, content: { application/json: { schema: { $ref: "#/components/schemas/StormAlert" } } } } }
+  /storm-patrol/alerts/{id}/retry-email:
+    post:
+      operationId: retryStormPatrolAlertEmail
+      tags: [storm-patrol]
+      parameters: [{ name: id, in: path, required: true, schema: { type: string, format: uuid } }]
+      responses: { "200": { description: Alert with refreshed email delivery state, content: { application/json: { schema: { $ref: "#/components/schemas/StormAlert" } } } } }
   /storm-patrol/events/{id}/report:
     get:
       operationId: getStormPatrolReport
@@ -1314,12 +1323,26 @@ components:
         replayed: { type: boolean }
     StormAlert:
       type: object
-      required: [id, eventId, message]
+      required: [id, eventId, message, emailStatus, emailAttempts]
       properties:
         id: { type: string, format: uuid }
         eventId: { type: string, format: uuid }
         message: { type: string }
         acknowledgedAt: { type: string, format: date-time, nullable: true }
+        emailStatus: { type: string, enum: [pending, sent, failed] }
+        emailAttempts: { type: integer }
+        emailLastError: { type: string, nullable: true }
+        emailLastAttemptAt: { type: string, format: date-time, nullable: true }
+        emailSentAt: { type: string, format: date-time, nullable: true }
+    StormAlertCreate:
+      type: object
+      required: [eventId, message, idempotencyKey]
+      properties:
+        eventId: { type: string, format: uuid }
+        stormJobId: { type: string, format: uuid }
+        message: { type: string, minLength: 1 }
+        photoUrl: { type: string }
+        idempotencyKey: { type: string, minLength: 1, maxLength: 200 }
     StormAlertListResponse:
       type: object
       required: [data]

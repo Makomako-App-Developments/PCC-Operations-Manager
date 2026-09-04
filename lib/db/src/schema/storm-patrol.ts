@@ -110,6 +110,11 @@ export const stormAlertsTable = pgTable("storm_alerts", {
   photoUrl: text("photo_url"),
   acknowledgedAt: timestamp("acknowledged_at"),
   acknowledgedById: uuid("acknowledged_by_id").references(() => usersTable.id),
+  emailStatus: varchar("email_status", { length: 20 }).notNull().default("pending"),
+  emailAttempts: integer("email_attempts").notNull().default(0),
+  emailLastError: text("email_last_error"),
+  emailLastAttemptAt: timestamp("email_last_attempt_at"),
+  emailSentAt: timestamp("email_sent_at"),
   idempotencyKey: text("idempotency_key").notNull(),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 }, (t) => [uniqueIndex("storm_alerts_idempotency_key_idx").on(t.idempotencyKey)]);

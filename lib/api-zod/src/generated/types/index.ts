@@ -110,6 +110,8 @@ export * from "./sportsfieldsAssetDetails";
 export * from "./sportsfieldsAssetDetailsSurfaceType";
 export * from "./standard";
 export * from "./stormAlert";
+export * from "./stormAlertCreate";
+export * from "./stormAlertEmailStatus";
 export * from "./stormAlertListResponse";
 export * from "./stormCompletion";
 export * from "./stormCompletionOutcome";

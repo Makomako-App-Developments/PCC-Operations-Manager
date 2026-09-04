@@ -79,6 +79,7 @@ import type {
   SkipReviewRequest,
   SkippedJobListResponse,
   StormAlert,
+  StormAlertCreate,
   StormAlertListResponse,
   StormCompletion,
   StormCompletionResponse,
@@ -5344,11 +5345,14 @@ export const getCreateStormPatrolAlertUrl = () => {
 };
 
 export const createStormPatrolAlert = async (
+  stormAlertCreate: StormAlertCreate,
   options?: RequestInit,
 ): Promise<StormAlert> => {
   return customFetch<StormAlert>(getCreateStormPatrolAlertUrl(), {
     ...options,
     method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(stormAlertCreate),
   });
 };
 
@@ -5359,14 +5363,14 @@ export const getCreateStormPatrolAlertMutationOptions = <
   mutation?: UseMutationOptions<
     Awaited<ReturnType<typeof createStormPatrolAlert>>,
     TError,
-    void,
+    { data: BodyType<StormAlertCreate> },
     TContext
   >;
   request?: SecondParameter<typeof customFetch>;
 }): UseMutationOptions<
   Awaited<ReturnType<typeof createStormPatrolAlert>>,
   TError,
-  void,
+  { data: BodyType<StormAlertCreate> },
   TContext
 > => {
   const mutationKey = ["createStormPatrolAlert"];
@@ -5380,9 +5384,11 @@ export const getCreateStormPatrolAlertMutationOptions = <
 
   const mutationFn: MutationFunction<
     Awaited<ReturnType<typeof createStormPatrolAlert>>,
-    void
-  > = () => {
-    return createStormPatrolAlert(requestOptions);
+    { data: BodyType<StormAlertCreate> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return createStormPatrolAlert(data, requestOptions);
   };
 
   return { mutationFn, ...mutationOptions };
@@ -5391,7 +5397,7 @@ export const getCreateStormPatrolAlertMutationOptions = <
 export type CreateStormPatrolAlertMutationResult = NonNullable<
   Awaited<ReturnType<typeof createStormPatrolAlert>>
 >;
-
+export type CreateStormPatrolAlertMutationBody = BodyType<StormAlertCreate>;
 export type CreateStormPatrolAlertMutationError = ErrorType<unknown>;
 
 export const useCreateStormPatrolAlert = <
@@ -5401,14 +5407,14 @@ export const useCreateStormPatrolAlert = <
   mutation?: UseMutationOptions<
     Awaited<ReturnType<typeof createStormPatrolAlert>>,
     TError,
-    void,
+    { data: BodyType<StormAlertCreate> },
     TContext
   >;
   request?: SecondParameter<typeof customFetch>;
 }): UseMutationResult<
   Awaited<ReturnType<typeof createStormPatrolAlert>>,
   TError,
-  void,
+  { data: BodyType<StormAlertCreate> },
   TContext
 > => {
   return useMutation(getCreateStormPatrolAlertMutationOptions(options));
@@ -5490,6 +5496,84 @@ export const useAcknowledgeStormPatrolAlert = <
   TContext
 > => {
   return useMutation(getAcknowledgeStormPatrolAlertMutationOptions(options));
+};
+
+export const getRetryStormPatrolAlertEmailUrl = (id: string) => {
+  return `/api/storm-patrol/alerts/${id}/retry-email`;
+};
+
+export const retryStormPatrolAlertEmail = async (
+  id: string,
+  options?: RequestInit,
+): Promise<StormAlert> => {
+  return customFetch<StormAlert>(getRetryStormPatrolAlertEmailUrl(id), {
+    ...options,
+    method: "POST",
+  });
+};
+
+export const getRetryStormPatrolAlertEmailMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof retryStormPatrolAlertEmail>>,
+    TError,
+    { id: string },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof retryStormPatrolAlertEmail>>,
+  TError,
+  { id: string },
+  TContext
+> => {
+  const mutationKey = ["retryStormPatrolAlertEmail"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof retryStormPatrolAlertEmail>>,
+    { id: string }
+  > = (props) => {
+    const { id } = props ?? {};
+
+    return retryStormPatrolAlertEmail(id, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type RetryStormPatrolAlertEmailMutationResult = NonNullable<
+  Awaited<ReturnType<typeof retryStormPatrolAlertEmail>>
+>;
+
+export type RetryStormPatrolAlertEmailMutationError = ErrorType<unknown>;
+
+export const useRetryStormPatrolAlertEmail = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof retryStormPatrolAlertEmail>>,
+    TError,
+    { id: string },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof retryStormPatrolAlertEmail>>,
+  TError,
+  { id: string },
+  TContext
+> => {
+  return useMutation(getRetryStormPatrolAlertEmailMutationOptions(options));
 };
 
 export const getGetStormPatrolReportUrl = (id: string) => {

@@ -81,11 +81,25 @@ export type StormCurrentResponseDataFollowUpsItem = { [key: string]: unknown };
 
 export type StormCurrentResponseDataSummary = { [key: string]: number };
 
+export type StormAlertEmailStatus =
+  (typeof StormAlertEmailStatus)[keyof typeof StormAlertEmailStatus];
+
+export const StormAlertEmailStatus = {
+  pending: "pending",
+  sent: "sent",
+  failed: "failed",
+} as const;
+
 export interface StormAlert {
   id: string;
   eventId: string;
   message: string;
   acknowledgedAt?: string | null;
+  emailStatus: StormAlertEmailStatus;
+  emailAttempts: number;
+  emailLastError?: string | null;
+  emailLastAttemptAt?: string | null;
+  emailSentAt?: string | null;
 }
 
 export type StormCurrentResponseData = {
@@ -124,6 +138,19 @@ export interface StormObservationResponse {
   observation: StormObservationResponseObservation;
   reactiveJob?: StormObservationResponseReactiveJob;
   replayed: boolean;
+}
+
+export interface StormAlertCreate {
+  eventId: string;
+  stormJobId?: string;
+  /** @minLength 1 */
+  message: string;
+  photoUrl?: string;
+  /**
+   * @minLength 1
+   * @maxLength 200
+   */
+  idempotencyKey: string;
 }
 
 export interface StormAlertListResponse {

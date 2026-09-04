@@ -7,9 +7,11 @@ import {
   useListAssets,
   usePublishStormPatrolPackage,
   useCloseStormPatrolEvent,
-  createStormPatrolAlert,
+  useCreateStormPatrolAlert,
   useCreateStormPatrolObservation,
   useAcknowledgeStormPatrolAlert,
+  useRetryStormPatrolAlertEmail,
+  getGetStormPatrolReportUrl,
   getGetCurrentStormPatrolQueryKey,
   getListStormPatrolEventsQueryKey,
 } from "@workspace/api-client-react";
@@ -68,6 +70,8 @@ export default function CommandCenter({ data }: CommandCenterProps) {
   const closeEvent = useCloseStormPatrolEvent();
   const createObservation = useCreateStormPatrolObservation();
   const ackAlert = useAcknowledgeStormPatrolAlert();
+  const createAlert = useCreateStormPatrolAlert();
+  const retryEmail = useRetryStormPatrolAlertEmail();
   
   const [isAlerting, setIsAlerting] = useState(false);
 
@@ -124,12 +128,12 @@ export default function CommandCenter({ data }: CommandCenterProps) {
     if (!alertMessage.trim()) return;
     try {
       setIsAlerting(true);
-      await createStormPatrolAlert({
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+      await createAlert.mutateAsync({
+        data: {
           eventId: event.id,
           message: alertMessage,
-        })
+          idempotencyKey: crypto.randomUUID(),
+        },
       });
       toast({ title: "Alert broadcasted" });
       setAlertMessage("");
@@ -191,53 +195,26 @@ export default function CommandCenter({ data }: CommandCenterProps) {
           <Button 
             variant="outline" 
             className="bg-transparent border-white/10 text-white hover:bg-white/10"
-            onClick={async () => {
-              try {
-                const res = await fetch(`/api/storm-patrol/events/${event.id}/report`, { credentials: "include" });
-                if (!res.ok) throw new Error("Failed to load report");
-                const report = await res.json();
-                
-                const escapeCsv = (val: any) => val == null ? '""' : `"${String(val).replace(/"/g, '""')}"`;
-                
-                const csv = [
-                  ["Event Name", "Status", "Total Jobs", "Completed Jobs", "Total Hours", "Labour Charge ($)"],
-                  [
-                    escapeCsv(report.event.name),
-                    escapeCsv(report.event.status),
-                    escapeCsv(report.selectedCount),
-                    escapeCsv(report.checkedCount),
-                    escapeCsv(report.totalHours.toFixed(2)),
-                    escapeCsv((report.labourChargeCents / 100).toFixed(2))
-                  ],
-                  [],
-                  ["Jobs"],
-                  ["ID", "Phase", "Asset ID", "Team ID", "Status", "Time (Mins)", "Comments"],
-                  ...(report.jobs || []).map((j: any) => [
-                    escapeCsv(j.id),
-                    escapeCsv(j.phase),
-                    escapeCsv(j.assetId),
-                    escapeCsv(j.teamId),
-                    escapeCsv(j.status),
-                    escapeCsv(j.actualTimeMins),
-                    escapeCsv(j.comments)
-                  ])
-                ].map(r => r.join(",")).join("\n");
-
-                const blob = new Blob([csv], { type: "text/csv" });
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement("a");
-                a.href = url; 
-                a.download = `Storm-Report-${event.name.replace(/[^a-z0-9]/gi, '_')}.csv`; 
-                a.click();
-                URL.revokeObjectURL(url);
-              } catch (err: any) {
-                toast({ title: "Report generation failed", description: err.message, variant: "destructive" });
-              }
+            onClick={() => {
+              const a = document.createElement("a");
+              a.href = `${getGetStormPatrolReportUrl(event.id)}?format=csv`;
+              a.click();
             }}
             data-testid="btn-download-active-report"
           >
             <Download className="w-4 h-4 mr-2" />
-            Report
+            CSV
+          </Button>
+          <Button
+            variant="outline"
+            className="bg-transparent border-white/10 text-white hover:bg-white/10"
+            onClick={() => {
+              const a = document.createElement("a");
+              a.href = `${getGetStormPatrolReportUrl(event.id)}?format=pdf`;
+              a.click();
+            }}
+          >
+            PDF
           </Button>
           <Button 
             variant="outline" 
@@ -316,6 +293,25 @@ export default function CommandCenter({ data }: CommandCenterProps) {
                         {alert.acknowledgedAt && (
                           <p className="text-[10px] text-white/40 mt-1">Ack'd {format(new Date(alert.acknowledgedAt), "HH:mm")}</p>
                         )}
+                        <div className="mt-2 flex items-center justify-between gap-2">
+                          <p className={`text-[10px] ${alert.emailStatus === "sent" ? "text-green-400" : alert.emailStatus === "failed" ? "text-red-400" : "text-white/40"}`}>
+                            Email {alert.emailStatus}{alert.emailAttempts ? ` · ${alert.emailAttempts} attempt${alert.emailAttempts === 1 ? "" : "s"}` : ""}
+                          </p>
+                          {alert.emailStatus === "failed" && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              disabled={retryEmail.isPending}
+                              onClick={async () => {
+                                await retryEmail.mutateAsync({ id: alert.id });
+                                queryClient.invalidateQueries({ queryKey: getGetCurrentStormPatrolQueryKey() });
+                              }}
+                              className="h-6 text-[10px] px-2 bg-red-500/10 text-red-300 border-red-500/30"
+                            >
+                              Retry email
+                            </Button>
+                          )}
+                        </div>
                       </div>
                     ))}
                   </div>

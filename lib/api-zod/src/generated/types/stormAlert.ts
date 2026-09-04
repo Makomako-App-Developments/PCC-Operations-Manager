@@ -5,10 +5,16 @@
  * Porirua City Council – Garden Asset Management API
  * OpenAPI spec version: 0.1.0
  */
+import type { StormAlertEmailStatus } from "./stormAlertEmailStatus";
 
 export interface StormAlert {
   id: string;
   eventId: string;
   message: string;
   acknowledgedAt?: Date | null;
+  emailStatus: StormAlertEmailStatus;
+  emailAttempts: number;
+  emailLastError?: string | null;
+  emailLastAttemptAt?: Date | null;
+  emailSentAt?: Date | null;
 }

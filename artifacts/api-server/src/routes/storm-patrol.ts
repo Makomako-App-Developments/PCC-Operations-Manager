@@ -14,6 +14,7 @@ import { auditLog } from "../lib/audit";
 import { notifyUsers } from "../lib/push-notifications";
 import { objectStorageClient } from "../lib/objectStorage";
 import { arePublishableStormwaterAssets, calculateStormChargeCents, escapeCsvCell } from "../lib/storm-patrol";
+import { deliverStormAlertEmail } from "../lib/storm-patrol-email";
 
 const router = Router();
 const managers = ["administrator", "manager"];
@@ -191,6 +192,7 @@ router.post("/storm-patrol/alerts", requireAuth, validateBody(z.object({ eventId
   const [alert] = await executeWithCircuitBreaker(() => db.insert(stormAlertsTable).values({ ...b, raisedById: req.auth!.userId }).returning());
   const recipients = await executeWithCircuitBreaker(() => db.select({ id: usersTable.id }).from(usersTable).where(inArray(usersTable.role, managers as any)));
   void notifyUsers(recipients.map(r => r.id), { title: "Urgent Storm Patrol issue", body: b.message, data: { eventId: b.eventId, alertId: alert.id } });
+  void deliverStormAlertEmail(alert.id);
   res.status(201).json(alert);
 });
 router.post("/storm-patrol/alerts/:id/acknowledge", requireAuth, requireRole("manager"), async (req, res) => {
@@ -200,6 +202,18 @@ router.post("/storm-patrol/alerts/:id/acknowledge", requireAuth, requireRole("ma
 router.get("/storm-patrol/alerts", requireAuth, requireRole("manager", "supervisor"), validateQuery(z.object({ eventId: z.string().uuid().optional() })), async (_req, res) => {
   const eventId = res.locals.query.eventId as string | undefined;
   res.json({ data: await executeWithCircuitBreaker(() => db.select().from(stormAlertsTable).where(eventId ? eq(stormAlertsTable.eventId, eventId) : undefined).orderBy(desc(stormAlertsTable.createdAt))) });
+});
+router.post("/storm-patrol/alerts/:id/retry-email", requireAuth, requireRole("manager"), async (req, res) => {
+  const id = String(req.params.id);
+  const [alert] = await executeWithCircuitBreaker(() =>
+    db.select().from(stormAlertsTable).where(eq(stormAlertsTable.id, id)).limit(1),
+  );
+  if (!alert) { res.status(404).json({ error: "Alert not found" }); return; }
+  await deliverStormAlertEmail(id);
+  const [updated] = await executeWithCircuitBreaker(() =>
+    db.select().from(stormAlertsTable).where(eq(stormAlertsTable.id, id)).limit(1),
+  );
+  res.json(updated);
 });
 
 router.post("/storm-patrol/jobs/:id/photos", requireAuth, upload.single("photo"), async (req, res) => {
