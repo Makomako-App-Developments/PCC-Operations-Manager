@@ -45,6 +45,16 @@ export function validatePostStormConditions(
   return null;
 }
 
+export function validateStormCompletionComments(
+  workTypes: readonly string[],
+  comments: string,
+): string | null {
+  if (workTypes.includes("visual_check_only") && !comments.trim()) {
+    return "Add comments describing what you observed during the visual check.";
+  }
+  return null;
+}
+
 export function serializeStormQueue(items: StormQueueItem[]): string {
   return JSON.stringify(items);
 }

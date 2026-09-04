@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { deserializeStormQueue, isStormQueueItemReady, serializeStormQueue, validatePostStormConditions, validateStormPhaseCompletion, type StormQueueItem } from "../stormPatrolQueue";
+import { deserializeStormQueue, isStormQueueItemReady, serializeStormQueue, validatePostStormConditions, validateStormCompletionComments, validateStormPhaseCompletion, type StormQueueItem } from "../stormPatrolQueue";
 
 describe("Storm Patrol offline queue", () => {
   const item: StormQueueItem = { id: "one", kind: "completion", idempotencyKey: "completion-one", createdAt: "2026-01-01T00:00:00.000Z", attempts: 0, payload: { jobId: "job" } };
@@ -23,6 +23,12 @@ describe("Storm Patrol offline queue", () => {
     expect(validatePostStormConditions({ present: true, description: "", hasPhoto: true }, { present: false, description: "", hasPhoto: false })).toMatch(/flooding/i);
     expect(validatePostStormConditions({ present: false, description: "", hasPhoto: false }, { present: true, description: "Slip by outlet", hasPhoto: false })).toMatch(/slip/i);
     expect(validatePostStormConditions({ present: true, description: "Flooding at inlet", hasPhoto: true }, { present: true, description: "Slip on bank", hasPhoto: true })).toBeNull();
+  });
+
+  it("requires comments when visual check only is selected", () => {
+    expect(validateStormCompletionComments(["visual_check_only"], "   ")).toMatch(/comments/i);
+    expect(validateStormCompletionComments(["visual_check_only"], "Inlet clear and flowing normally.")).toBeNull();
+    expect(validateStormCompletionComments(["debris_clearance"], "")).toBeNull();
   });
 
   it("does not permit a dependent photo before its observation or alert metadata", () => {

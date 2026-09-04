@@ -1379,8 +1379,8 @@ components:
       properties:
         outcome: { type: string, enum: [completed, too_dangerous] }
         actualTimeMins: { type: integer, minimum: 0 }
-        comments: { type: string }
-        workTypes: { type: array, items: { type: string, enum: [silt_clearance, litter_clearance, debris_clearance, visual_check_only, litter_debris_removed_from_site, site_too_dangerous, site_made_safe] } }
+        comments: { type: string, maxLength: 10000, description: Required and non-blank when workTypes contains visual_check_only. }
+        workTypes: { type: array, description: Selecting visual_check_only requires comments describing the observation., items: { type: string, enum: [silt_clearance, litter_clearance, debris_clearance, visual_check_only, litter_debris_removed_from_site, site_too_dangerous, site_made_safe] } }
         dangerousReason: { type: string }
         locationLat: { type: number }
         locationLng: { type: number }

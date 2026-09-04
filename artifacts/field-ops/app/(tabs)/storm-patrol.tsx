@@ -9,7 +9,7 @@ import { ActivityIndicator, Alert, Image, Platform, Pressable, RefreshControl, S
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { requestCameraPermission, requestMediaLibraryPermission } from "@/hooks/usePhotoLibraryPermission";
 import { useColors } from "@/hooks/useColors";
-import { enqueueStormAlert, enqueueStormCompletion, enqueueStormObservation, enqueueStormPhoto, flushStormQueue, loadStormQueue, stormQueueId, validatePostStormConditions, validateStormPhaseCompletion, type StormPhotoPurpose, type StormQueueItem } from "@/lib/stormPatrolQueue";
+import { enqueueStormAlert, enqueueStormCompletion, enqueueStormObservation, enqueueStormPhoto, flushStormQueue, loadStormQueue, stormQueueId, validatePostStormConditions, validateStormCompletionComments, validateStormPhaseCompletion, type StormPhotoPurpose, type StormQueueItem } from "@/lib/stormPatrolQueue";
 
 const CACHE_KEY = "@storm_patrol_current_v1";
 const WORK_TYPES = [
@@ -81,6 +81,8 @@ export default function StormPatrolScreen() {
   const sync = async () => { await flushStormQueue(); await refreshQueue(); current.refetch(); };
   const complete = async () => {
     if (!selected) return;
+    const commentsError = dangerous ? null : validateStormCompletionComments(workTypes, comments);
+    if (commentsError) { Alert.alert("Comments required", commentsError); return; }
     const evidenceError = validateStormPhaseCompletion(selected.phase, photos.map(p => p.purpose), dangerous);
     if (evidenceError) { Alert.alert("Photos required", evidenceError); return; }
     if (dangerous && !dangerReason.trim()) { Alert.alert("Reason required", "Explain why the site is too dangerous."); return; }
@@ -142,7 +144,7 @@ export default function StormPatrolScreen() {
     <View style={styles.chips}>{WORK_TYPES.map(([value, text]) => <Pressable key={value} onPress={() => setWorkTypes(w => w.includes(value) ? w.filter(x => x !== value) : [...w, value])} style={[styles.chip, { borderColor: workTypes.includes(value) ? colors.primary : colors.border, backgroundColor: workTypes.includes(value) ? colors.secondary : colors.card }]}><Text style={{ color: colors.foreground }}>{text}</Text></Pressable>)}</View>
     {selected.phase === "post" && <><Text style={[styles.heading, { color: colors.foreground }]}>Post-storm conditions</Text><BooleanQuestion title="New flooding?" value={flooding} onChange={setFlooding} color={colors.primary}/>{flooding && <><TextInput value={floodingDescription} onChangeText={setFloodingDescription} multiline placeholder="Describe the flooding" placeholderTextColor={colors.mutedForeground} style={[styles.input, styles.note, { color: colors.foreground, borderColor: colors.border }]}/><Button title="Flooding photo" icon="camera" onPress={() => take("new_flooding")} color={colors.primary}/></>}<BooleanQuestion title="New slips?" value={slips} onChange={setSlips} color={colors.primary}/>{slips && <><TextInput value={slipDescription} onChangeText={setSlipDescription} multiline placeholder="Describe the slip" placeholderTextColor={colors.mutedForeground} style={[styles.input, styles.note, { color: colors.foreground, borderColor: colors.border }]}/><Button title="Slip photo" icon="camera" onPress={() => take("new_slip")} color={colors.primary}/></>}</>}
     <TextInput value={minutes} onChangeText={setMinutes} keyboardType="number-pad" placeholder={`Actual minutes (timer: ${elapsedMinutes})`} placeholderTextColor={colors.mutedForeground} style={[styles.input, { color: colors.foreground, borderColor: colors.border }]}/>
-    <TextInput value={comments} onChangeText={setComments} multiline placeholder="Comments (optional)" placeholderTextColor={colors.mutedForeground} style={[styles.input, styles.note, { color: colors.foreground, borderColor: colors.border }]}/>
+    <TextInput value={comments} onChangeText={setComments} multiline placeholder={workTypes.includes("visual_check_only") && !dangerous ? "Comments (required for visual check only)" : "Comments (optional)"} placeholderTextColor={colors.mutedForeground} style={[styles.input, styles.note, { color: colors.foreground, borderColor: colors.border }]}/>
     <Pressable onPress={() => setDangerous(x => !x)} style={styles.check}><Feather name={dangerous ? "check-square" : "square"} size={20} color={dangerous ? colors.primary : colors.mutedForeground}/><Text style={{ color: colors.foreground }}>Site is too dangerous to complete</Text></Pressable>
     {dangerous && <TextInput value={dangerReason} onChangeText={setDangerReason} multiline placeholder="Why is it unsafe?" placeholderTextColor={colors.mutedForeground} style={[styles.input, styles.note, { color: colors.foreground, borderColor: colors.border }]}/>}
     <Button title={dangerous ? "Report dangerous site" : "Complete patrol"} icon="check-circle" onPress={complete} color={dangerous ? colors.destructive : colors.primary}/>

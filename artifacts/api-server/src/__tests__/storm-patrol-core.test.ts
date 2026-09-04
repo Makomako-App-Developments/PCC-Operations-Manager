@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { arePublishableStormwaterAssets, calculateStormChargeCents, escapeCsvCell } from "../lib/storm-patrol";
+import { arePublishableStormwaterAssets, calculateStormChargeCents, escapeCsvCell, requiresStormVisualCheckComments } from "../lib/storm-patrol";
 
 describe("Storm Patrol core invariants", () => {
   it("accepts only complete active Stormwater selections for atomic publication", () => {
@@ -32,5 +32,12 @@ describe("Storm Patrol core invariants", () => {
     expect(escapeCsvCell("Plain site")).toBe("Plain site");
     expect(escapeCsvCell('A, "quoted"\nsite')).toBe('"A, ""quoted""\nsite"');
     expect(escapeCsvCell(null)).toBe("");
+  });
+
+  it("requires non-blank comments for visual-check-only completions", () => {
+    expect(requiresStormVisualCheckComments(["visual_check_only"], undefined)).toBe(true);
+    expect(requiresStormVisualCheckComments(["visual_check_only"], "   ")).toBe(true);
+    expect(requiresStormVisualCheckComments(["visual_check_only"], "No blockage or damage observed.")).toBe(false);
+    expect(requiresStormVisualCheckComments(["silt_clearance"], undefined)).toBe(false);
   });
 });

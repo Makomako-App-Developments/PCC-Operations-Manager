@@ -13,7 +13,7 @@ import { validateBody, validateQuery } from "../middlewares/validate";
 import { auditLog } from "../lib/audit";
 import { notifyUsers } from "../lib/push-notifications";
 import { objectStorageClient } from "../lib/objectStorage";
-import { arePublishableStormwaterAssets, calculateStormChargeCents, escapeCsvCell } from "../lib/storm-patrol";
+import { arePublishableStormwaterAssets, calculateStormChargeCents, escapeCsvCell, requiresStormVisualCheckComments } from "../lib/storm-patrol";
 import { deliverStormAlertEmail } from "../lib/storm-patrol-email";
 
 const router = Router();
@@ -157,7 +157,10 @@ router.post("/storm-patrol/jobs/:id/claim", requireAuth, async (req, res) => {
   await auditLog({ tableName: "storm_jobs", recordId: id, action: "UPDATE", changedById: req.auth!.userId, newData: job as any }); res.json(job);
 });
 
-const completion = z.object({ outcome: z.enum(["completed", "too_dangerous"]), actualTimeMins: z.number().int().min(0), comments: z.string().max(10000).optional(), workTypes: z.array(workTypes).default([]), idempotencyKey: z.string().min(1).max(200), dangerousReason: z.string().min(1).optional(), locationLat: z.number().optional(), locationLng: z.number().optional() }).superRefine((v, c) => { if (v.outcome === "too_dangerous" && !v.dangerousReason) c.addIssue({ code: "custom", message: "A dangerous reason is required.", path: ["dangerousReason"] }); });
+const completion = z.object({ outcome: z.enum(["completed", "too_dangerous"]), actualTimeMins: z.number().int().min(0), comments: z.string().max(10000).optional(), workTypes: z.array(workTypes).default([]), idempotencyKey: z.string().min(1).max(200), dangerousReason: z.string().min(1).optional(), locationLat: z.number().optional(), locationLng: z.number().optional() }).superRefine((v, c) => {
+  if (v.outcome === "too_dangerous" && !v.dangerousReason) c.addIssue({ code: "custom", message: "A dangerous reason is required.", path: ["dangerousReason"] });
+  if (v.outcome === "completed" && requiresStormVisualCheckComments(v.workTypes, v.comments)) c.addIssue({ code: "custom", message: "Comments are required when Visual check only is selected.", path: ["comments"] });
+});
 router.post("/storm-patrol/jobs/:id/complete", requireAuth, validateBody(completion), async (req, res) => {
   const id = String(req.params.id); const body = req.body as z.infer<typeof completion>; const mine = await ownJob(id, req.auth!.userId, req.auth!.teamId, req.auth!.role);
   if (mine.error) { res.status(mine.error).json({ error: mine.error === 404 ? "Storm job not found" : "Forbidden" }); return; }

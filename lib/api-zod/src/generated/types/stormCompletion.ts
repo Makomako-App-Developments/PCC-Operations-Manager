@@ -12,7 +12,12 @@ export interface StormCompletion {
   outcome: StormCompletionOutcome;
   /** @minimum 0 */
   actualTimeMins: number;
+  /**
+   * Required and non-blank when workTypes contains visual_check_only.
+   * @maxLength 10000
+   */
   comments?: string;
+  /** Selecting visual_check_only requires comments describing the observation. */
   workTypes?: StormCompletionWorkTypesItem[];
   dangerousReason?: string;
   locationLat?: number;

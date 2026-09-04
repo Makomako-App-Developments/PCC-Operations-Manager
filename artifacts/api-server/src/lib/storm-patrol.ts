@@ -15,3 +15,10 @@ export function escapeCsvCell(value: unknown): string {
   const text = value == null ? "" : String(value);
   return /[",\r\n]/.test(text) ? `"${text.replace(/"/g, "\"\"")}"` : text;
 }
+
+export function requiresStormVisualCheckComments(
+  workTypes: readonly string[],
+  comments: string | undefined,
+): boolean {
+  return workTypes.includes("visual_check_only") && !comments?.trim();
+}

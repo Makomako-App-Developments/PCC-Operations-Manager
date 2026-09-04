@@ -2170,10 +2170,18 @@ export const CompleteStormPatrolJobParams = zod.object({
 
 export const completeStormPatrolJobBodyActualTimeMinsMin = 0;
 
+export const completeStormPatrolJobBodyCommentsMax = 10000;
+
 export const CompleteStormPatrolJobBody = zod.object({
   outcome: zod.enum(["completed", "too_dangerous"]),
   actualTimeMins: zod.number().min(completeStormPatrolJobBodyActualTimeMinsMin),
-  comments: zod.string().optional(),
+  comments: zod
+    .string()
+    .max(completeStormPatrolJobBodyCommentsMax)
+    .optional()
+    .describe(
+      "Required and non-blank when workTypes contains visual_check_only.",
+    ),
   workTypes: zod
     .array(
       zod.enum([
@@ -2186,7 +2194,10 @@ export const CompleteStormPatrolJobBody = zod.object({
         "site_made_safe",
       ]),
     )
-    .optional(),
+    .optional()
+    .describe(
+      "Selecting visual_check_only requires comments describing the observation.",
+    ),
   dangerousReason: zod.string().optional(),
   locationLat: zod.number().optional(),
   locationLng: zod.number().optional(),
