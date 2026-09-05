@@ -31,12 +31,14 @@ vi.mock("drizzle-orm", () => ({
 vi.mock("jsonwebtoken", () => ({
   default: {
     verify: vi.fn((token: string, _secret: string) => {
-      if (token === "valid-token") return { userId: "user-1", role: "manager", sessionVersion: 0, tokenType: "access" };
-      if (token === "refresh-token") return { userId: "user-1", role: "manager", sessionVersion: 0, tokenType: "refresh" };
-      if (token === "legacy-token") return { userId: "user-1", role: "manager", tokenType: "access" };
-      if (token === "string-session-version") return { userId: "user-1", role: "manager", sessionVersion: "0", tokenType: "access" };
-      if (token === "negative-session-version") return { userId: "user-1", role: "manager", sessionVersion: -1, tokenType: "access" };
-      if (token === "fractional-session-version") return { userId: "user-1", role: "manager", sessionVersion: 0.5, tokenType: "access" };
+      if (token === "valid-token") return { userId: "user-1", role: "manager", teamId: null, sessionVersion: 0, tokenType: "access" };
+      if (token === "refresh-token") return { userId: "user-1", role: "manager", teamId: null, sessionVersion: 0, tokenType: "refresh" };
+      if (token === "legacy-token") return { userId: "user-1", role: "manager", teamId: null, tokenType: "access" };
+      if (token === "string-session-version") return { userId: "user-1", role: "manager", teamId: null, sessionVersion: "0", tokenType: "access" };
+      if (token === "negative-session-version") return { userId: "user-1", role: "manager", teamId: null, sessionVersion: -1, tokenType: "access" };
+      if (token === "fractional-session-version") return { userId: "user-1", role: "manager", teamId: null, sessionVersion: 0.5, tokenType: "access" };
+      if (token === "numeric-user-id") return { userId: 42, role: "manager", teamId: null, sessionVersion: 0, tokenType: "access" };
+      if (token === "object-role") return { userId: "user-1", role: { name: "manager" }, teamId: null, sessionVersion: 0, tokenType: "access" };
       throw new Error("invalid");
     }),
   },
@@ -114,6 +116,23 @@ describe("requireAuth middleware", () => {
     ["negative-session-version"],
     ["fractional-session-version"],
   ])("returns 401 for an access token with %s and skips the user lookup", async (token) => {
+    const { requireAuth } = await import("../middlewares/auth");
+    const req = mockReq(`Bearer ${token}`);
+    const res = mockRes();
+    const n = vi.fn() as NextFunction;
+    selectMock.mockClear();
+
+    await requireAuth(req, res, n);
+
+    expect(n).not.toHaveBeenCalled();
+    expect(res.status).toHaveBeenCalledWith(401);
+    expect(selectMock).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["numeric-user-id"],
+    ["object-role"],
+  ])("returns 401 for an access token with malformed identity claims (%s) before the user lookup", async (token) => {
     const { requireAuth } = await import("../middlewares/auth");
     const req = mockReq(`Bearer ${token}`);
     const res = mockRes();

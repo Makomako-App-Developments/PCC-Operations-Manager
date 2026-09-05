@@ -13,6 +13,23 @@ export interface AuthPayload {
   tokenType: "access" | "refresh";
 }
 
+export function hasValidIdentityClaims(
+  payload: unknown,
+): payload is Partial<AuthPayload> & Pick<AuthPayload, "userId" | "role" | "teamId"> {
+  if (typeof payload !== "object" || payload === null) {
+    return false;
+  }
+
+  const claims = payload as Record<string, unknown>;
+  return (
+    typeof claims.userId === "string" &&
+    claims.userId.length > 0 &&
+    typeof claims.role === "string" &&
+    claims.role.length > 0 &&
+    (typeof claims.teamId === "string" || claims.teamId === null)
+  );
+}
+
 export function hasValidSessionVersion(payload: Partial<AuthPayload>): payload is AuthPayload {
   return Number.isInteger(payload.sessionVersion) && payload.sessionVersion >= 0;
 }
@@ -35,10 +52,14 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
     return;
   }
 
-  let payload: AuthPayload;
+  let payload: unknown;
   try {
-    payload = jwt.verify(token, JWT_SECRET) as AuthPayload;
+    payload = jwt.verify(token, JWT_SECRET);
   } catch {
+    res.status(401).json({ error: "Invalid or expired token" });
+    return;
+  }
+  if (!hasValidIdentityClaims(payload)) {
     res.status(401).json({ error: "Invalid or expired token" });
     return;
   }

@@ -195,6 +195,34 @@ describe("password reset session revocation", () => {
     expect(selectMock).not.toHaveBeenCalled();
   });
 
+  it.each([
+    ["userId", 42],
+    ["role", { name: "manager" }],
+  ])("rejects access and refresh tokens with a malformed %s claim before looking up the user", async (claim, value) => {
+    selectMock.mockClear();
+
+    const accessClaims: Record<string, unknown> = {
+      userId: state.user!.id,
+      role: state.user!.role,
+      teamId: null,
+      sessionVersion: 0,
+      tokenType: "access",
+      [claim]: value,
+    };
+    const refreshClaims = { ...accessClaims, tokenType: "refresh" };
+
+    const malformedAccessToken = jwt.sign(accessClaims, "test-secret");
+    const malformedRefreshToken = jwt.sign(refreshClaims, "test-secret");
+
+    expect(
+      (await request(app).get("/protected").set("Authorization", `Bearer ${malformedAccessToken}`)).status,
+    ).toBe(401);
+    expect(
+      (await request(app).post("/auth/refresh").set("Cookie", `refresh_token=${malformedRefreshToken}`)).status,
+    ).toBe(401);
+    expect(selectMock).not.toHaveBeenCalled();
+  });
+
   it("revokes only the reset user's sessions through the manager password reset API", async () => {
     const manager = {
       id: "22222222-2222-4222-8222-222222222222",

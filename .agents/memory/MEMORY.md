@@ -26,3 +26,4 @@
 - [Service-time schedule reconciliation](service-time-schedule-reconciliation.md) — asset service-time changes must recalculate pending schedule estimates with crew availability; never overwrite active or historical work.
 - [Storm alert delivery isolation](storm-alert-delivery-isolation.md) — commit urgent alerts first; push/email run independently with visible delivery state and retries.
 - [Auth test JWT secret loading](auth-test-jwt-secret-loading.md) — set JWT_SECRET before importing auth modules because middleware captures it at module initialization.
+- [JWT claim validation](auth-claim-validation.md) — validate decoded identity and session claims at runtime before any database lookup; TypeScript assertions are not validation.

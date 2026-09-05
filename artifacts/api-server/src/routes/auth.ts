@@ -4,7 +4,7 @@ import { db, usersTable, executeWithCircuitBreaker } from "@workspace/db";
 import { eq, sql } from "drizzle-orm";
 import { z } from "zod";
 import { verifyPassword, hashPassword } from "../lib/password";
-import { hasValidSessionVersion, signTokens, requireAuth } from "../middlewares/auth";
+import { hasValidIdentityClaims, hasValidSessionVersion, signTokens, requireAuth } from "../middlewares/auth";
 import { validateBody } from "../middlewares/validate";
 
 const router = Router();
@@ -112,12 +112,16 @@ router.post("/auth/refresh", async (req, res) => {
     res.status(401).json({ error: "No refresh token" });
     return;
   }
-  let payload: import("../middlewares/auth").AuthPayload;
+  let payload: unknown;
   try {
     const jwt = await import("jsonwebtoken");
     const JWT_SECRET = process.env.JWT_SECRET ?? "dev-secret-change-in-production";
-    payload = jwt.default.verify(token, JWT_SECRET) as import("../middlewares/auth").AuthPayload;
+    payload = jwt.default.verify(token, JWT_SECRET);
   } catch {
+    res.status(401).json({ error: "Invalid or expired refresh token" });
+    return;
+  }
+  if (!hasValidIdentityClaims(payload)) {
     res.status(401).json({ error: "Invalid or expired refresh token" });
     return;
   }
