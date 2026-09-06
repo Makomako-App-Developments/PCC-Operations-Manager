@@ -4,7 +4,14 @@ import { db, usersTable, executeWithCircuitBreaker } from "@workspace/db";
 import { eq, sql } from "drizzle-orm";
 import { z } from "zod";
 import { verifyPassword, hashPassword } from "../lib/password";
-import { hasValidIdentityClaims, hasValidSessionVersion, signTokens, requireAuth } from "../middlewares/auth";
+import {
+  consumeRefreshToken,
+  hasConsumedRefreshToken,
+  hasValidIdentityClaims,
+  hasValidSessionVersion,
+  signTokens,
+  requireAuth,
+} from "../middlewares/auth";
 import { validateBody } from "../middlewares/validate";
 
 const router = Router();
@@ -133,6 +140,10 @@ router.post("/auth/refresh", async (req, res) => {
     res.status(401).json({ error: "Invalid or expired refresh token" });
     return;
   }
+  if (hasConsumedRefreshToken(token)) {
+    res.status(401).json({ error: "Invalid or expired refresh token" });
+    return;
+  }
   // Check user still active
   const [user] = await executeWithCircuitBreaker(() => db.select().from(usersTable).where(eq(usersTable.id, payload.userId)).limit(1));
   if (!user || !user.isActive) {
@@ -149,6 +160,12 @@ router.post("/auth/refresh", async (req, res) => {
     teamId: user.teamId,
     sessionVersion: user.sessionVersion,
   });
+  // Consume only after every validation succeeds. The operation itself is
+  // atomic, preventing concurrent requests from exchanging the same token.
+  if (!consumeRefreshToken(token)) {
+    res.status(401).json({ error: "Invalid or expired refresh token" });
+    return;
+  }
   res
     .cookie("access_token",  accessToken,  { httpOnly: true, secure: true, sameSite: "strict", maxAge: 15 * 60 * 1000 })
     .cookie("refresh_token", refreshToken, { httpOnly: true, secure: true, sameSite: "strict", maxAge: 7 * 24 * 60 * 60 * 1000 })

@@ -63,6 +63,12 @@ function configureUserLookup() {
   }));
 }
 
+function getCookie(response: request.Response, name: string): string {
+  const cookie = response.headers["set-cookie"]?.find((value) => value.startsWith(`${name}=`));
+  expect(cookie).toBeDefined();
+  return cookie!.split(";")[0];
+}
+
 describe("password reset session revocation", () => {
   beforeEach(async () => {
     process.env["JWT_SECRET"] = "test-secret";
@@ -156,6 +162,36 @@ describe("password reset session revocation", () => {
     expect(
       (await request(app).post("/auth/refresh").set("Cookie", `refresh_token=${versionedTokens.refreshToken}`)).status,
     ).toBe(200);
+  });
+
+  it("rotates refresh tokens and rejects reuse of the presented token", async () => {
+    const initialTokens = signTokens({
+      userId: state.user!.id as string,
+      role: state.user!.role as string,
+      teamId: null,
+      sessionVersion: 0,
+    });
+
+    const firstRefresh = await request(app)
+      .post("/auth/refresh")
+      .set("Cookie", `refresh_token=${initialTokens.refreshToken}`);
+
+    expect(firstRefresh.status).toBe(200);
+    const rotatedRefreshCookie = getCookie(firstRefresh, "refresh_token");
+    expect(rotatedRefreshCookie).not.toBe(`refresh_token=${initialTokens.refreshToken}`);
+
+    const replay = await request(app)
+      .post("/auth/refresh")
+      .set("Cookie", `refresh_token=${initialTokens.refreshToken}`);
+
+    expect(replay.status).toBe(401);
+    expect(replay.headers["set-cookie"]).toBeUndefined();
+
+    const secondRefresh = await request(app)
+      .post("/auth/refresh")
+      .set("Cookie", rotatedRefreshCookie);
+
+    expect(secondRefresh.status).toBe(200);
   });
 
   it.each([

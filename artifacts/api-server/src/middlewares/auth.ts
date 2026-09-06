@@ -1,9 +1,53 @@
 import { Request, Response, NextFunction } from "express";
+import { createHash, randomUUID } from "crypto";
 import jwt from "jsonwebtoken";
 import { db, executeWithCircuitBreaker, usersTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 
 const JWT_SECRET = process.env.JWT_SECRET ?? "dev-secret-change-in-production";
+const REFRESH_TOKEN_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+
+// Refresh tokens are bearer credentials, so do not retain the raw token in
+// memory. The expiry value lets the registry clean itself up as refreshes
+// happen instead of growing for the lifetime of the process.
+const consumedRefreshTokens = new Map<string, number>();
+
+function refreshTokenFingerprint(token: string): string {
+  return createHash("sha256").update(token).digest("hex");
+}
+
+function pruneConsumedRefreshTokens(now: number): void {
+  for (const [fingerprint, expiresAt] of consumedRefreshTokens) {
+    if (expiresAt <= now) {
+      consumedRefreshTokens.delete(fingerprint);
+    }
+  }
+}
+
+/**
+ * Atomically consume a refresh token.
+ *
+ * The check and insert are synchronous so two requests that race after the
+ * database lookup cannot both exchange the same token.
+ */
+export function consumeRefreshToken(token: string): boolean {
+  const now = Date.now();
+  pruneConsumedRefreshTokens(now);
+
+  const fingerprint = refreshTokenFingerprint(token);
+  if (consumedRefreshTokens.has(fingerprint)) {
+    return false;
+  }
+
+  consumedRefreshTokens.set(fingerprint, now + REFRESH_TOKEN_TTL_MS);
+  return true;
+}
+
+export function hasConsumedRefreshToken(token: string): boolean {
+  const now = Date.now();
+  pruneConsumedRefreshTokens(now);
+  return consumedRefreshTokens.has(refreshTokenFingerprint(token));
+}
 
 export interface AuthPayload {
   userId: string;
@@ -104,6 +148,10 @@ export function requireRole(...roles: string[]) {
 
 export function signTokens(payload: Omit<AuthPayload, "tokenType">) {
   const accessToken = jwt.sign({ ...payload, tokenType: "access" }, JWT_SECRET, { expiresIn: "15m" });
-  const refreshToken = jwt.sign({ ...payload, tokenType: "refresh" }, JWT_SECRET, { expiresIn: "7d" });
+  const refreshToken = jwt.sign(
+    { ...payload, tokenType: "refresh", jti: randomUUID() },
+    JWT_SECRET,
+    { expiresIn: "7d" },
+  );
   return { accessToken, refreshToken };
 }
