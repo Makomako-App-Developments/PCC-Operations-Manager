@@ -670,14 +670,13 @@ export default function CommandCenter({ data }: CommandCenterProps) {
                           const isSelected = selectedAssets.has(asset.id);
                           const isHotspot = (asset.departmentDetails as StormwaterAssetDetails)?.hotspot === "Yes";
                           
-                          let color = "#475569"; // gray-600
-                          let fillColor = "#1e293b";
+                           let color = "#111827"; // black for standard sites
+                           let fillColor = "transparent";
                           if (isSelected) {
-                            color = "#00AECD";
-                            fillColor = "#00AECD";
+                             color = "#2563eb";
+                             fillColor = "#2563eb";
                           } else if (isHotspot) {
                             color = "#ef4444"; // red-500
-                            fillColor = "transparent";
                           }
 
                           return (
@@ -687,7 +686,7 @@ export default function CommandCenter({ data }: CommandCenterProps) {
                               radius={isSelected ? 6 : 4}
                               color={color}
                               fillColor={fillColor}
-                              fillOpacity={isSelected ? 0.7 : 0.4}
+                               fillOpacity={isSelected ? 1 : 0}
                               weight={2}
                               eventHandlers={{
                                 click: () => toggleAsset(asset.id)
