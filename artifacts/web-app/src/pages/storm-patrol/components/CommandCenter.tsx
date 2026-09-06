@@ -17,7 +17,7 @@ import {
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { 
-  CloudLightning, Loader2, Plus, Users, MapPin, Search, Check,
+  CloudLightning, Loader2, Plus, Users, MapPin, Search, Check, ChevronDown, ChevronUp,
   AlertTriangle, Eye, ArrowRight, Save, Download, Navigation
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -115,6 +115,8 @@ export default function CommandCenter({ data }: CommandCenterProps) {
   const [priorityFilter, setPriorityFilter] = useState<PriorityFilter>("all");
   const [hotspotFilter, setHotspotFilter] = useState<HotspotFilter>("all");
   const [selectedAssets, setSelectedAssets] = useState<Set<string>>(new Set());
+  const [isPackageCollapsed, setIsPackageCollapsed] = useState(false);
+  const [lastPublishedSiteCount, setLastPublishedSiteCount] = useState(0);
 
   // Alerts & Observations State
   const [alertMessage, setAlertMessage] = useState("");
@@ -132,6 +134,8 @@ export default function CommandCenter({ data }: CommandCenterProps) {
         }
       });
       toast({ title: "Work package published", description: `${selectedAssets.size} jobs assigned.` });
+      setLastPublishedSiteCount(selectedAssets.size);
+      setIsPackageCollapsed(true);
       setSelectedAssets(new Set());
       queryClient.invalidateQueries({ queryKey: getGetCurrentStormPatrolQueryKey() });
     } catch (err: any) {
@@ -412,14 +416,31 @@ export default function CommandCenter({ data }: CommandCenterProps) {
             <div className="lg:col-span-3 space-y-6">
               
               {/* Package Creator */}
-              <div className="bg-white/5 border border-white/10 rounded-2xl p-6">
-                <div className="flex items-center justify-between mb-6">
+              <div className={`bg-white/5 border border-white/10 rounded-2xl p-6 ${isPackageCollapsed ? "" : "min-h-[calc(100dvh-10rem)] flex flex-col"}`}>
+                <div className={`flex items-center justify-between ${isPackageCollapsed ? "" : "mb-6"}`}>
                   <div className="flex items-center gap-3">
                     <Navigation className="w-5 h-5 text-[#00AECD]" />
                     <h2 className="text-lg font-semibold text-white">Create Work Package</h2>
                   </div>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setIsPackageCollapsed(collapsed => !collapsed)}
+                    className="h-8 px-2 text-xs text-white/60 hover:text-white hover:bg-white/10"
+                    aria-label={`${isPackageCollapsed ? "Expand" : "Collapse"} Create Work Package`}
+                  >
+                    {isPackageCollapsed ? <><ChevronDown className="w-4 h-4 mr-1" />Open</> : <><ChevronUp className="w-4 h-4 mr-1" />Collapse</>}
+                  </Button>
                 </div>
 
+                {isPackageCollapsed ? (
+                  <div className="flex items-center justify-between gap-4 rounded-xl border border-white/10 bg-black/20 px-4 py-3 text-sm text-white/60">
+                    <span>Last package published: {lastPublishedSiteCount} site{lastPublishedSiteCount === 1 ? "" : "s"}.</span>
+                    <span className="text-green-400">Ready for the next package</span>
+                  </div>
+                ) : (
+                <>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
                   <div className="space-y-2">
                     <Label className="text-white/60">Response Phase</Label>
@@ -463,7 +484,7 @@ export default function CommandCenter({ data }: CommandCenterProps) {
                 </div>
 
                 {/* Asset Selector & Map Preview */}
-                <div className="border border-white/10 rounded-xl overflow-hidden bg-black/20 flex flex-col h-[400px]">
+                <div className="border border-white/10 rounded-xl overflow-hidden bg-black/20 flex flex-col flex-1 min-h-[480px]">
                   <div className="p-3 border-b border-white/10 bg-white/5 space-y-3">
                     <div className="flex flex-col xl:flex-row xl:items-center gap-2">
                       <div className="relative min-w-0 flex-1">
@@ -653,6 +674,8 @@ export default function CommandCenter({ data }: CommandCenterProps) {
                     </div>
                   </div>
                 </div>
+                </>
+                )}
               </div>
 
               {/* Live Jobs Table */}

@@ -211,5 +211,10 @@ describe("Storm Patrol work package asset filters", () => {
         },
       });
     });
+    expect(screen.getByRole("button", { name: "Expand Create Work Package" })).toBeInTheDocument();
+    expect(screen.queryByRole("combobox", { name: "Response phase" })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Expand Create Work Package" }));
+    expect(screen.getByRole("combobox", { name: "Response phase" })).toBeInTheDocument();
   });
 });
