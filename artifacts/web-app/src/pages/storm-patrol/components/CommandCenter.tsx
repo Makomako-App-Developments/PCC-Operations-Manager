@@ -684,10 +684,12 @@ export default function CommandCenter({ data }: CommandCenterProps) {
                               key={asset.id}
                               center={[asset.lat, asset.lng]}
                                radius={isSelected ? 8 : 5}
-                              color={color}
-                              fillColor={fillColor}
-                               fillOpacity={isSelected ? 1 : 0}
-                               weight={isSelected ? 3 : 2}
+                               pathOptions={{
+                                 color,
+                                 fillColor,
+                                 fillOpacity: isSelected ? 1 : 0,
+                                 weight: isSelected ? 3 : 2,
+                               }}
                               eventHandlers={{
                                 click: () => toggleAsset(asset.id)
                               }}

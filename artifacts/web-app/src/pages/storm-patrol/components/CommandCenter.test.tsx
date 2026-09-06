@@ -89,11 +89,10 @@ vi.mock("react-leaflet", () => ({
   CircleMarker: (props: any) => (
     <div
       data-testid="storm-marker"
-      data-color={props.color}
-      data-fill-color={props.fillColor}
-      data-fill-opacity={props.fillOpacity}
+      data-color={props.pathOptions?.color}
+      data-fill-color={props.pathOptions?.fillColor}
+      data-fill-opacity={props.pathOptions?.fillOpacity}
       data-radius={props.radius}
-      data-weight={props.weight}
     />
   ),
   Popup: ({ children }: { children: React.ReactNode }) => <>{children}</>,
