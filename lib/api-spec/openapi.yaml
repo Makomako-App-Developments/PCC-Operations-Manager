@@ -1913,8 +1913,11 @@ components:
       properties:
         placemarkId: { type: string }
         contractor:
-          { type: string, enum: [Parks, Transport, WGTN Regional, Taiki Wai] }
-        assetType: { type: string, enum: [inlet, outlet, culvert] }
+          {
+            type: string,
+            enum: [Parks, Transport, WGTN Regional, Taiki Wai, Other],
+          }
+        assetType: { type: string, enum: [inlet, outlet, culvert, other] }
         priority: { type: string, enum: [High, Medium, Low] }
         hotspot: { type: string, enum: [Yes, No] }
       required: [contractor, assetType, priority, hotspot]

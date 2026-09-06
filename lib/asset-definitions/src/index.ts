@@ -59,11 +59,12 @@ const OPTIONS = {
     { value: "inlet", label: "Inlet" },
     { value: "outlet", label: "Outlet" },
     { value: "culvert", label: "Culvert" },
+    { value: "other", label: "Other" },
   ],
 } as const;
 
 export const STORMWATER_OPTIONS = {
-  contractors: ["Parks", "Transport", "WGTN Regional", "Taiki Wai"],
+  contractors: ["Parks", "Transport", "WGTN Regional", "Taiki Wai", "Other"],
   priorities: ["High", "Medium", "Low"],
   hotspots: ["Yes", "No"],
   suburbs: ["Ascot Park", "Cambourne", "Cannons Creek", "CBD", "Elsdon", "Kenepuru", "Papakowhai", "Paremata", "Plimmerton", "Pukerua Bay", "Ranui", "Takapuwahia", "Titahi Bay", "Waitangarua", "Whitby"],

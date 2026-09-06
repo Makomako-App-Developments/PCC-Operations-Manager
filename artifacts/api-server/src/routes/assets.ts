@@ -90,7 +90,7 @@ function validateDepartmentFields(data: {
       const value = details[key];
       if (!value || !values.includes(String(value))) ctx.addIssue({ code: "custom", path: ["departmentDetails", key], message: `${label} is required` });
     };
-    allowed(["inlet", "outlet", "culvert"], "assetType", "Asset type");
+    allowed(["inlet", "outlet", "culvert", "other"], "assetType", "Asset type");
     allowed(STORMWATER_OPTIONS.contractors, "contractor", "Contractor");
     allowed(STORMWATER_OPTIONS.priorities, "priority", "Priority");
     allowed(STORMWATER_OPTIONS.hotspots, "hotspot", "Hotspot");

@@ -13,4 +13,5 @@ export const StormwaterAssetDetailsAssetType = {
   inlet: "inlet",
   outlet: "outlet",
   culvert: "culvert",
+  other: "other",
 } as const;

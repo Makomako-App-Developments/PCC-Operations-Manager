@@ -493,6 +493,7 @@ export const StormwaterAssetDetailsContractor = {
   Transport: "Transport",
   WGTN_Regional: "WGTN Regional",
   Taiki_Wai: "Taiki Wai",
+  Other: "Other",
 } as const;
 
 export type StormwaterAssetDetailsAssetType =
@@ -502,6 +503,7 @@ export const StormwaterAssetDetailsAssetType = {
   inlet: "inlet",
   outlet: "outlet",
   culvert: "culvert",
+  other: "other",
 } as const;
 
 export type StormwaterAssetDetailsPriority =

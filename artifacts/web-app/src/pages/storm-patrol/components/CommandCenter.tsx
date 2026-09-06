@@ -599,11 +599,11 @@ export default function CommandCenter({ data }: CommandCenterProps) {
                         zoom={12}
                         style={{ width: "100%", height: "100%" }}
                         zoomControl={true}
-                        attributionControl={false}
+                        attributionControl={true}
                       >
                         <TileLayer
-                          url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
-                          attribution="&copy; OpenStreetMap &copy; CARTO"
+                          url="https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}"
+                          attribution="Tiles &copy; Esri"
                         />
                         <FitBounds assets={filteredAssets.filter(a => selectedAssets.has(a.id))} />
                         

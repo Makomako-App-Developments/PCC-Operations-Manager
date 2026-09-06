@@ -14,4 +14,5 @@ export const StormwaterAssetDetailsContractor = {
   Transport: "Transport",
   WGTN_Regional: "WGTN Regional",
   Taiki_Wai: "Taiki Wai",
+  Other: "Other",
 } as const;
