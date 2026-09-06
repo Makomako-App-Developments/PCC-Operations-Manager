@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from "react";
 import { 
+  Asset,
   StormCurrentResponseData, 
   StormJob,
   StormwaterAssetDetails, 
@@ -34,6 +35,35 @@ const RED = "#ef4444";
 const ORANGE = "#f97316";
 const YELLOW = "#eab308";
 const GREEN = "#22c55e";
+
+type PriorityFilter = "all" | StormwaterAssetDetails["priority"];
+type HotspotFilter = "all" | StormwaterAssetDetails["hotspot"];
+
+export function filterStormwaterAssets(
+  assets: Asset[],
+  search: string,
+  priority: PriorityFilter,
+  hotspot: HotspotFilter,
+) {
+  const query = search.trim().toLowerCase();
+
+  return assets.filter((asset) => {
+    const details = asset.departmentDetails as StormwaterAssetDetails | null;
+    const matchesSearch = !query
+      || asset.name.toLowerCase().includes(query)
+      || asset.streetAddress?.toLowerCase().includes(query);
+    const matchesPriority = priority === "all" || details?.priority === priority;
+    const matchesHotspot = hotspot === "all" || details?.hotspot === hotspot;
+
+    return matchesSearch && matchesPriority && matchesHotspot;
+  });
+}
+
+const PRIORITY_STYLES: Record<StormwaterAssetDetails["priority"], string> = {
+  High: "bg-orange-500/20 text-orange-300 border-orange-500/30",
+  Medium: "bg-amber-500/15 text-amber-300 border-amber-500/25",
+  Low: "bg-slate-500/20 text-slate-300 border-slate-500/30",
+};
 
 function FitBounds({ assets }: { assets: any[] }) {
   const map = useMap();
@@ -82,6 +112,8 @@ export default function CommandCenter({ data }: CommandCenterProps) {
   const [selectedPhase, setSelectedPhase] = useState<"pre" | "mid" | "post">("pre");
   const [selectedTeam, setSelectedTeam] = useState<string>("");
   const [assetSearch, setAssetSearch] = useState("");
+  const [priorityFilter, setPriorityFilter] = useState<PriorityFilter>("all");
+  const [hotspotFilter, setHotspotFilter] = useState<HotspotFilter>("all");
   const [selectedAssets, setSelectedAssets] = useState<Set<string>>(new Set());
 
   // Alerts & Observations State
@@ -142,10 +174,17 @@ export default function CommandCenter({ data }: CommandCenterProps) {
   };
 
   const filteredAssets = useMemo(() => {
-    if (!assetSearch.trim()) return assets;
-    const q = assetSearch.toLowerCase();
-    return assets.filter(a => a.name.toLowerCase().includes(q) || a.streetAddress?.toLowerCase().includes(q));
-  }, [assets, assetSearch]);
+    return filterStormwaterAssets(assets, assetSearch, priorityFilter, hotspotFilter);
+  }, [assets, assetSearch, priorityFilter, hotspotFilter]);
+
+  const hasActiveAssetFilters =
+    assetSearch.trim().length > 0 || priorityFilter !== "all" || hotspotFilter !== "all";
+
+  const resetAssetFilters = () => {
+    setAssetSearch("");
+    setPriorityFilter("all");
+    setHotspotFilter("all");
+  };
 
   const toggleAsset = (id: string) => {
     const next = new Set(selectedAssets);
@@ -387,7 +426,7 @@ export default function CommandCenter({ data }: CommandCenterProps) {
                   <div className="space-y-2">
                     <Label className="text-white/60">Response Phase</Label>
                     <Select value={selectedPhase} onValueChange={v => setSelectedPhase(v as any)}>
-                      <SelectTrigger className="bg-black/20 border-white/10 h-10">
+                      <SelectTrigger aria-label="Response phase" className="bg-black/20 border-white/10 h-10">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
@@ -401,7 +440,7 @@ export default function CommandCenter({ data }: CommandCenterProps) {
                   <div className="space-y-2">
                     <Label className="text-white/60">Assign To Team</Label>
                     <Select value={selectedTeam} onValueChange={setSelectedTeam}>
-                      <SelectTrigger className="bg-black/20 border-white/10 h-10">
+                      <SelectTrigger aria-label="Assign to team" className="bg-black/20 border-white/10 h-10">
                         <SelectValue placeholder="Select team..." />
                       </SelectTrigger>
                       <SelectContent>
@@ -427,26 +466,78 @@ export default function CommandCenter({ data }: CommandCenterProps) {
 
                 {/* Asset Selector & Map Preview */}
                 <div className="border border-white/10 rounded-xl overflow-hidden bg-black/20 flex flex-col h-[400px]">
-                  <div className="p-3 border-b border-white/10 bg-white/5 flex items-center justify-between">
-                    <div className="relative w-64">
-                      <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-white/40" />
-                      <Input 
-                        value={assetSearch}
-                        onChange={e => setAssetSearch(e.target.value)}
-                        placeholder="Search stormwater assets..."
-                        className="pl-9 h-8 bg-black/20 border-white/10 text-xs text-white placeholder:text-white/30"
-                      />
+                  <div className="p-3 border-b border-white/10 bg-white/5 space-y-3">
+                    <div className="flex flex-col xl:flex-row xl:items-center gap-2">
+                      <div className="relative min-w-0 flex-1">
+                        <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-white/40" />
+                        <Input
+                          value={assetSearch}
+                          onChange={e => setAssetSearch(e.target.value)}
+                          placeholder="Search stormwater assets..."
+                          aria-label="Search stormwater assets"
+                          className="pl-9 h-9 bg-black/20 border-white/10 text-xs text-white placeholder:text-white/30"
+                        />
+                      </div>
+                      <div className="grid grid-cols-2 gap-2 xl:w-[360px]">
+                        <Select value={priorityFilter} onValueChange={v => setPriorityFilter(v as PriorityFilter)}>
+                          <SelectTrigger
+                            aria-label="Filter sites by priority"
+                            className="h-9 bg-black/20 border-white/10 text-xs text-white"
+                          >
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="all">All priorities</SelectItem>
+                            <SelectItem value="High">High priority</SelectItem>
+                            <SelectItem value="Medium">Medium priority</SelectItem>
+                            <SelectItem value="Low">Low priority</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <Select value={hotspotFilter} onValueChange={v => setHotspotFilter(v as HotspotFilter)}>
+                          <SelectTrigger
+                            aria-label="Filter sites by hotspot"
+                            className="h-9 bg-black/20 border-white/10 text-xs text-white"
+                          >
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="all">All sites</SelectItem>
+                            <SelectItem value="Yes">Hotspots</SelectItem>
+                            <SelectItem value="No">Not hotspots</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
                     </div>
-                    <div className="flex items-center gap-3 text-sm">
-                      <span className="text-white/60">Selected: <strong className="text-white">{selectedAssets.size}</strong></span>
-                      <Button 
-                        variant="ghost" 
-                        size="sm" 
-                        onClick={selectAllFiltered}
-                        className="h-8 text-xs text-white/60 hover:text-white hover:bg-white/10"
-                      >
-                        {filteredAssets.length > 0 && filteredAssets.every(a => selectedAssets.has(a.id)) ? "Deselect All" : "Select All Filtered"}
-                      </Button>
+                    <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
+                      <div className="flex items-center gap-3">
+                        <span className="text-white/60" data-testid="asset-filter-count">
+                          Showing <strong className="text-white">{filteredAssets.length}</strong> of {assets.length}
+                        </span>
+                        {hasActiveAssetFilters && (
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            onClick={resetAssetFilters}
+                            className="h-7 px-2 text-xs text-[#65d8e8] hover:text-white hover:bg-white/10"
+                          >
+                            Clear filters
+                          </Button>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <span className="text-white/60">Selected: <strong className="text-white">{selectedAssets.size}</strong></span>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={selectAllFiltered}
+                          disabled={filteredAssets.length === 0}
+                          className="h-8 text-xs text-white/60 hover:text-white hover:bg-white/10"
+                        >
+                          {filteredAssets.length > 0 && filteredAssets.every(a => selectedAssets.has(a.id)) ? "Deselect All" : "Select All Filtered"}
+                        </Button>
+                      </div>
                     </div>
                   </div>
                   
@@ -454,28 +545,50 @@ export default function CommandCenter({ data }: CommandCenterProps) {
                     {/* List */}
                     <div className="w-[40%] flex-shrink-0 border-r border-white/10 overflow-y-auto p-2 space-y-1">
                       {filteredAssets.length === 0 ? (
-                        <div className="text-center py-8 text-white/40 text-sm">No assets match search.</div>
-                      ) : (
-                        filteredAssets.map(asset => (
-                          <label 
-                            key={asset.id} 
-                            className={`flex items-start gap-3 p-2 rounded-lg cursor-pointer transition-colors ${selectedAssets.has(asset.id) ? 'bg-[#00AECD]/20 border-[#00AECD]/30' : 'hover:bg-white/5 border-transparent'} border`}
+                        <div className="text-center py-8 px-4 text-white/50 text-sm">
+                          <p>No sites match these filters.</p>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            onClick={resetAssetFilters}
+                            className="mt-2 h-8 text-xs text-[#65d8e8] hover:text-white hover:bg-white/10"
                           >
-                            <input 
-                              type="checkbox" 
-                              className="mt-1 flex-shrink-0 accent-[#00AECD] border-white/20 rounded bg-black/40"
-                              checked={selectedAssets.has(asset.id)}
-                              onChange={() => toggleAsset(asset.id)}
-                            />
-                            <div className="min-w-0 flex-1">
-                              <p className="text-sm font-medium text-white truncate">{asset.name}</p>
-                              <p className="text-xs text-white/40 truncate">{asset.streetAddress || "No address"}</p>
-                            </div>
-                            {(asset.departmentDetails as StormwaterAssetDetails)?.hotspot === "Yes" && (
-                              <span className="px-2 py-0.5 rounded bg-red-500/20 text-red-500 text-[10px] font-bold">HOTSPOT</span>
-                            )}
-                          </label>
-                        ))
+                            Reset filters
+                          </Button>
+                        </div>
+                      ) : (
+                        filteredAssets.map(asset => {
+                          const details = asset.departmentDetails as StormwaterAssetDetails;
+                          return (
+                            <label
+                              key={asset.id}
+                              className={`flex items-start gap-3 p-2 rounded-lg cursor-pointer transition-colors ${selectedAssets.has(asset.id) ? 'bg-[#00AECD]/20 border-[#00AECD]/30' : 'hover:bg-white/5 border-transparent'} border`}
+                            >
+                              <input
+                                type="checkbox"
+                                aria-label={`Select ${asset.name}`}
+                                className="mt-1 flex-shrink-0 accent-[#00AECD] border-white/20 rounded bg-black/40"
+                                checked={selectedAssets.has(asset.id)}
+                                onChange={() => toggleAsset(asset.id)}
+                              />
+                              <div className="min-w-0 flex-1">
+                                <p className="text-sm font-medium text-white truncate">{asset.name}</p>
+                                <p className="text-xs text-white/40 truncate">{asset.streetAddress || "No address"}</p>
+                              </div>
+                              <div className="flex flex-col items-end gap-1">
+                                {details?.priority && (
+                                  <span className={`px-2 py-0.5 rounded border text-[10px] font-semibold uppercase ${PRIORITY_STYLES[details.priority]}`}>
+                                    {details.priority}
+                                  </span>
+                                )}
+                                {details?.hotspot === "Yes" && (
+                                  <span className="px-2 py-0.5 rounded bg-red-500/20 text-red-400 text-[10px] font-bold">HOTSPOT</span>
+                                )}
+                              </div>
+                            </label>
+                          );
+                        })
                       )}
                     </div>
                     
