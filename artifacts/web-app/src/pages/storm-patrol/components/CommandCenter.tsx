@@ -660,8 +660,8 @@ export default function CommandCenter({ data }: CommandCenterProps) {
                         attributionControl={true}
                       >
                         <TileLayer
-                           url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}"
-                          attribution="Tiles &copy; Esri"
+                           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
                         />
                         <FitBounds assets={filteredAssets.filter(a => selectedAssets.has(a.id))} />
                         
