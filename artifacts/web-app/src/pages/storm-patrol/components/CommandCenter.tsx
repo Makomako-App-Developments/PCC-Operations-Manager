@@ -416,7 +416,7 @@ export default function CommandCenter({ data }: CommandCenterProps) {
             <div className="lg:col-span-3 space-y-6">
               
               {/* Package Creator */}
-              <div className={`bg-white/5 border border-white/10 rounded-2xl p-6 ${isPackageCollapsed ? "" : "min-h-[calc(100dvh-10rem)] flex flex-col"}`}>
+              <div className={`bg-white/5 border border-white/10 rounded-2xl p-6 ${isPackageCollapsed ? "" : "lg:h-[calc(100dvh-9rem)] lg:max-h-[calc(100dvh-9rem)] lg:min-h-0 flex flex-col"}`}>
                 <div className={`flex items-center justify-between ${isPackageCollapsed ? "" : "mb-6"}`}>
                   <div className="flex items-center gap-3">
                     <Navigation className="w-5 h-5 text-[#00AECD]" />
@@ -484,7 +484,7 @@ export default function CommandCenter({ data }: CommandCenterProps) {
                 </div>
 
                 {/* Asset Selector & Map Preview */}
-                <div className="border border-white/10 rounded-xl overflow-hidden bg-black/20 flex flex-col flex-1 min-h-[480px]">
+                <div className="border border-white/10 rounded-xl overflow-hidden bg-black/20 flex flex-col flex-1 min-h-0">
                   <div className="p-3 border-b border-white/10 bg-white/5 space-y-3">
                     <div className="flex flex-col xl:flex-row xl:items-center gap-2">
                       <div className="relative min-w-0 flex-1">
@@ -621,7 +621,7 @@ export default function CommandCenter({ data }: CommandCenterProps) {
                         attributionControl={true}
                       >
                         <TileLayer
-                          url="https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}"
+                           url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}"
                           attribution="Tiles &copy; Esri"
                         />
                         <FitBounds assets={filteredAssets.filter(a => selectedAssets.has(a.id))} />
