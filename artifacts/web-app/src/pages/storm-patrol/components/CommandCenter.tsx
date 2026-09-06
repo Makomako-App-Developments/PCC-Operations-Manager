@@ -544,7 +544,7 @@ export default function CommandCenter({ data }: CommandCenterProps) {
                           >
                             <SelectValue />
                           </SelectTrigger>
-                          <SelectContent className="z-[1000]">
+                          <SelectContent style={{ zIndex: 1000 }}>
                             <SelectItem value="all">All priorities</SelectItem>
                             <SelectItem value="High">High priority</SelectItem>
                             <SelectItem value="Medium">Medium priority</SelectItem>
@@ -558,7 +558,7 @@ export default function CommandCenter({ data }: CommandCenterProps) {
                           >
                             <SelectValue />
                           </SelectTrigger>
-                          <SelectContent className="z-[1000]">
+                          <SelectContent style={{ zIndex: 1000 }}>
                             <SelectItem value="all">All sites</SelectItem>
                             <SelectItem value="Yes">Hotspots</SelectItem>
                             <SelectItem value="No">Not hotspots</SelectItem>

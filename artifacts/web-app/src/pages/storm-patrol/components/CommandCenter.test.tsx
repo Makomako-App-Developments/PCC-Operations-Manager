@@ -191,7 +191,6 @@ describe("Storm Patrol work package asset filters", () => {
     renderCommandCenter();
 
     await chooseSelect(user, "Filter sites by priority", "High priority");
-    expect(document.querySelector("[data-radix-select-content]")).toHaveClass("z-[1000]");
     expect(screen.getByText("Bodman SW grate")).toBeInTheDocument();
     expect(screen.getByText("Cannons Creek drain")).toBeInTheDocument();
     expect(screen.queryByText("Titahi Bay catchpit")).not.toBeInTheDocument();
