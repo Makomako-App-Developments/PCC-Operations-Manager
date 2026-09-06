@@ -2,7 +2,7 @@ import { useState } from "react";
 import {
   AlertTriangle, CalendarDays, Check, CheckSquare, ChevronDown, CloudLightning,
   Download, FileText, Grid2X2, HelpCircle, Layers, List, LogOut, Map,
-  MapPin, Navigation, Plus, Search, Settings, Sprout, UsersRound, X,
+  MapPin, Navigation, Plus, Search, Settings, Sprout, UsersRound,
 } from "lucide-react";
 import "./_group.css";
 
@@ -56,11 +56,11 @@ export function Current() {
             <div className="sp-storm-icon"><CloudLightning size={24} /></div>
             <div>
               <div className="sp-event-title">Cyclone Timbo <span>ACTIVE</span></div>
-              <div className="sp-event-meta">Activated: 13:12, 4 Sep <i>•</i> Rate: $100.00/hr <i>•</i> ID: 92d83cbe</div>
+              <div className="sp-event-meta">Activated: 13:12, 4 Sep <i>•</i> Rate: $100.00/hr</div>
             </div>
           </div>
           <div className="sp-header-actions">
-            <button><Download size={15} /> CSV</button><button>PDF</button><button className="close"><X size={15} /> Close Event</button>
+            <button><Download size={15} /> CSV</button><button>PDF</button><button className="close">Close Event</button>
           </div>
         </header>
 

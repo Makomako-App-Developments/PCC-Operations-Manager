@@ -2,7 +2,7 @@ import { useState } from "react";
 import {
   AlertTriangle, CalendarDays, CheckSquare, ChevronDown, CloudLightning,
   Download, FileText, Grid2X2, HelpCircle, Layers, List, LogOut, Map,
-  Navigation, Plus, Search, Settings, Sprout, UsersRound, X,
+  Navigation, Plus, Search, Settings, Sprout, UsersRound,
 } from "lucide-react";
 
 const nav = [
@@ -48,8 +48,8 @@ export function LightOperations() {
 
       <section className="flex min-w-0 flex-1 flex-col">
         <header className="flex min-h-[84px] items-center justify-between border-b border-[#c8d8db] bg-[#f8fbfb] px-5 py-4 shadow-[0_1px_5px_rgba(22,51,61,.06)]">
-          <div className="flex items-center gap-[13px]"><div className="grid h-10 w-10 place-items-center rounded-[9px] border border-red-200 bg-red-50 text-red-600"><CloudLightning size={24}/></div><div><div className="text-[17px] font-extrabold tracking-[-.25px]">Cyclone Timbo <span className="ml-2 align-[2px] rounded-[3px] bg-[#dc3d45] px-1.5 py-[3px] text-[9px] font-extrabold tracking-[.5px] text-white">ACTIVE</span></div><div className="mt-1 text-[10px] text-[#6f858b]">Activated: 13:12, 4 Sep <i className="mx-[11px] not-italic">•</i> Rate: $100.00/hr <i className="mx-[11px] not-italic">•</i> ID: 92d83cbe</div></div></div>
-          <div className="flex gap-2"><button onClick={() => exportData("CSV")} className="flex items-center gap-1.5 rounded border border-[#c8d8db] bg-white px-[13px] py-2 text-xs font-semibold text-[#31545d]"><Download size={15}/>CSV</button><button onClick={() => exportData("PDF")} className="rounded border border-[#c8d8db] bg-white px-[13px] py-2 text-xs font-semibold text-[#31545d]">PDF</button><button onClick={() => window.confirm("Close Cyclone Timbo event?") && window.alert("Event closed")} className="flex items-center gap-1.5 rounded border border-red-200 bg-red-50 px-[13px] py-2 text-xs font-semibold text-red-600"><X size={15}/>Close Event</button></div>
+          <div className="flex items-center gap-[13px]"><div className="grid h-10 w-10 place-items-center rounded-[9px] border border-red-200 bg-red-50 text-red-600"><CloudLightning size={24}/></div><div><div className="text-[17px] font-extrabold tracking-[-.25px]">Cyclone Timbo <span className="ml-2 align-[2px] rounded-[3px] bg-[#dc3d45] px-1.5 py-[3px] text-[9px] font-extrabold tracking-[.5px] text-white">ACTIVE</span></div><div className="mt-1 text-[10px] text-[#6f858b]">Activated: 13:12, 4 Sep <i className="mx-[11px] not-italic">•</i> Rate: $100.00/hr</div></div></div>
+          <div className="flex gap-2"><button onClick={() => exportData("CSV")} className="flex items-center gap-1.5 rounded border border-[#c8d8db] bg-white px-[13px] py-2 text-xs font-semibold text-[#31545d]"><Download size={15}/>CSV</button><button onClick={() => exportData("PDF")} className="rounded border border-[#c8d8db] bg-white px-[13px] py-2 text-xs font-semibold text-[#31545d]">PDF</button><button onClick={() => window.confirm("Close Cyclone Timbo event?") && window.alert("Event closed")} className="flex items-center gap-1.5 rounded border border-red-200 bg-red-50 px-[13px] py-2 text-xs font-semibold text-red-600">Close Event</button></div>
         </header>
 
         <main className="grid min-w-0 flex-1 grid-cols-[188px_minmax(0,1fr)] gap-[18px] overflow-auto bg-[#e8f0f1] px-[18px] pb-7 pt-2">

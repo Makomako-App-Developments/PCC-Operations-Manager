@@ -17,7 +17,7 @@ import {
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { 
-  CloudLightning, Loader2, X, Plus, Users, MapPin, Search, Check, 
+  CloudLightning, Loader2, Plus, Users, MapPin, Search, Check,
   AlertTriangle, Eye, ArrowRight, Save, Download, Navigation
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -221,8 +221,6 @@ export default function CommandCenter({ data }: CommandCenterProps) {
               <span>Activated: {event.activatedAt ? format(new Date(event.activatedAt), "HH:mm, d MMM") : "Unknown"}</span>
               <span>•</span>
               <span>Rate: ${(event.hourlyRateCents / 100).toFixed(2)}/hr</span>
-              <span>•</span>
-              <span>ID: {event.id.split("-")[0]}</span>
             </div>
           </div>
         </div>
@@ -258,7 +256,7 @@ export default function CommandCenter({ data }: CommandCenterProps) {
             disabled={closeEvent.isPending}
             data-testid="btn-close-event"
           >
-            {closeEvent.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <X className="w-4 h-4 mr-2" />}
+            {closeEvent.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
             Close Event
           </Button>
         </div>
