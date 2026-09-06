@@ -423,7 +423,7 @@ export default function CommandCenter({ data }: CommandCenterProps) {
               )}
 
               {/* Broadcast Alert */}
-              <div className="bg-orange-500/10 border border-orange-500/20 rounded-2xl p-5">
+              <div className="bg-[#0d2c36] border border-orange-500/30 rounded-2xl p-5">
                 <div className="flex items-center gap-2 mb-3">
                   <AlertTriangle className="w-5 h-5 text-orange-500" />
                   <h3 className="text-sm font-semibold text-orange-500 uppercase tracking-wider">Broadcast Alert</h3>
