@@ -50,6 +50,8 @@ process.env["JWT_SECRET"] = "test-secret";
 const mockReq = (authHeader?: string) =>
   ({
     headers: authHeader ? { authorization: authHeader } : {},
+    method: "GET",
+    path: "/protected",
     auth: undefined,
   }) as unknown as Request;
 
@@ -92,11 +94,24 @@ describe("requireAuth middleware", () => {
     const req = mockReq("Bearer bad-token");
     const res = mockRes();
     const n   = vi.fn() as NextFunction;
+    const warning = vi.spyOn(console, "warn").mockImplementation(() => undefined);
 
     await requireAuth(req, res, n);
 
     expect(n).not.toHaveBeenCalled();
     expect(res.status).toHaveBeenCalledWith(401);
+    expect(warning).toHaveBeenCalledWith(
+      "[auth-failure]",
+      JSON.stringify({
+        event: "authentication_failure",
+        surface: "access",
+        reason: "jwt_verification_failed",
+        method: "GET",
+        path: "/protected",
+      }),
+    );
+    expect(warning.mock.calls[0]?.join(" ")).not.toContain("bad-token");
+    warning.mockRestore();
   });
 
   it("returns 401 for an access token issued before session versions existed", async () => {
@@ -137,6 +152,7 @@ describe("requireAuth middleware", () => {
     const req = mockReq(`Bearer ${token}`);
     const res = mockRes();
     const n = vi.fn() as NextFunction;
+    const warning = vi.spyOn(console, "warn").mockImplementation(() => undefined);
     selectMock.mockClear();
 
     await requireAuth(req, res, n);
@@ -144,6 +160,12 @@ describe("requireAuth middleware", () => {
     expect(n).not.toHaveBeenCalled();
     expect(res.status).toHaveBeenCalledWith(401);
     expect(selectMock).not.toHaveBeenCalled();
+    expect(warning).toHaveBeenCalledWith(
+      "[auth-failure]",
+      expect.stringContaining('"reason":"invalid_identity_claims"'),
+    );
+    expect(warning.mock.calls[0]?.join(" ")).not.toContain("user-1");
+    warning.mockRestore();
   });
 
   it("returns 401 when a refresh token is presented instead of an access token", async () => {

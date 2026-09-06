@@ -11,6 +11,7 @@ import {
   hasValidSessionVersion,
   signTokens,
   requireAuth,
+  recordAuthFailure,
 } from "../middlewares/auth";
 import { validateBody } from "../middlewares/validate";
 
@@ -116,6 +117,7 @@ router.post("/auth/login", validateBody(loginSchema), async (req, res) => {
 router.post("/auth/refresh", async (req, res) => {
   const token = req.cookies?.["refresh_token"];
   if (!token) {
+    recordAuthFailure(req, "refresh", "missing_token");
     res.status(401).json({ error: "No refresh token" });
     return;
   }
@@ -124,33 +126,46 @@ router.post("/auth/refresh", async (req, res) => {
     const jwt = await import("jsonwebtoken");
     const JWT_SECRET = process.env.JWT_SECRET ?? "dev-secret-change-in-production";
     payload = jwt.default.verify(token, JWT_SECRET);
-  } catch {
+  } catch (error) {
+    recordAuthFailure(
+      req,
+      "refresh",
+      error instanceof Error && error.name === "TokenExpiredError"
+        ? "token_expired"
+        : "jwt_verification_failed",
+    );
     res.status(401).json({ error: "Invalid or expired refresh token" });
     return;
   }
   if (!hasValidIdentityClaims(payload)) {
+    recordAuthFailure(req, "refresh", "invalid_identity_claims");
     res.status(401).json({ error: "Invalid or expired refresh token" });
     return;
   }
   if (payload.tokenType !== "refresh") {
+    recordAuthFailure(req, "refresh", "invalid_token_type");
     res.status(401).json({ error: "Invalid token type" });
     return;
   }
   if (!hasValidSessionVersion(payload)) {
+    recordAuthFailure(req, "refresh", "invalid_session_version");
     res.status(401).json({ error: "Invalid or expired refresh token" });
     return;
   }
   if (hasConsumedRefreshToken(token)) {
+    recordAuthFailure(req, "refresh", "refresh_token_replayed");
     res.status(401).json({ error: "Invalid or expired refresh token" });
     return;
   }
   // Check user still active
   const [user] = await executeWithCircuitBreaker(() => db.select().from(usersTable).where(eq(usersTable.id, payload.userId)).limit(1));
   if (!user || !user.isActive) {
+    recordAuthFailure(req, "refresh", "refresh_account_disabled_or_missing");
     res.status(403).json({ error: "Account disabled" });
     return;
   }
   if (user.sessionVersion !== payload.sessionVersion) {
+    recordAuthFailure(req, "refresh", "session_revoked_or_unknown_user");
     res.status(401).json({ error: "Invalid or expired refresh token" });
     return;
   }
@@ -163,6 +178,7 @@ router.post("/auth/refresh", async (req, res) => {
   // Consume only after every validation succeeds. The operation itself is
   // atomic, preventing concurrent requests from exchanging the same token.
   if (!consumeRefreshToken(token)) {
+    recordAuthFailure(req, "refresh", "refresh_token_replayed");
     res.status(401).json({ error: "Invalid or expired refresh token" });
     return;
   }

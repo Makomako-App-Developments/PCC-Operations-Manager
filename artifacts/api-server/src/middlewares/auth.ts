@@ -78,6 +78,55 @@ export function hasValidSessionVersion(payload: Partial<AuthPayload>): payload i
   return Number.isInteger(payload.sessionVersion) && payload.sessionVersion >= 0;
 }
 
+export type AuthFailureSurface = "access" | "refresh";
+export type AuthFailureReason =
+  | "missing_token"
+  | "token_expired"
+  | "jwt_verification_failed"
+  | "invalid_identity_claims"
+  | "invalid_token_type"
+  | "invalid_session_version"
+  | "session_revoked_or_unknown_user"
+  | "refresh_token_replayed"
+  | "refresh_account_disabled_or_missing";
+
+/**
+ * Emits only a reason category and non-sensitive request context. In
+ * particular, never include the bearer token, decoded claims, or verifier
+ * error message in authentication telemetry.
+ */
+export function recordAuthFailure(
+  req: Request,
+  surface: AuthFailureSurface,
+  reason: AuthFailureReason,
+): void {
+  const requestPath =
+    (typeof req.path === "string" && req.path) ||
+    (typeof req.originalUrl === "string" && req.originalUrl.split("?")[0]) ||
+    "unknown";
+  const event = {
+    event: "authentication_failure",
+    surface,
+    reason,
+    method: req.method || "UNKNOWN",
+    path: requestPath,
+  };
+
+  console.warn("[auth-failure]", JSON.stringify(event));
+}
+
+function getVerificationFailureReason(error: unknown): "token_expired" | "jwt_verification_failed" {
+  if (
+    typeof error === "object" &&
+    error !== null &&
+    "name" in error &&
+    error.name === "TokenExpiredError"
+  ) {
+    return "token_expired";
+  }
+  return "jwt_verification_failed";
+}
+
 declare global {
   namespace Express {
     interface Request {
@@ -92,6 +141,7 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
     req.headers.authorization?.replace("Bearer ", "");
 
   if (!token) {
+    recordAuthFailure(req, "access", "missing_token");
     res.status(401).json({ error: "Unauthorised" });
     return;
   }
@@ -99,19 +149,23 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
   let payload: unknown;
   try {
     payload = jwt.verify(token, JWT_SECRET);
-  } catch {
+  } catch (error) {
+    recordAuthFailure(req, "access", getVerificationFailureReason(error));
     res.status(401).json({ error: "Invalid or expired token" });
     return;
   }
   if (!hasValidIdentityClaims(payload)) {
+    recordAuthFailure(req, "access", "invalid_identity_claims");
     res.status(401).json({ error: "Invalid or expired token" });
     return;
   }
   if (payload.tokenType !== "access") {
+    recordAuthFailure(req, "access", "invalid_token_type");
     res.status(401).json({ error: "Invalid token type" });
     return;
   }
   if (!hasValidSessionVersion(payload)) {
+    recordAuthFailure(req, "access", "invalid_session_version");
     res.status(401).json({ error: "Invalid or expired token" });
     return;
   }
@@ -125,6 +179,7 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
         .limit(1),
     );
     if (!user || user.sessionVersion !== payload.sessionVersion) {
+      recordAuthFailure(req, "access", "session_revoked_or_unknown_user");
       res.status(401).json({ error: "Invalid or expired token" });
       return;
     }
