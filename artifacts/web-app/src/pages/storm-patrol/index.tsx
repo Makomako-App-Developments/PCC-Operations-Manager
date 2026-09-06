@@ -76,7 +76,7 @@ export default function StormPatrol() {
   }
 
   return (
-    <div className="flex-1 flex flex-col min-h-0 bg-[#0f2a36] text-white">
+    <div className="flex-1 flex flex-col min-h-0 bg-gradient-to-br from-[#0c6670] via-[#0e5360] to-[#124b59] text-white">
       <div className="flex-1 overflow-y-auto px-8 py-10">
         
         <div className="max-w-4xl mx-auto space-y-12">

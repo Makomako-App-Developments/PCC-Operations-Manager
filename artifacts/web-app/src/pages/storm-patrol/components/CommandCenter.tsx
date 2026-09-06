@@ -209,7 +209,46 @@ export default function CommandCenter({ data }: CommandCenterProps) {
   };
 
   return (
-    <div className="flex-1 flex flex-col h-full bg-[#0f2a36] text-white overflow-hidden">
+    <div className="storm-patrol-teal flex-1 flex flex-col h-full text-white overflow-hidden">
+      <style>{`
+        .storm-patrol-teal {
+          background: linear-gradient(135deg, #0c6670 0%, #0e5360 55%, #124b59 100%);
+        }
+        .storm-patrol-teal > header {
+          background: #092f3b !important;
+          border-color: rgba(111, 224, 226, 0.22) !important;
+          box-shadow: 0 8px 22px rgba(3, 31, 39, 0.13);
+        }
+        .storm-patrol-teal [class*="bg-white/5"] {
+          background: rgba(13, 44, 54, 0.84) !important;
+          border-color: rgba(111, 224, 226, 0.22) !important;
+          box-shadow: 0 8px 22px rgba(2, 28, 34, 0.16), inset 0 1px 0 rgba(170, 255, 250, 0.05);
+        }
+        .storm-patrol-teal [class*="bg-black/20"] {
+          background: rgba(9, 48, 58, 0.62) !important;
+        }
+        .storm-patrol-teal [class*="border-white/10"] {
+          border-color: rgba(111, 224, 226, 0.22) !important;
+        }
+        .storm-patrol-teal [class*="bg-white/5"] [class*="bg-white/5"] {
+          background: rgba(23, 69, 80, 0.72) !important;
+        }
+        .storm-patrol-teal [class*="text-white/60"] {
+          color: #9bc2c5 !important;
+        }
+        .storm-patrol-teal [class*="text-white/40"] {
+          color: #79a5aa !important;
+        }
+        .storm-patrol-teal [class*="text-[#00AECD]"] {
+          color: #31d8df !important;
+        }
+        .storm-patrol-teal [class*="bg-[#00AECD]"] {
+          background: #16aeb8 !important;
+        }
+        .storm-patrol-teal [class*="hover\\:bg-[#00AECD]"]:hover {
+          background: #23c7ce !important;
+        }
+      `}</style>
       {/* Header */}
       <header className="px-6 py-5 border-b border-white/10 flex-shrink-0 flex items-center justify-between bg-black/20">
         <div className="flex items-center gap-4">
