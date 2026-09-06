@@ -544,7 +544,7 @@ export default function CommandCenter({ data }: CommandCenterProps) {
                           >
                             <SelectValue />
                           </SelectTrigger>
-                          <SelectContent>
+                          <SelectContent className="z-[1000]">
                             <SelectItem value="all">All priorities</SelectItem>
                             <SelectItem value="High">High priority</SelectItem>
                             <SelectItem value="Medium">Medium priority</SelectItem>
@@ -558,7 +558,7 @@ export default function CommandCenter({ data }: CommandCenterProps) {
                           >
                             <SelectValue />
                           </SelectTrigger>
-                          <SelectContent>
+                          <SelectContent className="z-[1000]">
                             <SelectItem value="all">All sites</SelectItem>
                             <SelectItem value="Yes">Hotspots</SelectItem>
                             <SelectItem value="No">Not hotspots</SelectItem>
@@ -683,11 +683,11 @@ export default function CommandCenter({ data }: CommandCenterProps) {
                             <CircleMarker
                               key={asset.id}
                               center={[asset.lat, asset.lng]}
-                              radius={isSelected ? 6 : 4}
+                               radius={isSelected ? 8 : 5}
                               color={color}
                               fillColor={fillColor}
                                fillOpacity={isSelected ? 1 : 0}
-                              weight={2}
+                               weight={isSelected ? 3 : 2}
                               eventHandlers={{
                                 click: () => toggleAsset(asset.id)
                               }}

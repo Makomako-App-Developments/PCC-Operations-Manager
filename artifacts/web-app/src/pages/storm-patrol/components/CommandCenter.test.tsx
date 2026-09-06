@@ -86,7 +86,16 @@ vi.mock("@/hooks/use-toast", () => ({
 vi.mock("react-leaflet", () => ({
   MapContainer: ({ children }: { children: React.ReactNode }) => <div data-testid="storm-map">{children}</div>,
   TileLayer: () => null,
-  CircleMarker: () => null,
+  CircleMarker: (props: any) => (
+    <div
+      data-testid="storm-marker"
+      data-color={props.color}
+      data-fill-color={props.fillColor}
+      data-fill-opacity={props.fillOpacity}
+      data-radius={props.radius}
+      data-weight={props.weight}
+    />
+  ),
   Popup: ({ children }: { children: React.ReactNode }) => <>{children}</>,
   useMap: () => ({ fitBounds: vi.fn() }),
 }));
@@ -159,11 +168,30 @@ describe("Storm Patrol work package asset filters", () => {
     ).toEqual(["asset-high-standard"]);
   });
 
+  it("shows selected sites as larger filled blue markers", async () => {
+    const user = userEvent.setup();
+    renderCommandCenter();
+
+    const markers = screen.getAllByTestId("storm-marker");
+    expect(markers[0]).toHaveAttribute("data-color", "#ef4444");
+    expect(markers[0]).toHaveAttribute("data-fill-opacity", "0");
+    expect(markers[1]).toHaveAttribute("data-color", "#111827");
+    expect(markers[1]).toHaveAttribute("data-fill-opacity", "0");
+
+    await user.click(screen.getByRole("checkbox", { name: "Select Bodman SW grate" }));
+
+    expect(screen.getAllByTestId("storm-marker")[0]).toHaveAttribute("data-color", "#2563eb");
+    expect(screen.getAllByTestId("storm-marker")[0]).toHaveAttribute("data-fill-color", "#2563eb");
+    expect(screen.getAllByTestId("storm-marker")[0]).toHaveAttribute("data-fill-opacity", "1");
+    expect(screen.getAllByTestId("storm-marker")[0]).toHaveAttribute("data-radius", "8");
+  });
+
   it("filters the list by priority and hotspot and resets an empty result", async () => {
     const user = userEvent.setup();
     renderCommandCenter();
 
     await chooseSelect(user, "Filter sites by priority", "High priority");
+    expect(document.querySelector("[data-radix-select-content]")).toHaveClass("z-[1000]");
     expect(screen.getByText("Bodman SW grate")).toBeInTheDocument();
     expect(screen.getByText("Cannons Creek drain")).toBeInTheDocument();
     expect(screen.queryByText("Titahi Bay catchpit")).not.toBeInTheDocument();
