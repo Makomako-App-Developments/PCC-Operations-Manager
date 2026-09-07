@@ -12,6 +12,7 @@ import { FREQ_DAYS, calcCrewAdjustment, loadSystemSettings, buildAbsenceDataForT
 import { checkDayCapacity } from "../lib/day-capacity";
 import { auditLog } from "../lib/audit";
 import { assetSpecification } from "@workspace/asset-definitions";
+import { TESTING_BACKLOG_SKIP_REASON } from "../lib/testing-backlog-cleanup";
 
 const router = Router();
 
@@ -37,8 +38,13 @@ function addDays(dateStr: string, days: number): string {
 export function getCycleReservationDates(job: {
   scheduledDate: string;
   draftOriginalScheduledDate: string | null;
+  originalScheduledDate?: string | null;
 }): string[] {
-  return [...new Set([job.scheduledDate, job.draftOriginalScheduledDate].filter((date): date is string => Boolean(date)))];
+  return [...new Set([
+    job.scheduledDate,
+    job.originalScheduledDate,
+    job.draftOriginalScheduledDate,
+  ].filter((date): date is string => Boolean(date)))];
 }
 
 function isWeekend(dateStr: string): boolean {
@@ -449,6 +455,7 @@ router.post(
         assetId:       jobsTable.assetId,
         scheduledDate: sql<string>`to_char(${jobsTable.scheduledDate}, 'YYYY-MM-DD')`,
         draftOriginalScheduledDate: sql<string | null>`to_char(${jobsTable.draftOriginalScheduledDate}, 'YYYY-MM-DD')`,
+        originalScheduledDate: sql<string | null>`to_char(${jobsTable.originalScheduledDate}, 'YYYY-MM-DD')`,
         status:        jobsTable.status,
         id:            jobsTable.id,
         estimatedTimeMins: jobsTable.estimatedTimeMins,
@@ -473,7 +480,13 @@ router.post(
               ...(teamId ? [eq(jobsTable.draftOriginalTeamId, teamId)] : []),
             ),
           ),
-          notInArray(jobsTable.status, ["completed", "skipped"]),
+          or(
+            notInArray(jobsTable.status, ["completed", "skipped"]),
+            and(
+              eq(jobsTable.status, "skipped"),
+              eq(jobsTable.skipReason, TESTING_BACKLOG_SKIP_REASON),
+            ),
+          ),
         ),
       ));
 
