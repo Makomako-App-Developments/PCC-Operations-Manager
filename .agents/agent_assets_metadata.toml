@@ -33,3 +33,17 @@ mtime_ms = 1788809963656
 storage_uri = "gcs://replit-rams-assets-kirk/rams/assets/repl:90075642-bb34-43f7-b389-66fabfda42e9/d07e35bf-77f0-4eb3-a722-c83098029f9c/0c1dcb30-4923-4f8f-a0ac-a0db90662ff9"
 storage_version_token = "1788810148386139"
 content_type = "image/jpeg"
+
+[[outputs]]
+id = "7IVmgVrMxZo8URPb7PKqV"
+uri = "file://exports/pcc-gardens-scheduling-system-map.pdf"
+type = "pdf"
+title = "DOWNLOAD — PCC Scheduling System Map PDF"
+description = "One-page PDF export of the complete PCC Gardens scheduling system infographic. No email required."
+logical_id = "214ea769-8a52-4a08-bd56-554c6ddc4b0c"
+content_hash = "sha256:41746800681618aef851ae3d6a37ab82cb57124e80acc9a12945d72f9bd229f9"
+size = 444516
+mtime_ms = 1788810217109
+storage_uri = "gcs://replit-rams-assets-kirk/rams/assets/repl:90075642-bb34-43f7-b389-66fabfda42e9/214ea769-8a52-4a08-bd56-554c6ddc4b0c/151c5c61-723a-4017-a09f-191497fcd142"
+storage_version_token = "1788810223768775"
+content_type = "application/pdf"
