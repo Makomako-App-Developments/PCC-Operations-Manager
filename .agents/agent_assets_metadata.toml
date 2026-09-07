@@ -61,3 +61,31 @@ mtime_ms = 1788810523484
 storage_uri = "gcs://replit-rams-assets-kirk/rams/assets/repl:90075642-bb34-43f7-b389-66fabfda42e9/b8738085-cc5d-49c8-803e-0ea3614745a0/4392fdbc-61e3-45fc-9309-8412f0458ea2"
 storage_version_token = "1788810548127160"
 content_type = "application/pdf"
+
+[[outputs]]
+id = "NT0rp9S0z0OdLPAbp5pWT"
+uri = "file://exports/pcc-gardens-unscheduled-work-system-map.pdf"
+type = "pdf"
+title = "PCC Gardens Unscheduled Work System Map PDF"
+description = "Single-page sharp PDF explaining reactive, urgent, infill and mulching work and how each can affect scheduled maintenance."
+logical_id = "d6b07bde-c2e0-4c45-b4cf-acbcc9e0ba8a"
+content_hash = "sha256:558df2a53dbad797092bf4445b18b1935b82edb21b5ca829321326b2241ad941"
+size = 516136
+mtime_ms = 1788822167759
+storage_uri = "gcs://replit-rams-assets-kirk/rams/assets/repl:90075642-bb34-43f7-b389-66fabfda42e9/d6b07bde-c2e0-4c45-b4cf-acbcc9e0ba8a/b2863bc5-c6df-4ac2-a5c9-bafddf8d75b3"
+storage_version_token = "1788822176588441"
+content_type = "application/pdf"
+
+[[outputs]]
+id = "041ik25I0NJk0RvDQ38fe"
+uri = "file://exports/pcc-gardens-unscheduled-work-system-map.jpg"
+type = "image"
+title = "PCC Gardens Unscheduled Work System Map JPG"
+description = "High-resolution JPG export of the unscheduled-work infographic."
+logical_id = "1ffcc034-ca54-48f2-b876-034159957940"
+content_hash = "sha256:b9e3fa8469e150f7abf4860c8325fb072b4063aa42bf548334712f6ba52e08d4"
+size = 333868
+mtime_ms = 1788822156743
+storage_uri = "gcs://replit-rams-assets-kirk/rams/assets/repl:90075642-bb34-43f7-b389-66fabfda42e9/1ffcc034-ca54-48f2-b876-034159957940/cdfa3c50-9968-4008-b7a6-be0a7d4da09f"
+storage_version_token = "1788822177541937"
+content_type = "image/jpeg"
