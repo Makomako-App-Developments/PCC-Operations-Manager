@@ -490,6 +490,37 @@ paths:
         "401":
           $ref: "#/components/responses/Unauthorised"
 
+  /schedule/overdue:
+    get:
+      operationId: getOverdueScheduleJobs
+      tags: [schedule]
+      summary: Get unresolved scheduled maintenance jobs from before a given date
+      parameters:
+        - name: before
+          in: query
+          required: true
+          schema: { type: string, format: date }
+          description: Return eligible jobs scheduled before this ISO date
+        - name: teamId
+          in: query
+          schema: { type: string, format: uuid }
+          description: Team to retrieve; field users are always restricted to their own team
+      responses:
+        "200":
+          description: Team-scoped unresolved scheduled maintenance jobs in geosequence order
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OverdueScheduleJobsResponse"
+        "400":
+          description: A manager or administrator did not provide a team
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorised"
+
   # ─── Programmes ─────────────────────────────────────────────────────────────
   /infill-orders:
     get:
@@ -2484,6 +2515,14 @@ components:
         totalJobs: { type: integer }
         completedJobs: { type: integer }
       required: [weekStart, weekEnd, days, totalJobs, completedJobs]
+
+    OverdueScheduleJobsResponse:
+      type: object
+      properties:
+        jobs:
+          type: array
+          items: { $ref: "#/components/schemas/JobWithAsset" }
+      required: [jobs]
 
     # ─── Programmes ──────────────────────────────────────────────────────────
     InfillStatus:

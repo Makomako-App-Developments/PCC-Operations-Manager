@@ -35,6 +35,7 @@ import type {
   DegradedHealthResponse,
   ErrorResponse,
   ForbiddenResponse,
+  GetOverdueScheduleJobsParams,
   GetScheduleWeekParams,
   HealthDetailResponse,
   HealthStatus,
@@ -66,6 +67,7 @@ import type {
   MulchingRecordUpdate,
   NotFoundResponse,
   OkResponse,
+  OverdueScheduleJobsResponse,
   PreviewMulchDepthImportBody,
   ReactiveJob,
   ReactiveJobCreate,
@@ -2017,6 +2019,111 @@ export function useGetScheduleWeek<
   },
 ): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
   const queryOptions = getGetScheduleWeekQueryOptions(params, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Get unresolved scheduled maintenance jobs from before a given date
+ */
+export const getGetOverdueScheduleJobsUrl = (
+  params: GetOverdueScheduleJobsParams,
+) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/schedule/overdue?${stringifiedParams}`
+    : `/api/schedule/overdue`;
+};
+
+export const getOverdueScheduleJobs = async (
+  params: GetOverdueScheduleJobsParams,
+  options?: RequestInit,
+): Promise<OverdueScheduleJobsResponse> => {
+  return customFetch<OverdueScheduleJobsResponse>(
+    getGetOverdueScheduleJobsUrl(params),
+    {
+      ...options,
+      method: "GET",
+    },
+  );
+};
+
+export const getGetOverdueScheduleJobsQueryKey = (
+  params?: GetOverdueScheduleJobsParams,
+) => {
+  return [`/api/schedule/overdue`, ...(params ? [params] : [])] as const;
+};
+
+export const getGetOverdueScheduleJobsQueryOptions = <
+  TData = Awaited<ReturnType<typeof getOverdueScheduleJobs>>,
+  TError = ErrorType<ErrorResponse | UnauthorisedResponse>,
+>(
+  params: GetOverdueScheduleJobsParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getOverdueScheduleJobs>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getGetOverdueScheduleJobsQueryKey(params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getOverdueScheduleJobs>>
+  > = ({ signal }) =>
+    getOverdueScheduleJobs(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getOverdueScheduleJobs>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetOverdueScheduleJobsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getOverdueScheduleJobs>>
+>;
+export type GetOverdueScheduleJobsQueryError = ErrorType<
+  ErrorResponse | UnauthorisedResponse
+>;
+
+/**
+ * @summary Get unresolved scheduled maintenance jobs from before a given date
+ */
+
+export function useGetOverdueScheduleJobs<
+  TData = Awaited<ReturnType<typeof getOverdueScheduleJobs>>,
+  TError = ErrorType<ErrorResponse | UnauthorisedResponse>,
+>(
+  params: GetOverdueScheduleJobsParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getOverdueScheduleJobs>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetOverdueScheduleJobsQueryOptions(params, options);
 
   const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
     queryKey: QueryKey;

@@ -717,6 +717,112 @@ const weekQuerySchema = z.object({
   teamId: z.string().uuid().optional(),
 });
 
+const overdueQuerySchema = z.object({
+  before: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  teamId: z.string().uuid().optional(),
+});
+
+export function isOverdueScheduleJobEligible(job: {
+  scheduledDate: string;
+  teamId: string | null;
+  jobType: string;
+  status: string;
+}, before: string, teamId: string): boolean {
+  return (
+    job.scheduledDate < before &&
+    job.teamId === teamId &&
+    job.jobType === "scheduled" &&
+    ["pending", "in_progress", "paused", "overdue"].includes(job.status)
+  );
+}
+
+router.get(
+  "/schedule/overdue",
+  requireAuth,
+  validateQuery(overdueQuerySchema),
+  async (req, res): Promise<void> => {
+    const { before } = res.locals.query as z.infer<typeof overdueQuerySchema>;
+    let { teamId } = res.locals.query as z.infer<typeof overdueQuerySchema>;
+
+    if (!["administrator", "manager"].includes(req.auth!.role)) {
+      teamId = req.auth!.teamId ?? undefined;
+    }
+
+    if (!teamId) {
+      if (["administrator", "manager"].includes(req.auth!.role)) {
+        res.status(400).json({ error: "teamId is required" });
+      } else {
+        res.json({ jobs: [] });
+      }
+      return;
+    }
+
+    const rows = await executeWithCircuitBreaker(() => db
+      .select({
+        id:                jobsTable.id,
+        assetId:           jobsTable.assetId,
+        jobType:           jobsTable.jobType,
+        status:            jobsTable.status,
+        teamId:            jobsTable.teamId,
+        isAllTeams:        jobsTable.isAllTeams,
+        assignedUserId:    jobsTable.assignedUserId,
+        scheduledDate:     sql<string>`to_char(${jobsTable.scheduledDate}, 'YYYY-MM-DD')`,
+        startedAt:         jobsTable.startedAt,
+        completedAt:       jobsTable.completedAt,
+        actualTimeMins:    jobsTable.actualTimeMins,
+        estimatedTimeMins: jobsTable.estimatedTimeMins,
+        crewStatus:        jobsTable.crewStatus,
+        notes:             jobsTable.notes,
+        createdAt:         jobsTable.createdAt,
+        updatedAt:         jobsTable.updatedAt,
+        assetName:         assetsTable.name,
+        assetDesc:         assetsTable.description,
+        department:        assetsTable.department,
+        departmentDetails: assetsTable.departmentDetails,
+        gardenType:        assetsTable.gardenType,
+        suburb:            assetsTable.suburb,
+        streetAddress:     assetsTable.streetAddress,
+        lat:               assetsTable.lat,
+        lng:               assetsTable.lng,
+        serviceTimeMins:   assetsTable.serviceTimeMins,
+        routeOrder:        assetsTable.routeOrder,
+        frequency:         assetsTable.frequency,
+      })
+      .from(jobsTable)
+      .innerJoin(assetsTable, eq(jobsTable.assetId, assetsTable.id))
+      .where(and(
+        lt(jobsTable.scheduledDate, before),
+        eq(jobsTable.teamId, teamId),
+        eq(jobsTable.jobType, "scheduled"),
+        inArray(jobsTable.status, ["pending", "in_progress", "paused", "overdue"]),
+      ))
+      .orderBy(
+        sql`${assetsTable.routeOrder} NULLS LAST`,
+        jobsTable.scheduledDate,
+        assetsTable.name,
+      ));
+
+    const assignedUserIds = [...new Set(rows.flatMap(row => row.assignedUserId ? [row.assignedUserId] : []))];
+    const assignedUsers = assignedUserIds.length
+      ? await executeWithCircuitBreaker(() => db
+        .select({ id: usersTable.id, name: usersTable.name })
+        .from(usersTable)
+        .where(inArray(usersTable.id, assignedUserIds)))
+      : [];
+    const assignedUserNames = new Map(assignedUsers.map(user => [user.id, user.name]));
+
+    res.json({
+      jobs: rows
+        .filter(row => isOverdueScheduleJobEligible(row, before, teamId))
+        .map(row => ({
+        ...row,
+        assignedUserName: row.assignedUserId ? assignedUserNames.get(row.assignedUserId) ?? null : null,
+        teamCompletions: [],
+        })),
+    });
+  },
+);
+
 router.get(
   "/schedule/week",
   requireAuth,

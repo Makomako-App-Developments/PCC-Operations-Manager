@@ -70,6 +70,18 @@ describe("computeOverdueJobs", () => {
     expect(result[0].id).toBe("j2");
   });
 
+  it.each(["paused", "overdue"] as const)("includes %s jobs from past dates", (status) => {
+    const result = computeOverdueJobs([job(`job-${status}`, YESTERDAY, status)], TODAY);
+    expect(result.map(({ id }) => id)).toEqual([`job-${status}`]);
+  });
+
+  it("orders multiple prior dates by geosequence before date", () => {
+    const laterRoute = { ...job("route-20", TWO_DAYS_AGO, "pending"), routeOrder: 20 };
+    const earlierRoute = { ...job("route-10", YESTERDAY, "pending"), routeOrder: 10 };
+    expect(computeOverdueJobs([laterRoute, earlierRoute], TODAY).map(({ id }) => id))
+      .toEqual(["route-10", "route-20"]);
+  });
+
   it("excludes completed jobs from past dates", () => {
     const dayMap = new Map([
       [YESTERDAY, [job("j3", YESTERDAY, "completed")]],
@@ -159,6 +171,27 @@ describe("computeTodayJobs", () => {
 
   it("returns empty array when dayMap is empty", () => {
     expect(computeTodayJobs(new Map(), TODAY)).toHaveLength(0);
+  });
+
+  it("deduplicates a job returned by both the overdue endpoint and a week bucket", () => {
+    const carried = { ...job("same", YESTERDAY, "pending"), routeOrder: 4 };
+    const result = computeTodayJobs(
+      new Map([[YESTERDAY, [carried]], [TODAY, [job("today", TODAY, "pending")]]]),
+      TODAY,
+      [carried],
+    );
+    expect(result.map(({ id }) => id)).toEqual(["same", "today"]);
+  });
+
+  it("carries Friday work into Monday ahead of Monday's route", () => {
+    const monday = "2026-09-07";
+    const friday = "2026-09-04";
+    const result = computeTodayJobs(
+      new Map([[monday, [{ ...job("monday", monday, "pending"), routeOrder: 1 }]]]),
+      monday,
+      [{ ...job("friday", friday, "pending"), routeOrder: 12 }],
+    );
+    expect(result.map(({ id }) => id)).toEqual(["friday", "monday"]);
   });
 });
 

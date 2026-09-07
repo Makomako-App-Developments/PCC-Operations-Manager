@@ -25,6 +25,7 @@ interface JobCardProps {
   assignedUserName?: string | null;
   currentUserId?: string | null;
   geoSeq?: number;
+  isCarryOver?: boolean;
 }
 
 const GARDEN_TYPE_LABEL: Record<string, string> = {
@@ -101,6 +102,7 @@ export function JobCard({
   lng,
   serviceTimeMins,
   status,
+  scheduledDate,
   isAllTeams,
   jobType,
   priority,
@@ -108,6 +110,7 @@ export function JobCard({
   assignedUserName,
   currentUserId,
   geoSeq,
+  isCarryOver,
 }: JobCardProps) {
   const colors = useColors();
   const router = useRouter();
@@ -203,6 +206,18 @@ export function JobCard({
         <View style={[styles.allTeamsBadge, { backgroundColor: "#00AECD18", borderColor: "#00AECD40" }]}>
           <Feather name="users" size={10} color="#00AECD" />
           <Text style={[styles.allTeamsText, { color: "#00AECD" }]}>All Teams Job</Text>
+        </View>
+      )}
+      {isCarryOver && (
+        <View style={[styles.allTeamsBadge, { backgroundColor: "#fff7ed", borderColor: "#f9731660" }]}>
+          <Feather name="calendar" size={10} color="#c2410c" />
+          <Text style={[styles.allTeamsText, { color: "#c2410c" }]}>
+            Carried over · {new Date(`${scheduledDate}T00:00:00`).toLocaleDateString("en-NZ", {
+              weekday: "short",
+              day: "numeric",
+              month: "short",
+            })}
+          </Text>
         </View>
       )}
       {jobType === "mulching" && (

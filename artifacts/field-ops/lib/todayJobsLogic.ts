@@ -17,28 +17,32 @@ export interface ScheduledJob {
   id: string;
   status: JobStatus;
   scheduledDate: string; // "YYYY-MM-DD"
+  routeOrder?: number | null;
   [key: string]: unknown;
 }
 
 /**
- * From a map of date → jobs, collect every job whose date is strictly before
- * `today` and whose status is still actionable (pending or in_progress).
+ * Filter a supplied overdue response defensively and preserve geosequence as
+ * the primary ordering rule.
  */
 export function computeOverdueJobs(
-  dayMap: Map<string, ScheduledJob[]>,
+  source: ScheduledJob[] | Map<string, ScheduledJob[]>,
   today: string,
 ): ScheduledJob[] {
-  const result: ScheduledJob[] = [];
-  for (const [date, jobs] of dayMap.entries()) {
-    if (date < today) {
-      result.push(
-        ...jobs.filter(
-          (j) => j.status === "pending" || j.status === "in_progress",
-        ),
-      );
-    }
-  }
-  return result;
+  const jobs = source instanceof Map
+    ? [...source.entries()].flatMap(([date, dateJobs]) => date < today ? dateJobs : [])
+    : source;
+  return jobs
+    .filter(
+      (job) =>
+        job.scheduledDate < today &&
+        ["pending", "in_progress", "paused", "overdue"].includes(job.status),
+    )
+    .sort((a, b) => {
+      const aOrder = a.routeOrder ?? Number.MAX_SAFE_INTEGER;
+      const bOrder = b.routeOrder ?? Number.MAX_SAFE_INTEGER;
+      return aOrder - bOrder || a.scheduledDate.localeCompare(b.scheduledDate);
+    });
 }
 
 /**
@@ -47,9 +51,18 @@ export function computeOverdueJobs(
 export function computeTodayJobs(
   dayMap: Map<string, ScheduledJob[]>,
   today: string,
+  overdueResponse: ScheduledJob[] = [],
 ): ScheduledJob[] {
-  const overdueJobs = computeOverdueJobs(dayMap, today);
-  return [...overdueJobs, ...(dayMap.get(today) ?? [])];
+  const overdueJobs = computeOverdueJobs(
+    [...overdueResponse, ...computeOverdueJobs(dayMap, today)],
+    today,
+  );
+  const seen = new Set<string>();
+  return [...overdueJobs, ...(dayMap.get(today) ?? [])].filter((job) => {
+    if (seen.has(job.id)) return false;
+    seen.add(job.id);
+    return true;
+  });
 }
 
 /**

@@ -927,6 +927,10 @@ export interface ScheduleWeekResponse {
   completedJobs: number;
 }
 
+export interface OverdueScheduleJobsResponse {
+  jobs: JobWithAsset[];
+}
+
 export type InfillStatus = (typeof InfillStatus)[keyof typeof InfillStatus];
 
 export const InfillStatus = {
@@ -1300,6 +1304,17 @@ export type GetScheduleWeekParams = {
    * ISO date of any day in the desired week (week starts Monday)
    */
   week: string;
+  teamId?: string;
+};
+
+export type GetOverdueScheduleJobsParams = {
+  /**
+   * Return eligible jobs scheduled before this ISO date
+   */
+  before: string;
+  /**
+   * Team to retrieve; field users are always restricted to their own team
+   */
   teamId?: string;
 };
 

@@ -1195,6 +1195,70 @@ export const GetScheduleWeekResponse = zod.object({
 });
 
 /**
+ * @summary Get unresolved scheduled maintenance jobs from before a given date
+ */
+export const GetOverdueScheduleJobsQueryParams = zod.object({
+  before: zod
+    .date()
+    .describe("Return eligible jobs scheduled before this ISO date"),
+  teamId: zod.coerce
+    .string()
+    .uuid()
+    .optional()
+    .describe(
+      "Team to retrieve; field users are always restricted to their own team",
+    ),
+});
+
+export const GetOverdueScheduleJobsResponse = zod.object({
+  jobs: zod.array(
+    zod
+      .object({
+        id: zod.string().uuid(),
+        assetId: zod.string().uuid(),
+        jobType: zod.enum([
+          "scheduled",
+          "reactive",
+          "mulching",
+          "infill_planting",
+        ]),
+        status: zod.enum([
+          "draft",
+          "pending",
+          "in_progress",
+          "paused",
+          "completed",
+          "skipped",
+          "overdue",
+        ]),
+        teamId: zod.string().uuid().nullish(),
+        assignedUserId: zod.string().uuid().nullish(),
+        assignedUserName: zod
+          .string()
+          .nullish()
+          .describe("Name of the worker who claimed this job."),
+        scheduledDate: zod.date(),
+        startedAt: zod.date().nullish(),
+        completedAt: zod.date().nullish(),
+        actualTimeMins: zod.number().nullish(),
+        notes: zod.string().nullish(),
+        createdAt: zod.date(),
+        updatedAt: zod.date(),
+      })
+      .and(
+        zod.object({
+          assetName: zod.string(),
+          assetRef: zod.string(),
+          gardenType: zod.string(),
+          suburb: zod.string().nullish(),
+          serviceTimeMins: zod.number(),
+          priority: zod.enum(["low", "medium", "high", "urgent"]).optional(),
+        }),
+      ),
+  ),
+});
+
+/**
  * @summary List infill planting orders
  */
 export const ListInfillOrdersQueryParams = zod.object({

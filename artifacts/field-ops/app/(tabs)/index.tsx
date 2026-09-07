@@ -1,5 +1,5 @@
 import { Feather } from "@expo/vector-icons";
-import { useGetScheduleWeek } from "@workspace/api-client-react";
+import { useGetOverdueScheduleJobs, useGetScheduleWeek } from "@workspace/api-client-react";
 import { Redirect } from "expo-router";
 import React, { useMemo, useState } from "react";
 import type { ScheduledJob } from "@/lib/todayJobsLogic";
@@ -184,6 +184,7 @@ function DaySection({
                     assignedUserName={(job as any).assignedUserName}
                     currentUserId={currentUserId}
                     geoSeq={geoSeqFor[idx]}
+                    isCarryOver={isToday && job.scheduledDate < date}
                   />
                 ));
               })()}
@@ -243,9 +244,12 @@ export default function TodayScreen() {
   const { data: week3, isLoading: loadingWeek3, refetch: refetchWeek3, isRefetching: refetchingWeek3 } =
     useGetScheduleWeek({ week: DAY4,  ...teamParam }, queryOpts);
 
-  const isLoading   = loadingThis || loadingNext || loadingWeek3;
-  const isRefetching = refetchingThis || refetchingNext || refetchingWeek3;
-  const refetch = () => { refetchThis(); refetchNext(); refetchWeek3(); };
+  const { data: overdue, isLoading: loadingOverdue, refetch: refetchOverdue, isRefetching: refetchingOverdue } =
+    useGetOverdueScheduleJobs({ before: TODAY, ...teamParam }, queryOpts);
+
+  const isLoading   = loadingThis || loadingNext || loadingWeek3 || loadingOverdue;
+  const isRefetching = refetchingThis || refetchingNext || refetchingWeek3 || refetchingOverdue;
+  const refetch = () => { refetchThis(); refetchNext(); refetchWeek3(); refetchOverdue(); };
 
   const dayMap = useMemo(() => {
     const map = new Map<string, Job[]>();
@@ -264,8 +268,8 @@ export default function TodayScreen() {
   // Carry forward any pending/in-progress jobs from past dates into today.
   // Logic lives in lib/todayJobsLogic.ts so it can be unit-tested independently.
   const todayJobs = useMemo(
-    () => computeTodayJobs(dayMap, TODAY),
-    [dayMap],
+    () => computeTodayJobs(dayMap, TODAY, (overdue?.jobs ?? []) as unknown as Job[]),
+    [dayMap, overdue],
   );
   const day1Jobs  = dayMap.get(DAY1)  ?? [];
   const day2Jobs  = dayMap.get(DAY2)  ?? [];
