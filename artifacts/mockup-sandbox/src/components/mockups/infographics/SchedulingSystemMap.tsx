@@ -132,6 +132,12 @@ function ActionPill({ children, tone = "neutral" }: { children: React.ReactNode;
 export function SchedulingSystemMap() {
   return (
     <div className="w-[1100px] min-h-[2460px] bg-white p-8 font-sans" style={{ color: C.ink }}>
+      <style>{`
+        @page { size: 1100px 2800px; margin: 0; }
+        @media print {
+          html, body { margin: 0 !important; padding: 0 !important; background: #ffffff !important; }
+        }
+      `}</style>
       <header className="relative overflow-hidden rounded-[30px] px-9 py-8 text-white" style={{ background: `linear-gradient(125deg, ${C.navy} 0%, #0c5361 68%, ${C.tealDark} 100%)` }}>
         <div className="absolute -right-16 -top-20 h-72 w-72 rounded-full border border-white/10" />
         <div className="absolute right-9 top-7 opacity-10"><Route className="h-40 w-40" strokeWidth={1.2} /></div>
