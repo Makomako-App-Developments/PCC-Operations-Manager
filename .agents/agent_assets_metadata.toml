@@ -38,14 +38,14 @@ content_type = "image/jpeg"
 id = "7IVmgVrMxZo8URPb7PKqV"
 uri = "file://exports/pcc-gardens-scheduling-system-map.pdf"
 type = "pdf"
-title = "DOWNLOAD — PCC Scheduling System Map PDF"
-description = "One-page PDF export of the complete PCC Gardens scheduling system infographic. No email required."
+title = "PCC Gardens Scheduling System Map PDF"
+description = "Replacement PDF using the original filename and attachment format, now with sharp vector text and icons."
 logical_id = "214ea769-8a52-4a08-bd56-554c6ddc4b0c"
-content_hash = "sha256:41746800681618aef851ae3d6a37ab82cb57124e80acc9a12945d72f9bd229f9"
-size = 444516
-mtime_ms = 1788810217109
-storage_uri = "gcs://replit-rams-assets-kirk/rams/assets/repl:90075642-bb34-43f7-b389-66fabfda42e9/214ea769-8a52-4a08-bd56-554c6ddc4b0c/151c5c61-723a-4017-a09f-191497fcd142"
-storage_version_token = "1788810223768775"
+content_hash = "sha256:44202e778bb366b5feda1b1f359cce88f81635602bf99919085ab29694b205a2"
+size = 595000
+mtime_ms = 1788810670428
+storage_uri = "gcs://replit-rams-assets-kirk/rams/assets/repl:90075642-bb34-43f7-b389-66fabfda42e9/214ea769-8a52-4a08-bd56-554c6ddc4b0c/c3ef0519-2574-4667-a566-102f2005d60d"
+storage_version_token = "1788810675306840"
 content_type = "application/pdf"
 
 [[outputs]]
