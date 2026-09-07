@@ -40,8 +40,30 @@ async function ensureSkipReviewColumns() {
   }
 }
 
+async function ensureMissedWorkColumns() {
+  try {
+    await db.execute(sql`
+      ALTER TABLE jobs
+        ADD COLUMN IF NOT EXISTS original_scheduled_date date;
+    `);
+    await db.execute(sql`
+      UPDATE jobs
+      SET original_scheduled_date = scheduled_date
+      WHERE original_scheduled_date IS NULL;
+    `);
+    await db.execute(sql`
+      CREATE INDEX IF NOT EXISTS jobs_original_scheduled_date_idx
+      ON jobs (original_scheduled_date);
+    `);
+    console.log("[startup-patch] missed-work columns ensured.");
+  } catch (err) {
+    console.error("[startup-patch] ensureMissedWorkColumns failed (non-fatal):", err);
+  }
+}
+
 export async function runStartupPatches() {
   await ensureSkipReviewColumns();
+  await ensureMissedWorkColumns();
   try {
     const check = await db.execute<{ area_m2: string }>(sql`
       SELECT area_m2 FROM assets

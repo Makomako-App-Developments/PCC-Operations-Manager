@@ -521,6 +521,31 @@ paths:
         "401":
           $ref: "#/components/responses/Unauthorised"
 
+  /schedule/overdue/resolve:
+    post:
+      operationId: resolveOverdueScheduleJobs
+      tags: [schedule]
+      summary: Explicitly resolve or replan selected unresolved scheduled work
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ResolveOverdueJobsInput"
+      responses:
+        "200":
+          description: Per-job outcomes for the requested resolution
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ResolveOverdueJobsResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorised"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
   # ─── Programmes ─────────────────────────────────────────────────────────────
   /infill-orders:
     get:
@@ -2115,6 +2140,7 @@ components:
             description: "Name of the worker who claimed this job.",
           }
         scheduledDate: { type: string, format: date }
+        originalScheduledDate: { type: string, format: date, nullable: true }
         startedAt: { type: string, format: date-time, nullable: true }
         completedAt: { type: string, format: date-time, nullable: true }
         actualTimeMins: { type: integer, nullable: true }
@@ -2522,7 +2548,47 @@ components:
         jobs:
           type: array
           items: { $ref: "#/components/schemas/JobWithAsset" }
-      required: [jobs]
+        total: { type: integer }
+        totalEstimatedMins: { type: integer }
+        oldestScheduledDate: { type: string, format: date, nullable: true }
+      required: [jobs, total, totalEstimatedMins, oldestScheduledDate]
+
+    ResolveOverdueJobsInput:
+      type: object
+      properties:
+        jobIds:
+          type: array
+          minItems: 1
+          maxItems: 100
+          items: { type: string, format: uuid }
+        action:
+          type: string
+          enum: [keep, move, reassign, complete, skip]
+        reason: { type: string, minLength: 1, maxLength: 1000 }
+        destinationDate: { type: string, format: date }
+        destinationTeamId: { type: string, format: uuid }
+        forceCapacity: { type: boolean, default: false }
+      required: [jobIds, action, reason]
+
+    ResolveOverdueJobResult:
+      type: object
+      properties:
+        jobId: { type: string, format: uuid }
+        success: { type: boolean }
+        message: { type: string }
+        scheduledDate: { type: string, format: date, nullable: true }
+        teamId: { type: string, format: uuid, nullable: true }
+      required: [jobId, success, message]
+
+    ResolveOverdueJobsResponse:
+      type: object
+      properties:
+        succeeded: { type: integer }
+        failed: { type: integer }
+        results:
+          type: array
+          items: { $ref: "#/components/schemas/ResolveOverdueJobResult" }
+      required: [succeeded, failed, results]
 
     # ─── Programmes ──────────────────────────────────────────────────────────
     InfillStatus:

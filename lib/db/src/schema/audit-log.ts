@@ -24,7 +24,18 @@ export const auditLogTable = pgTable("audit_log", {
 
 export const selectAuditLogSchema = createSelectSchema(auditLogTable);
 export type AuditLogEntry = typeof auditLogTable.$inferSelect;
-export type AuditLogAction = "INSERT" | "UPDATE" | "DELETE" | "push_forward" | "undo_push";
+export type AuditLogAction =
+  | "INSERT"
+  | "UPDATE"
+  | "DELETE"
+  | "push_forward"
+  | "undo_push"
+  | "missed_keep"
+  | "missed_move"
+  | "missed_reassign"
+  | "missed_complete"
+  | "missed_skip"
+  | "replan_day";
 export interface AuditLogParams {
   table?: string;
   recordId?: string;

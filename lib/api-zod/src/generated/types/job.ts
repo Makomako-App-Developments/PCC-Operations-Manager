@@ -18,6 +18,7 @@ export interface Job {
   /** Name of the worker who claimed this job. */
   assignedUserName?: string | null;
   scheduledDate: Date;
+  originalScheduledDate?: Date | null;
   startedAt?: Date | null;
   completedAt?: Date | null;
   actualTimeMins?: number | null;

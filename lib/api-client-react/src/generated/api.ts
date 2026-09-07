@@ -75,6 +75,8 @@ import type {
   ReactiveJobUpdate,
   ReadinessErrorResponse,
   ReadinessResponse,
+  ResolveOverdueJobsInput,
+  ResolveOverdueJobsResponse,
   ScheduleGenerateBody,
   ScheduleGenerateResult,
   ScheduleWeekResponse,
@@ -2131,6 +2133,102 @@ export function useGetOverdueScheduleJobs<
 
   return { ...query, queryKey: queryOptions.queryKey };
 }
+
+/**
+ * @summary Explicitly resolve or replan selected unresolved scheduled work
+ */
+export const getResolveOverdueScheduleJobsUrl = () => {
+  return `/api/schedule/overdue/resolve`;
+};
+
+export const resolveOverdueScheduleJobs = async (
+  resolveOverdueJobsInput: ResolveOverdueJobsInput,
+  options?: RequestInit,
+): Promise<ResolveOverdueJobsResponse> => {
+  return customFetch<ResolveOverdueJobsResponse>(
+    getResolveOverdueScheduleJobsUrl(),
+    {
+      ...options,
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...options?.headers },
+      body: JSON.stringify(resolveOverdueJobsInput),
+    },
+  );
+};
+
+export const getResolveOverdueScheduleJobsMutationOptions = <
+  TError = ErrorType<
+    BadRequestResponse | UnauthorisedResponse | ForbiddenResponse
+  >,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof resolveOverdueScheduleJobs>>,
+    TError,
+    { data: BodyType<ResolveOverdueJobsInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof resolveOverdueScheduleJobs>>,
+  TError,
+  { data: BodyType<ResolveOverdueJobsInput> },
+  TContext
+> => {
+  const mutationKey = ["resolveOverdueScheduleJobs"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof resolveOverdueScheduleJobs>>,
+    { data: BodyType<ResolveOverdueJobsInput> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return resolveOverdueScheduleJobs(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type ResolveOverdueScheduleJobsMutationResult = NonNullable<
+  Awaited<ReturnType<typeof resolveOverdueScheduleJobs>>
+>;
+export type ResolveOverdueScheduleJobsMutationBody =
+  BodyType<ResolveOverdueJobsInput>;
+export type ResolveOverdueScheduleJobsMutationError = ErrorType<
+  BadRequestResponse | UnauthorisedResponse | ForbiddenResponse
+>;
+
+/**
+ * @summary Explicitly resolve or replan selected unresolved scheduled work
+ */
+export const useResolveOverdueScheduleJobs = <
+  TError = ErrorType<
+    BadRequestResponse | UnauthorisedResponse | ForbiddenResponse
+  >,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof resolveOverdueScheduleJobs>>,
+    TError,
+    { data: BodyType<ResolveOverdueJobsInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof resolveOverdueScheduleJobs>>,
+  TError,
+  { data: BodyType<ResolveOverdueJobsInput> },
+  TContext
+> => {
+  return useMutation(getResolveOverdueScheduleJobsMutationOptions(options));
+};
 
 /**
  * @summary List infill planting orders

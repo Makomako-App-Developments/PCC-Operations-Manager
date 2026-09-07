@@ -761,6 +761,7 @@ export const ListJobsResponse = zod.object({
         .nullish()
         .describe("Name of the worker who claimed this job."),
       scheduledDate: zod.date(),
+      originalScheduledDate: zod.date().nullish(),
       startedAt: zod.date().nullish(),
       completedAt: zod.date().nullish(),
       actualTimeMins: zod.number().nullish(),
@@ -812,6 +813,7 @@ export const GetJobResponse = zod.object({
     .nullish()
     .describe("Name of the worker who claimed this job."),
   scheduledDate: zod.date(),
+  originalScheduledDate: zod.date().nullish(),
   startedAt: zod.date().nullish(),
   completedAt: zod.date().nullish(),
   actualTimeMins: zod.number().nullish(),
@@ -866,6 +868,7 @@ export const UpdateJobResponse = zod.object({
     .nullish()
     .describe("Name of the worker who claimed this job."),
   scheduledDate: zod.date(),
+  originalScheduledDate: zod.date().nullish(),
   startedAt: zod.date().nullish(),
   completedAt: zod.date().nullish(),
   actualTimeMins: zod.number().nullish(),
@@ -1168,6 +1171,7 @@ export const GetScheduleWeekResponse = zod.object({
               .nullish()
               .describe("Name of the worker who claimed this job."),
             scheduledDate: zod.date(),
+            originalScheduledDate: zod.date().nullish(),
             startedAt: zod.date().nullish(),
             completedAt: zod.date().nullish(),
             actualTimeMins: zod.number().nullish(),
@@ -1238,6 +1242,7 @@ export const GetOverdueScheduleJobsResponse = zod.object({
           .nullish()
           .describe("Name of the worker who claimed this job."),
         scheduledDate: zod.date(),
+        originalScheduledDate: zod.date().nullish(),
         startedAt: zod.date().nullish(),
         completedAt: zod.date().nullish(),
         actualTimeMins: zod.number().nullish(),
@@ -1255,6 +1260,46 @@ export const GetOverdueScheduleJobsResponse = zod.object({
           priority: zod.enum(["low", "medium", "high", "urgent"]).optional(),
         }),
       ),
+  ),
+  total: zod.number(),
+  totalEstimatedMins: zod.number(),
+  oldestScheduledDate: zod.date().nullable(),
+});
+
+/**
+ * @summary Explicitly resolve or replan selected unresolved scheduled work
+ */
+export const resolveOverdueScheduleJobsBodyJobIdsMax = 100;
+
+export const resolveOverdueScheduleJobsBodyReasonMax = 1000;
+
+export const resolveOverdueScheduleJobsBodyForceCapacityDefault = false;
+
+export const ResolveOverdueScheduleJobsBody = zod.object({
+  jobIds: zod
+    .array(zod.string().uuid())
+    .min(1)
+    .max(resolveOverdueScheduleJobsBodyJobIdsMax),
+  action: zod.enum(["keep", "move", "reassign", "complete", "skip"]),
+  reason: zod.string().min(1).max(resolveOverdueScheduleJobsBodyReasonMax),
+  destinationDate: zod.date().optional(),
+  destinationTeamId: zod.string().uuid().optional(),
+  forceCapacity: zod
+    .boolean()
+    .default(resolveOverdueScheduleJobsBodyForceCapacityDefault),
+});
+
+export const ResolveOverdueScheduleJobsResponse = zod.object({
+  succeeded: zod.number(),
+  failed: zod.number(),
+  results: zod.array(
+    zod.object({
+      jobId: zod.string().uuid(),
+      success: zod.boolean(),
+      message: zod.string(),
+      scheduledDate: zod.date().nullish(),
+      teamId: zod.string().uuid().nullish(),
+    }),
   ),
 });
 
@@ -2024,6 +2069,7 @@ export const ReviewSkippedJobResponse = zod.object({
     .nullish()
     .describe("Name of the worker who claimed this job."),
   scheduledDate: zod.date(),
+  originalScheduledDate: zod.date().nullish(),
   startedAt: zod.date().nullish(),
   completedAt: zod.date().nullish(),
   actualTimeMins: zod.number().nullish(),

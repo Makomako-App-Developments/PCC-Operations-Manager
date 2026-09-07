@@ -660,6 +660,7 @@ export interface Job {
   /** Name of the worker who claimed this job. */
   assignedUserName?: string | null;
   scheduledDate: string;
+  originalScheduledDate?: string | null;
   startedAt?: string | null;
   completedAt?: string | null;
   actualTimeMins?: number | null;
@@ -929,6 +930,51 @@ export interface ScheduleWeekResponse {
 
 export interface OverdueScheduleJobsResponse {
   jobs: JobWithAsset[];
+  total: number;
+  totalEstimatedMins: number;
+  oldestScheduledDate: string | null;
+}
+
+export type ResolveOverdueJobsInputAction =
+  (typeof ResolveOverdueJobsInputAction)[keyof typeof ResolveOverdueJobsInputAction];
+
+export const ResolveOverdueJobsInputAction = {
+  keep: "keep",
+  move: "move",
+  reassign: "reassign",
+  complete: "complete",
+  skip: "skip",
+} as const;
+
+export interface ResolveOverdueJobsInput {
+  /**
+   * @minItems 1
+   * @maxItems 100
+   */
+  jobIds: string[];
+  action: ResolveOverdueJobsInputAction;
+  /**
+   * @minLength 1
+   * @maxLength 1000
+   */
+  reason: string;
+  destinationDate?: string;
+  destinationTeamId?: string;
+  forceCapacity?: boolean;
+}
+
+export interface ResolveOverdueJobResult {
+  jobId: string;
+  success: boolean;
+  message: string;
+  scheduledDate?: string | null;
+  teamId?: string | null;
+}
+
+export interface ResolveOverdueJobsResponse {
+  succeeded: number;
+  failed: number;
+  results: ResolveOverdueJobResult[];
 }
 
 export type InfillStatus = (typeof InfillStatus)[keyof typeof InfillStatus];

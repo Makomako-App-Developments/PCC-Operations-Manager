@@ -220,6 +220,8 @@ router.post(
   validateBody(generateBodySchema),
   async (req, res) => {
     const { fromDate, toDate, teamId } = req.body as z.infer<typeof generateBodySchema>;
+    const today = new Date().toISOString().slice(0, 10);
+    const regenerationFloor = fromDate > today ? fromDate : today;
 
     // Supervisors are restricted to their own team and must always supply teamId
     if (req.auth!.role === "supervisor") {
@@ -269,7 +271,7 @@ router.post(
       .from(jobsTable)
       .where(
         and(
-          gte(jobsTable.scheduledDate, fromDate),
+          gte(jobsTable.scheduledDate, regenerationFloor),
           lte(jobsTable.scheduledDate, toDate),
           eq(jobsTable.jobType, "scheduled"),
           eq(jobsTable.status, "pending"),
@@ -286,7 +288,7 @@ router.post(
       .delete(jobsTable)
       .where(
         and(
-          gte(jobsTable.scheduledDate, fromDate),
+          gte(jobsTable.scheduledDate, regenerationFloor),
           lte(jobsTable.scheduledDate, toDate),
           eq(jobsTable.jobType, "scheduled"),
           eq(jobsTable.status, "pending"),
@@ -296,15 +298,17 @@ router.post(
       ));
 
     // ── Carry forward pending jobs from the flex window before fromDate ────────
-    // If a job was scheduled before fromDate and is still pending (not started),
-    // delete it so the scheduler places it fresh in the new range.
-    // in_progress jobs (crew has started) are left untouched.
+    // Only future flex-window jobs may be regenerated. Historical unresolved
+    // jobs retain their identity and original date in the carry-over queue.
+    const flexRegenerationFloor = addDays(fromDate, -DUE_DATE_FLEX_DAYS) > today
+      ? addDays(fromDate, -DUE_DATE_FLEX_DAYS)
+      : today;
     const flexJobsToDelete = await executeWithCircuitBreaker(() => db
       .select({ id: jobsTable.id })
       .from(jobsTable)
       .where(
         and(
-          gte(jobsTable.scheduledDate, addDays(fromDate, -DUE_DATE_FLEX_DAYS)),
+          gte(jobsTable.scheduledDate, flexRegenerationFloor),
           lt(jobsTable.scheduledDate, fromDate),
           eq(jobsTable.jobType, "scheduled"),
           eq(jobsTable.status, "pending"),
@@ -321,7 +325,7 @@ router.post(
       .delete(jobsTable)
       .where(
         and(
-          gte(jobsTable.scheduledDate, addDays(fromDate, -DUE_DATE_FLEX_DAYS)),
+          gte(jobsTable.scheduledDate, flexRegenerationFloor),
           lt(jobsTable.scheduledDate, fromDate),
           eq(jobsTable.jobType, "scheduled"),
           eq(jobsTable.status, "pending"),
@@ -727,10 +731,10 @@ export function isOverdueScheduleJobEligible(job: {
   teamId: string | null;
   jobType: string;
   status: string;
-}, before: string, teamId: string): boolean {
+}, before: string, teamId?: string): boolean {
   return (
     job.scheduledDate < before &&
-    job.teamId === teamId &&
+    (!teamId || job.teamId === teamId) &&
     job.jobType === "scheduled" &&
     ["pending", "in_progress", "paused", "overdue"].includes(job.status)
   );
@@ -748,12 +752,8 @@ router.get(
       teamId = req.auth!.teamId ?? undefined;
     }
 
-    if (!teamId) {
-      if (["administrator", "manager"].includes(req.auth!.role)) {
-        res.status(400).json({ error: "teamId is required" });
-      } else {
-        res.json({ jobs: [] });
-      }
+    if (!teamId && !["administrator", "manager"].includes(req.auth!.role)) {
+      res.json({ jobs: [], total: 0, totalEstimatedMins: 0, oldestScheduledDate: null });
       return;
     }
 
@@ -767,6 +767,7 @@ router.get(
         isAllTeams:        jobsTable.isAllTeams,
         assignedUserId:    jobsTable.assignedUserId,
         scheduledDate:     sql<string>`to_char(${jobsTable.scheduledDate}, 'YYYY-MM-DD')`,
+        originalScheduledDate: sql<string | null>`to_char(coalesce(${jobsTable.originalScheduledDate}, ${jobsTable.scheduledDate}), 'YYYY-MM-DD')`,
         startedAt:         jobsTable.startedAt,
         completedAt:       jobsTable.completedAt,
         actualTimeMins:    jobsTable.actualTimeMins,
@@ -792,7 +793,7 @@ router.get(
       .innerJoin(assetsTable, eq(jobsTable.assetId, assetsTable.id))
       .where(and(
         lt(jobsTable.scheduledDate, before),
-        eq(jobsTable.teamId, teamId),
+        ...(teamId ? [eq(jobsTable.teamId, teamId)] : []),
         eq(jobsTable.jobType, "scheduled"),
         inArray(jobsTable.status, ["pending", "in_progress", "paused", "overdue"]),
       ))
@@ -819,7 +820,156 @@ router.get(
         assignedUserName: row.assignedUserId ? assignedUserNames.get(row.assignedUserId) ?? null : null,
         teamCompletions: [],
         })),
+      total: rows.length,
+      totalEstimatedMins: rows.reduce((sum, row) => sum + (row.estimatedTimeMins ?? row.serviceTimeMins ?? 0), 0),
+      oldestScheduledDate: rows.length
+        ? rows.reduce((oldest, row) => row.scheduledDate < oldest ? row.scheduledDate : oldest, rows[0].scheduledDate)
+        : null,
     });
+  },
+);
+
+const resolveOverdueSchema = z.object({
+  jobIds: z.array(z.string().uuid()).min(1).max(100),
+  action: z.enum(["keep", "move", "reassign", "complete", "skip"]),
+  reason: z.string().trim().min(1).max(1000),
+  destinationDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  destinationTeamId: z.string().uuid().optional(),
+  forceCapacity: z.boolean().default(false),
+}).superRefine((value, ctx) => {
+  if (value.action === "move" && !value.destinationDate) {
+    ctx.addIssue({ code: "custom", path: ["destinationDate"], message: "destinationDate is required when moving work" });
+  }
+  if (value.action === "reassign" && !value.destinationTeamId) {
+    ctx.addIssue({ code: "custom", path: ["destinationTeamId"], message: "destinationTeamId is required when reassigning work" });
+  }
+});
+
+router.post(
+  "/schedule/overdue/resolve",
+  requireAuth,
+  requireRole("administrator", "manager", "supervisor"),
+  validateBody(resolveOverdueSchema),
+  async (req, res) => {
+    const body = res.locals.body as z.infer<typeof resolveOverdueSchema>;
+    const today = new Date().toISOString().slice(0, 10);
+    const rows = await executeWithCircuitBreaker(() => db
+      .select({
+        job: jobsTable,
+        serviceTimeMins: assetsTable.serviceTimeMins,
+      })
+      .from(jobsTable)
+      .innerJoin(assetsTable, eq(jobsTable.assetId, assetsTable.id))
+      .where(inArray(jobsTable.id, body.jobIds)));
+    const byId = new Map(rows.map(row => [row.job.id, row]));
+    const results: Array<{ jobId: string; success: boolean; message: string; scheduledDate?: string | null; teamId?: string | null }> = [];
+
+    for (const jobId of body.jobIds) {
+      const row = byId.get(jobId);
+      if (!row) {
+        results.push({ jobId, success: false, message: "Job not found" });
+        continue;
+      }
+      const job = row.job;
+      if (!isOverdueScheduleJobEligible(job, today)) {
+        results.push({ jobId, success: false, message: "Job is no longer unresolved prior-date scheduled work" });
+        continue;
+      }
+      if (req.auth!.role === "supervisor" && job.teamId !== req.auth!.teamId) {
+        results.push({ jobId, success: false, message: "Supervisors may only resolve their own team's work" });
+        continue;
+      }
+      if (body.action === "complete" && req.auth!.role === "supervisor") {
+        results.push({ jobId, success: false, message: "Only managers may authorise a completion correction" });
+        continue;
+      }
+
+      const destinationDate = body.destinationDate ?? job.scheduledDate;
+      const destinationTeamId = body.destinationTeamId ?? job.teamId;
+      const changesDate = body.action === "move" || (body.action === "reassign" && Boolean(body.destinationDate));
+      if ((body.action === "move" || body.action === "reassign") && !destinationTeamId) {
+        results.push({ jobId, success: false, message: "Destination team is required" });
+        continue;
+      }
+      if (changesDate && (destinationDate < today || isWeekend(destinationDate))) {
+        results.push({ jobId, success: false, message: "Destination must be a current or future working day with a team" });
+        continue;
+      }
+
+      if (changesDate) {
+        const minutes = job.estimatedTimeMins ?? row.serviceTimeMins ?? 0;
+        const capacity = await checkDayCapacity(destinationTeamId!, destinationDate, minutes);
+        if (capacity && (!body.forceCapacity || !capacity.capacityDataReliable)) {
+          results.push({
+            jobId,
+            success: false,
+            message: capacity.capacityDataReliable
+              ? `Destination is ${capacity.shortfallMins} minutes over capacity`
+              : "Destination capacity could not be verified safely",
+          });
+          continue;
+        }
+      }
+
+      const oldData = { ...job };
+      const originalScheduledDate = job.originalScheduledDate ?? job.scheduledDate;
+      const update: Partial<typeof jobsTable.$inferInsert> = {
+        originalScheduledDate,
+        updatedAt: new Date(),
+      };
+      if (body.action === "move") update.scheduledDate = destinationDate;
+      if (body.action === "reassign") {
+        update.teamId = destinationTeamId;
+        if (body.destinationDate) update.scheduledDate = destinationDate;
+      }
+      if (body.action === "complete") {
+        update.status = "completed";
+        update.completedAt = new Date();
+        update.notes = [job.notes, `Manager completion correction: ${body.reason}`].filter(Boolean).join("\n");
+      }
+      if (body.action === "skip") {
+        update.status = "skipped";
+        update.skipReason = body.reason;
+        update.skippedAt = new Date();
+      }
+
+      // Even "keep" performs a versioned no-op update. That makes every
+      // resolution action subject to the same commit-time concurrency guard.
+      const updated = await executeWithCircuitBreaker(() => db
+        .update(jobsTable)
+        .set(update)
+        .where(and(
+          eq(jobsTable.id, jobId),
+          eq(jobsTable.updatedAt, job.updatedAt),
+          inArray(jobsTable.status, ["pending", "in_progress", "paused", "overdue"]),
+        ))
+        .returning());
+      if (updated.length !== 1) {
+        results.push({ jobId, success: false, message: "Job changed while this action was being committed; refresh and try again" });
+        continue;
+      }
+
+      const action = `missed_${body.action}` as const;
+      await auditLog({
+        tableName: "jobs",
+        recordId: jobId,
+        action,
+        changedById: req.auth!.userId,
+        oldData,
+        newData: { ...update, resolutionReason: body.reason, forceCapacity: body.forceCapacity },
+        ipAddress: req.ip,
+      });
+      results.push({
+        jobId,
+        success: true,
+        message: body.action === "keep" ? "Left in carry-over queue" : "Missed work resolved",
+        scheduledDate: update.scheduledDate ?? job.scheduledDate,
+        teamId: update.teamId ?? job.teamId,
+      });
+    }
+
+    const succeeded = results.filter(result => result.success).length;
+    res.json({ succeeded, failed: results.length - succeeded, results });
   },
 );
 
@@ -2039,6 +2189,14 @@ router.post(
   validateBody(replanDaySchema),
   async (req, res) => {
     const { teamId, date } = res.locals.body as z.infer<typeof replanDaySchema>;
+    const today = new Date().toISOString().slice(0, 10);
+    if (date < today) {
+      res.status(409).json({
+        error: "Historical unresolved work cannot be replanned destructively",
+        message: "Use the Unresolved Work queue to keep, move, reassign, complete, or skip each missed job with an audit reason.",
+      });
+      return;
+    }
 
     // Supervisors may only replan their own team's schedule
     if (req.auth!.role === "supervisor" && teamId !== req.auth!.teamId) {
@@ -2066,6 +2224,10 @@ router.post(
           eq(jobsTable.status, "pending"),
           eq(jobsTable.jobType, "scheduled"),
           isNull(jobsTable.draftOriginalScheduledDate),
+          or(
+            isNull(jobsTable.originalScheduledDate),
+            eq(jobsTable.originalScheduledDate, jobsTable.scheduledDate),
+          ),
         ),
       )
       .orderBy(sql`${assetsTable.routeOrder} NULLS LAST`, assetsTable.name));

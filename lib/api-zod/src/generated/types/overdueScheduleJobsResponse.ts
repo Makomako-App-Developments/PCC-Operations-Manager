@@ -9,4 +9,7 @@ import type { JobWithAsset } from "./jobWithAsset";
 
 export interface OverdueScheduleJobsResponse {
   jobs: JobWithAsset[];
+  total: number;
+  totalEstimatedMins: number;
+  oldestScheduledDate: Date | null;
 }

@@ -232,8 +232,8 @@ describe("geosequence schedule capacity decisions", () => {
     insertedRows = [];
     deleteCallCount = 0;
     insertCallCount = 0;
-    // A pending row from an earlier generation is what the manager repair flow
-    // replaces. The route's range-delete query sees this row before insertion.
+    // A prior-date pending row is unresolved work. Regeneration must preserve
+    // its stable identity instead of deleting and recreating it.
     persistedJobs = [{
       id: STALE_JOB_ID,
       assetId: routeAssets[0].id,
@@ -622,7 +622,7 @@ describe("geosequence schedule capacity decisions", () => {
       fromDate: "2026-08-03",
       toDate: "2026-09-30",
     });
-    expect(persistedJobs).toHaveLength(10);
+    expect(persistedJobs).toHaveLength(11);
     expect(insertedRows).toHaveLength(8);
 
     expect(persistedJobs).toContainEqual(expect.objectContaining({
@@ -647,6 +647,11 @@ describe("geosequence schedule capacity decisions", () => {
     // starts each cycle on Friday, where the oversized asset is deliberately
     // recorded as a one-day overrun instead of blocking the route forever.
     expect(jobsByAsset.get(routeAssets[0].id)).toEqual([
+      expect.objectContaining({
+        id: STALE_JOB_ID,
+        scheduledDate: "2026-08-03",
+        status: "pending",
+      }),
       expect.objectContaining({
         assetId: routeAssets[0].id,
         scheduledDate: "2026-08-07",
@@ -674,7 +679,11 @@ describe("geosequence schedule capacity decisions", () => {
       expect.objectContaining({ scheduledDate: "2026-09-08", estimatedTimeMins: 100 }),
     ]);
 
-    // The stale generation was removed before the repaired rows were written.
-    expect(persistedJobs).not.toContainEqual(expect.objectContaining({ id: STALE_JOB_ID }));
+    // Missed work remains traceable through regeneration.
+    expect(persistedJobs).toContainEqual(expect.objectContaining({
+      id: STALE_JOB_ID,
+      scheduledDate: "2026-08-03",
+      status: "pending",
+    }));
   });
 });

@@ -28,3 +28,4 @@
 - [Auth test JWT secret loading](auth-test-jwt-secret-loading.md) — set JWT_SECRET before importing auth modules because middleware captures it at module initialization.
 - [JWT claim validation](auth-claim-validation.md) — validate decoded identity and session claims at runtime before any database lookup; TypeScript assertions are not validation.
 - [Stormwater draft import normalization](stormwater-draft-import-normalization.md) — allow Other classifications; blank Priority/Hotspot in the September 2026 draft normalize to Low/No.
+- [Missed-work identity](missed-work-identity.md) — prior-date scheduled work keeps its identity and original date; regeneration never silently replaces it, and resolution is explicit and audited.

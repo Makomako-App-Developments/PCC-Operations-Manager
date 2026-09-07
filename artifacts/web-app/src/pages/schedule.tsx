@@ -35,6 +35,7 @@ import {
 import { ReactiveJobWizard, STATUS_CONFIG as RJ_STATUS_CONFIG, PRIORITY_CONFIG as RJ_PRIORITY_CONFIG_WIZ } from "@/components/reactive-job-wizard";
 import type { AssetStub, TeamStub } from "@/components/reactive-job-wizard";
 import { useToast } from "@/hooks/use-toast";
+import { UnresolvedWorkView } from "./schedule-unresolved";
 
 const BRAND = "#00AECD";
 
@@ -60,7 +61,7 @@ const STANDARD_BADGES: Record<string, string> = {
   low:    "bg-gray-100 text-gray-600",
 };
 
-type ViewType = "day" | "week" | "gantt" | "gantt-day";
+type ViewType = "day" | "week" | "gantt" | "gantt-day" | "unresolved";
 
 interface GanttStats { total: number; completed: number; overdue: number; daysBehind: number }
 
@@ -2025,9 +2026,12 @@ export default function Schedule() {
           </Popover>
 
           {/* View period filter */}
-          <Select value={viewPeriod} onValueChange={(v) => handleSetViewPeriod(v as typeof viewPeriod)}>
+          <Select
+            value={view === "unresolved" ? "" : viewPeriod}
+            onValueChange={(v: "daily" | "weekly" | "monthly") => handleSetViewPeriod(v)}
+          >
             <SelectTrigger className="h-9 text-sm w-[140px]">
-              <SelectValue />
+              <SelectValue placeholder={view === "unresolved" ? "Schedule View..." : undefined} />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="daily">Daily</SelectItem>
@@ -2036,8 +2040,17 @@ export default function Schedule() {
             </SelectContent>
           </Select>
 
+          <Button
+            variant={view === "unresolved" ? "default" : "outline"}
+            className={view === "unresolved" ? "bg-red-50 text-red-700 border-red-200 hover:bg-red-100 shadow-none h-9" : "text-red-600 border-red-200 bg-white hover:bg-red-50 h-9"}
+            onClick={() => setView(view === "unresolved" ? (viewPeriod === "daily" ? "gantt-day" : "gantt") : "unresolved")}
+          >
+            <AlertTriangle className="w-4 h-4 mr-2" />
+            Unresolved Work
+          </Button>
+
           {/* Date nav — pushed to the right */}
-          <div className="ml-auto flex items-center gap-2">
+          <div className={`ml-auto flex items-center gap-2 ${view === "unresolved" ? "opacity-50 pointer-events-none" : ""}`}>
             <button onClick={prevPeriod} className="p-1.5 rounded-lg bg-gray-50 border border-gray-200 text-gray-500 hover:text-gray-800 hover:bg-gray-100 transition-colors">
               <ChevronLeft className="w-4 h-4" />
             </button>
@@ -2097,6 +2110,14 @@ export default function Schedule() {
             getTeamColor={getTeamColor}
             getTeamName={getTeamName}
             onJobClick={handleJobClick}
+          />
+        )}
+        {view === "unresolved" && (
+          <UnresolvedWorkView
+            selectedTeamIds={selectedTeamIds}
+            teams={teamsData ?? []}
+            getTeamColor={getTeamColor}
+            getTeamName={getTeamName}
           />
         )}
       </div>
