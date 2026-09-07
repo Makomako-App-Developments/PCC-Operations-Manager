@@ -22,6 +22,7 @@ export const modules: ModuleMap = {
   "./components/mockups/garden-app/Reports.tsx": () => import("../components/mockups/garden-app/Reports.tsx"),
   "./components/mockups/garden-app/RoleMatrix.tsx": () => import("../components/mockups/garden-app/RoleMatrix.tsx"),
   "./components/mockups/garden-app/Specification.tsx": () => import("../components/mockups/garden-app/Specification.tsx"),
+  "./components/mockups/infographics/SchedulingSystemMap.tsx": () => import("../components/mockups/infographics/SchedulingSystemMap.tsx"),
   "./components/mockups/mulch-panel/VariantA.tsx": () => import("../components/mockups/mulch-panel/VariantA.tsx"),
   "./components/mockups/mulch-panel/VariantB.tsx": () => import("../components/mockups/mulch-panel/VariantB.tsx"),
   "./components/mockups/mulch-panel/VariantC.tsx": () => import("../components/mockups/mulch-panel/VariantC.tsx"),

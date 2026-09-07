@@ -11,9 +11,25 @@ id = "Tjho8sp4GC2Ud03BPM6Q-"
 uri = "file://PCC_Gardens_Implementation_Plan.docx"
 type = "word_document"
 title = "PCC Gardens Manager — Implementation Plan"
+logical_id = "b9936ea0-3f64-4745-a24d-7af5ba49d3ab"
 
 [[outputs]]
 id = "CWXoIX5lxC1n4jdnLQli3"
 uri = "file://scheduling-report.md"
 type = "text"
 title = "Maintenance Scheduling — How It Works"
+logical_id = "ae6cf4a0-e87d-4e1f-b278-a3ce1736c7f0"
+
+[[outputs]]
+id = "seMn-oa_xzLAMN79MWRY-"
+uri = "file://exports/pcc-gardens-scheduling-system-map.jpg"
+type = "image"
+title = "PCC Gardens Scheduling System Map"
+description = "A one-page operational infographic covering schedule generation, worker job actions, skip review, missed-work carry-over, capacity changes, manual insertions, and schedule views."
+logical_id = "d07e35bf-77f0-4eb3-a722-c83098029f9c"
+content_hash = "sha256:72c2db57c0c34da19c48af2f78b74b45138e8d5b23b2d742002c34918c02b881"
+size = 348503
+mtime_ms = 1788809963656
+storage_uri = "gcs://replit-rams-assets-kirk/rams/assets/repl:90075642-bb34-43f7-b389-66fabfda42e9/d07e35bf-77f0-4eb3-a722-c83098029f9c/823c9cef-668b-4ee7-ab70-62c9fb8ab205"
+storage_version_token = "1788809974437891"
+content_type = "image/jpeg"
