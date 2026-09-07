@@ -47,3 +47,17 @@ mtime_ms = 1788810217109
 storage_uri = "gcs://replit-rams-assets-kirk/rams/assets/repl:90075642-bb34-43f7-b389-66fabfda42e9/214ea769-8a52-4a08-bd56-554c6ddc4b0c/151c5c61-723a-4017-a09f-191497fcd142"
 storage_version_token = "1788810223768775"
 content_type = "application/pdf"
+
+[[outputs]]
+id = "bFPTwVJ4aIE0yI0aiSn2S"
+uri = "file://exports/pcc-gardens-scheduling-system-map-vector.pdf"
+type = "pdf"
+title = "HIGH QUALITY — PCC Scheduling System Map PDF"
+description = "Single-page vector PDF with embedded fonts and sharp text/icons for zooming and printing."
+logical_id = "b8738085-cc5d-49c8-803e-0ea3614745a0"
+content_hash = "sha256:44202e778bb366b5feda1b1f359cce88f81635602bf99919085ab29694b205a2"
+size = 595000
+mtime_ms = 1788810523484
+storage_uri = "gcs://replit-rams-assets-kirk/rams/assets/repl:90075642-bb34-43f7-b389-66fabfda42e9/b8738085-cc5d-49c8-803e-0ea3614745a0/4392fdbc-61e3-45fc-9309-8412f0458ea2"
+storage_version_token = "1788810548127160"
+content_type = "application/pdf"
