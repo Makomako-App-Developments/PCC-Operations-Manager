@@ -66,14 +66,14 @@ content_type = "application/pdf"
 id = "NT0rp9S0z0OdLPAbp5pWT"
 uri = "file://exports/pcc-gardens-unscheduled-work-system-map.pdf"
 type = "pdf"
-title = "PCC Gardens Unscheduled Work System Map — Updated PDF"
-description = "One-page operational map updated with the default unscheduled-work precedence policy and the protected scheduled-maintenance alternative."
+title = "PCC Gardens Unscheduled Work System Map — Print-Sharp PDF"
+description = "One-page vector-capable PDF with selectable text and embedded fonts, regenerated from the live infographic source for crisp zooming and large-format printing."
 logical_id = "d6b07bde-c2e0-4c45-b4cf-acbcc9e0ba8a"
-content_hash = "sha256:bf9917944b8b96f2eae7dfbec663bde9c3a20b16f08535ea2e61605e3ec7b2a3"
-size = 364641
-mtime_ms = 1788834805194
-storage_uri = "gcs://replit-rams-assets-kirk/rams/assets/repl:90075642-bb34-43f7-b389-66fabfda42e9/d6b07bde-c2e0-4c45-b4cf-acbcc9e0ba8a/a08d9edb-4456-443a-a957-6b10e7afbc0c"
-storage_version_token = "1788834859108109"
+content_hash = "sha256:3fabf2031510ab1642aa1d1e318132fb223c2ba995f128315625b038485e873f"
+size = 516111
+mtime_ms = 1788836679064
+storage_uri = "gcs://replit-rams-assets-kirk/rams/assets/repl:90075642-bb34-43f7-b389-66fabfda42e9/d6b07bde-c2e0-4c45-b4cf-acbcc9e0ba8a/9f8eef14-fcc1-448b-a3b0-b0446c193e2f"
+storage_version_token = "1788836731233716"
 content_type = "application/pdf"
 
 [[outputs]]
