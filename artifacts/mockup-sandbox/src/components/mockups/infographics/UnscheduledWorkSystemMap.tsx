@@ -171,13 +171,13 @@ export function UnscheduledWorkSystemMap() {
             </div>
             <h1 className="text-[41px] font-black leading-[1.02] tracking-[-0.045em]">The complete unscheduled<br /><span className="text-cyan-300">work system map</span></h1>
             <p className="mt-4 max-w-[670px] text-[14px] leading-relaxed text-cyan-50/75">
-              How ad-hoc requests, urgent jobs, infill and mulching enter operations—and when they consume capacity, alter route order or push recurring maintenance forward.
+              How ad-hoc requests, urgent jobs, infill and mulching enter operations—and how an explicit capacity policy decides whether recurring maintenance gives way.
             </p>
           </div>
           <div className="mt-1 w-[255px] rounded-2xl border border-white/15 bg-white/10 px-5 py-4 backdrop-blur">
             <div className="text-[10px] font-black uppercase tracking-[0.14em] text-cyan-100/70">Core principle</div>
-            <div className="mt-2 text-[16px] font-black leading-snug">Raising work does not automatically move the schedule.</div>
-            <div className="mt-2 text-[10px] leading-relaxed text-cyan-50/70">Team, date, time and an explicit capacity decision determine the operational impact.</div>
+            <div className="mt-2 text-[16px] font-black leading-snug">Unscheduled work gets a choice—not a blank cheque.</div>
+            <div className="mt-2 text-[10px] leading-relaxed text-cyan-50/70">Team, date, time and an explicit precedence policy determine the operational impact.</div>
           </div>
         </div>
       </header>
@@ -247,7 +247,7 @@ export function UnscheduledWorkSystemMap() {
       </section>
 
       <section className="mt-8">
-        <SectionTitle number="03" title="The capacity decision" subtitle="A date can contain recurring maintenance, active main-schedule jobs, infill and mulching. Productive minutes are the common budget." />
+        <SectionTitle number="03" title="The capacity decision" subtitle="A date can contain recurring maintenance, active main-schedule jobs, infill and mulching. Productive minutes are the common budget—and precedence makes the trade-off explicit." />
         <div className="rounded-[24px] border p-5" style={{ borderColor: C.line, background: "#fffdf8" }}>
           <div className="grid grid-cols-[310px_1fr] gap-5">
             <div className="rounded-2xl p-5 text-white" style={{ background: C.navy }}>
@@ -268,10 +268,12 @@ export function UnscheduledWorkSystemMap() {
                 <Arrow />
                 <Decision n="2" title="It does not fit" detail="Show the existing load, new minutes and shortfall before any change." color={C.amber} pale={C.amberPale} />
               </div>
-              <div className="flex items-stretch gap-2">
-                <Decision n="A" title="Choose another date" detail="Move the new work, leaving the recurring route unchanged." color={C.blue} pale={C.bluePale} />
-                <Decision n="B" title="Push & place" detail="Free room by moving eligible pending scheduled maintenance, then place the new work." color={C.tealDark} pale={C.tealPale} />
-                <Decision n="C" title="Place anyway" detail="Explicitly accept an over-capacity day. The overload remains visible." color={C.red} pale={C.redPale} />
+              <div className="grid grid-cols-2 gap-2">
+                <Decision n="1" title="Make scheduled maintenance give way" detail="Default. Move only the minimum eligible pending recurring maintenance, taking the route tail first, then place the unscheduled work." color={C.tealDark} pale={C.tealPale} />
+                <Decision n="2" title="Do scheduled maintenance first" detail="Protect the plan. Choose another date—or explicitly accept a visible over-capacity day." color={C.blue} pale={C.bluePale} />
+              </div>
+              <div className="rounded-xl border px-4 py-3 text-[10px] leading-relaxed" style={{ borderColor: "#f0b7b2", background: C.redPale, color: C.red }}>
+                <b>Either way:</b> the manager sees the existing load, new minutes and shortfall before confirming. Urgency remains a separate label; it does not silently change this capacity policy.
               </div>
             </div>
           </div>
@@ -279,14 +281,14 @@ export function UnscheduledWorkSystemMap() {
       </section>
 
       <section className="mt-8">
-        <SectionTitle number="04" title="Exactly how scheduled maintenance is affected" subtitle="The system protects non-movable work. Only a deliberate push action changes recurring maintenance dates." />
+        <SectionTitle number="04" title="Exactly how scheduled maintenance is affected" subtitle="The default makes room carefully; the protected option leaves recurring work in place. Neither policy changes the geosequence rule." />
         <div className="grid grid-cols-[1fr_1.1fr] gap-5">
           <div className="rounded-[24px] border p-5" style={{ borderColor: "#bce7ef", background: C.tealPale }}>
             <div className="flex items-center gap-2 text-[16px] font-black" style={{ color: C.tealDark }}><MoveRight className="h-6 w-6" />What can move</div>
             <div className="mt-4 space-y-2">
               {[
-                "Pending recurring maintenance only",
-                "Same team, target day or later",
+                "Default policy: minimum eligible work only",
+                "Pending recurring maintenance on the same team",
                 "Route tail first for geosequence-aware pushes",
                 "Receiving-day overflow cascades to later working days",
               ].map((t, i) => (
@@ -313,6 +315,9 @@ export function UnscheduledWorkSystemMap() {
                 </div>
               ))}
             </div>
+            <div className="mt-3 rounded-lg bg-white/80 px-3 py-2 text-[9px] font-bold leading-relaxed" style={{ color: C.red }}>
+              Scheduled-first keeps these dates protected. If the new work cannot fit, choose another date or record the explicit overload.
+            </div>
           </div>
         </div>
         <div className="mt-4 rounded-[20px] border bg-white p-5" style={{ borderColor: C.line }}>
@@ -321,7 +326,7 @@ export function UnscheduledWorkSystemMap() {
             <div>
               <h3 className="text-[14px] font-black">Route-order consequence</h3>
               <p className="mt-1 text-[10px] leading-relaxed" style={{ color: C.slate }}>
-                Asset-linked work inherits the asset’s route position. A location-only reactive request with GPS is slotted immediately after the geographically nearest route anchor. Work without a usable route or location falls to the end.
+                Capacity precedence is not route priority. Asset-linked work still inherits the asset’s route position; a location-only reactive request with GPS is slotted after the nearest route anchor. Work without a usable route or location falls to the end.
               </p>
             </div>
           </div>
@@ -329,24 +334,24 @@ export function UnscheduledWorkSystemMap() {
       </section>
 
       <section className="mt-8">
-        <SectionTitle number="05" title="Three insertion paths—and their effects" subtitle="Where the work is created determines whether impact review is automatic, manual or deferred to triage." />
+        <SectionTitle number="05" title="Three insertion paths—and one precedence choice" subtitle="Where the work is created changes the review surface, but the same two capacity policies apply whenever an authorised manager or supervisor confirms team and date." />
         <div className="grid grid-cols-3 gap-4">
           <div className="rounded-2xl border p-5" style={{ borderColor: "#d8b4fe", background: C.purplePale }}>
             <Megaphone className="h-6 w-6" style={{ color: C.purple }} />
             <h3 className="mt-3 text-[14px] font-black">Unscheduled Work page</h3>
-            <p className="mt-2 text-[10px] leading-relaxed" style={{ color: C.slate }}>Raise first, then management assigns team/date/priority/time. Assignment makes it visible operationally but does not itself push recurring jobs.</p>
-            <div className="mt-3 text-[9px] font-black" style={{ color: C.purple }}>Manager must separately protect day capacity.</div>
+            <p className="mt-2 text-[10px] leading-relaxed" style={{ color: C.slate }}>Raise first, then management assigns team/date/priority/time. The default policy is reviewed at authorised assignment; a field-raised request cannot displace maintenance by itself.</p>
+            <div className="mt-3 text-[9px] font-black" style={{ color: C.purple }}>Policy choice is visible before publish.</div>
           </div>
           <div className="rounded-2xl border p-5" style={{ borderColor: "#f0b7b2", background: C.redPale }}>
             <Zap className="h-6 w-6" style={{ color: C.red }} />
             <h3 className="mt-3 text-[14px] font-black">Urgent Job from Schedule</h3>
-            <p className="mt-2 text-[10px] leading-relaxed" style={{ color: C.slate }}>Loads the target day first. The manager can mark specific scheduled jobs to move to the next working day before inserting the urgent job.</p>
-            <div className="mt-3 text-[9px] font-black" style={{ color: C.red }}>Direct, visible impact review.</div>
+            <p className="mt-2 text-[10px] leading-relaxed" style={{ color: C.slate }}>Loads the target day first and presents the same precedence choice: make minimum route-tail room, or protect scheduled work and choose another date/accept overload.</p>
+            <div className="mt-3 text-[9px] font-black" style={{ color: C.red }}>Urgency and precedence stay separate.</div>
           </div>
           <div className="rounded-2xl border p-5" style={{ borderColor: "#acd9b8", background: C.greenPale }}>
             <PackagePlus className="h-6 w-6" style={{ color: C.green }} />
             <h3 className="mt-3 text-[14px] font-black">Insert Infill / Mulching</h3>
-            <p className="mt-2 text-[10px] leading-relaxed" style={{ color: C.slate }}>Server checks the shared day total before creation. Conflict offers another date, push-forward, or explicit over-capacity placement.</p>
+            <p className="mt-2 text-[10px] leading-relaxed" style={{ color: C.slate }}>Server checks the shared day total before creation. The default moves only enough eligible recurring work; scheduled-first protects it.</p>
             <div className="mt-3 text-[9px] font-black" style={{ color: C.green }}>Server-enforced capacity gate.</div>
           </div>
         </div>
@@ -381,12 +386,13 @@ export function UnscheduledWorkSystemMap() {
               <Pill color={C.purple} pale={C.purplePale}>Raised = queue only</Pill>
               <Pill color={C.blue} pale={C.bluePale}>Team + date = visible work</Pill>
               <Pill color={C.amber} pale={C.amberPale}>Minutes = capacity impact</Pill>
-              <Pill color={C.tealDark} pale={C.tealPale}>Push = scheduled dates change</Pill>
+              <Pill color={C.tealDark} pale={C.tealPale}>Default = minimum room</Pill>
+              <Pill color={C.blue} pale={C.bluePale}>Protected = choose / overload</Pill>
               <Pill color={C.red} pale={C.redPale}>Force = accepted overload</Pill>
             </div>
           </div>
           <div className="max-w-[355px] border-l border-white/15 pl-6 text-[10px] leading-relaxed text-slate-300">
-            <b className="text-white">The mental model:</b> unscheduled work enters operations; capacity determines whether it fits; only explicit management choices displace recurring maintenance; route order remains the organising spine.
+            <b className="text-white">The mental model:</b> unscheduled work enters operations; capacity determines whether it fits; the default makes minimum room from the route tail, while the protected option keeps scheduled work in place; route order remains the organising spine.
           </div>
         </div>
       </section>
