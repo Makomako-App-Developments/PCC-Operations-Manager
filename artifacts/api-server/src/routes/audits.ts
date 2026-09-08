@@ -47,8 +47,31 @@ async function uploadPhotoToGCS(buffer: Buffer, mimetype: string, originalname: 
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
+export function resolveAuditTeamId(auditTeamId: string | null, assetTeamId: string | null) {
+  return auditTeamId ?? assetTeamId;
+}
+
 async function buildAuditDetail(auditId: string) {
-  const [audit] = await executeWithCircuitBreaker(() => db.select().from(auditsTable).where(eq(auditsTable.id, auditId)).limit(1));
+  const [audit] = await executeWithCircuitBreaker(() => db
+    .select({
+      id: auditsTable.id,
+      assetId: auditsTable.assetId,
+      auditorId: auditsTable.auditorId,
+      teamId: sql<string | null>`coalesce(${auditsTable.teamId}, ${assetsTable.teamId})`,
+      scheduledDate: auditsTable.scheduledDate,
+      conductedAt: auditsTable.conductedAt,
+      completedDate: auditsTable.completedDate,
+      overallScore: auditsTable.overallScore,
+      auditType: auditsTable.auditType,
+      status: auditsTable.status,
+      notes: auditsTable.notes,
+      createdAt: auditsTable.createdAt,
+      updatedAt: auditsTable.updatedAt,
+    })
+    .from(auditsTable)
+    .leftJoin(assetsTable, eq(auditsTable.assetId, assetsTable.id))
+    .where(eq(auditsTable.id, auditId))
+    .limit(1));
   if (!audit) return null;
   const items = await executeWithCircuitBreaker(() => db
     .select()
@@ -103,15 +126,16 @@ router.get("/audits/stats", requireAuth, requireRole("manager", "supervisor"), a
   // Team average scores
   const teamScores = await executeWithCircuitBreaker(() => db
     .select({
-      teamId:     auditsTable.teamId,
+      teamId:     sql<string>`coalesce(${auditsTable.teamId}, ${assetsTable.teamId})`,
       teamName:   teamsTable.name,
       avgScore:   sql<number>`round(avg(${auditsTable.overallScore})::numeric, 1)`,
       auditCount: sql<number>`cast(count(*) as int)`,
     })
     .from(auditsTable)
-    .innerJoin(teamsTable, eq(auditsTable.teamId, teamsTable.id))
+    .innerJoin(assetsTable, eq(auditsTable.assetId, assetsTable.id))
+    .innerJoin(teamsTable, sql`${teamsTable.id} = coalesce(${auditsTable.teamId}, ${assetsTable.teamId})`)
     .where(sql`${auditsTable.overallScore} is not null`)
-    .groupBy(auditsTable.teamId, teamsTable.name));
+    .groupBy(sql`coalesce(${auditsTable.teamId}, ${assetsTable.teamId})`, teamsTable.name));
 
   // Fail counts per criterion
   const criterionFails = await executeWithCircuitBreaker(() => db
@@ -157,7 +181,7 @@ router.get("/audits", requireAuth, async (req, res) => {
       assetId:          auditsTable.assetId,
       assetName:        assetsTable.name,
       assetDescription: assetsTable.description,
-      teamId:           auditsTable.teamId,
+      teamId:           sql<string | null>`coalesce(${auditsTable.teamId}, ${assetsTable.teamId})`,
       auditorId:    auditsTable.auditorId,
       auditorName:  usersTable.name,
       conductedAt:  auditsTable.conductedAt,
@@ -191,12 +215,19 @@ router.get("/audits/:id", requireAuth, async (req, res) => {
 router.post("/audits", requireAuth, requireRole("manager", "supervisor"), async (req, res) => {
   const { assetId, teamId, conductedAt, notes, auditType } = req.body as Record<string, string>;
   if (!assetId) { res.status(400).json({ error: "assetId required" }); return; }
+  const [asset] = await executeWithCircuitBreaker(() => db
+    .select({ teamId: assetsTable.teamId })
+    .from(assetsTable)
+    .where(eq(assetsTable.id, assetId))
+    .limit(1));
+  if (!asset) { res.status(404).json({ error: "Asset not found" }); return; }
+  const resolvedTeamId = resolveAuditTeamId(teamId ?? null, asset.teamId);
   const [created] = await executeWithCircuitBreaker(() => db
     .insert(auditsTable)
     .values({
       assetId,
       auditorId: req.auth!.userId,
-      teamId: teamId ?? null,
+      teamId: resolvedTeamId,
       conductedAt: conductedAt ? new Date(conductedAt) : new Date(),
       status: "pending",
       notes: notes ?? null,

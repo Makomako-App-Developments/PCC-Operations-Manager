@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { auditLog, getAuditFailureCount } from "../lib/audit";
+import { resolveAuditTeamId } from "../routes/audits";
 
 vi.mock("@workspace/db", () => ({
   db: {
@@ -176,5 +177,22 @@ describe("auditLog()", () => {
         newData:   expect.objectContaining({ deltaDays: -2 }),
       }),
     );
+  });
+});
+
+describe("resolveAuditTeamId()", () => {
+  const auditTeamId = "00000000-0000-0000-0000-000000000010";
+  const assetTeamId = "00000000-0000-0000-0000-000000000020";
+
+  it("preserves an explicitly recorded audit team when the asset team later changes", () => {
+    expect(resolveAuditTeamId(auditTeamId, assetTeamId)).toBe(auditTeamId);
+  });
+
+  it("falls back to the linked asset team for a legacy null-team audit", () => {
+    expect(resolveAuditTeamId(null, assetTeamId)).toBe(assetTeamId);
+  });
+
+  it("keeps genuinely unassigned audits unassigned", () => {
+    expect(resolveAuditTeamId(null, null)).toBeNull();
   });
 });
