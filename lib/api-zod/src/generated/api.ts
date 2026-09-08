@@ -907,6 +907,9 @@ export const ListReactiveJobsResponse = zod.object({
         "cancelled",
       ]),
       priority: zod.enum(["low", "medium", "high", "urgent"]),
+      schedulingPolicy: zod
+        .enum(["unscheduled_first", "scheduled_first"])
+        .nullish(),
       raisedAt: zod.date(),
       startedAt: zod.date().nullish(),
       completedAt: zod.date().nullish(),
@@ -927,6 +930,11 @@ export const CreateReactiveJobBody = zod.object({
   description: zod.string(),
   priority: zod.enum(["low", "medium", "high", "urgent"]).optional(),
   assignedTeamId: zod.string().uuid().optional(),
+  scheduledDate: zod.date().optional(),
+  estimatedTimeMins: zod.number().optional(),
+  schedulingPolicy: zod
+    .enum(["unscheduled_first", "scheduled_first"])
+    .optional(),
 });
 
 /**
@@ -961,6 +969,9 @@ export const GetReactiveJobResponse = zod.object({
     "cancelled",
   ]),
   priority: zod.enum(["low", "medium", "high", "urgent"]),
+  schedulingPolicy: zod
+    .enum(["unscheduled_first", "scheduled_first"])
+    .nullish(),
   raisedAt: zod.date(),
   startedAt: zod.date().nullish(),
   completedAt: zod.date().nullish(),
@@ -984,6 +995,11 @@ export const UpdateReactiveJobBody = zod.object({
   priority: zod.enum(["low", "medium", "high", "urgent"]).optional(),
   assignedTeamId: zod.string().uuid().optional(),
   assignedUserId: zod.string().uuid().optional(),
+  scheduledDate: zod.date().nullish(),
+  estimatedTimeMins: zod.number().nullish(),
+  schedulingPolicy: zod
+    .enum(["unscheduled_first", "scheduled_first"])
+    .optional(),
   startedAt: zod.date().optional(),
   completedAt: zod.date().optional(),
   actualTimeMins: zod.number().optional(),
@@ -1015,6 +1031,9 @@ export const UpdateReactiveJobResponse = zod.object({
     "cancelled",
   ]),
   priority: zod.enum(["low", "medium", "high", "urgent"]),
+  schedulingPolicy: zod
+    .enum(["unscheduled_first", "scheduled_first"])
+    .nullish(),
   raisedAt: zod.date(),
   startedAt: zod.date().nullish(),
   completedAt: zod.date().nullish(),

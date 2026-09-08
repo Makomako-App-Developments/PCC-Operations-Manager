@@ -257,6 +257,7 @@ export async function checkDayCapacity(
             gte(jobsTable.scheduledDate, date),
             eq(jobsTable.status, "pending"),
             eq(jobsTable.jobType, "scheduled"),
+            sql`${jobsTable.draftOriginalScheduledDate} IS NULL`,
           ),
         ),
     ),

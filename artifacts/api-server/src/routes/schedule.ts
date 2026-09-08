@@ -1849,6 +1849,8 @@ const pushForwardBodySchema = z.object({
   pushedAt:         z.string().datetime().optional(),
 });
 
+export type UnscheduledSchedulingPolicy = "unscheduled_first" | "scheduled_first";
+
 router.post(
   "/schedule/push-forward",
   requireAuth,
@@ -1856,6 +1858,15 @@ router.post(
   validateBody(pushForwardBodySchema),
   async (req, res) => {
     const { teamId, fromDate, deltaDays, minutesToFree, insertionAssetId, pushedAt } = res.locals.body as z.infer<typeof pushForwardBodySchema>;
+    const today = new Date().toISOString().slice(0, 10);
+
+    if (fromDate < today) {
+      res.status(409).json({
+        error: "historical_schedule_protected",
+        message: "Historical scheduled work must be resolved explicitly and cannot be pushed by unscheduled work.",
+      });
+      return;
+    }
 
     // Supervisors may only modify their own team's schedule
     if (req.auth!.role === "supervisor" && teamId !== req.auth!.teamId) {
@@ -1924,6 +1935,7 @@ router.post(
               sql`to_char(${jobsTable.scheduledDate}, 'YYYY-MM-DD') = ${currentDate}`,
               eq(jobsTable.status, "pending"),
               eq(jobsTable.jobType, "scheduled"),
+              isNull(jobsTable.draftOriginalScheduledDate),
             ),
           )
           .orderBy(sql`${assetsTable.routeOrder} NULLS LAST`, assetsTable.name));
@@ -1951,10 +1963,20 @@ router.post(
         if (toMove.length === 0) break;
 
         const nextDate = addWorkingDays(currentDate, 1, nonWorkingDays);
-        await executeWithCircuitBreaker(() => db
-          .update(jobsTable)
-          .set({ scheduledDate: nextDate, updatedAt: new Date() })
-          .where(inArray(jobsTable.id, toMove)));
+        await executeWithCircuitBreaker(() => db.transaction(async tx => {
+          await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${teamId} || ':' || ${currentDate}))`);
+          await tx
+            .update(jobsTable)
+            .set({ scheduledDate: nextDate, updatedAt: new Date() })
+            .where(
+              and(
+                inArray(jobsTable.id, toMove),
+                eq(jobsTable.status, "pending"),
+                eq(jobsTable.jobType, "scheduled"),
+                isNull(jobsTable.draftOriginalScheduledDate),
+              ),
+            );
+        }));
 
         totalAffected += toMove.length;
         latestToDate = nextDate;
@@ -2106,6 +2128,7 @@ const insertJobBodySchema = z.object({
   estimatedMins: z.number().int().positive(),
   notes:         z.string().nullable().optional(),
   force:         z.boolean().default(false),
+  schedulingPolicy: z.enum(["unscheduled_first", "scheduled_first"]).default("unscheduled_first"),
 });
 
 router.post(
@@ -2114,7 +2137,7 @@ router.post(
   requireRole("manager", "supervisor"),
   validateBody(insertJobBodySchema),
   async (req, res) => {
-    const { jobType, assetId, teamId, date, estimatedMins, notes, force } =
+    const { jobType, assetId, teamId, date, estimatedMins, notes, force, schedulingPolicy } =
       res.locals.body as z.infer<typeof insertJobBodySchema>;
 
     // Supervisors may only insert jobs for their own team
@@ -2137,7 +2160,12 @@ router.post(
           });
           return;
         }
-        res.json({ capacityConflict: true, capacity: conflict });
+        res.json({
+          capacityConflict: true,
+          capacity: conflict,
+          schedulingPolicy,
+          recommendedAction: schedulingPolicy === "unscheduled_first" ? "push_scheduled" : "choose_another_date",
+        });
         return;
       }
     }
@@ -2161,7 +2189,13 @@ router.post(
         })
         .returning());
 
-      res.status(201).json({ jobType: "infill", ...created });
+      await auditLog({
+        tableName: "infill_jobs", recordId: created.id, action: "INSERT",
+        changedById: req.auth?.userId ?? null,
+        newData: { ...created, schedulingPolicy },
+        ipAddress: req.ip ?? null,
+      });
+      res.status(201).json({ jobType: "infill", schedulingPolicy, ...created });
     } else {
       const [created] = await executeWithCircuitBreaker(() => db
         .insert(mulchingRecordsTable)
@@ -2175,7 +2209,13 @@ router.post(
         })
         .returning());
 
-      res.status(201).json({ jobType: "mulch", ...created });
+      await auditLog({
+        tableName: "mulching_records", recordId: created.id, action: "INSERT",
+        changedById: req.auth?.userId ?? null,
+        newData: { ...created, schedulingPolicy },
+        ipAddress: req.ip ?? null,
+      });
+      res.status(201).json({ jobType: "mulch", schedulingPolicy, ...created });
     }
   },
 );

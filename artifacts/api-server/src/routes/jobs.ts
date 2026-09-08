@@ -1408,12 +1408,13 @@ router.post("/reactive-jobs", requireAuth, validateBody(insertReactiveJobSchema.
     scheduledDate,
     estimatedTimeMins,
     priority,
+    schedulingPolicy,
     status: _status,  // always ignored — forced below
     ...allowedBody
   } = req.body;
 
   const privilegedFields = isManager || isSupervisor
-    ? { assignedTeamId, assignedUserId, scheduledDate, estimatedTimeMins, priority }
+    ? { assignedTeamId, assignedUserId, scheduledDate, estimatedTimeMins, priority, schedulingPolicy }
     : {};
 
   // The insert and the audit log are intentionally separate operations (not
@@ -1500,7 +1501,7 @@ router.patch("/reactive-jobs/:id", requireAuth, async (req, res) => {
   const body = req.body as Record<string, unknown>;
   const patch: Record<string, unknown> = {};
   const workerFields = ["status", "notes", "actualTimeMins", "scheduledDate"];
-  const managerFields = ["assignedTeamId", "assignedUserId", "priority", "description", "raisedById", "issueType", "estimatedTimeMins", "location", "locationLat", "locationLng"];
+  const managerFields = ["assignedTeamId", "assignedUserId", "priority", "schedulingPolicy", "description", "raisedById", "issueType", "estimatedTimeMins", "location", "locationLat", "locationLng"];
   const allowedFields = isPrivilegedRole(req.auth!.role)
     ? [...workerFields, ...managerFields]
     : workerFields;
@@ -1517,6 +1518,9 @@ router.patch("/reactive-jobs/:id", requireAuth, async (req, res) => {
     // Validate enum fields
     if (key === "priority" && typeof val === "string" && !VALID_PRIORITIES.has(val)) {
       res.status(400).json({ error: `Invalid priority value: ${val}` }); return;
+    }
+    if (key === "schedulingPolicy" && !["unscheduled_first", "scheduled_first"].includes(String(val))) {
+      res.status(400).json({ error: `Invalid scheduling policy: ${String(val)}` }); return;
     }
     if (key === "status" && typeof val === "string" && !VALID_STATUSES.has(val)) {
       res.status(400).json({ error: `Invalid status value: ${val}` }); return;

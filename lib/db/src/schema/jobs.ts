@@ -101,6 +101,9 @@ export const reactiveJobsTable = pgTable("reactive_jobs", {
   estimatedTimeMins: integer("estimated_time_mins"),
   status:            reactiveJobStatusEnum("status").notNull().default("raised"),
   priority:          reactivePriorityEnum("priority").notNull().default("medium"),
+  // Capacity precedence is separate from urgency. Null preserves the legacy
+  // behaviour for records created before this policy was introduced.
+  schedulingPolicy:  text("scheduling_policy"),
   raisedAt:          timestamp("raised_at").notNull().defaultNow(),
   startedAt:         timestamp("started_at"),
   completedAt:       timestamp("completed_at"),

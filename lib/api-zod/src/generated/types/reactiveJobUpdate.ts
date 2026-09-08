@@ -6,6 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { ReactiveJobStatus } from "./reactiveJobStatus";
+import type { ReactiveJobUpdateSchedulingPolicy } from "./reactiveJobUpdateSchedulingPolicy";
 import type { ReactivePriority } from "./reactivePriority";
 
 export interface ReactiveJobUpdate {
@@ -13,6 +14,9 @@ export interface ReactiveJobUpdate {
   priority?: ReactivePriority;
   assignedTeamId?: string;
   assignedUserId?: string;
+  scheduledDate?: Date | null;
+  estimatedTimeMins?: number | null;
+  schedulingPolicy?: ReactiveJobUpdateSchedulingPolicy;
   startedAt?: Date;
   completedAt?: Date;
   actualTimeMins?: number;

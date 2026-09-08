@@ -111,6 +111,7 @@ function workingDaysBetween(from: string, to: string) {
 }
 
 type JobAction = "none" | "push" | "defer" | "delete" | "reassign";
+export type SchedulingPolicy = "unscheduled_first" | "scheduled_first";
 
 export interface ReactivePriority {
   id: string;
@@ -335,6 +336,7 @@ export function ReactiveJobWizard({ teamsData, assetsData, onClose, onPublished 
   const [selectedTeamId, setSelectedTeamId] = useState(teamsData[0]?.id ?? "");
   const [reactiveMin, setReactiveMin] = useState(90);
   const [priority, setPriority] = useState<string>("urgent");
+  const [schedulingPolicy, setSchedulingPolicy] = useState<SchedulingPolicy>("unscheduled_first");
   const [notes, setNotes] = useState("");
 
   const [pinnedCoords, setPinnedCoords] = useState<{ lat: number; lng: number } | null>(null);
@@ -471,7 +473,6 @@ export function ReactiveJobWizard({ teamsData, assetsData, onClose, onPublished 
           teamId: selectedTeamId,
           fromDate: selectedDate,
           minutesToFree: Math.max(1, resolvedTotal - PRODUCTIVE),
-          insertionAssetId: selectedAssetId ?? undefined,
         }),
       });
       if (!res.ok) throw new Error(await res.text());
@@ -540,6 +541,7 @@ export function ReactiveJobWizard({ teamsData, assetsData, onClose, onPublished 
         location: location || undefined,
         ...(pinnedCoords ? { locationLat: pinnedCoords.lat, locationLng: pinnedCoords.lng } : {}),
         status: selectedTeamId ? "assigned" : "raised",
+        schedulingPolicy,
       };
       if (locationType === "asset" && selectedAssetId) {
         rjBody.assetId = selectedAssetId;
@@ -1109,6 +1111,45 @@ export function ReactiveJobWizard({ teamsData, assetsData, onClose, onPublished 
               </div>
 
               {/* Capacity impact card */}
+              <WizardSectionCard num={1} title="Which work takes precedence?">
+                <div className="grid gap-3 sm:grid-cols-2">
+                  {([
+                    {
+                      value: "unscheduled_first" as const,
+                      title: "Unscheduled work first",
+                      body: "Default. If capacity is short, move enough pending recurring maintenance from the route tail to make room.",
+                    },
+                    {
+                      value: "scheduled_first" as const,
+                      title: "Scheduled work first",
+                      body: "Protect the maintenance plan. Choose another date or explicitly accept an over-capacity day if this work does not fit.",
+                    },
+                  ]).map(option => {
+                    const checked = schedulingPolicy === option.value;
+                    return (
+                      <button
+                        key={option.value}
+                        type="button"
+                        onClick={() => setSchedulingPolicy(option.value)}
+                        className={`rounded-xl border-2 p-4 text-left transition-colors ${checked ? "border-cyan-500 bg-cyan-50" : "border-gray-200 bg-white hover:border-gray-300"}`}
+                      >
+                        <span className="flex items-center gap-2 text-sm font-bold text-gray-900">
+                          <span className={`flex h-4 w-4 items-center justify-center rounded-full border ${checked ? "border-cyan-600 bg-cyan-600" : "border-gray-300"}`}>
+                            {checked && <span className="h-1.5 w-1.5 rounded-full bg-white" />}
+                          </span>
+                          {option.title}
+                          {option.value === "unscheduled_first" && (
+                            <span className="rounded-full bg-cyan-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-cyan-700">Default</span>
+                          )}
+                        </span>
+                        <span className="mt-2 block text-xs leading-relaxed text-gray-500">{option.body}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </WizardSectionCard>
+
+              {/* Capacity impact card */}
               <WizardSectionCard num={1} title={`Schedule Impact — ${teamName}, ${dateLabel}`}>
                 {weekLoading ? (
                   <div className="h-24 flex items-center justify-center text-gray-400 text-sm">
@@ -1244,12 +1285,22 @@ export function ReactiveJobWizard({ teamsData, assetsData, onClose, onPublished 
                   ← Back
                 </button>
                 <button
-                  onClick={() => setStep(totalWithReactive > PRODUCTIVE ? 3 : 4)}
+                  onClick={() => {
+                    if (totalWithReactive > PRODUCTIVE && schedulingPolicy === "unscheduled_first") {
+                      void handlePushSchedule();
+                    } else {
+                      setStep(totalWithReactive > PRODUCTIVE ? 3 : 4);
+                    }
+                  }}
                   disabled={weekLoading}
                   className="flex items-center gap-2 px-6 py-2.5 rounded-xl text-sm font-semibold text-white hover:opacity-90 disabled:opacity-50"
                   style={{ background: BRAND }}
                 >
-                  {totalWithReactive > PRODUCTIVE ? "Resolve Conflicts" : "Review & Confirm"}{" "}
+                  {totalWithReactive > PRODUCTIVE
+                    ? schedulingPolicy === "unscheduled_first"
+                      ? "Make room & continue"
+                      : "Review protected schedule"
+                    : "Review & Confirm"}{" "}
                   <ArrowRight className="w-4 h-4" />
                 </button>
               </div>

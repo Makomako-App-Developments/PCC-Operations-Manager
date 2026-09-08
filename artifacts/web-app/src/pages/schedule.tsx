@@ -33,7 +33,7 @@ import {
   Layers, Sprout, Printer, ArrowRight, Plus,
 } from "lucide-react";
 import { ReactiveJobWizard, STATUS_CONFIG as RJ_STATUS_CONFIG, PRIORITY_CONFIG as RJ_PRIORITY_CONFIG_WIZ } from "@/components/reactive-job-wizard";
-import type { AssetStub, TeamStub } from "@/components/reactive-job-wizard";
+import type { AssetStub, TeamStub, SchedulingPolicy } from "@/components/reactive-job-wizard";
 import { useToast } from "@/hooks/use-toast";
 import { UnresolvedWorkView } from "./schedule-unresolved";
 
@@ -1159,6 +1159,7 @@ export default function Schedule() {
   const [urgentDate, setUrgentDate]     = useState("");
   const [urgentNotes, setUrgentNotes]   = useState("");
   const [urgentPriority, setUrgentPriority] = useState("high");
+  const [urgentSchedulingPolicy, setUrgentSchedulingPolicy] = useState<SchedulingPolicy>("unscheduled_first");
 
   // Urgent job step 2 — capacity impact
   const [urgentStep, setUrgentStep]         = useState<1 | 2>(1);
@@ -1182,6 +1183,7 @@ export default function Schedule() {
   const [insertDate, setInsertDate]         = useState("");
   const [insertMins, setInsertMins]         = useState("");
   const [insertNotes, setInsertNotes]       = useState("");
+  const [insertSchedulingPolicy, setInsertSchedulingPolicy] = useState<SchedulingPolicy>("unscheduled_first");
   const [insertLoading, setInsertLoading]   = useState(false);
 
   // Push-forward confirmation
@@ -1500,6 +1502,7 @@ export default function Schedule() {
     setUrgentAsset(null);
     setUrgentNotes("");
     setUrgentPriority("high");
+    setUrgentSchedulingPolicy("unscheduled_first");
     setUrgentStep(1);
     setDayCapacity(null);
     setJobsToPush(new Set());
@@ -1523,7 +1526,23 @@ export default function Schedule() {
       if (!r.ok) throw new Error("Failed to load capacity");
       const data = await r.json();
       setDayCapacity(data);
-      setJobsToPush(new Set());
+      if (urgentSchedulingPolicy === "unscheduled_first") {
+        const urgentMins = urgentAsset.serviceTimeMins ?? 0;
+        let remaining = Math.max(0, data.totalScheduledMins + urgentMins - data.productiveTimeMins);
+        const selected = new Set<string>();
+        const candidates = data.jobs
+          .filter((job: any) => job.jobType === "scheduled" && job.status === "pending")
+          .slice()
+          .sort((a: any, b: any) => (b.routeOrder ?? -1) - (a.routeOrder ?? -1));
+        for (const job of candidates) {
+          if (remaining <= 0) break;
+          selected.add(job.id);
+          remaining -= job.estimatedTimeMins ?? job.serviceTimeMins ?? 0;
+        }
+        setJobsToPush(selected);
+      } else {
+        setJobsToPush(new Set());
+      }
       setUrgentStep(2);
     } catch {
       toast({ title: "Could not load capacity", variant: "destructive" });
@@ -1535,18 +1554,22 @@ export default function Schedule() {
   /** Final confirmation — optionally push selected jobs then add reactive job */
   const handleAddUrgentJobFinal = (pushIds = jobsToPush) => {
     if (!urgentAsset || !urgentDate) return;
-    // Push marked jobs to next working day first, then create urgent job
-    const pushArray = Array.from(pushIds);
-    const pushDate = nextWorkingDayStr(urgentDate);
-
     const doPushThenCreate = async () => {
-      for (const jobId of pushArray) {
-        await fetch(`/api/jobs/${jobId}`, {
-          method:  "PATCH",
+      if (urgentSchedulingPolicy === "unscheduled_first" && pushIds.size > 0 && urgentAsset.teamId) {
+        const selectedMins = dayCapacity?.jobs
+          ?.filter((job: any) => pushIds.has(job.id))
+          .reduce((sum: number, job: any) => sum + (job.estimatedTimeMins ?? job.serviceTimeMins ?? 0), 0) ?? 0;
+        const pushResponse = await fetch("/api/schedule/push-forward", {
+          method: "POST",
           credentials: "include",
           headers: { "Content-Type": "application/json" },
-          body:    JSON.stringify({ scheduledDate: pushDate }),
+          body: JSON.stringify({
+            teamId: urgentAsset.teamId,
+            fromDate: urgentDate,
+            minutesToFree: Math.max(1, selectedMins),
+          }),
         });
+        if (!pushResponse.ok) throw new Error("Could not make room for the urgent job");
       }
       createJob.mutate({
         data: {
@@ -1595,6 +1618,7 @@ export default function Schedule() {
     setInsertDate(format(new Date(), "yyyy-MM-dd"));
     setInsertMins("");
     setInsertNotes("");
+    setInsertSchedulingPolicy("unscheduled_first");
     setInsertOpen(true);
   };
 
@@ -1622,6 +1646,7 @@ export default function Schedule() {
         estimatedMins: estMins,
         notes:         insertNotes || null,
         force,
+        schedulingPolicy: insertSchedulingPolicy,
       }),
     });
 
@@ -1685,7 +1710,7 @@ export default function Schedule() {
         body: JSON.stringify({
           teamId:    pendingInsert.teamId,
           fromDate:  pendingInsert.date,
-          deltaDays: pushDelta,
+          minutesToFree: pushCapacity.shortfallMins,
         }),
       });
       if (!pushRes.ok) throw new Error("Push failed");
@@ -1698,7 +1723,7 @@ export default function Schedule() {
         setPendingInsert(null);
         toast({
           title: `${jobTypeLabel} job placed`,
-          description: `${pushData.affectedCount} regular maintenance job${pushData.affectedCount !== 1 ? "s" : ""} pushed forward by ${pushDelta} working day${pushDelta !== 1 ? "s" : ""}.`,
+          description: `${pushData.affectedCount} pending maintenance job${pushData.affectedCount !== 1 ? "s" : ""} moved from the route tail to make room.`,
         });
         queryClient.invalidateQueries({ queryKey: ["/api/schedule/week"] });
         queryClient.invalidateQueries({ queryKey: ["/api/schedule/range"] });
@@ -2280,6 +2305,28 @@ export default function Schedule() {
               </div>
             </div>
 
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold text-gray-700 uppercase tracking-wide">Scheduling priority</Label>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setInsertSchedulingPolicy("unscheduled_first")}
+                  className={`rounded-xl border-2 p-3 text-left ${insertSchedulingPolicy === "unscheduled_first" ? "border-green-500 bg-green-50" : "border-gray-200 bg-white"}`}
+                >
+                  <span className="block text-xs font-bold text-gray-900">Unscheduled work first</span>
+                  <span className="mt-1 block text-[10px] leading-relaxed text-gray-500">Default. Move only enough route-tail maintenance to make room.</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setInsertSchedulingPolicy("scheduled_first")}
+                  className={`rounded-xl border-2 p-3 text-left ${insertSchedulingPolicy === "scheduled_first" ? "border-cyan-500 bg-cyan-50" : "border-gray-200 bg-white"}`}
+                >
+                  <span className="block text-xs font-bold text-gray-900">Scheduled work first</span>
+                  <span className="mt-1 block text-[10px] leading-relaxed text-gray-500">Protect maintenance if this job exceeds capacity.</span>
+                </button>
+              </div>
+            </div>
+
             {/* Notes */}
             <div className="space-y-1.5">
               <Label htmlFor="insert-notes" className="text-xs font-semibold text-gray-700 uppercase tracking-wide">Notes (optional)</Label>
@@ -2374,7 +2421,7 @@ export default function Schedule() {
                     <p className="text-sm font-semibold text-blue-800">Push regular maintenance jobs forward</p>
                     {pushCapacity.pendingScheduledFromCount > 0 ? (
                       <p className="text-xs text-blue-600 mt-0.5">
-                        {pushCapacity.pendingScheduledFromCount} pending regular maintenance job{pushCapacity.pendingScheduledFromCount !== 1 ? "s" : ""} on or after this date will shift forward by the chosen number of working days. Route order and spacing are preserved.
+                        The system will move only enough eligible pending maintenance from the route tail to free {pushCapacity.shortfallMins} minutes. Receiving-day overflow cascades forward.
                       </p>
                     ) : (
                       <p className="text-xs text-blue-600 mt-0.5">
@@ -2382,18 +2429,6 @@ export default function Schedule() {
                       </p>
                     )}
                   </div>
-                </div>
-                <div className="flex items-center gap-3">
-                  <Label className="text-xs font-semibold text-gray-700 whitespace-nowrap">Shift by</Label>
-                  <Input
-                    type="number"
-                    min="1"
-                    max="30"
-                    value={pushDelta}
-                    onChange={e => setPushDelta(Math.max(1, Math.min(30, parseInt(e.target.value) || 1)))}
-                    className="w-20 text-sm"
-                  />
-                  <span className="text-sm text-gray-600">working day{pushDelta !== 1 ? "s" : ""}</span>
                 </div>
               </div>
             </div>
@@ -2414,15 +2449,17 @@ export default function Schedule() {
               >
                 Place Anyway (over capacity)
               </Button>
-              <Button
-                className="gap-2 text-white hover:opacity-90"
-                style={{ background: "#2563eb" }}
-                onClick={handlePushAndPlace}
-                disabled={pushLoading || pushCapacity.pendingScheduledFromCount === 0}
-              >
-                <ArrowRight className="w-4 h-4" />
-                {pushLoading ? "Pushing…" : `Push ${pushDelta}d & Place`}
-              </Button>
+              {insertSchedulingPolicy === "unscheduled_first" && (
+                <Button
+                  className="gap-2 text-white hover:opacity-90"
+                  style={{ background: "#2563eb" }}
+                  onClick={handlePushAndPlace}
+                  disabled={pushLoading || pushCapacity.pendingScheduledFromCount === 0}
+                >
+                  <ArrowRight className="w-4 h-4" />
+                  {pushLoading ? "Making room…" : "Make room & place"}
+                </Button>
+              )}
             </DialogFooter>
           </DialogContent>
         </Dialog>
@@ -2915,6 +2952,28 @@ export default function Schedule() {
                   onChange={e => setUrgentDate(e.target.value)}
                   className="text-sm"
                 />
+              </div>
+
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold text-gray-700 uppercase tracking-wide">Scheduling priority</Label>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setUrgentSchedulingPolicy("unscheduled_first")}
+                    className={`rounded-xl border-2 p-3 text-left ${urgentSchedulingPolicy === "unscheduled_first" ? "border-orange-400 bg-orange-50" : "border-gray-200 bg-white"}`}
+                  >
+                    <span className="block text-xs font-bold text-gray-900">Unscheduled work first</span>
+                    <span className="mt-1 block text-[10px] leading-relaxed text-gray-500">Default. Scheduled maintenance makes way if capacity is short.</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setUrgentSchedulingPolicy("scheduled_first"); setJobsToPush(new Set()); }}
+                    className={`rounded-xl border-2 p-3 text-left ${urgentSchedulingPolicy === "scheduled_first" ? "border-cyan-500 bg-cyan-50" : "border-gray-200 bg-white"}`}
+                  >
+                    <span className="block text-xs font-bold text-gray-900">Scheduled work first</span>
+                    <span className="mt-1 block text-[10px] leading-relaxed text-gray-500">Protect maintenance; choose another date or accept overload.</span>
+                  </button>
+                </div>
               </div>
 
               <div className="space-y-1.5">

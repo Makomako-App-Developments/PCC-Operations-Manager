@@ -2286,6 +2286,10 @@ components:
           $ref: "#/components/schemas/ReactiveJobStatus"
         priority:
           $ref: "#/components/schemas/ReactivePriority"
+        schedulingPolicy:
+          type: string
+          enum: [unscheduled_first, scheduled_first]
+          nullable: true
         raisedAt: { type: string, format: date-time }
         startedAt: { type: string, format: date-time, nullable: true }
         completedAt: { type: string, format: date-time, nullable: true }
@@ -2313,6 +2317,11 @@ components:
         priority:
           $ref: "#/components/schemas/ReactivePriority"
         assignedTeamId: { type: string, format: uuid }
+        scheduledDate: { type: string, format: date }
+        estimatedTimeMins: { type: integer }
+        schedulingPolicy:
+          type: string
+          enum: [unscheduled_first, scheduled_first]
       required: [assetId, issueType, description]
 
     ReactiveJobUpdate:
@@ -2324,6 +2333,11 @@ components:
           $ref: "#/components/schemas/ReactivePriority"
         assignedTeamId: { type: string, format: uuid }
         assignedUserId: { type: string, format: uuid }
+        scheduledDate: { type: string, format: date, nullable: true }
+        estimatedTimeMins: { type: integer, nullable: true }
+        schedulingPolicy:
+          type: string
+          enum: [unscheduled_first, scheduled_first]
         startedAt: { type: string, format: date-time }
         completedAt: { type: string, format: date-time }
         actualTimeMins: { type: integer }

@@ -5,6 +5,7 @@
  * Porirua City Council – Garden Asset Management API
  * OpenAPI spec version: 0.1.0
  */
+import type { ReactiveJobCreateSchedulingPolicy } from "./reactiveJobCreateSchedulingPolicy";
 import type { ReactivePriority } from "./reactivePriority";
 
 export interface ReactiveJobCreate {
@@ -13,4 +14,7 @@ export interface ReactiveJobCreate {
   description: string;
   priority?: ReactivePriority;
   assignedTeamId?: string;
+  scheduledDate?: Date;
+  estimatedTimeMins?: number;
+  schedulingPolicy?: ReactiveJobCreateSchedulingPolicy;
 }

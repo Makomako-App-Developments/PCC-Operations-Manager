@@ -742,6 +742,15 @@ export interface JobListResponse {
   limit: number;
 }
 
+export type ReactiveJobSchedulingPolicy =
+  | (typeof ReactiveJobSchedulingPolicy)[keyof typeof ReactiveJobSchedulingPolicy]
+  | null;
+
+export const ReactiveJobSchedulingPolicy = {
+  unscheduled_first: "unscheduled_first",
+  scheduled_first: "scheduled_first",
+} as const;
+
 export interface ReactiveJob {
   id: string;
   assetId?: string | null;
@@ -759,6 +768,7 @@ export interface ReactiveJob {
   estimatedTimeMins?: number | null;
   status: ReactiveJobStatus;
   priority: ReactivePriority;
+  schedulingPolicy?: ReactiveJobSchedulingPolicy;
   raisedAt: string;
   startedAt?: string | null;
   completedAt?: string | null;
@@ -768,19 +778,41 @@ export interface ReactiveJob {
   updatedAt: string;
 }
 
+export type ReactiveJobCreateSchedulingPolicy =
+  (typeof ReactiveJobCreateSchedulingPolicy)[keyof typeof ReactiveJobCreateSchedulingPolicy];
+
+export const ReactiveJobCreateSchedulingPolicy = {
+  unscheduled_first: "unscheduled_first",
+  scheduled_first: "scheduled_first",
+} as const;
+
 export interface ReactiveJobCreate {
   assetId: string;
   issueType: string;
   description: string;
   priority?: ReactivePriority;
   assignedTeamId?: string;
+  scheduledDate?: string;
+  estimatedTimeMins?: number;
+  schedulingPolicy?: ReactiveJobCreateSchedulingPolicy;
 }
+
+export type ReactiveJobUpdateSchedulingPolicy =
+  (typeof ReactiveJobUpdateSchedulingPolicy)[keyof typeof ReactiveJobUpdateSchedulingPolicy];
+
+export const ReactiveJobUpdateSchedulingPolicy = {
+  unscheduled_first: "unscheduled_first",
+  scheduled_first: "scheduled_first",
+} as const;
 
 export interface ReactiveJobUpdate {
   status?: ReactiveJobStatus;
   priority?: ReactivePriority;
   assignedTeamId?: string;
   assignedUserId?: string;
+  scheduledDate?: string | null;
+  estimatedTimeMins?: number | null;
+  schedulingPolicy?: ReactiveJobUpdateSchedulingPolicy;
   startedAt?: string;
   completedAt?: string;
   actualTimeMins?: number;
