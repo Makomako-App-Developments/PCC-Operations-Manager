@@ -487,7 +487,7 @@ export default function CommandCenter({ data }: CommandCenterProps) {
                       <SelectTrigger aria-label="Response phase" className="bg-black/20 border-white/10 h-10">
                         <SelectValue />
                       </SelectTrigger>
-                      <SelectContent>
+                       <SelectContent style={{ zIndex: 1000 }}>
                         <SelectItem value="pre">Pre-Storm Preparation</SelectItem>
                         <SelectItem value="mid">Mid-Storm Response</SelectItem>
                         <SelectItem value="post">Post-Storm Recovery</SelectItem>
@@ -501,7 +501,7 @@ export default function CommandCenter({ data }: CommandCenterProps) {
                       <SelectTrigger aria-label="Assign to team" className="bg-black/20 border-white/10 h-10">
                         <SelectValue placeholder="Select team..." />
                       </SelectTrigger>
-                      <SelectContent>
+                       <SelectContent style={{ zIndex: 1000 }}>
                         {teams.map(t => (
                           <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>
                         ))}

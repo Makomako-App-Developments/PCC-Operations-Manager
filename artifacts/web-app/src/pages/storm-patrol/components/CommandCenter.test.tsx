@@ -185,6 +185,17 @@ describe("Storm Patrol work package asset filters", () => {
     expect(screen.getAllByTestId("storm-marker")[0]).toHaveAttribute("data-radius", "8");
   });
 
+  it("keeps the team menu above the Leaflet map layer", async () => {
+    const user = userEvent.setup();
+    renderCommandCenter();
+
+    await user.click(screen.getByRole("combobox", { name: "Assign to team" }));
+
+    const menu = await screen.findByRole("listbox");
+    expect(menu).toHaveStyle({ zIndex: "1000" });
+    expect(screen.getByRole("option", { name: "Storm Team" })).toBeVisible();
+  });
+
   it("filters the list by priority and hotspot and resets an empty result", async () => {
     const user = userEvent.setup();
     renderCommandCenter();
