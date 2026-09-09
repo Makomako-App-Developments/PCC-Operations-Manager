@@ -18,13 +18,14 @@ import {
 import { useQueryClient } from "@tanstack/react-query";
 import { 
   CloudLightning, Loader2, Plus, Users, MapPin, Search, Check, ChevronDown, ChevronUp,
-  AlertTriangle, Eye, ArrowRight, Save, Download, Navigation
+  AlertTriangle, Eye, ArrowRight, Save, Download, Navigation, Clock, ClipboardCheck
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import StormwaterAssetImport from "./StormwaterAssetImport";
 import { format } from "date-fns";
@@ -103,6 +104,7 @@ export default function CommandCenter({ data }: CommandCenterProps) {
   const retryEmail = useRetryStormPatrolAlertEmail();
   
   const [isAlerting, setIsAlerting] = useState(false);
+  const [selectedCompletedJob, setSelectedCompletedJob] = useState<StormJob | null>(null);
 
   const teams = teamsData || [];
   const assets = assetsData?.data || [];
@@ -751,7 +753,32 @@ export default function CommandCenter({ data }: CommandCenterProps) {
                       ) : (
                         jobs.map(job => {
                           return (
-                            <tr key={job.id} className="hover:bg-white/5 transition-colors">
+                            <tr
+                              key={job.id}
+                              className={`hover:bg-white/5 transition-colors ${
+                                job.status === "completed" || job.status === "too_dangerous"
+                                  ? "cursor-pointer focus-visible:outline-none focus-visible:bg-white/10"
+                                  : ""
+                              }`}
+                              tabIndex={job.status === "completed" || job.status === "too_dangerous" ? 0 : undefined}
+                              aria-label={job.status === "completed" || job.status === "too_dangerous"
+                                ? `Open completed work for ${job.assetName || "Unknown Asset"}`
+                                : undefined}
+                              onClick={() => {
+                                if (job.status === "completed" || job.status === "too_dangerous") {
+                                  setSelectedCompletedJob(job);
+                                }
+                              }}
+                              onKeyDown={(event) => {
+                                if (
+                                  (job.status === "completed" || job.status === "too_dangerous")
+                                  && (event.key === "Enter" || event.key === " ")
+                                ) {
+                                  event.preventDefault();
+                                  setSelectedCompletedJob(job);
+                                }
+                              }}
+                            >
                               <td className="px-4 py-3">
                                 <span className={`px-2 py-1 rounded text-xs font-bold uppercase ${
                                   job.phase === 'pre' ? 'bg-yellow-500/20 text-yellow-500' :
@@ -790,6 +817,81 @@ export default function CommandCenter({ data }: CommandCenterProps) {
             </div>
           </div>
         </main>
+        <Dialog
+          open={selectedCompletedJob !== null}
+          onOpenChange={(open) => {
+            if (!open) setSelectedCompletedJob(null);
+          }}
+        >
+          <DialogContent className="max-h-[85vh] overflow-y-auto border-white/10 bg-[#0f2a36] text-white sm:max-w-xl">
+            {selectedCompletedJob && (
+              <>
+                <DialogHeader className="border-b border-white/10 pb-4 pr-8">
+                  <div className="mb-1 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-green-400">
+                    <ClipboardCheck className="h-4 w-4" />
+                    {selectedCompletedJob.status === "too_dangerous" ? "Too dangerous" : "Completed work"}
+                  </div>
+                  <DialogTitle className="text-xl text-white">
+                    {selectedCompletedJob.assetName || "Unknown Asset"}
+                  </DialogTitle>
+                  <DialogDescription className="text-white/55">
+                    {selectedCompletedJob.assetDescription || selectedCompletedJob.streetAddress || "Storm Patrol job details"}
+                  </DialogDescription>
+                </DialogHeader>
+
+                <div className="grid grid-cols-2 gap-3">
+                  {[
+                    ["Phase", selectedCompletedJob.phase.toUpperCase()],
+                    ["Team", selectedCompletedJob.teamName || "Unknown Team"],
+                    ["Completed by", selectedCompletedJob.workerName || "Team sign-off"],
+                    ["Route", selectedCompletedJob.routeOrder != null ? String(selectedCompletedJob.routeOrder) : "—"],
+                    ["Suburb", selectedCompletedJob.suburb || "—"],
+                    ["Actual time", selectedCompletedJob.actualTimeMins != null ? `${selectedCompletedJob.actualTimeMins} min` : "—"],
+                  ].map(([label, value]) => (
+                    <div key={label} className="rounded-lg border border-white/10 bg-white/5 p-3">
+                      <p className="text-[10px] font-semibold uppercase tracking-wider text-white/40">{label}</p>
+                      <p className="mt-1 text-sm font-medium text-white/90">{value}</p>
+                    </div>
+                  ))}
+                </div>
+
+                {selectedCompletedJob.workTypes && selectedCompletedJob.workTypes.length > 0 && (
+                  <section>
+                    <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-white/45">Work completed</h3>
+                    <div className="flex flex-wrap gap-2">
+                      {selectedCompletedJob.workTypes.map((workType) => (
+                        <span key={workType} className="rounded-md border border-white/10 bg-white/5 px-2.5 py-1.5 text-xs text-white/80">
+                          {workType.replace(/_/g, " ")}
+                        </span>
+                      ))}
+                    </div>
+                  </section>
+                )}
+
+                <section>
+                  <h3 className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-white/45">
+                    <Clock className="h-3.5 w-3.5" />
+                    Field comments
+                  </h3>
+                  <div className="rounded-lg border border-white/10 bg-black/15 p-3 text-sm leading-relaxed text-white/80">
+                    {selectedCompletedJob.comments || "No comments recorded."}
+                  </div>
+                </section>
+
+                <div className="flex justify-end border-t border-white/10 pt-4">
+                  <Button
+                    type="button"
+                    aria-label="Close completed work"
+                    onClick={() => setSelectedCompletedJob(null)}
+                    className="bg-[#00AECD] text-white hover:bg-[#00AECD]/90"
+                  >
+                    Close
+                  </Button>
+                </div>
+              </>
+            )}
+          </DialogContent>
+        </Dialog>
       </div>
     </div>
   );

@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import CommandCenter, { filterStormwaterAssets } from "./CommandCenter";
@@ -99,7 +99,7 @@ vi.mock("react-leaflet", () => ({
   useMap: () => ({ fitBounds: vi.fn() }),
 }));
 
-function renderCommandCenter() {
+function renderCommandCenter(jobs: any[] = []) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
@@ -115,7 +115,7 @@ function renderCommandCenter() {
             hourlyRateCents: 10000,
             activatedAt: "2026-09-07T07:00:00.000Z",
           },
-          jobs: [],
+          jobs,
           alerts: [],
           observations: [],
           followUps: [],
@@ -158,6 +158,41 @@ afterEach(() => {
 });
 
 describe("Storm Patrol work package asset filters", () => {
+  it("opens completed work in a modal and returns to Storm Patrol when closed", async () => {
+    const user = userEvent.setup();
+    renderCommandCenter([{
+      id: "job-complete",
+      eventId: "event-1",
+      workPackageId: "package-1",
+      phase: "pre",
+      assetId: "asset-high-hotspot",
+      teamId: "team-1",
+      status: "completed",
+      routeOrder: 1,
+      assetName: "Bodman SW grate",
+      assetDescription: "Catchpit beside reserve",
+      teamName: "Storm Team",
+      workerName: "Field Worker",
+      actualTimeMins: 18,
+      workTypes: ["debris_clearance"],
+      comments: "Inlet cleared and flowing.",
+    }]);
+
+    await user.click(screen.getByRole("row", { name: "Open completed work for Bodman SW grate" }));
+
+    const dialog = screen.getByRole("dialog");
+    expect(dialog).toBeVisible();
+    expect(screen.getByRole("heading", { name: "Bodman SW grate" })).toBeVisible();
+    expect(within(dialog).getByText("Inlet cleared and flowing.")).toBeVisible();
+    expect(within(dialog).getByText("18 min")).toBeVisible();
+
+    await user.click(screen.getByRole("button", { name: "Close completed work" }));
+
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(screen.getByText("Live Field Operations")).toBeVisible();
+    expect(screen.getByRole("row", { name: "Open completed work for Bodman SW grate" })).toBeVisible();
+  });
+
   it("combines search, priority, and hotspot classifications", () => {
     expect(
       filterStormwaterAssets(assets as any, "bay", "Low", "Yes").map(asset => asset.id),
