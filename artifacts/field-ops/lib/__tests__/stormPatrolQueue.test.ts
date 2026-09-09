@@ -13,7 +13,7 @@ vi.mock("@react-native-async-storage/async-storage", () => ({
 }));
 vi.mock("@workspace/api-client-react", () => ({ customFetch }));
 
-import { deserializeStormQueue, enqueueStormItem, flushStormQueue, isStormQueueItemReady, loadStormQueue, saveStormQueue, serializeStormQueue, validatePostStormConditions, validateStormCompletionComments, validateStormPhaseCompletion, type StormQueueItem } from "../stormPatrolQueue";
+import { clearQueuedStormPhotos, deserializeStormQueue, enqueueStormItem, flushStormQueue, isStormQueueItemReady, loadStormQueue, saveStormQueue, serializeStormQueue, validatePostStormConditions, validateStormCompletionComments, validateStormPhaseCompletion, type StormQueueItem } from "../stormPatrolQueue";
 
 beforeEach(() => {
   values.clear();
@@ -55,6 +55,16 @@ describe("Storm Patrol offline queue", () => {
     const metadata: StormQueueItem = { ...item, id: "metadata", kind: "alert" };
     expect(isStormQueueItemReady(photo, [metadata, photo], new Set())).toBe(false);
     expect(isStormQueueItemReady(photo, [photo], new Set(["metadata"]))).toBe(true);
+  });
+
+  it("clears failed photo uploads without deleting other queued records", async () => {
+    const completion = { ...item, id: "completion" };
+    const photo: StormQueueItem = { ...item, id: "photo", kind: "photo", attempts: 2, lastError: "HTTP 400: Photo is required" };
+    const observation: StormQueueItem = { ...item, id: "observation", kind: "observation" };
+    await saveStormQueue([completion, photo, observation]);
+
+    expect(await clearQueuedStormPhotos()).toEqual([completion, observation]);
+    expect(await loadStormQueue()).toEqual([completion, observation]);
   });
 
   it("preserves an item enqueued while an earlier item is uploading", async () => {

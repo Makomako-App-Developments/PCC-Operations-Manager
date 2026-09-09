@@ -7,4 +7,4 @@ Native clients that authenticate with a bearer token must receive, apply, and pe
 
 **Why:** Production Storm Patrol photo uploads stayed queued on working Wi-Fi because ordinary requests appeared to recover through cookie retries while the stored bearer token remained expired.
 
-**How to apply:** Share concurrent refresh attempts, update the in-memory token before retrying, and treat secure-storage persistence as best-effort so storage failure cannot cancel a valid retry. For durable offline queues, serialize flushes and reconcile success/failure by item identity against the latest stored queue so an enqueue during upload cannot be overwritten.
+**How to apply:** Share concurrent refresh attempts, update the in-memory token before retrying, and treat secure-storage persistence as best-effort so storage failure cannot cancel a valid retry. For durable offline queues, serialize flushes and reconcile success/failure by item identity against the latest stored queue so an enqueue during upload cannot be overwritten. A permanently unavailable local photo must have an explicit, narrowly scoped discard path; otherwise one failed upload blocks every later queue item.
