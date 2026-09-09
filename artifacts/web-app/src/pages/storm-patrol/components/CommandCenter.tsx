@@ -93,7 +93,7 @@ export default function CommandCenter({ data }: CommandCenterProps) {
   const { toast } = useToast();
 
   const { data: teamsData } = useListTeams();
-  const { data: assetsData } = useListAssets({ department: "stormwater", limit: 2000 });
+  const { data: assetsData, isLoading: assetsLoading, refetch: refetchAssets } = useListAssets({ department: "stormwater", limit: 2000 });
   
   const publishPackage = usePublishStormPatrolPackage();
   const closeEvent = useCloseStormPatrolEvent();
@@ -117,6 +117,9 @@ export default function CommandCenter({ data }: CommandCenterProps) {
   const [selectedAssets, setSelectedAssets] = useState<Set<string>>(new Set());
   const [isPackageCollapsed, setIsPackageCollapsed] = useState(false);
   const [lastPublishedSiteCount, setLastPublishedSiteCount] = useState(0);
+  const [importFile, setImportFile] = useState<File | null>(null);
+  const [importPreview, setImportPreview] = useState<any>(null);
+  const [importing, setImporting] = useState(false);
 
   // Alerts & Observations State
   const [alertMessage, setAlertMessage] = useState("");
@@ -140,6 +143,35 @@ export default function CommandCenter({ data }: CommandCenterProps) {
       queryClient.invalidateQueries({ queryKey: getGetCurrentStormPatrolQueryKey() });
     } catch (err: any) {
       toast({ title: "Failed to publish", description: err.message, variant: "destructive" });
+    }
+  };
+
+  const submitStormwaterImport = async (commit: boolean) => {
+    if (!importFile) return;
+    setImporting(true);
+    try {
+      const form = new FormData();
+      form.append("workbook", importFile);
+      if (commit) form.append("batchKey", importPreview?.batchKey ?? "");
+      const response = await fetch(`/api/storm-patrol/assets/import/${commit ? "commit" : "preview"}`, {
+        method: "POST",
+        credentials: "include",
+        body: form,
+      });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error ?? "Unable to import workbook.");
+      if (commit) {
+        toast({ title: "Stormwater sites imported", description: `${payload.created} created, ${payload.updated} updated.` });
+        setImportPreview(null);
+        setImportFile(null);
+        await refetchAssets();
+      } else {
+        setImportPreview(payload);
+      }
+    } catch (error) {
+      toast({ title: commit ? "Import failed" : "Preview failed", description: error instanceof Error ? error.message : "Unable to import workbook.", variant: "destructive" });
+    } finally {
+      setImporting(false);
     }
   };
 
@@ -521,6 +553,38 @@ export default function CommandCenter({ data }: CommandCenterProps) {
                     </Button>
                   </div>
                 </div>
+
+                {!assetsLoading && assets.length === 0 && (
+                  <div className="mb-6 rounded-xl border border-amber-400/30 bg-amber-400/10 p-4 space-y-3">
+                    <div>
+                      <p className="font-semibold text-amber-100">No Stormwater sites are loaded</p>
+                      <p className="text-sm text-amber-100/70">Upload the authoritative 7 September 2026 workbook for a validation preview, then confirm the identical file.</p>
+                    </div>
+                    <input
+                      type="file"
+                      accept=".xlsx"
+                      onChange={event => { setImportFile(event.target.files?.[0] ?? null); setImportPreview(null); }}
+                      className="block w-full text-sm text-white/70 file:mr-3 file:rounded-md file:border-0 file:bg-white/10 file:px-3 file:py-2 file:text-white"
+                      data-testid="stormwater-import-file"
+                    />
+                    {importPreview && (
+                      <div className="rounded-lg bg-black/20 p-3 text-sm text-white/80">
+                        <p>{importPreview.summary.validRows} valid rows · {importPreview.summary.invalidRows} errors · {importPreview.summary.warnings} normalizations</p>
+                        {importPreview.errors?.slice(0, 3).map((error: string) => <p key={error} className="mt-1 text-red-300">{error}</p>)}
+                      </div>
+                    )}
+                    <div className="flex gap-2">
+                      <Button type="button" variant="outline" disabled={!importFile || importing} onClick={() => submitStormwaterImport(false)}>
+                        {importing && !importPreview ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}Preview workbook
+                      </Button>
+                      {importPreview?.valid && !importPreview.summary.alreadyImported && (
+                        <Button type="button" disabled={importing} onClick={() => submitStormwaterImport(true)} className="bg-[#00AECD] text-white">
+                          {importing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}Confirm import
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                )}
 
                 {/* Asset Selector & Map Preview */}
                 <div className="border border-white/10 rounded-xl overflow-hidden bg-black/20 flex flex-col flex-1 min-h-0">

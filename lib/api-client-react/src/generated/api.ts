@@ -31,6 +31,7 @@ import type {
   AuditUpdate,
   BadRequestResponse,
   CommitMulchDepthImportBody,
+  CommitStormwaterAssetImportBody,
   DashboardSummary,
   DegradedHealthResponse,
   ErrorResponse,
@@ -69,6 +70,7 @@ import type {
   OkResponse,
   OverdueScheduleJobsResponse,
   PreviewMulchDepthImportBody,
+  PreviewStormwaterAssetImportBody,
   ReactiveJob,
   ReactiveJobCreate,
   ReactiveJobListResponse,
@@ -98,6 +100,8 @@ import type {
   StormPackagePublish,
   StormPackagePublishResponse,
   StormReport,
+  StormwaterAssetImportCommit,
+  StormwaterAssetImportPreview,
   Team,
   TeamCreate,
   UnauthorisedResponse,
@@ -4748,6 +4752,191 @@ export const useUploadJobPhoto = <
   TContext
 > => {
   return useMutation(getUploadJobPhotoMutationOptions(options));
+};
+
+/**
+ * @summary Validate and preview the authoritative Stormwater asset workbook
+ */
+export const getPreviewStormwaterAssetImportUrl = () => {
+  return `/api/storm-patrol/assets/import/preview`;
+};
+
+export const previewStormwaterAssetImport = async (
+  previewStormwaterAssetImportBody: PreviewStormwaterAssetImportBody,
+  options?: RequestInit,
+): Promise<StormwaterAssetImportPreview> => {
+  const formData = new FormData();
+  formData.append(`workbook`, previewStormwaterAssetImportBody.workbook);
+
+  return customFetch<StormwaterAssetImportPreview>(
+    getPreviewStormwaterAssetImportUrl(),
+    {
+      ...options,
+      method: "POST",
+      body: formData,
+    },
+  );
+};
+
+export const getPreviewStormwaterAssetImportMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof previewStormwaterAssetImport>>,
+    TError,
+    { data: BodyType<PreviewStormwaterAssetImportBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof previewStormwaterAssetImport>>,
+  TError,
+  { data: BodyType<PreviewStormwaterAssetImportBody> },
+  TContext
+> => {
+  const mutationKey = ["previewStormwaterAssetImport"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof previewStormwaterAssetImport>>,
+    { data: BodyType<PreviewStormwaterAssetImportBody> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return previewStormwaterAssetImport(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type PreviewStormwaterAssetImportMutationResult = NonNullable<
+  Awaited<ReturnType<typeof previewStormwaterAssetImport>>
+>;
+export type PreviewStormwaterAssetImportMutationBody =
+  BodyType<PreviewStormwaterAssetImportBody>;
+export type PreviewStormwaterAssetImportMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Validate and preview the authoritative Stormwater asset workbook
+ */
+export const usePreviewStormwaterAssetImport = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof previewStormwaterAssetImport>>,
+    TError,
+    { data: BodyType<PreviewStormwaterAssetImportBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof previewStormwaterAssetImport>>,
+  TError,
+  { data: BodyType<PreviewStormwaterAssetImportBody> },
+  TContext
+> => {
+  return useMutation(getPreviewStormwaterAssetImportMutationOptions(options));
+};
+
+/**
+ * @summary Atomically import the reviewed Stormwater asset workbook
+ */
+export const getCommitStormwaterAssetImportUrl = () => {
+  return `/api/storm-patrol/assets/import/commit`;
+};
+
+export const commitStormwaterAssetImport = async (
+  commitStormwaterAssetImportBody: CommitStormwaterAssetImportBody,
+  options?: RequestInit,
+): Promise<StormwaterAssetImportCommit> => {
+  const formData = new FormData();
+  formData.append(`workbook`, commitStormwaterAssetImportBody.workbook);
+  formData.append(`batchKey`, commitStormwaterAssetImportBody.batchKey);
+
+  return customFetch<StormwaterAssetImportCommit>(
+    getCommitStormwaterAssetImportUrl(),
+    {
+      ...options,
+      method: "POST",
+      body: formData,
+    },
+  );
+};
+
+export const getCommitStormwaterAssetImportMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof commitStormwaterAssetImport>>,
+    TError,
+    { data: BodyType<CommitStormwaterAssetImportBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof commitStormwaterAssetImport>>,
+  TError,
+  { data: BodyType<CommitStormwaterAssetImportBody> },
+  TContext
+> => {
+  const mutationKey = ["commitStormwaterAssetImport"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof commitStormwaterAssetImport>>,
+    { data: BodyType<CommitStormwaterAssetImportBody> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return commitStormwaterAssetImport(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type CommitStormwaterAssetImportMutationResult = NonNullable<
+  Awaited<ReturnType<typeof commitStormwaterAssetImport>>
+>;
+export type CommitStormwaterAssetImportMutationBody =
+  BodyType<CommitStormwaterAssetImportBody>;
+export type CommitStormwaterAssetImportMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Atomically import the reviewed Stormwater asset workbook
+ */
+export const useCommitStormwaterAssetImport = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof commitStormwaterAssetImport>>,
+    TError,
+    { data: BodyType<CommitStormwaterAssetImportBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof commitStormwaterAssetImport>>,
+  TError,
+  { data: BodyType<CommitStormwaterAssetImportBody> },
+  TContext
+> => {
+  return useMutation(getCommitStormwaterAssetImportMutationOptions(options));
 };
 
 /**

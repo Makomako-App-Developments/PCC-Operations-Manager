@@ -1175,6 +1175,47 @@ paths:
                 $ref: "#/components/schemas/JobPhoto"
 
   # ─── Storm Patrol ────────────────────────────────────────────────────────────
+  /storm-patrol/assets/import/preview:
+    post:
+      operationId: previewStormwaterAssetImport
+      tags: [storm-patrol]
+      summary: Validate and preview the authoritative Stormwater asset workbook
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [workbook]
+              properties:
+                workbook: { type: string, format: binary }
+      responses:
+        "200":
+          description: Import preview
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/StormwaterAssetImportPreview" }
+  /storm-patrol/assets/import/commit:
+    post:
+      operationId: commitStormwaterAssetImport
+      tags: [storm-patrol]
+      summary: Atomically import the reviewed Stormwater asset workbook
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [workbook, batchKey]
+              properties:
+                workbook: { type: string, format: binary }
+                batchKey: { type: string }
+      responses:
+        "201":
+          description: Import committed
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/StormwaterAssetImportCommit" }
   /storm-patrol/current:
     get:
       operationId: getCurrentStormPatrol
@@ -1562,6 +1603,31 @@ components:
             $ref: "#/components/schemas/ErrorResponse"
 
   schemas:
+    StormwaterAssetImportPreview:
+      type: object
+      required: [batchKey, valid, summary, errors, warnings]
+      properties:
+        batchKey: { type: string }
+        valid: { type: boolean }
+        summary:
+          type: object
+          required: [totalRows, validRows, invalidRows, warnings, alreadyImported]
+          properties:
+            totalRows: { type: integer }
+            validRows: { type: integer }
+            invalidRows: { type: integer }
+            warnings: { type: integer }
+            alreadyImported: { type: boolean }
+        errors: { type: array, items: { type: string } }
+        warnings: { type: array, items: { type: string } }
+    StormwaterAssetImportCommit:
+      type: object
+      required: [batchKey, created, updated, alreadyImported]
+      properties:
+        batchKey: { type: string }
+        created: { type: integer }
+        updated: { type: integer }
+        alreadyImported: { type: boolean }
     StormEvent:
       type: object
       required: [id, name, status, hourlyRateCents]

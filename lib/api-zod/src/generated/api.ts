@@ -2131,6 +2131,35 @@ export const UploadJobPhotoBody = zod.object({
 });
 
 /**
+ * @summary Validate and preview the authoritative Stormwater asset workbook
+ */
+export const PreviewStormwaterAssetImportBody = zod.object({
+  workbook: zod.instanceof(File),
+});
+
+export const PreviewStormwaterAssetImportResponse = zod.object({
+  batchKey: zod.string(),
+  valid: zod.boolean(),
+  summary: zod.object({
+    totalRows: zod.number(),
+    validRows: zod.number(),
+    invalidRows: zod.number(),
+    warnings: zod.number(),
+    alreadyImported: zod.boolean(),
+  }),
+  errors: zod.array(zod.string()),
+  warnings: zod.array(zod.string()),
+});
+
+/**
+ * @summary Atomically import the reviewed Stormwater asset workbook
+ */
+export const CommitStormwaterAssetImportBody = zod.object({
+  workbook: zod.instanceof(File),
+  batchKey: zod.string(),
+});
+
+/**
  * @summary Active storm context, team jobs and summary
  */
 export const GetCurrentStormPatrolResponse = zod.object({

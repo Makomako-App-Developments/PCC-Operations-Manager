@@ -5,6 +5,29 @@
  * Porirua City Council – Garden Asset Management API
  * OpenAPI spec version: 0.1.0
  */
+export type StormwaterAssetImportPreviewSummary = {
+  totalRows: number;
+  validRows: number;
+  invalidRows: number;
+  warnings: number;
+  alreadyImported: boolean;
+};
+
+export interface StormwaterAssetImportPreview {
+  batchKey: string;
+  valid: boolean;
+  summary: StormwaterAssetImportPreviewSummary;
+  errors: string[];
+  warnings: string[];
+}
+
+export interface StormwaterAssetImportCommit {
+  batchKey: string;
+  created: number;
+  updated: number;
+  alreadyImported: boolean;
+}
+
 export type StormEventStatus =
   (typeof StormEventStatus)[keyof typeof StormEventStatus];
 
@@ -1457,6 +1480,15 @@ export const ListSkippedJobsReviewed = {
 export type UploadJobPhotoBody = {
   photo: Blob;
   caption?: string;
+};
+
+export type PreviewStormwaterAssetImportBody = {
+  workbook: Blob;
+};
+
+export type CommitStormwaterAssetImportBody = {
+  workbook: Blob;
+  batchKey: string;
 };
 
 export type ListStormPatrolAlertsParams = {

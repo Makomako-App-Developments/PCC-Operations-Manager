@@ -1,6 +1,7 @@
 import { Router } from "express";
 import multer from "multer";
-import { randomUUID } from "crypto";
+import * as XLSX from "xlsx";
+import { createHash, randomUUID } from "crypto";
 import {
   db, executeWithCircuitBreaker, stormEventsTable, stormWorkPackagesTable, stormJobsTable,
   stormCheckResultsTable, stormObservationsTable, stormAlertsTable, stormPatrolSettingsTable,
@@ -22,6 +23,103 @@ const privileged = (role: string) => ["administrator", "manager", "supervisor"].
 const phases = z.enum(["pre", "mid", "post"]);
 const workTypes = z.enum(["silt_clearance", "litter_clearance", "debris_clearance", "visual_check_only", "litter_debris_removed_from_site", "site_too_dangerous", "site_made_safe"]);
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 }, fileFilter: (_r, f, cb) => cb(null, f.mimetype.startsWith("image/")) });
+const workbookUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 5 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => cb(null, file.originalname.toLowerCase().endsWith(".xlsx")),
+});
+
+type StormAssetImportRow = {
+  rowNumber: number;
+  globalId: string;
+  name: string;
+  streetAddress: string | null;
+  suburb: string | null;
+  contractor: string;
+  assetType: string;
+  description: string | null;
+  priority: string;
+  hotspot: string;
+  lat: string;
+  lng: string;
+  routeOrder: number;
+  placemarkId: string | null;
+  error?: string;
+};
+
+function normalizeGlobalId(value: unknown) {
+  return String(value ?? "").trim().replace(/^\{|\}$/g, "").toUpperCase();
+}
+
+async function inspectStormAssetWorkbook(buffer: Buffer) {
+  const batchKey = createHash("sha256").update(buffer).digest("hex");
+  const workbook = XLSX.read(buffer, { type: "buffer", cellDates: true });
+  const sheet = workbook.Sheets["Survey Data"];
+  if (!sheet) return { batchKey, rows: [] as StormAssetImportRow[], errors: ["Workbook must include a “Survey Data” sheet."], warnings: [] as string[] };
+  const source = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: null, raw: true });
+  const rows: StormAssetImportRow[] = [];
+  const errors: string[] = [];
+  const warnings: string[] = [];
+  const seen = new Set<string>();
+  source.forEach((raw, index) => {
+    const rowNumber = index + 2;
+    const globalId = normalizeGlobalId(raw.globalid);
+    const name = String(raw["Asset name"] ?? "").trim();
+    const latNumber = Number(raw.latitude);
+    const lngNumber = Number(raw.longitude);
+    const contractorRaw = String(raw.contractor ?? "").trim();
+    const assetTypeRaw = String(raw["Asset type"] ?? "").trim().toLowerCase();
+    const priorityRaw = String(raw.Priority ?? "").trim();
+    const hotspotRaw = String(raw["Hotspot?"] ?? "").trim().toUpperCase();
+    const item: StormAssetImportRow = {
+      rowNumber,
+      globalId,
+      name,
+      streetAddress: String(raw.actual_address ?? "").trim() || null,
+      suburb: String(raw.suburb ?? "").trim() || null,
+      contractor: contractorRaw.toLowerCase() === "other" ? "Other" : contractorRaw,
+      assetType: assetTypeRaw,
+      description: String(raw["Location description"] ?? "").trim() || null,
+      priority: priorityRaw || "Low",
+      hotspot: hotspotRaw === "Y" ? "Yes" : "No",
+      lat: Number.isFinite(latNumber) ? latNumber.toFixed(6) : "",
+      lng: Number.isFinite(lngNumber) ? lngNumber.toFixed(6) : "",
+      routeOrder: index + 1,
+      placemarkId: String(raw.placemark_id ?? "").trim() || null,
+    };
+    if (!/^[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}$/.test(globalId)) item.error = "Invalid Global ID.";
+    else if (seen.has(globalId)) item.error = "Duplicate Global ID.";
+    else if (!name) item.error = "Asset name is required.";
+    else if (!item.lat || !item.lng) item.error = "Valid latitude and longitude are required.";
+    else if (!["Parks", "Transport", "WGTN Regional", "Taiki Wai", "Other"].includes(item.contractor)) item.error = `Unsupported contractor “${item.contractor}”.`;
+    else if (!["inlet", "outlet", "culvert", "other"].includes(item.assetType)) item.error = `Unsupported asset type “${item.assetType}”.`;
+    else if (!["High", "Medium", "Low"].includes(item.priority)) item.error = `Unsupported priority “${item.priority}”.`;
+    seen.add(globalId);
+    if (!priorityRaw) warnings.push(`Row ${rowNumber}: blank Priority will import as Low.`);
+    if (!hotspotRaw) warnings.push(`Row ${rowNumber}: blank Hotspot will import as No.`);
+    if (item.error) errors.push(`Row ${rowNumber}: ${item.error}`);
+    rows.push(item);
+  });
+  if (!rows.length) errors.push("Workbook has no data rows.");
+  if (rows.length > 500) errors.push("Workbook exceeds the 500-row import limit.");
+  const existing = await executeWithCircuitBreaker(() => db.select({
+    id: assetsTable.id, globalId: assetsTable.globalId, department: assetsTable.department, departmentDetails: assetsTable.departmentDetails,
+  }).from(assetsTable));
+  const existingByGlobalId = new Map(existing.map(asset => [normalizeGlobalId(asset.globalId), asset]));
+  for (const row of rows) {
+    const match = existingByGlobalId.get(row.globalId);
+    if (match && match.department !== "stormwater") {
+      row.error = "Global ID already belongs to a non-Stormwater asset.";
+      errors.push(`Row ${row.rowNumber}: ${row.error}`);
+    }
+  }
+  const alreadyImported = rows.length > 0 && rows.every(row => {
+    const match = existingByGlobalId.get(row.globalId);
+    return match?.department === "stormwater"
+      && (match.departmentDetails as Record<string, unknown> | null)?.importFingerprint === batchKey;
+  });
+  return { batchKey, rows, errors, warnings, alreadyImported, existingByGlobalId };
+}
 
 async function activeEvent() {
   const [event] = await executeWithCircuitBreaker(() => db.select().from(stormEventsTable).where(eq(stormEventsTable.status, "active")).limit(1));
@@ -54,6 +152,93 @@ async function enrichedStormJobs(where: any) {
   for (const result of results) types.set(result.stormJobId, [...(types.get(result.stormJobId) ?? []), result.workType]);
   return jobs.map(job => ({ ...job, workTypes: types.get(job.id) ?? [] }));
 }
+
+router.post("/storm-patrol/assets/import/preview", requireAuth, requireRole("manager"), workbookUpload.single("workbook"), async (req, res) => {
+  try {
+    if (!req.file) { res.status(400).json({ error: "Attach the 7 September Storm Patrol .xlsx workbook." }); return; }
+    const inspection = await inspectStormAssetWorkbook(req.file.buffer);
+    res.json({
+      batchKey: inspection.batchKey,
+      valid: inspection.errors.length === 0,
+      summary: {
+        totalRows: inspection.rows.length,
+        validRows: inspection.rows.filter(row => !row.error).length,
+        invalidRows: inspection.rows.filter(row => row.error).length,
+        warnings: inspection.warnings.length,
+        alreadyImported: inspection.alreadyImported,
+      },
+      errors: inspection.errors,
+      warnings: inspection.warnings,
+    });
+  } catch (error) {
+    res.status(400).json({ error: error instanceof Error ? error.message : "Unable to read workbook." });
+  }
+});
+
+router.post("/storm-patrol/assets/import/commit", requireAuth, requireRole("manager"), workbookUpload.single("workbook"), async (req, res) => {
+  try {
+    if (!req.file) { res.status(400).json({ error: "Attach the reviewed workbook again to confirm import." }); return; }
+    const inspection = await inspectStormAssetWorkbook(req.file.buffer);
+    const submittedKey = String(req.body?.batchKey ?? "");
+    if (!/^[a-f0-9]{64}$/.test(submittedKey) || submittedKey !== inspection.batchKey) {
+      res.status(409).json({ error: "This workbook differs from the reviewed file. Preview it again." }); return;
+    }
+    if (inspection.errors.length) { res.status(422).json({ error: "Workbook validation failed.", errors: inspection.errors }); return; }
+    if (inspection.alreadyImported) {
+      res.json({ batchKey: inspection.batchKey, created: 0, updated: 0, alreadyImported: true });
+      return;
+    }
+    const result = await executeWithCircuitBreaker(() => db.transaction(async tx => {
+      let created = 0;
+      let updated = 0;
+      for (const row of inspection.rows) {
+        const values = {
+          globalId: row.globalId,
+          name: row.name,
+          department: "stormwater",
+          gardenType: null,
+          standard: null,
+          areaM2: null,
+          serviceTimeMins: null,
+          frequency: null,
+          isSchedulable: false,
+          departmentDetails: {
+            placemarkId: row.placemarkId,
+            contractor: row.contractor,
+            assetType: row.assetType,
+            priority: row.priority,
+            hotspot: row.hotspot,
+            importFingerprint: inspection.batchKey,
+          },
+          teamId: null,
+          siteType: null,
+          suburb: row.suburb,
+          streetAddress: row.streetAddress,
+          lat: row.lat,
+          lng: row.lng,
+          routeOrder: row.routeOrder,
+          description: row.description,
+          isActive: true,
+          updatedAt: new Date(),
+        } as const;
+        const existing = inspection.existingByGlobalId.get(row.globalId);
+        if (existing) {
+          await tx.update(assetsTable).set(values).where(eq(assetsTable.id, existing.id));
+          updated++;
+        } else {
+          await tx.insert(assetsTable).values(values);
+          created++;
+        }
+      }
+      return { created, updated };
+    }));
+    await auditLog({ tableName: "stormwater_asset_import", recordId: null, action: "INSERT", changedById: req.auth!.userId, newData: { batchKey: inspection.batchKey, ...result } });
+    res.status(201).json({ batchKey: inspection.batchKey, ...result, alreadyImported: false });
+  } catch (error) {
+    console.error("POST /storm-patrol/assets/import/commit error:", error);
+    res.status(500).json({ error: error instanceof Error ? error.message : "Unable to import workbook." });
+  }
+});
 
 router.get("/storm-patrol/current", requireAuth, async (req, res) => {
   const event = await activeEvent();
