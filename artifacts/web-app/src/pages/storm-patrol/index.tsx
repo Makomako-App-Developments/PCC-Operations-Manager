@@ -15,6 +15,7 @@ import { Label } from "@/components/ui/label";
 import { format } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
 import CommandCenter from "./components/CommandCenter";
+import StormwaterAssetImport from "./components/StormwaterAssetImport";
 
 export default function StormPatrol() {
   const { data: currentData, isLoading: currentLoading } = useGetCurrentStormPatrol({
@@ -90,6 +91,8 @@ export default function StormPatrol() {
               No active storm event. Activate a new event to begin coordinating field work and tracking jobs.
             </p>
           </div>
+
+          <StormwaterAssetImport />
 
           {/* Create Section */}
           <div className="bg-white/5 border border-white/10 rounded-2xl p-6 md:p-8">
