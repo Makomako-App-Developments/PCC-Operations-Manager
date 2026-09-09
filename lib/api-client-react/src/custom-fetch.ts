@@ -11,6 +11,7 @@ const DEFAULT_JSON_ACCEPT = "application/json, application/problem+json";
 
 let _baseUrl = "";
 let _authTokenGetter: (() => string | null | Promise<string | null>) | null = null;
+let _authTokenUpdater: ((token: string) => void | Promise<void>) | null = null;
 export type RequestDiagnostic = {
   method: string;
   endpoint: string;
@@ -56,6 +57,12 @@ export function setAuthTokenGetter(
   getter: () => string | null | Promise<string | null>,
 ): void {
   _authTokenGetter = getter;
+}
+
+export function setAuthTokenUpdater(
+  updater: ((token: string) => void | Promise<void>) | null,
+): void {
+  _authTokenUpdater = updater;
 }
 
 function isRequest(input: RequestInfo | URL): input is Request {
@@ -315,7 +322,7 @@ async function parseSuccessBody(
   }
 }
 
-let _refreshing: Promise<boolean> | null = null;
+let _refreshing: Promise<string | null> | null = null;
 let _onUnauthorized: (() => void) | null = null;
 
 /** Called when a 401 cannot be recovered by token refresh (e.g. expired session on mobile). */
@@ -323,16 +330,18 @@ export function setOnUnauthorized(cb: () => void): void {
   _onUnauthorized = cb;
 }
 
-async function tryRefreshToken(baseUrl: string): Promise<boolean> {
+async function tryRefreshToken(baseUrl: string): Promise<string | null> {
   try {
     const refreshUrl = baseUrl ? `${baseUrl}/api/auth/refresh` : "/api/auth/refresh";
     const res = await fetch(refreshUrl, {
       method: "POST",
       credentials: "include",
     });
-    return res.ok;
+    if (!res.ok) return null;
+    const body = await res.json() as { accessToken?: unknown };
+    return typeof body.accessToken === "string" && body.accessToken ? body.accessToken : null;
   } catch {
-    return false;
+    return null;
   }
 }
 
@@ -370,14 +379,12 @@ export async function customFetch<T = unknown>(
   }
 
   let authToken: string | null = null;
-  if (_authTokenGetter && !_retry) {
+  if (_authTokenGetter) {
     authToken = await Promise.resolve(_authTokenGetter());
   }
   if (authToken) {
     headers.set("authorization", `Bearer ${authToken}`);
   } else if (_retry) {
-    // The refresh endpoint rotates the httpOnly cookie session. Do not resend
-    // the stale bearer token that caused the 401, or the retry will fail again.
     headers.delete("authorization");
   }
 
@@ -403,8 +410,14 @@ export async function customFetch<T = unknown>(
       if (!_refreshing) {
         _refreshing = tryRefreshToken(_baseUrl).finally(() => { _refreshing = null; });
       }
-      const refreshed = await _refreshing;
-      if (refreshed) {
+      const refreshedToken = await _refreshing;
+      if (refreshedToken) {
+        try {
+          await Promise.resolve(_authTokenUpdater?.(refreshedToken));
+        } catch {
+          // The in-memory updater should apply the token before attempting
+          // durable persistence. A storage failure must not cancel the retry.
+        }
         return customFetch<T>(input, options, true);
       }
       // Refresh failed — session is unrecoverable; notify the app to re-login

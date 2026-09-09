@@ -185,7 +185,7 @@ router.post("/auth/refresh", async (req, res) => {
   res
     .cookie("access_token",  accessToken,  { httpOnly: true, secure: true, sameSite: "strict", maxAge: 15 * 60 * 1000 })
     .cookie("refresh_token", refreshToken, { httpOnly: true, secure: true, sameSite: "strict", maxAge: 7 * 24 * 60 * 60 * 1000 })
-    .json({ ok: true });
+    .json({ ok: true, accessToken });
 });
 
 // POST /api/auth/logout

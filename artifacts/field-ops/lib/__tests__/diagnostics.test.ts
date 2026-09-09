@@ -14,6 +14,7 @@ vi.mock("react-native", () => ({
 import {
   customFetch,
   setAuthTokenGetter,
+  setAuthTokenUpdater,
   setRequestDiagnosticHandler,
 } from "@workspace/api-client-react";
 import { trackedFetch } from "../api";
@@ -26,6 +27,7 @@ beforeEach(() => {
   vi.restoreAllMocks();
   addBreadcrumb.mockClear();
   setAuthTokenGetter(() => null);
+  setAuthTokenUpdater(null);
   setRequestDiagnosticHandler(null);
 });
 
@@ -178,17 +180,22 @@ describe("Field Ops request diagnostics", () => {
     const diagnostics: unknown[] = [];
     setRequestDiagnosticHandler(diagnostic => diagnostics.push(diagnostic));
     let attempts = 0;
+    let activeToken = "opaque-token";
     const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(async () => {
       attempts += 1;
       if (attempts === 1) return new Response("expired", { status: 401 });
-      if (attempts === 2) return new Response(null, { status: 200 });
+      if (attempts === 2) return new Response(JSON.stringify({ ok: true, accessToken: "rotated-token" }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
       return new Response(JSON.stringify({ ok: true }), {
         status: 200,
         headers: { "content-type": "application/json" },
       });
     });
 
-    setAuthTokenGetter(() => "opaque-token");
+    setAuthTokenGetter(() => activeToken);
+    setAuthTokenUpdater(token => { activeToken = token; });
     await customFetch("/api/jobs/123e4567-e89b-12d3-a456-426614174000?note=private", {
       method: "GET",
     });
@@ -210,6 +217,32 @@ describe("Field Ops request diagnostics", () => {
     expect(fetchMock.mock.calls[2][1]).toMatchObject({
       credentials: "include",
     });
-    expect((fetchMock.mock.calls[2][1] as RequestInit).headers).not.toHaveProperty("authorization");
+    expect(((fetchMock.mock.calls[2][1] as RequestInit).headers as Headers).get("authorization"))
+      .toBe("Bearer rotated-token");
+  });
+
+  it("retries with the rotated token even if durable token storage fails", async () => {
+    let attempts = 0;
+    let activeToken = "expired-token";
+    vi.spyOn(globalThis, "fetch").mockImplementation(async () => {
+      attempts += 1;
+      if (attempts === 1) return new Response("expired", { status: 401 });
+      if (attempts === 2) return new Response(JSON.stringify({ accessToken: "rotated-token" }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+      return new Response(JSON.stringify({ ok: true }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    });
+    setAuthTokenGetter(() => activeToken);
+    setAuthTokenUpdater(token => {
+      activeToken = token;
+      throw new Error("SecureStore unavailable");
+    });
+
+    await expect(customFetch("/api/storm-patrol/current")).resolves.toEqual({ ok: true });
+    expect(attempts).toBe(3);
   });
 });

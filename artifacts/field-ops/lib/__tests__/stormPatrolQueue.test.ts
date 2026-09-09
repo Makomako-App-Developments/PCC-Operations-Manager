@@ -1,5 +1,24 @@
-import { describe, expect, it } from "vitest";
-import { deserializeStormQueue, isStormQueueItemReady, serializeStormQueue, validatePostStormConditions, validateStormCompletionComments, validateStormPhaseCompletion, type StormQueueItem } from "../stormPatrolQueue";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+const { values, customFetch } = vi.hoisted(() => ({
+  values: new Map<string, string>(),
+  customFetch: vi.fn(),
+}));
+
+vi.mock("@react-native-async-storage/async-storage", () => ({
+  default: {
+    getItem: vi.fn(async (key: string) => values.get(key) ?? null),
+    setItem: vi.fn(async (key: string, value: string) => { values.set(key, value); }),
+  },
+}));
+vi.mock("@workspace/api-client-react", () => ({ customFetch }));
+
+import { deserializeStormQueue, enqueueStormItem, flushStormQueue, isStormQueueItemReady, loadStormQueue, saveStormQueue, serializeStormQueue, validatePostStormConditions, validateStormCompletionComments, validateStormPhaseCompletion, type StormQueueItem } from "../stormPatrolQueue";
+
+beforeEach(() => {
+  values.clear();
+  customFetch.mockReset().mockResolvedValue({ ok: true });
+});
 
 describe("Storm Patrol offline queue", () => {
   const item: StormQueueItem = { id: "one", kind: "completion", idempotencyKey: "completion-one", createdAt: "2026-01-01T00:00:00.000Z", attempts: 0, payload: { jobId: "job" } };
@@ -36,5 +55,35 @@ describe("Storm Patrol offline queue", () => {
     const metadata: StormQueueItem = { ...item, id: "metadata", kind: "alert" };
     expect(isStormQueueItemReady(photo, [metadata, photo], new Set())).toBe(false);
     expect(isStormQueueItemReady(photo, [photo], new Set(["metadata"]))).toBe(true);
+  });
+
+  it("preserves an item enqueued while an earlier item is uploading", async () => {
+    await saveStormQueue([item]);
+    let releaseUpload!: () => void;
+    const uploadStarted = new Promise<void>(resolve => {
+      customFetch.mockImplementationOnce(() => new Promise(uploadResolve => {
+        releaseUpload = () => uploadResolve({ ok: true });
+        resolve();
+      }));
+    });
+
+    const flushing = flushStormQueue();
+    await uploadStarted;
+    const newItem = await enqueueStormItem({
+      kind: "observation",
+      idempotencyKey: "observation-two",
+      payload: { data: { description: "New issue" } },
+    });
+    releaseUpload();
+    await flushing;
+
+    expect(await loadStormQueue()).toEqual([newItem]);
+  });
+
+  it("serializes overlapping flushes so an item is sent once", async () => {
+    await saveStormQueue([item]);
+    await Promise.all([flushStormQueue(), flushStormQueue()]);
+    expect(customFetch).toHaveBeenCalledTimes(1);
+    expect(await loadStormQueue()).toEqual([]);
   });
 });

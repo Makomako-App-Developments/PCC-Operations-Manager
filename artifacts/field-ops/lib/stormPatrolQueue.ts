@@ -3,6 +3,22 @@ import { customFetch } from "@workspace/api-client-react";
 import type { StormCompletion, StormObservationCreate } from "@workspace/api-client-react";
 
 const STORAGE_KEY = "@storm_patrol_sync_v1";
+let storageMutation: Promise<void> = Promise.resolve();
+let queueFlush: Promise<void> = Promise.resolve();
+
+function withStorageMutation<T>(operation: () => Promise<T>): Promise<T> {
+  const result = storageMutation.then(operation, operation);
+  storageMutation = result.then(() => undefined, () => undefined);
+  return result;
+}
+
+async function rawLoadStormQueue(): Promise<StormQueueItem[]> {
+  return deserializeStormQueue(await AsyncStorage.getItem(STORAGE_KEY));
+}
+
+async function rawSaveStormQueue(items: StormQueueItem[]): Promise<void> {
+  await AsyncStorage.setItem(STORAGE_KEY, serializeStormQueue(items));
+}
 
 export type StormQueueKind = "completion" | "observation" | "alert" | "photo";
 export type StormPhotoPurpose = "before" | "after" | "urgent_issue" | "new_flooding" | "new_slip" | "observation";
@@ -80,21 +96,23 @@ export function isStormQueueItemReady(item: StormQueueItem, queued: StormQueueIt
 }
 
 export async function loadStormQueue(): Promise<StormQueueItem[]> {
-  return deserializeStormQueue(await AsyncStorage.getItem(STORAGE_KEY));
+  return rawLoadStormQueue();
 }
 
 export async function saveStormQueue(items: StormQueueItem[]): Promise<void> {
-  await AsyncStorage.setItem(STORAGE_KEY, serializeStormQueue(items));
+  await withStorageMutation(() => rawSaveStormQueue(items));
 }
 
 /** De-duplicates by idempotency key, so a retry or app restart cannot add a second result. */
 export async function enqueueStormItem(item: Omit<StormQueueItem, "id" | "createdAt" | "attempts">): Promise<StormQueueItem> {
-  const all = await loadStormQueue();
-  const existing = all.find(q => q.idempotencyKey === item.idempotencyKey);
-  if (existing) return existing;
-  const queued: StormQueueItem = { ...item, id: stormQueueId(), createdAt: new Date().toISOString(), attempts: 0 };
-  await saveStormQueue([...all, queued]);
-  return queued;
+  return withStorageMutation(async () => {
+    const all = await rawLoadStormQueue();
+    const existing = all.find(q => q.idempotencyKey === item.idempotencyKey);
+    if (existing) return existing;
+    const queued: StormQueueItem = { ...item, id: stormQueueId(), createdAt: new Date().toISOString(), attempts: 0 };
+    await rawSaveStormQueue([...all, queued]);
+    return queued;
+  });
 }
 
 export async function enqueueStormCompletion(jobId: string, data: StormCompletion, dependsOn?: string): Promise<StormQueueItem> {
@@ -140,22 +158,32 @@ async function send(item: StormQueueItem): Promise<void> {
 
 /** Processes in insertion order. Failed metadata stays ahead of its photos for a later retry. */
 export async function flushStormQueue(): Promise<StormQueueItem[]> {
-  let remaining = await loadStormQueue();
-  const completed = new Set<string>();
-  for (const item of [...remaining]) {
-    if (!isStormQueueItemReady(item, remaining, completed)) continue;
-    try {
-      await send(item);
-      completed.add(item.id);
-      remaining = remaining.filter(q => q.id !== item.id);
-      await saveStormQueue(remaining);
-    } catch (error) {
-      remaining = remaining.map(q => q.id === item.id ? {
-        ...q, attempts: q.attempts + 1, lastError: error instanceof Error ? error.message : "Unable to sync",
-      } : q);
-      await saveStormQueue(remaining);
-      break;
+  const operation = async () => {
+    let snapshot = await loadStormQueue();
+    const completed = new Set<string>();
+    for (const item of [...snapshot]) {
+      if (!isStormQueueItemReady(item, snapshot, completed)) continue;
+      try {
+        await send(item);
+        completed.add(item.id);
+        snapshot = snapshot.filter(q => q.id !== item.id);
+        await withStorageMutation(async () => {
+          const latest = await rawLoadStormQueue();
+          await rawSaveStormQueue(latest.filter(q => q.id !== item.id));
+        });
+      } catch (error) {
+        await withStorageMutation(async () => {
+          const latest = await rawLoadStormQueue();
+          await rawSaveStormQueue(latest.map(q => q.id === item.id ? {
+            ...q, attempts: q.attempts + 1, lastError: error instanceof Error ? error.message : "Unable to sync",
+          } : q));
+        });
+        break;
+      }
     }
-  }
-  return remaining;
+    return loadStormQueue();
+  };
+  const result = queueFlush.then(operation, operation);
+  queueFlush = result.then(() => undefined, () => undefined);
+  return result;
 }

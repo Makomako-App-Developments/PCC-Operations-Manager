@@ -1,4 +1,4 @@
-import { customFetch, setAuthTokenGetter, setOnUnauthorized } from "@workspace/api-client-react";
+import { customFetch, setAuthTokenGetter, setAuthTokenUpdater, setOnUnauthorized } from "@workspace/api-client-react";
 import * as SecureStore from "expo-secure-store";
 import * as Sentry from "@sentry/react-native";
 import React, {
@@ -127,6 +127,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [token, setToken] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    setAuthTokenUpdater(newToken => {
+      _currentToken = newToken;
+      setToken(newToken);
+      secureSet(TOKEN_KEY, newToken).catch(() => {});
+    });
+    return () => setAuthTokenUpdater(null);
+  }, []);
 
   useEffect(() => {
     async function init() {
