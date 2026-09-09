@@ -67,10 +67,21 @@ export default function StormPatrolScreen() {
     const result = await ImagePicker.launchCameraAsync({ mediaTypes: ["images"], quality: 0.75 });
     if (!result.canceled && result.assets[0]) setPhotos(p => [...p, { uri: result.assets[0].uri, purpose }]);
   };
-  const library = async () => {
+  const library = async (purpose: StormPhotoPurpose) => {
     if (!(await requestMediaLibraryPermission())) return;
     const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ["images"], quality: 0.75 });
-    if (!result.canceled && result.assets[0]) setPhotos(p => [...p, { uri: result.assets[0].uri, purpose: p.some(x => x.purpose === "before") ? "after" : "before" }]);
+    if (!result.canceled && result.assets[0]) setPhotos(p => [...p, { uri: result.assets[0].uri, purpose }]);
+  };
+  const choosePhoto = (purpose: StormPhotoPurpose) => {
+    Alert.alert(
+      purpose === "before" ? "Add before photo" : "Add after photo",
+      "Choose where to get the photo.",
+      [
+        { text: "Take photo", onPress: () => { void take(purpose); } },
+        { text: "Choose from library", onPress: () => { void library(purpose); } },
+        { text: "Cancel", style: "cancel" },
+      ],
+    );
   };
   const location = async () => {
     const permission = await Location.requestForegroundPermissionsAsync();
@@ -137,8 +148,7 @@ export default function StormPatrolScreen() {
     <Text style={[styles.sub, { color: colors.mutedForeground }]}>{label(selected.phase)} · Route {selected.routeOrder ?? "—"} · {elapsedMinutes} min elapsed</Text>
     <Text style={[styles.heading, { color: colors.foreground }]}>Guided check</Text>
     <Text style={[styles.help, { color: colors.mutedForeground }]}>Capture the site before work, record structured work, then capture the result.</Text>
-    <View style={styles.actions}><Button title="Before photo" icon="camera" onPress={() => take("before")} color={colors.primary}/><Button title="After photo" icon="camera" onPress={() => take("after")} color={colors.primary}/></View>
-    <Button title="Add from library" icon="image" onPress={library} color={colors.primary}/>
+    <Button title="Before photo" icon="camera" onPress={() => choosePhoto("before")} color={colors.primary}/>
     {photos.length > 0 && <ScrollView horizontal contentContainerStyle={styles.photos}>{photos.map((p, i) => <View key={`${p.uri}-${i}`}><Image source={{ uri: p.uri }} style={styles.photo}/><Text style={[styles.caption, { color: colors.mutedForeground }]}>{p.purpose.replace("_", " ")}</Text></View>)}</ScrollView>}
     <Text style={[styles.heading, { color: colors.foreground }]}>Work completed</Text>
     <View style={styles.chips}>{WORK_TYPES.map(([value, text]) => <Pressable key={value} onPress={() => setWorkTypes(w => w.includes(value) ? w.filter(x => x !== value) : [...w, value])} style={[styles.chip, { borderColor: workTypes.includes(value) ? colors.primary : colors.border, backgroundColor: workTypes.includes(value) ? colors.secondary : colors.card }]}><Text style={{ color: colors.foreground }}>{text}</Text></Pressable>)}</View>
@@ -147,6 +157,7 @@ export default function StormPatrolScreen() {
     <TextInput value={comments} onChangeText={setComments} multiline placeholder={workTypes.includes("visual_check_only") && !dangerous ? "Comments (required for visual check only)" : "Comments (optional)"} placeholderTextColor={colors.mutedForeground} style={[styles.input, styles.note, { color: colors.foreground, borderColor: colors.border }]}/>
     <Pressable onPress={() => setDangerous(x => !x)} style={styles.check}><Feather name={dangerous ? "check-square" : "square"} size={20} color={dangerous ? colors.primary : colors.mutedForeground}/><Text style={{ color: colors.foreground }}>Site is too dangerous to complete</Text></Pressable>
     {dangerous && <TextInput value={dangerReason} onChangeText={setDangerReason} multiline placeholder="Why is it unsafe?" placeholderTextColor={colors.mutedForeground} style={[styles.input, styles.note, { color: colors.foreground, borderColor: colors.border }]}/>}
+    <Button title="After photo" icon="camera" onPress={() => choosePhoto("after")} color={colors.primary}/>
     <Button title={dangerous ? "Report dangerous site" : "Complete patrol"} icon="check-circle" onPress={complete} color={dangerous ? colors.destructive : colors.primary}/>
     <Text style={[styles.heading, { color: colors.foreground }]}>GPS observation</Text><TextInput value={observation} onChangeText={setObservation} placeholder="Describe another observation" placeholderTextColor={colors.mutedForeground} style={[styles.input, { color: colors.foreground, borderColor: colors.border }]}/><Button title="Observation photo" icon="map-pin" onPress={() => take("observation")} color={colors.primary}/><Button title="Record GPS observation" icon="send" onPress={submitObservation} color={colors.primary}/>
     <Text style={[styles.heading, { color: colors.foreground }]}>Urgent issue</Text><TextInput value={issue} onChangeText={setIssue} placeholder="Tell managers what needs urgent attention" placeholderTextColor={colors.mutedForeground} style={[styles.input, { color: colors.foreground, borderColor: colors.border }]}/><Button title="Urgent issue photo" icon="camera" onPress={() => take("urgent_issue")} color={colors.destructive}/><Button title="Send urgent alert" icon="alert-circle" onPress={urgent} color={colors.destructive}/>
