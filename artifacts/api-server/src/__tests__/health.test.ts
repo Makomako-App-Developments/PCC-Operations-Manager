@@ -7,6 +7,10 @@ import healthRouter from "../routes/health";
 // if someone accidentally adds a `db` import to health-circuit-breaker.ts the
 // build breaks before tests even run.
 import circuitBreakerRouter from "../routes/health-circuit-breaker";
+import {
+  getPhotoObjectCleanupAlertState,
+  resetPhotoObjectCleanupAlertState,
+} from "../lib/photo-object-cleanup";
 
 // Mock the db module so tests run without a real database.
 // executeWithCircuitBreaker is a transparent passthrough here — circuit-breaker
@@ -27,6 +31,10 @@ vi.mock("@workspace/db", () => ({
 // Mock the audit module so health tests can control the failure counter.
 vi.mock("../lib/audit", () => ({
   getAuditFailureCount: vi.fn().mockReturnValue(0),
+}));
+
+vi.mock("../lib/push-notifications", () => ({
+  notifyOperationalAlert: vi.fn().mockResolvedValue(undefined),
 }));
 
 function buildApp() {
@@ -282,6 +290,124 @@ describe("GET /health — combined status", () => {
     // timeSinceOpenMs must be a non-negative number
     expect(typeof res.body.timeSinceOpenMs).toBe("number");
     expect(res.body.timeSinceOpenMs).toBeGreaterThanOrEqual(0);
+  });
+});
+
+describe("GET /health — photo cleanup operational alert", () => {
+  beforeEach(async () => {
+    vi.resetAllMocks();
+    resetPhotoObjectCleanupAlertState();
+    const { db, executeWithCircuitBreaker, dbCircuitBreaker } = vi.mocked(
+      await import("@workspace/db"),
+    );
+    executeWithCircuitBreaker.mockImplementation(
+      async (fn: () => Promise<unknown>) => fn(),
+    );
+    db.execute.mockResolvedValue([] as never);
+    dbCircuitBreaker.getState.mockReturnValue("CLOSED");
+    dbCircuitBreaker.getOpenedAt.mockReturnValue(null);
+    vi.mocked(
+      (await import("../lib/push-notifications")).notifyOperationalAlert,
+    ).mockResolvedValue(undefined);
+  });
+
+  it("emits one sanitized alert while permanent failures remain in the same incident window", async () => {
+    const { db } = vi.mocked(await import("@workspace/db"));
+    const { notifyOperationalAlert } = vi.mocked(
+      await import("../lib/push-notifications"),
+    );
+    db.execute
+      .mockResolvedValueOnce([] as never)
+      .mockResolvedValueOnce({
+        rows: [{ pending: "0", permanently_failed: "2" }],
+      } as never)
+      .mockResolvedValueOnce([] as never)
+      .mockResolvedValueOnce({
+        rows: [{ pending: "0", permanently_failed: "3" }],
+      } as never);
+
+    const first = await request(buildApp()).get("/health");
+    const repeated = await request(buildApp()).get("/health");
+
+    expect(first.status).toBe(200);
+    expect(repeated.status).toBe(200);
+    expect(notifyOperationalAlert).toHaveBeenCalledTimes(1);
+    expect(notifyOperationalAlert).toHaveBeenCalledWith({
+      title: "Photo cleanup needs attention",
+      body: "2 photo cleanup objects could not be removed after all retries.",
+      data: {
+        alertType: "photo-cleanup-permanent-failure",
+        permanentlyFailed: 2,
+      },
+    });
+    expect(JSON.stringify(notifyOperationalAlert.mock.calls)).not.toContain("objectName");
+    expect(repeated.body.photoCleanupAlert).toMatchObject({
+      status: "active",
+      permanentlyFailed: 3,
+    });
+    expect(repeated.body.photoCleanupAlert.lastAlertAt).toEqual(
+      first.body.photoCleanupAlert.lastAlertAt,
+    );
+  });
+
+  it("marks recovery in health, then starts a new alert window if failures return", async () => {
+    const { db } = vi.mocked(await import("@workspace/db"));
+    const { notifyOperationalAlert } = vi.mocked(
+      await import("../lib/push-notifications"),
+    );
+    db.execute
+      .mockResolvedValueOnce([] as never)
+      .mockResolvedValueOnce({
+        rows: [{ pending: "0", permanently_failed: "1" }],
+      } as never)
+      .mockResolvedValueOnce([] as never)
+      .mockResolvedValueOnce({
+        rows: [{ pending: "0", permanently_failed: "0" }],
+      } as never)
+      .mockResolvedValueOnce([] as never)
+      .mockResolvedValueOnce({
+        rows: [{ pending: "0", permanently_failed: "1" }],
+      } as never);
+
+    await request(buildApp()).get("/health");
+    const recovered = await request(buildApp()).get("/health");
+    const newIncident = await request(buildApp()).get("/health");
+
+    expect(recovered.body.photoCleanupAlert).toMatchObject({
+      status: "recovered",
+      permanentlyFailed: 0,
+    });
+    expect(typeof recovered.body.photoCleanupAlert.recoveredAt).toBe("string");
+    expect(newIncident.body.photoCleanupAlert.status).toBe("active");
+    expect(notifyOperationalAlert).toHaveBeenCalledTimes(2);
+    expect(getPhotoObjectCleanupAlertState()).toMatchObject({
+      status: "active",
+      permanentlyFailed: 1,
+    });
+  });
+
+  it("does not treat an unavailable cleanup-count query as recovery", async () => {
+    const { db } = vi.mocked(await import("@workspace/db"));
+    const { notifyOperationalAlert } = vi.mocked(
+      await import("../lib/push-notifications"),
+    );
+    db.execute
+      .mockResolvedValueOnce([] as never)
+      .mockResolvedValueOnce({
+        rows: [{ pending: "0", permanently_failed: "1" }],
+      } as never)
+      .mockResolvedValueOnce([] as never)
+      .mockRejectedValueOnce(new Error("cleanup metrics unavailable") as never);
+
+    await request(buildApp()).get("/health");
+    const unavailable = await request(buildApp()).get("/health");
+
+    expect(unavailable.status).toBe(200);
+    expect(unavailable.body.photoCleanupAlert).toMatchObject({
+      status: "active",
+      permanentlyFailed: 1,
+    });
+    expect(notifyOperationalAlert).toHaveBeenCalledTimes(1);
   });
 });
 

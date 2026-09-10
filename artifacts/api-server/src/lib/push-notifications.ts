@@ -10,6 +10,22 @@ export interface PushPayload {
   data?: Record<string, unknown>;
 }
 
+/**
+ * Sends a sanitized system-level notification to supervisors and managers.
+ * Operational alerts intentionally share the existing supervisor audience and
+ * delivery path, but are tagged separately for clients that want to group
+ * them from job notifications.
+ */
+export async function notifyOperationalAlert(payload: PushPayload): Promise<void> {
+  await notifySupervisors({
+    ...payload,
+    data: {
+      ...payload.data,
+      category: "operational",
+    },
+  });
+}
+
 async function sendMessages(messages: ExpoPushMessage[]): Promise<void> {
   if (messages.length === 0) return;
   const chunks = expo.chunkPushNotifications(messages);

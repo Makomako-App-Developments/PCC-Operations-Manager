@@ -21,6 +21,83 @@ type CleanupCounts = {
   permanentlyFailed: number;
 };
 
+export type PhotoObjectCleanupAlertState = {
+  status: "clear" | "active" | "recovered";
+  permanentlyFailed: number;
+  lastAlertAt: string | null;
+  recoveredAt: string | null;
+};
+
+type PhotoObjectCleanupAlertObservation = PhotoObjectCleanupAlertState & {
+  shouldNotify: boolean;
+};
+
+let photoObjectCleanupAlertState: PhotoObjectCleanupAlertState = {
+  status: "clear",
+  permanentlyFailed: 0,
+  lastAlertAt: null,
+  recoveredAt: null,
+};
+
+/**
+ * Tracks one operational-alert window for permanently failed cleanups.
+ *
+ * The transition is updated synchronously before the caller sends a push
+ * notification. That makes concurrent health checks converge on one alert,
+ * even while the notification delivery is still in flight.
+ */
+export function observePhotoObjectCleanupAlert(
+  permanentlyFailed: number,
+  now = new Date(),
+): PhotoObjectCleanupAlertObservation {
+  const count = Number.isFinite(permanentlyFailed)
+    ? Math.max(0, Math.trunc(permanentlyFailed))
+    : 0;
+  const shouldNotify = count > 0 && photoObjectCleanupAlertState.status !== "active";
+
+  if (count > 0) {
+    photoObjectCleanupAlertState = {
+      status: "active",
+      permanentlyFailed: count,
+      lastAlertAt: shouldNotify
+        ? now.toISOString()
+        : photoObjectCleanupAlertState.lastAlertAt,
+      recoveredAt: null,
+    };
+  } else if (photoObjectCleanupAlertState.status === "active") {
+    photoObjectCleanupAlertState = {
+      ...photoObjectCleanupAlertState,
+      status: "recovered",
+      permanentlyFailed: 0,
+      recoveredAt: now.toISOString(),
+    };
+  } else {
+    photoObjectCleanupAlertState = {
+      ...photoObjectCleanupAlertState,
+      permanentlyFailed: 0,
+    };
+  }
+
+  return {
+    ...photoObjectCleanupAlertState,
+    shouldNotify,
+  };
+}
+
+export function getPhotoObjectCleanupAlertState(): PhotoObjectCleanupAlertState {
+  return { ...photoObjectCleanupAlertState };
+}
+
+/** Test-only reset hook; production code never needs to reset an incident window. */
+export function resetPhotoObjectCleanupAlertState(): void {
+  photoObjectCleanupAlertState = {
+    status: "clear",
+    permanentlyFailed: 0,
+    lastAlertAt: null,
+    recoveredAt: null,
+  };
+}
+
 export const PHOTO_RECONCILIATION_MIN_GRACE_MS = 60 * 60 * 1000;
 
 export type PhotoObjectReconciliationReport = {

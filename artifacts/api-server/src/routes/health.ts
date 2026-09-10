@@ -3,10 +3,34 @@ import { db, dbCircuitBreaker, executeWithCircuitBreaker } from "@workspace/db";
 import { sql } from "drizzle-orm";
 import circuitBreakerRouter from "./health-circuit-breaker";
 import { getAuditFailureCount } from "../lib/audit";
-import { getPhotoObjectCleanupCounts } from "../lib/photo-object-cleanup";
+import {
+  getPhotoObjectCleanupAlertState,
+  getPhotoObjectCleanupCounts,
+  observePhotoObjectCleanupAlert,
+} from "../lib/photo-object-cleanup";
+import { notifyOperationalAlert } from "../lib/push-notifications";
 
 const router: IRouter = Router();
 const startTime = Date.now();
+
+function notifyPhotoCleanupPermanentFailureAlert(permanentlyFailed: number): void {
+  const observation = observePhotoObjectCleanupAlert(permanentlyFailed);
+  if (!observation.shouldNotify) return;
+
+  // The count is the only queue detail exposed to operators. Object names,
+  // storage-provider errors, and route-specific data never enter this payload.
+  void notifyOperationalAlert({
+    title: "Photo cleanup needs attention",
+    body: `${permanentlyFailed} photo cleanup object${permanentlyFailed === 1 ? "" : "s"} could not be removed after all retries.`,
+    data: {
+      alertType: "photo-cleanup-permanent-failure",
+      permanentlyFailed,
+    },
+  }).catch(() => {
+    // Alert delivery must not turn a successful health check into a failure.
+    console.error("[health] photo cleanup alert delivery failed");
+  });
+}
 
 // GET /api/healthz — legacy alias (kept for backward compat)
 router.get("/healthz", (_req, res) => {
@@ -68,13 +92,18 @@ router.get("/health", async (_req, res) => {
     await executeWithCircuitBreaker(() => db.execute(sql`SELECT 1`));
     const dbLatencyMs = Date.now() - t0;
     let photoCleanup = { pending: 0, permanentlyFailed: 0 };
+    let photoCleanupCountsAvailable = false;
     try {
       photoCleanup = await getPhotoObjectCleanupCounts();
+      photoCleanupCountsAvailable = true;
     } catch {
       // Cleanup metrics must not make a healthy API look unavailable. The
       // startup DDL normally guarantees this query succeeds; if it does not,
       // the worker logs the queue error and the next health check retries.
       console.error("[health] photo cleanup counts unavailable");
+    }
+    if (photoCleanupCountsAvailable) {
+      notifyPhotoCleanupPermanentFailureAlert(photoCleanup.permanentlyFailed);
     }
     res.json({
       status: "ok",
@@ -86,6 +115,7 @@ router.get("/health", async (_req, res) => {
       auditFailures: getAuditFailureCount(),
       photoCleanupPending: photoCleanup.pending,
       photoCleanupPermanentFailures: photoCleanup.permanentlyFailed,
+      photoCleanupAlert: getPhotoObjectCleanupAlertState(),
     });
   } catch {
     const cbState = dbCircuitBreaker.getState();
@@ -97,6 +127,7 @@ router.get("/health", async (_req, res) => {
       db: "unreachable",
       cbState,
       auditFailures: getAuditFailureCount(),
+      photoCleanupAlert: getPhotoObjectCleanupAlertState(),
       ...(openedAt != null && {
         openedAt: new Date(openedAt).toISOString(),
         timeSinceOpenMs,
