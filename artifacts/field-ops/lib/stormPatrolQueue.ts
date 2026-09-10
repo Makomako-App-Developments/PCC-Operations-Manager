@@ -146,6 +146,19 @@ export async function clearQueuedStormPhotos(): Promise<StormQueueItem[]> {
   return result;
 }
 
+/** Removes selected device-local queue records after the user confirms they are permanently stale. */
+export async function clearStormQueueItems(itemIds: readonly string[]): Promise<StormQueueItem[]> {
+  const ids = new Set(itemIds);
+  const operation = () => withStorageMutation(async () => {
+    const remaining = (await rawLoadStormQueue()).filter(item => !ids.has(item.id));
+    await rawSaveStormQueue(remaining);
+    return remaining;
+  });
+  const result = queueFlush.then(operation, operation);
+  queueFlush = result.then(() => undefined, () => undefined);
+  return result;
+}
+
 /** De-duplicates by idempotency key, so a retry or app restart cannot add a second result. */
 export async function enqueueStormItem(item: Omit<StormQueueItem, "id" | "createdAt" | "attempts">): Promise<StormQueueItem> {
   return withStorageMutation(async () => {

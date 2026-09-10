@@ -10,7 +10,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { PinMap } from "@/components/PinMap";
 import { requestCameraPermission, requestMediaLibraryPermission } from "@/hooks/usePhotoLibraryPermission";
 import { useColors } from "@/hooks/useColors";
-import { clearQueuedStormPhotos, enqueueStormAlert, enqueueStormCompletion, enqueueStormObservation, enqueueStormObservationPhoto, enqueueStormPhoto, flushStormQueue, getStormPatrolCompletionRequirements, loadStormQueue, stormQueueId, type StormPhotoPurpose, type StormQueueItem } from "@/lib/stormPatrolQueue";
+import { clearQueuedStormPhotos, clearStormQueueItems, enqueueStormAlert, enqueueStormCompletion, enqueueStormObservation, enqueueStormObservationPhoto, enqueueStormPhoto, flushStormQueue, getStormPatrolCompletionRequirements, loadStormQueue, stormQueueId, type StormPhotoPurpose, type StormQueueItem } from "@/lib/stormPatrolQueue";
 
 const CACHE_KEY = "@storm_patrol_current_v1";
 const WORK_TYPES = [
@@ -45,6 +45,7 @@ export default function StormPatrolScreen() {
   const [observationLocation, setObservationLocation] = useState<{ locationLat: number; locationLng: number } | null>(null);
   const [capturingLocation, setCapturingLocation] = useState(false);
   const [discardingPhotos, setDiscardingPhotos] = useState(false);
+  const [discardingStaleItems, setDiscardingStaleItems] = useState(false);
   const [flooding, setFlooding] = useState(false);
   const [floodingDescription, setFloodingDescription] = useState("");
   const [slips, setSlips] = useState(false);
@@ -72,6 +73,10 @@ export default function StormPatrolScreen() {
   const grouped = useMemo(() => ["pre", "mid", "post"].map(phase => [phase, (patrol?.jobs ?? []).filter(j => j.phase === phase).sort((a, b) => (a.routeOrder ?? Number.MAX_SAFE_INTEGER) - (b.routeOrder ?? Number.MAX_SAFE_INTEGER))] as const), [patrol]);
   const queuedPhotoCount = queue.filter(item => item.kind === "photo").length;
   const photoQueueBlocked = queuedPhotoCount > 0 && queue.some(item => item.kind === "photo" && item.lastError?.includes("Photo is required"));
+  const staleCompletionItems = queue.filter(item =>
+    item.kind === "completion" &&
+    item.lastError?.includes("Job must be claimed and in progress before completion"),
+  );
   const take = async (purpose: StormPhotoPurpose) => {
     if (Platform.OS === "web") { await library(purpose); return; }
     if (!(await requestCameraPermission())) return;
@@ -134,6 +139,19 @@ export default function StormPatrolScreen() {
         },
       ],
     );
+  };
+  const discardStaleCompletionItems = () => {
+    if (discardingStaleItems || staleCompletionItems.length === 0) return;
+    const staleIds = staleCompletionItems.map(item => item.id);
+    setDiscardingStaleItems(true);
+    setQueue(current => current.filter(item => !staleIds.includes(item.id)));
+    void clearStormQueueItems(staleIds)
+      .then(setQueue)
+      .catch(error => {
+        Alert.alert("Unable to discard stale items", error instanceof Error ? error.message : "Try again.");
+        return refreshQueue();
+      })
+      .finally(() => setDiscardingStaleItems(false));
   };
   const complete = async () => {
     if (!selected) return;
@@ -311,6 +329,9 @@ export default function StormPatrolScreen() {
         </Pressable>
         {photoQueueBlocked && <TouchableOpacity testID="storm-sync-clear-photos" disabled={discardingPhotos} onPress={discardQueuedPhotos} style={[styles.clearPhotos, { borderColor: colors.destructive, opacity: discardingPhotos ? 0.6 : 1 }]}>
           <Text style={[styles.clearPhotosText, { color: colors.destructive }]}>{discardingPhotos ? "Discarding queued photos…" : `Discard ${queuedPhotoCount} queued photo${queuedPhotoCount === 1 ? "" : "s"}`}</Text>
+        </TouchableOpacity>}
+        {staleCompletionItems.length > 0 && <TouchableOpacity testID="storm-sync-clear-stale" disabled={discardingStaleItems} onPress={discardStaleCompletionItems} style={[styles.clearPhotos, { borderColor: colors.destructive, opacity: discardingStaleItems ? 0.6 : 1 }]}>
+          <Text style={[styles.clearPhotosText, { color: colors.destructive }]}>{discardingStaleItems ? "Removing stale items…" : `Remove ${staleCompletionItems.length} stale sync item${staleCompletionItems.length === 1 ? "" : "s"}`}</Text>
         </TouchableOpacity>}
       </View>}
       {grouped.map(([phase, jobs]) => jobs.length ? <View key={phase}><Text style={[styles.phase, { color: colors.primary }]}>{label(phase)}</Text>{jobs.map((job, index) => <Pressable key={job.id} onPress={() => job.status === "pending" ? claim.mutate({ id: job.id }, { onSuccess: claimed => { const started = (claimed as Job).startedAt ?? new Date().toISOString(); setSelected({ ...job, ...claimed, startedAt: started }); current.refetch(); }, onError: () => Alert.alert("Unable to claim", "This patrol may have been claimed by another crew member.") }) : setSelected(job)} style={[styles.job, { backgroundColor: colors.card, borderColor: colors.border }]}><View style={[styles.jobSequence, { backgroundColor: colors.primary }]}><Text style={styles.jobSequenceText}>{index + 1}</Text></View><View style={{ flex: 1 }}><Text style={[styles.jobTitle, { color: colors.foreground }]}>{job.assetName ?? "Stormwater site"}</Text><Text style={[styles.sub, { color: colors.mutedForeground }]}>Route {job.routeOrder ?? "—"} · {job.status.replace("_", " ")}</Text></View><Text style={{ color: colors.primary, fontFamily: "Inter_600SemiBold" }}>{job.status === "pending" ? "Start" : "Open"}</Text></Pressable>)}</View> : null)}</>
