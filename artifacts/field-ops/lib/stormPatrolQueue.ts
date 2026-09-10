@@ -1,6 +1,13 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { customFetch } from "@workspace/api-client-react";
 import type { StormCompletion, StormObservationCreate } from "@workspace/api-client-react";
+import {
+  persistAttachment,
+  removeManagedAttachment,
+  uploadAttachment,
+  type AttachmentSource,
+  type DurableAttachment,
+} from "./attachmentUpload";
 
 const STORAGE_KEY = "@storm_patrol_sync_v1";
 let storageMutation: Promise<void> = Promise.resolve();
@@ -137,8 +144,13 @@ export async function saveStormQueue(items: StormQueueItem[]): Promise<void> {
 /** Removes only local photo uploads; completion, observation, and alert records remain queued. */
 export async function clearQueuedStormPhotos(): Promise<StormQueueItem[]> {
   const operation = () => withStorageMutation(async () => {
-      const remaining = (await rawLoadStormQueue()).filter(item => item.kind !== "photo");
+      const queued = await rawLoadStormQueue();
+      const removed = queued.filter(item => item.kind === "photo");
+      const remaining = queued.filter(item => item.kind !== "photo");
       await rawSaveStormQueue(remaining);
+      for (const item of removed) {
+        removeManagedAttachment(item.payload.attachment as DurableAttachment | undefined);
+      }
       return remaining;
     });
   const result = queueFlush.then(operation, operation);
@@ -150,8 +162,15 @@ export async function clearQueuedStormPhotos(): Promise<StormQueueItem[]> {
 export async function clearStormQueueItems(itemIds: readonly string[]): Promise<StormQueueItem[]> {
   const ids = new Set(itemIds);
   const operation = () => withStorageMutation(async () => {
-    const remaining = (await rawLoadStormQueue()).filter(item => !ids.has(item.id));
+    const queued = await rawLoadStormQueue();
+    const removed = queued.filter(item => ids.has(item.id));
+    const remaining = queued.filter(item => !ids.has(item.id));
     await rawSaveStormQueue(remaining);
+    for (const item of removed) {
+      if (item.kind === "photo") {
+        removeManagedAttachment(item.payload.attachment as DurableAttachment | undefined);
+      }
+    }
     return remaining;
   });
   const result = queueFlush.then(operation, operation);
@@ -184,45 +203,63 @@ export async function enqueueStormAlert(eventId: string, message: string, stormJ
   return enqueueStormItem({ kind: "alert", idempotencyKey, payload: { eventId, message, stormJobId, idempotencyKey } });
 }
 
-export async function enqueueStormPhoto(jobId: string, uri: string, purpose: StormPhotoPurpose, dependsOn?: string): Promise<StormQueueItem> {
+export async function enqueueStormPhoto(jobId: string, source: string | AttachmentSource, purpose: StormPhotoPurpose, dependsOn?: string): Promise<StormQueueItem> {
   const idempotencyKey = `storm-photo-${stormQueueId()}`;
-  return enqueueStormItem({ kind: "photo", idempotencyKey, dependsOn, payload: { jobId, uri, purpose, idempotencyKey } });
+  const attachment = await persistAttachment(typeof source === "string" ? { uri: source } : source);
+  try {
+    return await enqueueStormItem({ kind: "photo", idempotencyKey, dependsOn, payload: { jobId, attachment, purpose, idempotencyKey } });
+  } catch (error) {
+    removeManagedAttachment(attachment);
+    throw error;
+  }
 }
 
-export async function enqueueStormObservationPhoto(uri: string, observationIdempotencyKey: string, dependsOn: string): Promise<StormQueueItem> {
+export async function enqueueStormObservationPhoto(source: string | AttachmentSource, observationIdempotencyKey: string, dependsOn: string): Promise<StormQueueItem> {
   const idempotencyKey = `storm-photo-${stormQueueId()}`;
-  return enqueueStormItem({ kind: "photo", idempotencyKey, dependsOn, payload: { uri, purpose: "observation", observationIdempotencyKey, idempotencyKey } });
+  const attachment = await persistAttachment(typeof source === "string" ? { uri: source } : source);
+  try {
+    return await enqueueStormItem({ kind: "photo", idempotencyKey, dependsOn, payload: { attachment, purpose: "observation", observationIdempotencyKey, idempotencyKey } });
+  } catch (error) {
+    removeManagedAttachment(attachment);
+    throw error;
+  }
 }
 
-async function send(item: StormQueueItem): Promise<void> {
+async function send(item: StormQueueItem): Promise<DurableAttachment | undefined> {
   if (item.kind === "completion") {
     const { jobId, data } = item.payload as { jobId: string; data: StormCompletion };
     await customFetch(`/api/storm-patrol/jobs/${jobId}/complete`, { method: "POST", body: JSON.stringify(data) });
-    return;
+    return undefined;
   }
   if (item.kind === "observation") {
     await customFetch("/api/storm-patrol/observations", { method: "POST", body: JSON.stringify(item.payload.data) });
-    return;
+    return undefined;
   }
   if (item.kind === "alert") {
     await customFetch("/api/storm-patrol/alerts", { method: "POST", body: JSON.stringify(item.payload) });
-    return;
+    return undefined;
   }
   const { jobId, uri, purpose, idempotencyKey, observationIdempotencyKey } = item.payload as Record<string, string>;
-  const form = new FormData();
-  const name = uri.split("/").pop() || "storm-photo.jpg";
-  form.append("photo", { uri, name, type: name.endsWith(".png") ? "image/png" : "image/jpeg" } as any);
-  form.append("purpose", purpose);
-  form.append("idempotencyKey", idempotencyKey);
-  if (observationIdempotencyKey) {
-    form.append("observationIdempotencyKey", observationIdempotencyKey);
-    await customFetch("/api/storm-patrol/observations/photos", { method: "POST", body: form });
-  } else {
-    await customFetch(`/api/storm-patrol/jobs/${jobId}/photos`, { method: "POST", body: form });
+  const saved = item.payload.attachment as DurableAttachment | undefined;
+  const attachment = await persistAttachment(saved ?? { uri });
+  if (!saved || saved.uri !== attachment.uri || saved.size !== attachment.size) {
+    item.payload = { ...item.payload, attachment };
+    delete item.payload.uri;
+    await withStorageMutation(async () => {
+      const latest = await rawLoadStormQueue();
+      await rawSaveStormQueue(latest.map(queued => queued.id === item.id ? { ...queued, payload: item.payload } : queued));
+    });
   }
+  const fields = { purpose, idempotencyKey, observationIdempotencyKey };
+  if (observationIdempotencyKey) {
+    await uploadAttachment("/api/storm-patrol/observations/photos", attachment, fields);
+  } else {
+    await uploadAttachment(`/api/storm-patrol/jobs/${jobId}/photos`, attachment, fields);
+  }
+  return attachment;
 }
 
-/** Processes in insertion order. Failed metadata stays ahead of its photos for a later retry. */
+/** Processes ready items in insertion order without allowing one failure to block unrelated work. */
 export async function flushStormQueue(): Promise<StormQueueItem[]> {
   const operation = async () => {
     let snapshot = await loadStormQueue();
@@ -230,13 +267,14 @@ export async function flushStormQueue(): Promise<StormQueueItem[]> {
     for (const item of [...snapshot]) {
       if (!isStormQueueItemReady(item, snapshot, completed)) continue;
       try {
-        await send(item);
+        const sentAttachment = await send(item);
         completed.add(item.id);
         snapshot = snapshot.filter(q => q.id !== item.id);
         await withStorageMutation(async () => {
           const latest = await rawLoadStormQueue();
           await rawSaveStormQueue(latest.filter(q => q.id !== item.id));
         });
+        removeManagedAttachment(sentAttachment);
       } catch (error) {
         await withStorageMutation(async () => {
           const latest = await rawLoadStormQueue();
@@ -244,7 +282,6 @@ export async function flushStormQueue(): Promise<StormQueueItem[]> {
             ...q, attempts: q.attempts + 1, lastError: error instanceof Error ? error.message : "Unable to sync",
           } : q));
         });
-        break;
       }
     }
     return loadStormQueue();

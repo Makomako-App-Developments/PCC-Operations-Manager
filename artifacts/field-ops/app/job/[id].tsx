@@ -38,6 +38,7 @@ import { useAuth } from "@/context/auth";
 import { useColors } from "@/hooks/useColors";
 import { getApiUrl, trackedFetch } from "@/lib/api";
 import { useOfflinePhotoQueue } from "@/hooks/useOfflinePhotoQueue";
+import { persistAttachment, removeManagedAttachment, uploadAttachment, type AttachmentSource, type DurableAttachment } from "@/lib/attachmentUpload";
 import { loadCachedAsset, loadCachedCoreJob, saveCachedAsset, saveCachedCoreJob } from "@/lib/jobDetailCache";
 
 // ─── Task definitions ────────────────────────────────────────────────────────
@@ -113,36 +114,21 @@ function useJobPhotos(jobId: string) {
 function useUploadPhoto(jobId: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async ({ uri, file, caption }: { uri: string; file?: File; caption?: string }): Promise<JobPhoto | { queued: true; uri: string; caption?: string }> => {
+    mutationFn: async ({ source, file, caption }: { source: AttachmentSource; file?: File; caption?: string }): Promise<JobPhoto | { queued: true; attachment: DurableAttachment; caption?: string }> => {
+      const attachment = await persistAttachment(source);
       try {
-        const form = new FormData();
         if (Platform.OS === "web") {
-          if (file) {
-            form.append("photo", file);
-          } else {
-            const filename = uri.split("/").pop() ?? "photo.jpg";
-            const mimeType = filename.endsWith(".png") ? "image/png" : "image/jpeg";
-            const blob = await fetch(uri).then(r => r.blob());
-            form.append("photo", new File([blob], filename, { type: mimeType }));
-          }
-        } else {
-          const filename = uri.split("/").pop() ?? "photo.jpg";
-          const mimeType = filename.endsWith(".png") ? "image/png" : "image/jpeg";
-          form.append("photo", { uri, name: filename, type: mimeType } as any);
+          const browserFile = file ?? new File([await fetch(source.uri).then(r => r.blob())], attachment.fileName, { type: attachment.mimeType });
+          const photo = await uploadAttachment<JobPhoto>(`/api/jobs/${jobId}/photos`, attachment, { caption }, browserFile);
+          return photo;
         }
-        if (caption) form.append("caption", caption);
-        const res = await trackedFetch(`/api/jobs/${jobId}/photos`, {
-          method: "POST",
-          credentials: "include",
-          body: form,
-        });
-        if (!res.ok) throw new Error("Upload failed");
-        const photo = await res.json() as JobPhoto;
+        const photo = await uploadAttachment<JobPhoto>(`/api/jobs/${jobId}/photos`, attachment, { caption });
+        removeManagedAttachment(attachment);
         qc.invalidateQueries({ queryKey: ["job-photos", jobId] });
         return photo;
       } catch (err) {
-        if (Platform.OS !== "web" && err instanceof TypeError) {
-          return { queued: true, uri, caption };
+        if (Platform.OS !== "web") {
+          return { queued: true, attachment, caption };
         }
         throw err;
       }
@@ -315,9 +301,9 @@ function PhotoSection({ jobId, readOnly }: { jobId: string; readOnly: boolean })
   const photos = data?.data ?? [];
   const totalCount = photos.length + queuedPhotos.length;
 
-  const handleMutateResult = async (result: any, uri: string, caption?: string) => {
+  const handleMutateResult = async (result: any, caption?: string) => {
     if (result && result.queued === true) {
-      await addToQueue(uri, caption);
+      await addToQueue(result.attachment, caption);
     }
   };
 
@@ -331,8 +317,8 @@ function PhotoSection({ jobId, readOnly }: { jobId: string; readOnly: boolean })
     if (!result.canceled && result.assets[0]) {
       const asset = result.assets[0];
       uploadPhoto.mutate(
-        { uri: asset.uri, file: (asset as any).file ?? undefined },
-        { onSuccess: (r) => handleMutateResult(r, asset.uri) },
+        { source: asset, file: asset.file, },
+        { onSuccess: (r) => handleMutateResult(r) },
       );
     }
   };
@@ -349,7 +335,7 @@ function PhotoSection({ jobId, readOnly }: { jobId: string; readOnly: boolean })
         const file = (e.target as HTMLInputElement).files?.[0];
         if (file) {
           const uri = URL.createObjectURL(file);
-          uploadPhoto.mutate({ uri, file });
+          uploadPhoto.mutate({ source: { uri, fileName: file.name, mimeType: file.type, fileSize: file.size }, file });
         }
       };
       // Must be in the DOM before click() — mobile browsers drop programmatic
@@ -366,10 +352,9 @@ function PhotoSection({ jobId, readOnly }: { jobId: string; readOnly: boolean })
     try {
       const result = await ImagePicker.launchCameraAsync({ mediaTypes: ["images"], quality: 0.7 });
       if (!result.canceled && result.assets[0]) {
-        const uri = result.assets[0].uri;
         uploadPhoto.mutate(
-          { uri },
-          { onSuccess: (r) => handleMutateResult(r, uri) },
+          { source: result.assets[0] },
+          { onSuccess: (r) => handleMutateResult(r) },
         );
       }
     } catch {

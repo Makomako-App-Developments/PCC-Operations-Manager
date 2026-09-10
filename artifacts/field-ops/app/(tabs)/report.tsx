@@ -24,6 +24,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useAuth } from "@/context/auth";
 import { useColors } from "@/hooks/useColors";
+import { persistAttachment, removeManagedAttachment, uploadAttachment, type AttachmentSource } from "@/lib/attachmentUpload";
 import { getApiUrl } from "@/lib/api";
 
 const REPORT_DRAFT_KEY = "@report_draft_v1";
@@ -553,7 +554,7 @@ export default function ReportScreen() {
   const [showAssetModal, setShowAssetModal] = useState(false);
   const [showPestModal, setShowPestModal] = useState(false);
   const [success, setSuccess] = useState(false);
-  const [selectedPhotos, setSelectedPhotos] = useState<Array<{ uri: string; file?: File }>>([]);
+  const [selectedPhotos, setSelectedPhotos] = useState<Array<AttachmentSource & { file?: File }>>([]);
   const [uploadingPhotos, setUploadingPhotos] = useState(false);
   const [draftRestored, setDraftRestored] = useState(false);
 
@@ -620,32 +621,19 @@ export default function ReportScreen() {
 
   const uploadPhotos = async (jobId: string) => {
     for (const photo of selectedPhotos) {
+      const attachment = await persistAttachment(photo);
       try {
-        const form = new FormData();
         if (Platform.OS === "web") {
-          if (photo.file) {
-            form.append("photo", photo.file);
-          } else {
-            const filename = photo.uri.split("/").pop() ?? "photo.jpg";
-            const mimeType = filename.endsWith(".png") ? "image/png" : "image/jpeg";
-            const blob = await fetch(photo.uri).then(r => r.blob());
-            form.append("photo", new File([blob], filename, { type: mimeType }));
-          }
+          const browserFile = photo.file ?? new File([await fetch(photo.uri).then(r => r.blob())], attachment.fileName, { type: attachment.mimeType });
+          await uploadAttachment(`/api/reactive-jobs/${jobId}/photos`, attachment, {}, browserFile);
         } else {
-          const filename = photo.uri.split("/").pop() ?? "photo.jpg";
-          const mimeType = filename.endsWith(".png") ? "image/png" : "image/jpeg";
-          form.append("photo", { uri: photo.uri, name: filename, type: mimeType } as any);
+          await uploadAttachment(`/api/reactive-jobs/${jobId}/photos`, attachment);
+          removeManagedAttachment(attachment);
         }
-        const res = await fetch(getApiUrl(`/api/reactive-jobs/${jobId}/photos`), {
-          method: "POST",
-          headers: { Authorization: `Bearer ${token}` },
-          body: form,
-        });
-        if (!res.ok) throw new Error("Upload failed");
-      } catch (err) {
-        if (Platform.OS !== "web" && err instanceof TypeError) {
+      } catch {
+        if (Platform.OS !== "web") {
           const { enqueuePhoto } = await import("@/hooks/useOfflinePhotoQueue");
-          await enqueuePhoto("reactive-job", jobId, photo.uri);
+          await enqueuePhoto("reactive-job", jobId, attachment);
         }
       }
     }
@@ -662,7 +650,7 @@ export default function ReportScreen() {
     if (!result.canceled) {
       setSelectedPhotos(prev => [
         ...prev,
-        ...result.assets.map(a => ({ uri: a.uri, file: (a as any).file ?? undefined })),
+        ...result.assets.map(a => ({ ...a, file: a.file })),
       ]);
     }
   };

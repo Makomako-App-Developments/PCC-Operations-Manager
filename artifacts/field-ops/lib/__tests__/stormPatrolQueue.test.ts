@@ -1,23 +1,39 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { values, customFetch } = vi.hoisted(() => ({
+const { values, setItem, customFetch, persistAttachment, uploadAttachment, removeManagedAttachment } = vi.hoisted(() => ({
   values: new Map<string, string>(),
+  setItem: vi.fn(),
   customFetch: vi.fn(),
+  persistAttachment: vi.fn(async (source: any) => ({
+    uri: source.uri,
+    uploadId: source.uploadId ?? "test-upload",
+    fileName: source.fileName ?? source.uri.split("/").pop() ?? "photo.jpg",
+    mimeType: source.mimeType ?? "image/jpeg",
+    size: source.size ?? source.fileSize ?? 100,
+    managed: source.managed ?? true,
+  })),
+  uploadAttachment: vi.fn(),
+  removeManagedAttachment: vi.fn(),
 }));
 
 vi.mock("@react-native-async-storage/async-storage", () => ({
   default: {
     getItem: vi.fn(async (key: string) => values.get(key) ?? null),
-    setItem: vi.fn(async (key: string, value: string) => { values.set(key, value); }),
+    setItem,
   },
 }));
 vi.mock("@workspace/api-client-react", () => ({ customFetch }));
+vi.mock("../attachmentUpload", () => ({ persistAttachment, uploadAttachment, removeManagedAttachment }));
 
 import { clearQueuedStormPhotos, clearStormQueueItems, deserializeStormQueue, enqueueStormItem, enqueueStormObservationPhoto, flushStormQueue, getStormPatrolCompletionRequirements, isStormQueueItemReady, loadStormQueue, saveStormQueue, serializeStormQueue, validatePostStormConditions, validateStormCompletionComments, validateStormPhaseCompletion, type StormQueueItem } from "../stormPatrolQueue";
 
 beforeEach(() => {
   values.clear();
+  setItem.mockReset().mockImplementation(async (key: string, value: string) => { values.set(key, value); });
   customFetch.mockReset().mockResolvedValue({ ok: true });
+  persistAttachment.mockClear();
+  uploadAttachment.mockReset().mockResolvedValue({ ok: true });
+  removeManagedAttachment.mockClear();
 });
 
 describe("Storm Patrol offline queue", () => {
@@ -107,6 +123,32 @@ describe("Storm Patrol offline queue", () => {
     expect(await loadStormQueue()).toEqual([observation]);
   });
 
+  it("keeps a managed photo when durable discard persistence fails", async () => {
+    const photo: StormQueueItem = {
+      ...item,
+      id: "photo-to-discard",
+      kind: "photo",
+      payload: {
+        jobId: "job",
+        purpose: "before",
+        idempotencyKey: "photo-to-discard",
+        attachment: {
+          uri: "file:///photo.jpg",
+          uploadId: "photo-to-discard",
+          fileName: "photo.jpg",
+          mimeType: "image/jpeg",
+          size: 100,
+          managed: true,
+        },
+      },
+    };
+    await saveStormQueue([photo]);
+    setItem.mockRejectedValueOnce(new Error("AsyncStorage unavailable"));
+
+    await expect(clearStormQueueItems(["photo-to-discard"])).rejects.toThrow("AsyncStorage unavailable");
+    expect(removeManagedAttachment).not.toHaveBeenCalled();
+  });
+
   it("clears photos after an overlapping automatic flush finishes", async () => {
     const photo: StormQueueItem = {
       ...item,
@@ -124,7 +166,7 @@ describe("Storm Patrol offline queue", () => {
     await saveStormQueue([photo]);
     let rejectUpload!: (error: Error) => void;
     const uploadStarted = new Promise<void>(resolve => {
-      customFetch.mockImplementationOnce(() => new Promise((_uploadResolve, uploadReject) => {
+      uploadAttachment.mockImplementationOnce(() => new Promise((_uploadResolve, uploadReject) => {
         rejectUpload = uploadReject;
         resolve();
       }));
@@ -144,7 +186,11 @@ describe("Storm Patrol offline queue", () => {
     const photo = await enqueueStormObservationPhoto("file:///observation.jpg", "observation-key", "observation-item");
     expect(photo.kind).toBe("photo");
     expect(photo.dependsOn).toBe("observation-item");
-    expect(photo.payload).toMatchObject({ observationIdempotencyKey: "observation-key", purpose: "observation" });
+    expect(photo.payload).toMatchObject({
+      observationIdempotencyKey: "observation-key",
+      purpose: "observation",
+      attachment: { uri: "file:///observation.jpg", size: 100 },
+    });
   });
 
   it("preserves an item enqueued while an earlier item is uploading", async () => {
@@ -175,5 +221,34 @@ describe("Storm Patrol offline queue", () => {
     await Promise.all([flushStormQueue(), flushStormQueue()]);
     expect(customFetch).toHaveBeenCalledTimes(1);
     expect(await loadStormQueue()).toEqual([]);
+  });
+
+  it("continues syncing unrelated records after one attachment fails", async () => {
+    const failedPhoto: StormQueueItem = {
+      ...item,
+      id: "failed-photo",
+      kind: "photo",
+      payload: {
+        jobId: "job",
+        purpose: "before",
+        idempotencyKey: "failed-photo",
+        attachment: { uri: "file:///photo.jpg", fileName: "photo.jpg", mimeType: "image/jpeg", size: 100, managed: true },
+      },
+    };
+    const observation: StormQueueItem = {
+      ...item,
+      id: "later-observation",
+      kind: "observation",
+      idempotencyKey: "later-observation",
+      payload: { data: { description: "Still sends" } },
+    };
+    await saveStormQueue([failedPhoto, observation]);
+    uploadAttachment.mockRejectedValueOnce(new Error("Network unavailable"));
+
+    const remaining = await flushStormQueue();
+
+    expect(remaining).toHaveLength(1);
+    expect(remaining[0]).toMatchObject({ id: "failed-photo", attempts: 1 });
+    expect(customFetch).toHaveBeenCalledTimes(1);
   });
 });

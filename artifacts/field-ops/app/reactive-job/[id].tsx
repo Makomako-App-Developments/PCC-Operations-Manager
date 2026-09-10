@@ -26,6 +26,7 @@ import { useOfflinePhotoQueue } from "@/hooks/useOfflinePhotoQueue";
 import { PinMap } from "@/components/PinMap";
 import { useAuth } from "@/context/auth";
 import { useGetReactiveJob, useUpdateReactiveJob } from "@workspace/api-client-react";
+import { persistAttachment, removeManagedAttachment, uploadAttachment, type AttachmentSource, type DurableAttachment } from "@/lib/attachmentUpload";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -72,35 +73,20 @@ function useReactiveJobPhotos(id: string) {
 function useUploadReactivePhoto(jobId: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async ({ uri, file }: { uri: string; file?: File }): Promise<JobPhoto | { queued: true; uri: string }> => {
+    mutationFn: async ({ source, file }: { source: AttachmentSource; file?: File }): Promise<JobPhoto | { queued: true; attachment: DurableAttachment }> => {
+      const attachment = await persistAttachment(source);
       try {
-        const form = new FormData();
         if (Platform.OS === "web") {
-          if (file) {
-            form.append("photo", file);
-          } else {
-            const filename = uri.split("/").pop() ?? "photo.jpg";
-            const mimeType = filename.endsWith(".png") ? "image/png" : "image/jpeg";
-            const blob = await fetch(uri).then(r => r.blob());
-            form.append("photo", new File([blob], filename, { type: mimeType }));
-          }
-        } else {
-          const filename = uri.split("/").pop() ?? "photo.jpg";
-          const mimeType = filename.endsWith(".png") ? "image/png" : "image/jpeg";
-          form.append("photo", { uri, name: filename, type: mimeType } as any);
+          const browserFile = file ?? new File([await fetch(source.uri).then(r => r.blob())], attachment.fileName, { type: attachment.mimeType });
+          return uploadAttachment<JobPhoto>(`/api/reactive-jobs/${jobId}/photos`, attachment, {}, browserFile);
         }
-        const res = await fetch(getApiUrl(`/api/reactive-jobs/${jobId}/photos`), {
-          method: "POST",
-          credentials: "include",
-          body: form,
-        });
-        if (!res.ok) throw new Error("Upload failed");
-        const photo = await res.json() as JobPhoto;
+        const photo = await uploadAttachment<JobPhoto>(`/api/reactive-jobs/${jobId}/photos`, attachment);
+        removeManagedAttachment(attachment);
         qc.invalidateQueries({ queryKey: ["reactive-job-photos", jobId] });
         return photo;
       } catch (err) {
-        if (Platform.OS !== "web" && err instanceof TypeError) {
-          return { queued: true, uri };
+        if (Platform.OS !== "web") {
+          return { queued: true, attachment };
         }
         throw err;
       }
@@ -119,9 +105,9 @@ function AttachmentsSection({ jobId, readOnly }: { jobId: string; readOnly: bool
   const photos = data?.data ?? [];
   const totalCount = photos.length + queuedPhotos.length;
 
-  const handleMutateResult = async (result: any, uri: string) => {
+  const handleMutateResult = async (result: any) => {
     if (result && result.queued === true) {
-      await addToQueue(uri);
+      await addToQueue(result.attachment);
     }
   };
 
@@ -135,8 +121,8 @@ function AttachmentsSection({ jobId, readOnly }: { jobId: string; readOnly: bool
     if (!result.canceled && result.assets[0]) {
       const asset = result.assets[0];
       upload.mutate(
-        { uri: asset.uri, file: (asset as any).file ?? undefined },
-        { onSuccess: (r) => handleMutateResult(r, asset.uri) },
+        { source: asset, file: asset.file },
+        { onSuccess: handleMutateResult },
       );
     }
   };
@@ -152,8 +138,8 @@ function AttachmentsSection({ jobId, readOnly }: { jobId: string; readOnly: bool
       if (!result.canceled && result.assets[0]) {
         const uri = result.assets[0].uri;
         upload.mutate(
-          { uri, file: (result.assets[0] as any).file ?? undefined },
-          { onSuccess: (r) => handleMutateResult(r, uri) },
+          { source: result.assets[0], file: result.assets[0].file },
+          { onSuccess: handleMutateResult },
         );
       }
     } catch {

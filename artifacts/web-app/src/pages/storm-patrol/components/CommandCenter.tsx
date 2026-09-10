@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect, useRef } from "react";
 import { 
   Asset,
   StormCurrentResponseData, 
@@ -40,6 +40,21 @@ const GREEN = "#22c55e";
 
 type PriorityFilter = "all" | StormwaterAssetDetails["priority"];
 type HotspotFilter = "all" | StormwaterAssetDetails["hotspot"];
+type StormObservation = {
+  id: string;
+  eventId: string;
+  description: string;
+  notes?: string | null;
+  locationLat: number;
+  locationLng: number;
+  reactiveJobId?: string | null;
+  createdAt: string;
+  photos: Array<{
+    id: string;
+    blobUrl: string;
+    caption?: string | null;
+  }>;
+};
 
 export function filterStormwaterAssets(
   assets: Asset[],
@@ -105,9 +120,11 @@ export default function CommandCenter({ data }: CommandCenterProps) {
   
   const [isAlerting, setIsAlerting] = useState(false);
   const [selectedCompletedJob, setSelectedCompletedJob] = useState<StormJob | null>(null);
+  const [selectedObservation, setSelectedObservation] = useState<StormObservation | null>(null);
 
   const teams = teamsData || [];
   const assets = assetsData?.data || [];
+  const observations = (data?.observations ?? []) as unknown as StormObservation[];
 
   const [activeTab, setActiveTab] = useState<"overview" | "jobs" | "packages">("overview");
 
@@ -120,6 +137,13 @@ export default function CommandCenter({ data }: CommandCenterProps) {
   const [selectedAssets, setSelectedAssets] = useState<Set<string>>(new Set());
   const [isPackageCollapsed, setIsPackageCollapsed] = useState(false);
   const [lastPublishedSiteCount, setLastPublishedSiteCount] = useState(0);
+  const hasInitializedPackageView = useRef(false);
+
+  useEffect(() => {
+    if (hasInitializedPackageView.current) return;
+    hasInitializedPackageView.current = true;
+    if (jobs.length > 0) setIsPackageCollapsed(true);
+  }, [jobs.length]);
 
   // Alerts & Observations State
   const [alertMessage, setAlertMessage] = useState("");
@@ -183,6 +207,14 @@ export default function CommandCenter({ data }: CommandCenterProps) {
   const filteredAssets = useMemo(() => {
     return filterStormwaterAssets(assets, assetSearch, priorityFilter, hotspotFilter);
   }, [assets, assetSearch, priorityFilter, hotspotFilter]);
+  const allocatedAssetIds = useMemo(
+    () => new Set(jobs.filter(job => job.phase === selectedPhase).map(job => job.assetId)),
+    [jobs, selectedPhase],
+  );
+  const mapFocusAssets = useMemo(
+    () => filteredAssets.filter(asset => selectedAssets.has(asset.id) || allocatedAssetIds.has(asset.id)),
+    [filteredAssets, selectedAssets, allocatedAssetIds],
+  );
 
   const hasActiveAssetFilters =
     assetSearch.trim().length > 0 || priorityFilter !== "all" || hotspotFilter !== "all";
@@ -194,6 +226,7 @@ export default function CommandCenter({ data }: CommandCenterProps) {
   };
 
   const toggleAsset = (id: string) => {
+    if (allocatedAssetIds.has(id)) return;
     const next = new Set(selectedAssets);
     if (next.has(id)) next.delete(id);
     else next.add(id);
@@ -202,11 +235,12 @@ export default function CommandCenter({ data }: CommandCenterProps) {
 
   const selectAllFiltered = () => {
     const next = new Set(selectedAssets);
-    const allAdded = filteredAssets.every(a => next.has(a.id));
+    const selectableAssets = filteredAssets.filter(asset => !allocatedAssetIds.has(asset.id));
+    const allAdded = selectableAssets.length > 0 && selectableAssets.every(a => next.has(a.id));
     if (allAdded) {
-      filteredAssets.forEach(a => next.delete(a.id));
+      selectableAssets.forEach(a => next.delete(a.id));
     } else {
-      filteredAssets.forEach(a => next.add(a.id));
+      selectableAssets.forEach(a => next.add(a.id));
     }
     setSelectedAssets(next);
   };
@@ -398,19 +432,25 @@ export default function CommandCenter({ data }: CommandCenterProps) {
               )}
 
               {/* Field Observations */}
-              {data?.observations && data.observations.length > 0 && (
+              {observations.length > 0 && (
                 <div className="bg-white/5 border border-white/10 rounded-2xl p-5">
                   <h3 className="text-sm font-semibold text-white/60 uppercase tracking-wider mb-4 flex items-center gap-2">
                     <Eye className="w-4 h-4" /> Field Observations
                   </h3>
                   <div className="space-y-3 max-h-[300px] overflow-y-auto pr-1">
-                    {data.observations.map((obs: any) => (
-                      <div key={obs.id} className="p-3 rounded-lg bg-black/20 border border-white/5">
+                    {observations.map((obs) => (
+                      <button
+                        key={obs.id}
+                        type="button"
+                        className="w-full cursor-pointer rounded-lg bg-black/20 border border-white/5 p-3 text-left transition-colors hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00AECD]"
+                        aria-label={`Open field observation: ${obs.description}`}
+                        onClick={() => setSelectedObservation(obs)}
+                      >
                         <p className="text-sm font-medium text-white/90 mb-1">{obs.description}</p>
                         {obs.notes && <p className="text-xs text-white/60 mb-2">{obs.notes}</p>}
                         
                         {/* Check if a follow-up job exists */}
-                        {data.followUps?.find((f: any) => f.id === obs.reactiveJobId) ? (
+                        {data?.followUps?.find((f: any) => f.id === obs.reactiveJobId) ? (
                           <span className="inline-flex items-center gap-1 text-[10px] font-medium text-green-400 bg-green-400/10 px-2 py-0.5 rounded">
                             <Check className="w-3 h-3" /> Job Created
                           </span>
@@ -419,7 +459,8 @@ export default function CommandCenter({ data }: CommandCenterProps) {
                             Logged {obs.createdAt ? format(new Date(obs.createdAt), "HH:mm") : ""}
                           </span>
                         )}
-                      </div>
+                        <span className="mt-2 block text-[10px] font-semibold uppercase tracking-wider text-[#65d8e8]">View details</span>
+                      </button>
                     ))}
                   </div>
                 </div>
@@ -478,7 +519,11 @@ export default function CommandCenter({ data }: CommandCenterProps) {
 
                 {isPackageCollapsed ? (
                   <div className="flex items-center justify-between gap-4 rounded-xl border border-white/10 bg-black/20 px-4 py-3 text-sm text-white/60">
-                    <span>Last package published: {lastPublishedSiteCount} site{lastPublishedSiteCount === 1 ? "" : "s"}.</span>
+                    <span>
+                      {lastPublishedSiteCount > 0
+                        ? `Last package published: ${lastPublishedSiteCount} site${lastPublishedSiteCount === 1 ? "" : "s"}.`
+                        : `${jobs.length} issued field job${jobs.length === 1 ? "" : "s"} ready for live operations.`}
+                    </span>
                     <span className="text-green-400">Ready for the next package</span>
                   </div>
                 ) : (
@@ -486,7 +531,10 @@ export default function CommandCenter({ data }: CommandCenterProps) {
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
                   <div className="space-y-2">
                     <Label className="text-white/60">Response Phase</Label>
-                    <Select value={selectedPhase} onValueChange={v => setSelectedPhase(v as any)}>
+                     <Select value={selectedPhase} onValueChange={v => {
+                       setSelectedPhase(v as "pre" | "mid" | "post");
+                       setSelectedAssets(new Set());
+                     }}>
                       <SelectTrigger aria-label="Response phase" className="bg-black/20 border-white/10 h-10">
                         <SelectValue />
                       </SelectTrigger>
@@ -598,7 +646,9 @@ export default function CommandCenter({ data }: CommandCenterProps) {
                           disabled={filteredAssets.length === 0}
                           className="h-8 text-xs text-white/60 hover:text-white hover:bg-white/10"
                         >
-                          {filteredAssets.length > 0 && filteredAssets.every(a => selectedAssets.has(a.id)) ? "Deselect All" : "Select All Filtered"}
+                           {filteredAssets.length > 0 && filteredAssets.filter(a => !allocatedAssetIds.has(a.id)).every(a => selectedAssets.has(a.id))
+                             ? "Deselect All"
+                             : "Select All Available"}
                         </Button>
                       </div>
                     </div>
@@ -623,16 +673,25 @@ export default function CommandCenter({ data }: CommandCenterProps) {
                       ) : (
                         filteredAssets.map(asset => {
                           const details = asset.departmentDetails as StormwaterAssetDetails;
+                           const isAllocated = allocatedAssetIds.has(asset.id);
+                           const isSelected = selectedAssets.has(asset.id);
                           return (
                             <label
                               key={asset.id}
-                              className={`flex items-start gap-3 p-2 rounded-lg cursor-pointer transition-colors ${selectedAssets.has(asset.id) ? 'bg-[#00AECD]/20 border-[#00AECD]/30' : 'hover:bg-white/5 border-transparent'} border`}
+                               className={`flex items-start gap-3 p-2 rounded-lg transition-colors ${
+                                 isAllocated
+                                   ? "bg-blue-500/15 border-blue-400/30 cursor-not-allowed"
+                                   : isSelected
+                                     ? "bg-[#00AECD]/20 border-[#00AECD]/30 cursor-pointer"
+                                     : "hover:bg-white/5 border-transparent cursor-pointer"
+                               } border`}
                             >
                               <input
                                 type="checkbox"
                                 aria-label={`Select ${asset.name}`}
                                 className="mt-1 flex-shrink-0 accent-[#00AECD] border-white/20 rounded bg-black/40"
-                                checked={selectedAssets.has(asset.id)}
+                                 checked={isSelected || isAllocated}
+                                 disabled={isAllocated}
                                 onChange={() => toggleAsset(asset.id)}
                               />
                               <div className="min-w-0 flex-1">
@@ -648,6 +707,9 @@ export default function CommandCenter({ data }: CommandCenterProps) {
                                 {details?.hotspot === "Yes" && (
                                   <span className="px-2 py-0.5 rounded bg-red-500/20 text-red-400 text-[10px] font-bold">HOTSPOT</span>
                                 )}
+                                 {isAllocated && (
+                                   <span className="px-2 py-0.5 rounded bg-blue-500/20 text-blue-200 text-[10px] font-bold">ALLOCATED</span>
+                                 )}
                               </div>
                             </label>
                           );
@@ -668,16 +730,18 @@ export default function CommandCenter({ data }: CommandCenterProps) {
                            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
                            attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
                         />
-                        <FitBounds assets={filteredAssets.filter(a => selectedAssets.has(a.id))} />
+                         <FitBounds assets={mapFocusAssets} />
                         
                         {filteredAssets.map(asset => {
                           if (!asset.lat || !asset.lng) return null;
-                          const isSelected = selectedAssets.has(asset.id);
+                           const isAllocated = allocatedAssetIds.has(asset.id);
+                           const isSelected = selectedAssets.has(asset.id);
+                           const isMarked = isSelected || isAllocated;
                           const isHotspot = (asset.departmentDetails as StormwaterAssetDetails)?.hotspot === "Yes";
                           
                            let color = "#111827"; // black for standard sites
                            let fillColor = "transparent";
-                          if (isSelected) {
+                           if (isMarked) {
                              color = "#2563eb";
                              fillColor = "#2563eb";
                           } else if (isHotspot) {
@@ -688,15 +752,15 @@ export default function CommandCenter({ data }: CommandCenterProps) {
                             <CircleMarker
                               key={asset.id}
                               center={[asset.lat, asset.lng]}
-                               radius={isSelected ? 8 : 5}
+                                radius={isMarked ? 8 : 5}
                                pathOptions={{
                                  color,
                                  fillColor,
-                                 fillOpacity: isSelected ? 1 : 0,
-                                 weight: isSelected ? 3 : 2,
+                                  fillOpacity: isMarked ? 1 : 0,
+                                  weight: isMarked ? 3 : 2,
                                }}
                               eventHandlers={{
-                                click: () => toggleAsset(asset.id)
+                                 click: () => toggleAsset(asset.id)
                               }}
                             >
                               <Popup className="bg-[#0f2a36] text-white border border-white/10 rounded-lg">
@@ -705,10 +769,11 @@ export default function CommandCenter({ data }: CommandCenterProps) {
                                   <p className="text-xs text-gray-500 mb-2">{asset.streetAddress}</p>
                                   <Button 
                                     size="sm"
-                                    onClick={() => toggleAsset(asset.id)}
-                                    className={`w-full h-7 text-xs ${isSelected ? 'bg-red-500/10 text-red-500 hover:bg-red-500/20' : 'bg-[#00AECD] text-white hover:bg-[#00AECD]/90'}`}
+                                     onClick={() => toggleAsset(asset.id)}
+                                     disabled={isAllocated}
+                                     className={`w-full h-7 text-xs ${isAllocated ? 'bg-blue-500/20 text-blue-200' : isSelected ? 'bg-red-500/10 text-red-500 hover:bg-red-500/20' : 'bg-[#00AECD] text-white hover:bg-[#00AECD]/90'}`}
                                   >
-                                    {isSelected ? "Remove from Package" : "Add to Package"}
+                                     {isAllocated ? "Already allocated" : isSelected ? "Remove from Package" : "Add to Package"}
                                   </Button>
                                 </div>
                               </Popup>
@@ -883,6 +948,83 @@ export default function CommandCenter({ data }: CommandCenterProps) {
                     type="button"
                     aria-label="Close completed work"
                     onClick={() => setSelectedCompletedJob(null)}
+                    className="bg-[#00AECD] text-white hover:bg-[#00AECD]/90"
+                  >
+                    Close
+                  </Button>
+                </div>
+              </>
+            )}
+          </DialogContent>
+        </Dialog>
+        <Dialog
+          open={selectedObservation !== null}
+          onOpenChange={(open) => {
+            if (!open) setSelectedObservation(null);
+          }}
+        >
+          <DialogContent className="max-h-[85vh] overflow-y-auto border-white/10 bg-[#0f2a36] text-white sm:max-w-xl">
+            {selectedObservation && (
+              <>
+                <DialogHeader className="border-b border-white/10 pb-4 pr-8">
+                  <div className="mb-1 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-[#65d8e8]">
+                    <Eye className="h-4 w-4" />
+                    Field observation
+                  </div>
+                  <DialogTitle className="text-xl text-white">{selectedObservation.description}</DialogTitle>
+                  <DialogDescription className="text-white/55">
+                    Logged {selectedObservation.createdAt ? format(new Date(selectedObservation.createdAt), "HH:mm, d MMM yyyy") : "at an unknown time"}
+                  </DialogDescription>
+                </DialogHeader>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="rounded-lg border border-white/10 bg-white/5 p-3">
+                    <p className="text-[10px] font-semibold uppercase tracking-wider text-white/40">Latitude</p>
+                    <p className="mt-1 text-sm font-medium text-white/90">{selectedObservation.locationLat.toFixed(5)}</p>
+                  </div>
+                  <div className="rounded-lg border border-white/10 bg-white/5 p-3">
+                    <p className="text-[10px] font-semibold uppercase tracking-wider text-white/40">Longitude</p>
+                    <p className="mt-1 text-sm font-medium text-white/90">{selectedObservation.locationLng.toFixed(5)}</p>
+                  </div>
+                </div>
+
+                <section>
+                  <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-white/45">Notes</h3>
+                  <div className="rounded-lg border border-white/10 bg-black/15 p-3 text-sm leading-relaxed text-white/80">
+                    {selectedObservation.notes || "No additional notes recorded."}
+                  </div>
+                </section>
+
+                <section>
+                  <h3 className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-white/45">
+                    <Eye className="h-3.5 w-3.5" />
+                    Photos
+                  </h3>
+                  {selectedObservation.photos.length > 0 ? (
+                    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                      {selectedObservation.photos.map((photo, index) => (
+                        <figure key={photo.id} className="overflow-hidden rounded-lg border border-white/10 bg-black/20">
+                          <img
+                            src={photo.blobUrl}
+                            alt={`Observation photo ${index + 1}`}
+                            className="aspect-square w-full object-cover"
+                          />
+                          {photo.caption && <figcaption className="p-2 text-xs text-white/60">{photo.caption}</figcaption>}
+                        </figure>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="rounded-lg border border-dashed border-white/10 bg-black/15 p-4 text-sm text-white/45">
+                      No photos were attached to this observation.
+                    </div>
+                  )}
+                </section>
+
+                <div className="flex justify-end border-t border-white/10 pt-4">
+                  <Button
+                    type="button"
+                    aria-label="Close field observation"
+                    onClick={() => setSelectedObservation(null)}
                     className="bg-[#00AECD] text-white hover:bg-[#00AECD]/90"
                   >
                     Close

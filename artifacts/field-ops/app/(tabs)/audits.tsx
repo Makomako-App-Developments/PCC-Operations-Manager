@@ -26,6 +26,8 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 
 import { useAuth } from "@/context/auth";
 import { useColors } from "@/hooks/useColors";
+import { persistAttachment, removeManagedAttachment, uploadAttachment } from "@/lib/attachmentUpload";
+import { enqueuePhoto } from "@/lib/photoQueue";
 import { getApiUrl } from "@/lib/api";
 
 // ─── Weekly Quota Banner ──────────────────────────────────────────────────────
@@ -331,6 +333,7 @@ interface KpiResponse {
 
 interface LocalPhoto {
   uri: string;
+  uploadId?: string;
   mimeType?: string;
   fileName?: string;
 }
@@ -671,7 +674,12 @@ ${userMarker}
           ...prev,
           [criterion]: [
             ...existing,
-            { uri: asset.uri, mimeType: asset.mimeType ?? "image/jpeg", fileName: asset.fileName ?? `audit-${criterion}-${existing.length}.jpg` },
+            {
+              uri: asset.uri,
+              uploadId: `audit-photo-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
+              mimeType: asset.mimeType ?? "image/jpeg",
+              fileName: asset.fileName ?? `audit-${criterion}-${existing.length}.jpg`,
+            },
           ],
         };
       });
@@ -729,30 +737,35 @@ ${userMarker}
 
       // Upload photos (up to MAX_PHOTOS_PER_ITEM) for any fail items that have local photos
       const photoEntries = Object.entries(photos);
+      let queuedPhotoCount = 0;
       for (const [criterion, criterionPhotos] of photoEntries) {
         const item = detail.items?.find((i: any) => i.criterion === criterion);
         if (!item) continue;
         for (const photo of criterionPhotos) {
-          const formData = new FormData();
+          const attachment = await persistAttachment(photo);
           if (Platform.OS === "web") {
             const blob = await (await fetch(photo.uri)).blob();
-            formData.append("photo", blob, photo.fileName ?? "photo.jpg");
+            const browserFile = new File([blob], attachment.fileName, { type: attachment.mimeType });
+            await uploadAttachment(`/api/audits/${auditId}/items/${item.id}/photos`, attachment, {}, browserFile);
           } else {
-            formData.append("photo", {
-              uri: photo.uri,
-              type: photo.mimeType ?? "image/jpeg",
-              name: photo.fileName ?? "photo.jpg",
-            } as any);
+            try {
+              await uploadAttachment(`/api/audits/${auditId}/items/${item.id}/photos`, attachment);
+              removeManagedAttachment(attachment);
+            } catch {
+              await enqueuePhoto("audit-item", item.id, attachment, undefined, auditId);
+              queuedPhotoCount += 1;
+            }
           }
-          await fetch(getApiUrl(`/api/audits/${auditId}/items/${item.id}/photos`), {
-            method: "POST",
-            headers: { Authorization: `Bearer ${token}` },
-            body: formData,
-          });
         }
       }
 
       setDoneScore(detail.overallScore != null ? Number(detail.overallScore) : null);
+      if (queuedPhotoCount > 0) {
+        Alert.alert(
+          "Audit saved with queued evidence",
+          `${queuedPhotoCount} photo${queuedPhotoCount === 1 ? " is" : "s are"} safe on this device and will upload automatically.`,
+        );
+      }
       qc.invalidateQueries({ queryKey: ["audits"] });
       qc.invalidateQueries({ queryKey: ["audit-quota-badge"] });
       qc.invalidateQueries({ queryKey: ["audit-quota-current"] });

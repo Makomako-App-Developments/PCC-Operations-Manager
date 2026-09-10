@@ -880,6 +880,8 @@ paths:
                 photo:
                   type: string
                   format: binary
+                idempotencyKey:
+                  type: string
               required: [photo]
       responses:
         "201":
@@ -1165,6 +1167,8 @@ paths:
                   format: binary
                 caption:
                   type: string
+                idempotencyKey:
+                  type: string
               required: [photo]
       responses:
         "201":
@@ -1421,6 +1425,26 @@ paths:
                 },
             },
         }
+  /storm-patrol/jobs/{id}/photos:
+    post:
+      operationId: uploadStormPatrolJobPhoto
+      tags: [storm-patrol]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema: { $ref: "#/components/schemas/StormJobPhotoUpload" }
+      responses:
+        "201":
+          description: Storm Patrol job photo uploaded
+          content:
+            application/json:
+              schema: { type: object, additionalProperties: true }
   /storm-patrol/observations:
     post:
       operationId: createStormPatrolObservation
@@ -1682,6 +1706,32 @@ components:
         teamName: { type: string, nullable: true }
         workerName: { type: string, nullable: true }
         workTypes: { type: array, items: { type: string } }
+    StormObservationPhoto:
+      type: object
+      required: [id, purpose, blobUrl, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        purpose: { type: string, enum: [before, after, urgent_issue, new_flooding, new_slip, observation] }
+        blobUrl: { type: string }
+        caption: { type: string, nullable: true }
+        createdAt: { type: string, format: date-time }
+    StormObservation:
+      type: object
+      required: [id, eventId, description, locationLat, locationLng, createdAt, photos]
+      properties:
+        id: { type: string, format: uuid }
+        eventId: { type: string, format: uuid }
+        sourceJobId: { type: string, format: uuid, nullable: true }
+        assetId: { type: string, format: uuid, nullable: true }
+        description: { type: string }
+        notes: { type: string, nullable: true }
+        locationLat: { type: number }
+        locationLng: { type: number }
+        reactiveJobId: { type: string, format: uuid, nullable: true }
+        createdAt: { type: string, format: date-time }
+        photos:
+          type: array
+          items: { $ref: "#/components/schemas/StormObservationPhoto" }
     StormEventListResponse:
       type: object
       required: [data]
@@ -1713,7 +1763,7 @@ components:
             observations:
               {
                 type: array,
-                items: { type: object, additionalProperties: true },
+                items: { $ref: "#/components/schemas/StormObservation" },
               }
             followUps:
               {
@@ -1865,6 +1915,16 @@ components:
       properties:
         photo: { type: string, format: binary }
         observationIdempotencyKey: { type: string }
+        idempotencyKey: { type: string }
+    StormJobPhotoUpload:
+      type: object
+      required: [photo, purpose, idempotencyKey]
+      properties:
+        photo: { type: string, format: binary }
+        purpose:
+          type: string
+          enum: [before, after, urgent_issue, new_flooding, new_slip, observation]
+        caption: { type: string }
         idempotencyKey: { type: string }
 
     # ─── Primitives / enums ─────────────────────────────────────────────────

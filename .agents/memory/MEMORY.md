@@ -30,3 +30,4 @@
 - [Stormwater draft import normalization](stormwater-draft-import-normalization.md) — allow Other classifications; blank Priority/Hotspot in the September 2026 draft normalize to Low/No.
 - [Missed-work identity](missed-work-identity.md) — prior-date scheduled work keeps its identity and original date; regeneration never silently replaces it, and resolution is explicit and audited.
 - [Native bearer-token rotation](native-bearer-token-rotation.md) — refresh must replace the mobile bearer token, not only cookies; queue persistence must reconcile against the latest stored items.
+- [Durable native attachments](durable-native-attachments.md) — stage native files before queueing, rebuild multipart bodies per attempt, and commit queue removal before deleting files.

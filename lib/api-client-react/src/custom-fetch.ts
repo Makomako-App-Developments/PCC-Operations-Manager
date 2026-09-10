@@ -1,4 +1,7 @@
-export type CustomFetchOptions = RequestInit & {
+export type CustomFetchOptions = Omit<RequestInit, "body"> & {
+  body?: BodyInit | null;
+  /** Rebuilds non-replayable request bodies (especially native FormData) for every auth retry. */
+  bodyFactory?: () => BodyInit | null;
   responseType?: "json" | "text" | "blob" | "auto";
 };
 
@@ -350,20 +353,21 @@ export async function customFetch<T = unknown>(
   options: CustomFetchOptions = {},
   _retry = false,
 ): Promise<T> {
-  const { responseType = "auto", headers: headersInit, ...init } = options;
+  const { responseType = "auto", headers: headersInit, bodyFactory, ...init } = options;
+  const body = bodyFactory ? bodyFactory() : init.body;
 
   const method = resolveMethod(input, init.method);
 
-  if (init.body != null && (method === "GET" || method === "HEAD")) {
+  if (body != null && (method === "GET" || method === "HEAD")) {
     throw new TypeError(`customFetch: ${method} requests cannot have a body.`);
   }
 
   const headers = mergeHeaders(isRequest(input) ? input.headers : undefined, headersInit);
 
   if (
-    typeof init.body === "string" &&
+    typeof body === "string" &&
     !headers.has("content-type") &&
-    looksLikeJson(init.body)
+    looksLikeJson(body)
   ) {
     headers.set("content-type", "application/json");
   }
@@ -394,7 +398,7 @@ export async function customFetch<T = unknown>(
   const startedAt = performance.now();
   let response: Response;
   try {
-    response = await fetch(input, { ...init, method, headers, credentials });
+    response = await fetch(input, { ...init, body, method, headers, credentials });
   } catch (error) {
     const safe = safeEndpoint(resolvedUrl);
     _requestDiagnosticHandler?.({

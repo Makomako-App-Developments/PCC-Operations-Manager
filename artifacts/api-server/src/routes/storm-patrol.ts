@@ -1,4 +1,4 @@
-import { Router } from "express";
+import { Router, type NextFunction, type Request, type Response } from "express";
 import multer from "multer";
 import * as XLSX from "xlsx";
 import { createHash, randomUUID } from "crypto";
@@ -22,7 +22,36 @@ const managers = ["administrator", "manager"];
 const privileged = (role: string) => ["administrator", "manager", "supervisor"].includes(role);
 const phases = z.enum(["pre", "mid", "post"]);
 const workTypes = z.enum(["silt_clearance", "litter_clearance", "debris_clearance", "visual_check_only", "litter_debris_removed_from_site", "site_too_dangerous", "site_made_safe"]);
-const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 }, fileFilter: (_r, f, cb) => cb(null, f.mimetype.startsWith("image/")) });
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 20 * 1024 * 1024 },
+  fileFilter: (_request, file, callback) => {
+    if (file.mimetype.startsWith("image/")) callback(null, true);
+    else callback(new Error("Storm Patrol attachments must be images."));
+  },
+});
+function safeUploadContext(req: Request) {
+  return {
+    path: req.path.replace(/\/[0-9a-f-]{8,}/gi, "/:id"),
+    contentType: req.get("content-type")?.split(";")[0] ?? "missing",
+    contentLength: req.get("content-length") ?? "unknown",
+    bodyFields: Object.keys(req.body ?? {}).sort(),
+  };
+}
+function stormPhotoUpload(req: Request, res: Response, next: NextFunction) {
+  upload.single("photo")(req, res, error => {
+    if (error) {
+      console.warn("[storm-photo-upload-rejected]", JSON.stringify({
+        ...safeUploadContext(req),
+        reason: error instanceof multer.MulterError ? error.code : error instanceof Error ? error.message : "unknown",
+      }));
+      res.status(error instanceof multer.MulterError && error.code === "LIMIT_FILE_SIZE" ? 413 : 400)
+        .json({ error: error instanceof Error ? error.message : "Photo upload was rejected." });
+      return;
+    }
+    next();
+  });
+}
 const workbookUpload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 5 * 1024 * 1024 },
@@ -252,7 +281,34 @@ router.get("/storm-patrol/current", requireAuth, async (req, res) => {
     executeWithCircuitBreaker(() => db.select().from(reactiveJobsTable).where(and(eq(reactiveJobsTable.stormEventId, event.id), eq(reactiveJobsTable.origin, "storm_patrol"))).orderBy(desc(reactiveJobsTable.createdAt))),
     executeWithCircuitBreaker(() => db.select().from(stormAlertsTable).where(eq(stormAlertsTable.eventId, event.id)).orderBy(desc(stormAlertsTable.createdAt))),
   ]);
-  res.json({ data: { event, jobs, observations, followUps, alerts, summary: { selectedCount: jobs.length, checkedCount: completed.length, workMinutes: minutes, labourChargeCents: cents(minutes, event.hourlyRateCents), tooDangerousCount: jobs.filter(j => j.status === "too_dangerous").length } } });
+  const reactiveJobIds = observations
+    .map(observation => observation.reactiveJobId)
+    .filter((id): id is string => Boolean(id));
+  const observationPhotos = reactiveJobIds.length > 0
+    ? await executeWithCircuitBreaker(() => db.select({
+      id: stormPhotosTable.id,
+      reactiveJobId: stormPhotosTable.reactiveJobId,
+      purpose: stormPhotosTable.purpose,
+      blobUrl: stormPhotosTable.blobUrl,
+      caption: stormPhotosTable.caption,
+      createdAt: stormPhotosTable.createdAt,
+    }).from(stormPhotosTable).where(and(
+      inArray(stormPhotosTable.reactiveJobId, reactiveJobIds),
+      eq(stormPhotosTable.purpose, "observation"),
+    )))
+    : [];
+  const photosByReactiveJobId = new Map<string, typeof observationPhotos>();
+  for (const photo of observationPhotos) {
+    if (!photo.reactiveJobId) continue;
+    const photos = photosByReactiveJobId.get(photo.reactiveJobId) ?? [];
+    photos.push(photo);
+    photosByReactiveJobId.set(photo.reactiveJobId, photos);
+  }
+  const observationsWithPhotos = observations.map(observation => ({
+    ...observation,
+    photos: observation.reactiveJobId ? photosByReactiveJobId.get(observation.reactiveJobId) ?? [] : [],
+  }));
+  res.json({ data: { event, jobs, observations: observationsWithPhotos, followUps, alerts, summary: { selectedCount: jobs.length, checkedCount: completed.length, workMinutes: minutes, labourChargeCents: cents(minutes, event.hourlyRateCents), tooDangerousCount: jobs.filter(j => j.status === "too_dangerous").length } } });
 });
 
 router.get("/storm-patrol/events", requireAuth, requireRole("manager", "supervisor"), async (_req, res) => {
@@ -373,8 +429,11 @@ router.post("/storm-patrol/observations", requireAuth, validateBody(z.object({ e
     })); res.status(result.replayed ? 200 : 201).json(result);
   } catch (e: any) { if (e?.code === "23505") { res.status(409).json({ error: "Duplicate observation." }); return; } throw e; }
 });
-router.post("/storm-patrol/observations/photos", requireAuth, upload.single("photo"), async (req, res) => {
-  if (!req.file) { res.status(400).json({ error: "Photo is required." }); return; }
+router.post("/storm-patrol/observations/photos", requireAuth, stormPhotoUpload, async (req, res) => {
+  if (!req.file) {
+    console.warn("[storm-photo-upload-missing]", JSON.stringify(safeUploadContext(req)));
+    res.status(400).json({ error: "Photo is required." }); return;
+  }
   const observationKey = typeof req.body.observationIdempotencyKey === "string" ? req.body.observationIdempotencyKey : "";
   const [observation] = await executeWithCircuitBreaker(() => db.select().from(stormObservationsTable).where(and(eq(stormObservationsTable.idempotencyKey, observationKey), eq(stormObservationsTable.raisedById, req.auth!.userId))).limit(1));
   if (!observation) { res.status(404).json({ error: "Observation must sync before its photo." }); return; }
@@ -418,8 +477,11 @@ router.post("/storm-patrol/alerts/:id/retry-email", requireAuth, requireRole("ma
   res.json(updated);
 });
 
-router.post("/storm-patrol/jobs/:id/photos", requireAuth, upload.single("photo"), async (req, res) => {
-  if (!req.file) { res.status(400).json({ error: "Photo is required." }); return; }
+router.post("/storm-patrol/jobs/:id/photos", requireAuth, stormPhotoUpload, async (req, res) => {
+  if (!req.file) {
+    console.warn("[storm-photo-upload-missing]", JSON.stringify(safeUploadContext(req)));
+    res.status(400).json({ error: "Photo is required." }); return;
+  }
   const mine = await ownJob(String(req.params.id), req.auth!.userId, req.auth!.teamId, req.auth!.role); if (mine.error) { res.status(mine.error).json({ error: "Forbidden" }); return; }
   const purpose = z.enum(["before", "after", "urgent_issue", "new_flooding", "new_slip", "observation"]).safeParse(req.body.purpose); if (!purpose.success) { res.status(400).json({ error: "Valid photo purpose is required." }); return; }
   const key = typeof req.body.idempotencyKey === "string" ? req.body.idempotencyKey : randomUUID(); const [old] = await executeWithCircuitBreaker(() => db.select().from(stormPhotosTable).where(eq(stormPhotosTable.idempotencyKey, key)).limit(1)); if (old) { res.json(old); return; }

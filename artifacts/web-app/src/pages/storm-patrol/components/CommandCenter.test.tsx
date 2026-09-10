@@ -99,7 +99,7 @@ vi.mock("react-leaflet", () => ({
   useMap: () => ({ fitBounds: vi.fn() }),
 }));
 
-function renderCommandCenter(jobs: any[] = []) {
+function renderCommandCenter(jobs: any[] = [], observations: any[] = []) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
@@ -117,7 +117,7 @@ function renderCommandCenter(jobs: any[] = []) {
           },
           jobs,
           alerts: [],
-          observations: [],
+          observations,
           followUps: [],
           summary: {},
         }}
@@ -158,6 +158,24 @@ afterEach(() => {
 });
 
 describe("Storm Patrol work package asset filters", () => {
+  it("collapses the package creator when returning to an event with issued jobs", () => {
+    renderCommandCenter([{
+      id: "job-issued",
+      eventId: "event-1",
+      workPackageId: "package-1",
+      phase: "pre",
+      assetId: "asset-high-hotspot",
+      teamId: "team-1",
+      status: "issued",
+      routeOrder: 1,
+      assetName: "Bodman SW grate",
+    }]);
+
+    expect(screen.getByRole("button", { name: "Expand Create Work Package" })).toBeVisible();
+    expect(screen.queryByRole("combobox", { name: "Assign to team" })).not.toBeInTheDocument();
+    expect(screen.getByText("1 issued field job ready for live operations.")).toBeVisible();
+  });
+
   it("opens completed work in a modal and returns to Storm Patrol when closed", async () => {
     const user = userEvent.setup();
     renderCommandCenter([{
@@ -191,6 +209,39 @@ describe("Storm Patrol work package asset filters", () => {
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     expect(screen.getByText("Live Field Operations")).toBeVisible();
     expect(screen.getByRole("row", { name: "Open completed work for Bodman SW grate" })).toBeVisible();
+  });
+
+  it("opens a field observation modal with notes, location, and photos", async () => {
+    const user = userEvent.setup();
+    renderCommandCenter([], [{
+      id: "observation-1",
+      eventId: "event-1",
+      description: "Pigs blocking the drain",
+      notes: "Needs urgent clearance.",
+      locationLat: -41.12345,
+      locationLng: 174.98765,
+      createdAt: "2026-09-10T04:30:00.000Z",
+      reactiveJobId: null,
+      photos: [{
+        id: "photo-1",
+        purpose: "observation",
+        blobUrl: "/api/uploads/observation-1.jpg",
+        caption: "Blocked inlet",
+        createdAt: "2026-09-10T04:30:00.000Z",
+      }],
+    }]);
+
+    await user.click(screen.getByRole("button", { name: "Open field observation: Pigs blocking the drain" }));
+
+    const dialog = screen.getByRole("dialog");
+    expect(within(dialog).getByText("Needs urgent clearance.")).toBeVisible();
+    expect(within(dialog).getByText("-41.12345")).toBeVisible();
+    expect(within(dialog).getByText("174.98765")).toBeVisible();
+    expect(within(dialog).getByRole("img", { name: "Observation photo 1" })).toHaveAttribute("src", "/api/uploads/observation-1.jpg");
+    expect(within(dialog).getByText("Blocked inlet")).toBeVisible();
+
+    await user.click(within(dialog).getByRole("button", { name: "Close field observation" }));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 
   it("combines search, priority, and hotspot classifications", () => {

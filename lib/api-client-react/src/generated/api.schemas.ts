@@ -88,6 +88,40 @@ export interface StormJob {
   workTypes?: string[];
 }
 
+export type StormObservationPhotoPurpose =
+  (typeof StormObservationPhotoPurpose)[keyof typeof StormObservationPhotoPurpose];
+
+export const StormObservationPhotoPurpose = {
+  before: "before",
+  after: "after",
+  urgent_issue: "urgent_issue",
+  new_flooding: "new_flooding",
+  new_slip: "new_slip",
+  observation: "observation",
+} as const;
+
+export interface StormObservationPhoto {
+  id: string;
+  purpose: StormObservationPhotoPurpose;
+  blobUrl: string;
+  caption?: string | null;
+  createdAt: string;
+}
+
+export interface StormObservation {
+  id: string;
+  eventId: string;
+  sourceJobId?: string | null;
+  assetId?: string | null;
+  description: string;
+  notes?: string | null;
+  locationLat: number;
+  locationLng: number;
+  reactiveJobId?: string | null;
+  createdAt: string;
+  photos: StormObservationPhoto[];
+}
+
 export interface StormEventListResponse {
   data: StormEvent[];
 }
@@ -95,10 +129,6 @@ export interface StormEventListResponse {
 export interface StormJobListResponse {
   data: StormJob[];
 }
-
-export type StormCurrentResponseDataObservationsItem = {
-  [key: string]: unknown;
-};
 
 export type StormCurrentResponseDataFollowUpsItem = { [key: string]: unknown };
 
@@ -128,7 +158,7 @@ export interface StormAlert {
 export type StormCurrentResponseData = {
   event: StormEvent;
   jobs: StormJob[];
-  observations?: StormCurrentResponseDataObservationsItem[];
+  observations?: StormObservation[];
   followUps?: StormCurrentResponseDataFollowUpsItem[];
   alerts?: StormAlert[];
   summary: StormCurrentResponseDataSummary;
@@ -271,6 +301,25 @@ export interface StormObservationCreate {
 export interface StormObservationPhotoUpload {
   photo: Blob;
   observationIdempotencyKey: string;
+  idempotencyKey: string;
+}
+
+export type StormJobPhotoUploadPurpose =
+  (typeof StormJobPhotoUploadPurpose)[keyof typeof StormJobPhotoUploadPurpose];
+
+export const StormJobPhotoUploadPurpose = {
+  before: "before",
+  after: "after",
+  urgent_issue: "urgent_issue",
+  new_flooding: "new_flooding",
+  new_slip: "new_slip",
+  observation: "observation",
+} as const;
+
+export interface StormJobPhotoUpload {
+  photo: Blob;
+  purpose: StormJobPhotoUploadPurpose;
+  caption?: string;
   idempotencyKey: string;
 }
 
@@ -1451,6 +1500,7 @@ export type ListAuditItemPhotos200 = {
 
 export type UploadAuditItemPhotoBody = {
   photo: Blob;
+  idempotencyKey?: string;
 };
 
 export type ListAuditLogParams = {
@@ -1486,6 +1536,7 @@ export const ListSkippedJobsReviewed = {
 export type UploadJobPhotoBody = {
   photo: Blob;
   caption?: string;
+  idempotencyKey?: string;
 };
 
 export type PreviewStormwaterAssetImportBody = {
@@ -1496,6 +1547,8 @@ export type CommitStormwaterAssetImportBody = {
   workbook: Blob;
   batchKey: string;
 };
+
+export type UploadStormPatrolJobPhoto201 = { [key: string]: unknown };
 
 export type UploadStormPatrolObservationPhoto201 = { [key: string]: unknown };
 

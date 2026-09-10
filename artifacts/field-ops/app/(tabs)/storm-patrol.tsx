@@ -11,6 +11,7 @@ import { PinMap } from "@/components/PinMap";
 import { requestCameraPermission, requestMediaLibraryPermission } from "@/hooks/usePhotoLibraryPermission";
 import { useColors } from "@/hooks/useColors";
 import { clearQueuedStormPhotos, clearStormQueueItems, enqueueStormAlert, enqueueStormCompletion, enqueueStormObservation, enqueueStormObservationPhoto, enqueueStormPhoto, flushStormQueue, getStormPatrolCompletionRequirements, loadStormQueue, stormQueueId, type StormPhotoPurpose, type StormQueueItem } from "@/lib/stormPatrolQueue";
+import { persistAttachment, type AttachmentSource } from "@/lib/attachmentUpload";
 
 const CACHE_KEY = "@storm_patrol_current_v1";
 const WORK_TYPES = [
@@ -33,7 +34,7 @@ export default function StormPatrolScreen() {
   const [cached, setCached] = useState<Patrol | null>(null);
   const [queue, setQueue] = useState<StormQueueItem[]>([]);
   const [selected, setSelected] = useState<Job | null>(null);
-  const [photos, setPhotos] = useState<Array<{ uri: string; purpose: StormPhotoPurpose }>>([]);
+  const [photos, setPhotos] = useState<Array<{ source: AttachmentSource; purpose: StormPhotoPurpose }>>([]);
   const [workTypes, setWorkTypes] = useState<string[]>([]);
   const [comments, setComments] = useState("");
   const [dangerous, setDangerous] = useState(false);
@@ -41,7 +42,7 @@ export default function StormPatrolScreen() {
   const [issue, setIssue] = useState("");
   const [urgentExpanded, setUrgentExpanded] = useState(false);
   const [observation, setObservation] = useState("");
-  const [observationPhoto, setObservationPhoto] = useState<string | null>(null);
+  const [observationPhoto, setObservationPhoto] = useState<AttachmentSource | null>(null);
   const [observationLocation, setObservationLocation] = useState<{ locationLat: number; locationLng: number } | null>(null);
   const [capturingLocation, setCapturingLocation] = useState(false);
   const [discardingPhotos, setDiscardingPhotos] = useState(false);
@@ -82,16 +83,16 @@ export default function StormPatrolScreen() {
     if (!(await requestCameraPermission())) return;
     const result = await ImagePicker.launchCameraAsync({ mediaTypes: ["images"], quality: 0.75 });
     if (!result.canceled && result.assets[0]) {
-      if (purpose === "observation" && !selected) setObservationPhoto(result.assets[0].uri);
-      else setPhotos(p => [...p, { uri: result.assets[0].uri, purpose }]);
+      if (purpose === "observation" && !selected) setObservationPhoto(result.assets[0]);
+      else setPhotos(p => [...p, { source: result.assets[0], purpose }]);
     }
   };
   const library = async (purpose: StormPhotoPurpose) => {
     if (!(await requestMediaLibraryPermission())) return;
     const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ["images"], quality: 0.75 });
     if (!result.canceled && result.assets[0]) {
-      if (purpose === "observation" && !selected) setObservationPhoto(result.assets[0].uri);
-      else setPhotos(p => [...p, { uri: result.assets[0].uri, purpose }]);
+      if (purpose === "observation" && !selected) setObservationPhoto(result.assets[0]);
+      else setPhotos(p => [...p, { source: result.assets[0], purpose }]);
     }
   };
   const choosePhoto = (purpose: StormPhotoPurpose) => {
@@ -155,6 +156,10 @@ export default function StormPatrolScreen() {
   };
   const complete = async () => {
     if (!selected) return;
+    if (photos.some(photo => photo.purpose === "urgent_issue")) {
+      Alert.alert("Urgent issue not sent", "Send or remove the urgent issue photo before completing this patrol check.");
+      return;
+    }
     const missing = getStormPatrolCompletionRequirements({
       photoPurposes: photos.map(p => p.purpose),
       workTypes,
@@ -170,19 +175,36 @@ export default function StormPatrolScreen() {
     }
     try {
       const point = await location();
+      const stagedPhotos = await Promise.all(photos.map(async photo => ({
+        ...photo,
+        source: await persistAttachment(photo.source),
+      })));
       const observationItems: StormQueueItem[] = [];
+      const submittedItemIds: string[] = [];
       if (selected.phase === "post") {
         if (flooding) observationItems.push(await enqueueStormObservation({ eventId: selected.eventId, assetId: selected.assetId, sourceJobId: selected.id, description: "New flooding", notes: floodingDescription.trim(), idempotencyKey: `storm-flooding-${stormQueueId()}`, ...point }));
         if (slips) observationItems.push(await enqueueStormObservation({ eventId: selected.eventId, assetId: selected.assetId, sourceJobId: selected.id, description: "New slip", notes: slipDescription.trim(), idempotencyKey: `storm-slip-${stormQueueId()}`, ...point }));
       }
-      for (const photo of photos.filter(p => p.purpose === "new_flooding" || p.purpose === "new_slip")) {
+      submittedItemIds.push(...observationItems.map(item => item.id));
+      for (const photo of stagedPhotos.filter(p => p.purpose === "new_flooding" || p.purpose === "new_slip")) {
         const parent = photo.purpose === "new_flooding" ? observationItems.find(x => (x.payload.data as any)?.description === "New flooding") : observationItems.find(x => (x.payload.data as any)?.description === "New slip");
-        if (parent) await enqueueStormPhoto(selected.id, photo.uri, photo.purpose, parent.id);
+        const observationKey = (parent?.payload.data as { idempotencyKey?: string } | undefined)?.idempotencyKey;
+        if (parent && observationKey) {
+          const queued = await enqueueStormObservationPhoto(photo.source, observationKey, parent.id);
+          submittedItemIds.push(queued.id);
+        }
       }
       const completionKey = `storm-completion-${stormQueueId()}`;
-      const result = await enqueueStormCompletion(selected.id, { outcome: dangerous ? "too_dangerous" : "completed", actualTimeMins: elapsedMinutes, comments: comments.trim() || undefined, workTypes: (dangerous ? ["site_too_dangerous"] : workTypes) as any, dangerousReason: dangerous ? dangerReason.trim() : undefined, idempotencyKey: completionKey, ...point }, observationItems.at(-1)?.id);
-      for (const photo of photos) await enqueueStormPhoto(selected.id, photo.uri, photo.purpose, result.id);
-      await sync();
+      const result = await enqueueStormCompletion(selected.id, { outcome: dangerous ? "too_dangerous" : "completed", actualTimeMins: elapsedMinutes, comments: comments.trim() || undefined, workTypes: (dangerous ? ["site_too_dangerous"] : workTypes) as any, dangerousReason: dangerous ? dangerReason.trim() : undefined, idempotencyKey: completionKey, ...point });
+      submittedItemIds.push(result.id);
+      for (const photo of stagedPhotos.filter(p => p.purpose === "before" || p.purpose === "after")) {
+        const queued = await enqueueStormPhoto(selected.id, photo.source, photo.purpose, result.id);
+        submittedItemIds.push(queued.id);
+      }
+      const remaining = await sync();
+      if (remaining.some(item => submittedItemIds.includes(item.id))) {
+        Alert.alert("Saved for sync", "The patrol details are safe on this device. GardenOps will keep retrying any attachments that have not sent yet.");
+      }
       setSelected(null); setPhotos([]); setComments(""); setWorkTypes([]); setDangerous(false); setDangerReason(""); setFlooding(false); setSlips(false); setFloodingDescription(""); setSlipDescription("");
     } catch (error) { Alert.alert("Saved for sync", error instanceof Error ? error.message : "Your patrol record will retry when online."); refreshQueue(); }
   };
@@ -192,9 +214,14 @@ export default function StormPatrolScreen() {
     if (!observationLocation) { Alert.alert("Location required", "Capture your current location before sending the observation."); return; }
     try {
       const idempotencyKey = `storm-observation-${stormQueueId()}`;
+      const stagedPhoto = observationPhoto ? await persistAttachment(observationPhoto) : null;
       const item = await enqueueStormObservation({ eventId: patrol.event.id, description: observation.trim(), idempotencyKey, ...observationLocation });
-      if (observationPhoto) await enqueueStormObservationPhoto(observationPhoto, idempotencyKey, item.id);
-      setObservation(""); setObservationPhoto(null); setObservationLocation(null); await sync();
+      const photoItem = stagedPhoto ? await enqueueStormObservationPhoto(stagedPhoto, idempotencyKey, item.id) : null;
+      const remaining = await sync();
+      setObservation(""); setObservationPhoto(null); setObservationLocation(null);
+      if (remaining.some(queued => queued.id === item.id || queued.id === photoItem?.id)) {
+        Alert.alert("Observation saved for sync", "The observation is safe on this device. GardenOps will keep retrying until its attachment is sent.");
+      }
     } catch (error) { Alert.alert("Observation queued", error instanceof Error ? error.message : "It will retry when online."); refreshQueue(); }
   };
   const captureObservationLocation = async () => {
@@ -211,9 +238,18 @@ export default function StormPatrolScreen() {
     if (!patrol || !selected || !issue.trim()) return;
     const urgentPhotos = photos.filter(p => p.purpose === "urgent_issue");
     if (!urgentPhotos.length) { Alert.alert("Urgent photo required", "Capture an urgent issue photo before sending the alert."); return; }
+    const stagedUrgentPhotos = await Promise.all(urgentPhotos.map(async photo => ({
+      ...photo,
+      source: await persistAttachment(photo.source),
+    })));
     const alert = await enqueueStormAlert(patrol.event.id, issue.trim(), selected.id);
-    for (const photo of urgentPhotos) await enqueueStormPhoto(selected.id, photo.uri, "urgent_issue", alert.id);
-    setIssue(""); setUrgentExpanded(false); await sync().catch(refreshQueue);
+    const photoItems: StormQueueItem[] = [];
+    for (const photo of stagedUrgentPhotos) photoItems.push(await enqueueStormPhoto(selected.id, photo.source, "urgent_issue", alert.id));
+    setIssue(""); setUrgentExpanded(false); setPhotos(currentPhotos => currentPhotos.filter(photo => photo.purpose !== "urgent_issue"));
+    const remaining = await sync().catch(async () => { await refreshQueue(); return loadStormQueue(); });
+    if (remaining.some(item => item.id === alert.id || photoItems.some(photo => photo.id === item.id))) {
+      Alert.alert("Urgent issue saved for sync", "The alert is safe on this device. GardenOps will keep retrying its attachment.");
+    }
   };
   const selectedLat = selected?.lat == null ? null : Number(selected.lat);
   const selectedLng = selected?.lng == null ? null : Number(selected.lng);
@@ -230,7 +266,8 @@ export default function StormPatrolScreen() {
   if (selected) return <><ScrollView style={[styles.root, { backgroundColor: colors.background }]} contentContainerStyle={[styles.detail, { paddingTop: insets.top + 16, paddingBottom: insets.bottom + 100 }]}>
     <TouchableOpacity onPress={() => setSelected(null)}><Text style={{ color: colors.primary, fontFamily: "Inter_600SemiBold" }}>‹ Patrol list</Text></TouchableOpacity>
     <Text style={[styles.title, { color: colors.foreground }]}>{selected.assetName ?? "Stormwater site"}</Text>
-    <Text style={[styles.sub, { color: colors.mutedForeground }]}>{label(selected.phase)} · Route {selected.routeOrder ?? "—"}</Text>
+     <Text style={[styles.sub, { color: colors.foreground }]}>{selected.streetAddress || "Address unavailable"}</Text>
+     <Text style={[styles.sub, { color: colors.mutedForeground }]}>{label(selected.phase)}</Text>
     {hasSelectedCoordinates ? <View style={styles.assetMapSection}>
       <View style={[styles.mapToggle, { backgroundColor: colors.card, borderColor: colors.border }]}>
         <TouchableOpacity onPress={() => setJobMapType("map")} style={[styles.mapToggleButton, jobMapType === "map" && { backgroundColor: colors.primary }]}>
@@ -253,7 +290,7 @@ export default function StormPatrolScreen() {
     <View style={[styles.sectionDivider, { backgroundColor: colors.border }]}/>
     <Text style={[styles.heading, { color: colors.foreground }]}>1. Before photo</Text>
     <Button title="Before photo" icon="camera" onPress={() => choosePhoto("before")} color={colors.primary}/>
-    {photos.length > 0 && <ScrollView horizontal contentContainerStyle={styles.photos}>{photos.map((p, i) => <View key={`${p.uri}-${i}`}><Image source={{ uri: p.uri }} style={styles.photo}/><Text style={[styles.caption, { color: colors.mutedForeground }]}>{p.purpose.replace("_", " ")}</Text></View>)}</ScrollView>}
+    {photos.length > 0 && <ScrollView horizontal contentContainerStyle={styles.photos}>{photos.map((p, i) => <View key={`${p.source.uri}-${i}`}><Image source={{ uri: p.source.uri }} style={styles.photo}/><Text style={[styles.caption, { color: colors.mutedForeground }]}>{p.purpose.replace("_", " ")}</Text></View>)}</ScrollView>}
     <Text style={[styles.heading, { color: colors.foreground }]}>2. Work completed</Text>
     <Pressable onPress={() => setDangerous(x => !x)} style={styles.check}><Feather name={dangerous ? "check-square" : "square"} size={20} color={dangerous ? colors.primary : colors.mutedForeground}/><Text style={{ color: colors.foreground }}>Site is too dangerous to complete</Text></Pressable>
     {dangerous && <TextInput value={dangerReason} onChangeText={setDangerReason} multiline placeholder="Why is it unsafe?" placeholderTextColor={colors.mutedForeground} style={[styles.input, styles.note, { color: colors.foreground, borderColor: colors.border }]}/>}
@@ -334,34 +371,19 @@ export default function StormPatrolScreen() {
           <Text style={[styles.clearPhotosText, { color: colors.destructive }]}>{discardingStaleItems ? "Removing stale items…" : `Remove ${staleCompletionItems.length} stale sync item${staleCompletionItems.length === 1 ? "" : "s"}`}</Text>
         </TouchableOpacity>}
       </View>}
-      {grouped.map(([phase, jobs]) => jobs.length ? <View key={phase}><Text style={[styles.phase, { color: colors.primary }]}>{label(phase)}</Text>{jobs.map((job, index) => <Pressable key={job.id} onPress={() => job.status === "pending" ? claim.mutate({ id: job.id }, { onSuccess: claimed => { const started = (claimed as Job).startedAt ?? new Date().toISOString(); setSelected({ ...job, ...claimed, startedAt: started }); current.refetch(); }, onError: () => Alert.alert("Unable to claim", "This patrol may have been claimed by another crew member.") }) : setSelected(job)} style={[styles.job, { backgroundColor: colors.card, borderColor: colors.border }]}><View style={[styles.jobSequence, { backgroundColor: colors.primary }]}><Text style={styles.jobSequenceText}>{index + 1}</Text></View><View style={{ flex: 1 }}><Text style={[styles.jobTitle, { color: colors.foreground }]}>{job.assetName ?? "Stormwater site"}</Text><Text style={[styles.sub, { color: colors.mutedForeground }]}>Route {job.routeOrder ?? "—"} · {job.status.replace("_", " ")}</Text></View><Text style={{ color: colors.primary, fontFamily: "Inter_600SemiBold" }}>{job.status === "pending" ? "Start" : "Open"}</Text></Pressable>)}</View> : null)}</>
+       {grouped.map(([phase, jobs]) => jobs.length ? <View key={phase}><Text style={[styles.phase, { color: colors.primary }]}>{label(phase)}</Text>{jobs.map((job, index) => <Pressable key={job.id} onPress={() => job.status === "pending" ? claim.mutate({ id: job.id }, { onSuccess: claimed => { const started = (claimed as Job).startedAt ?? new Date().toISOString(); setSelected({ ...job, ...claimed, startedAt: started }); current.refetch(); }, onError: () => Alert.alert("Unable to claim", "This patrol may have been claimed by another crew member.") }) : setSelected(job)} style={[styles.job, { backgroundColor: colors.card, borderColor: colors.border }]}><View style={[styles.jobSequence, { backgroundColor: colors.primary }]}><Text style={styles.jobSequenceText}>{index + 1}</Text></View><View style={{ flex: 1 }}><Text style={[styles.jobTitle, { color: colors.foreground }]}>{job.assetName ?? "Stormwater site"}</Text><Text style={[styles.sub, { color: colors.foreground }]}>{job.streetAddress || "Address unavailable"}</Text><Text style={[styles.sub, { color: colors.mutedForeground }]}>{job.status.replace("_", " ")}</Text></View><Text style={{ color: colors.primary, fontFamily: "Inter_600SemiBold" }}>{job.status === "pending" ? "Start" : job.status === "completed" || job.status === "too_dangerous" ? "Complete" : "Open"}</Text></Pressable>)}</View> : null)}</>
       : current.isLoading ? <ActivityIndicator color={colors.primary} style={{ marginTop: 50 }}/> : <Text style={[styles.empty, { color: colors.mutedForeground }]}>There is no active Storm Patrol for your team.</Text>}
     {patrol && <View style={[styles.observation, { borderColor: colors.border }]}>
       <Text style={[styles.heading, { color: colors.foreground }]}>General observation</Text>
       <Text style={[styles.help, { color: colors.mutedForeground }]}>Record storm related issues on new, unregistered sites.</Text>
       <TextInput value={observation} onChangeText={setObservation} multiline placeholder="Describe what you see" placeholderTextColor={colors.mutedForeground} style={[styles.input, styles.note, { color: colors.foreground, borderColor: colors.border }]}/>
-      <Button title={observationPhoto ? "Change observation photo" : "Observation photo"} icon="camera" onPress={() => choosePhoto("observation")} color={colors.primary}/>
-      {observationPhoto && <Image source={{ uri: observationPhoto }} style={styles.observationPhoto}/>}
+       <Button title={observationPhoto ? "Change observation photo" : "Observation photo"} icon="camera" onPress={() => { void take("observation"); }} color={colors.primary}/>
+      {observationPhoto && <Image source={{ uri: observationPhoto.uri }} style={styles.observationPhoto}/>}
       <Button title={capturingLocation ? "Capturing location…" : "Capture location"} icon="map-pin" onPress={() => { if (!capturingLocation) void captureObservationLocation(); }} color={colors.primary}/>
       {observationLocation && <Text style={[styles.locationStatus, { color: colors.success }]}>Location captured: {observationLocation.locationLat.toFixed(5)}, {observationLocation.locationLng.toFixed(5)}</Text>}
       <Button title="Send observation" icon="send" onPress={submitObservation} color={colors.success}/>
     </View>}
   </ScrollView></View>
-    {photoSourcePurpose && !selected && <Modal transparent animationType="fade" visible onRequestClose={() => setPhotoSourcePurpose(null)}>
-      <Pressable style={styles.photoSourceOverlay} onPress={() => setPhotoSourcePurpose(null)}>
-        <Pressable style={[styles.photoSourceCard, { backgroundColor: colors.card, borderColor: colors.border }]} onPress={(event) => event.stopPropagation()}>
-          <Text style={[styles.photoSourceTitle, { color: colors.foreground }]}>Add observation photo</Text>
-          <Text style={[styles.help, { color: colors.mutedForeground }]}>Choose where to get the photo.</Text>
-          <TouchableOpacity style={[styles.photoSourceAction, { backgroundColor: colors.primary }]} onPress={() => { setPhotoSourcePurpose(null); void take("observation"); }}>
-            <Feather name="camera" size={18} color="#fff"/><Text style={styles.photoSourceActionText}>Take photo</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={[styles.photoSourceAction, { backgroundColor: colors.secondary }]} onPress={() => { setPhotoSourcePurpose(null); void library("observation"); }}>
-            <Feather name="image" size={18} color={colors.primary}/><Text style={[styles.photoSourceActionText, { color: colors.foreground }]}>Choose from library</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.photoSourceCancel} onPress={() => setPhotoSourcePurpose(null)}><Text style={[styles.photoSourceCancelText, { color: colors.mutedForeground }]}>Cancel</Text></TouchableOpacity>
-        </Pressable>
-      </Pressable>
-    </Modal>}
   </>;
 }
 function Button({ title, icon, onPress, color }: { title: string; icon: any; onPress: () => void; color: string }) { return <TouchableOpacity onPress={onPress} style={[styles.button, { backgroundColor: color }]}><Feather name={icon} size={16} color="#fff"/><Text style={styles.buttonText}>{title}</Text></TouchableOpacity>; }

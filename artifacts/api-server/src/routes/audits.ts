@@ -1,7 +1,7 @@
 import { Router } from "express";
 import multer from "multer";
 import path from "path";
-import { randomUUID } from "crypto";
+import { createHash, randomUUID } from "crypto";
 import { db, auditsTable, auditItemsTable, auditPhotosTable, teamsTable, assetsTable, usersTable, executeWithCircuitBreaker } from "@workspace/db";
 import { eq, and, desc, sql, or } from "drizzle-orm";
 import { requireAuth, requireRole } from "../middlewares/auth";
@@ -34,15 +34,40 @@ const upload = multer({
   },
 });
 
-async function uploadPhotoToGCS(buffer: Buffer, mimetype: string, originalname: string): Promise<string> {
+async function uploadPhotoToGCS(buffer: Buffer, mimetype: string, originalname: string, requestedObjectName?: string): Promise<string> {
   const bucketId = process.env["DEFAULT_OBJECT_STORAGE_BUCKET_ID"];
   if (!bucketId) throw new Error("Object storage not configured");
   const ext = path.extname(originalname) || ".jpg";
-  const objectName = `uploads/${randomUUID()}${ext}`;
+  const objectName = requestedObjectName ?? `uploads/${randomUUID()}${ext}`;
   const bucket = objectStorageClient.bucket(bucketId);
   const file = bucket.file(objectName);
   await file.save(buffer, { contentType: mimetype, resumable: false });
   return `/api/uploads/${objectName}`;
+}
+
+async function saveAuditPhotoIdempotently(
+  file: Express.Multer.File,
+  auditId: string,
+  auditItemId: string,
+  userId: string,
+  idempotencyKey?: string,
+) {
+  if (!idempotencyKey) {
+    const blobUrl = await uploadPhotoToGCS(file.buffer, file.mimetype, file.originalname);
+    const [photo] = await executeWithCircuitBreaker(() => db.insert(auditPhotosTable).values({ auditItemId, uploadedBy: userId, blobUrl }).returning());
+    return photo;
+  }
+  const hash = createHash("sha256").update(`audit:${auditId}:${auditItemId}:${userId}:${idempotencyKey}`).digest("hex");
+  const objectName = `uploads/audit-${hash}`;
+  const blobUrl = `/api/uploads/${objectName}`;
+  return executeWithCircuitBreaker(() => db.transaction(async tx => {
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${hash}))`);
+    const [existing] = await tx.select().from(auditPhotosTable).where(eq(auditPhotosTable.blobUrl, blobUrl)).limit(1);
+    if (existing) return existing;
+    await uploadPhotoToGCS(file.buffer, file.mimetype, file.originalname, objectName);
+    const [photo] = await tx.insert(auditPhotosTable).values({ auditItemId, uploadedBy: userId, blobUrl }).returning();
+    return photo;
+  }));
 }
 
 // ── helpers ──────────────────────────────────────────────────────────────────
@@ -364,8 +389,8 @@ router.post(
     const existing = await executeWithCircuitBreaker(() => db.select().from(auditItemsTable).where(and(eq(auditItemsTable.id, itemId), eq(auditItemsTable.auditId, auditId))).limit(1));
     if (!existing.length) { res.status(404).json({ error: "Audit item not found" }); return; }
 
-    const blobUrl = await uploadPhotoToGCS(req.file.buffer, req.file.mimetype, req.file.originalname);
-    const [photo] = await executeWithCircuitBreaker(() => db.insert(auditPhotosTable).values({ auditItemId: itemId, uploadedBy: userId, blobUrl }).returning());
+    const idempotencyKey = typeof req.body.idempotencyKey === "string" ? req.body.idempotencyKey : undefined;
+    const photo = await saveAuditPhotoIdempotently(req.file, auditId, itemId, userId, idempotencyKey);
     res.status(201).json(photo);
   },
 );

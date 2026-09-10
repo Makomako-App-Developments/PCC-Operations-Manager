@@ -245,4 +245,39 @@ describe("Field Ops request diagnostics", () => {
     await expect(customFetch("/api/storm-patrol/current")).resolves.toEqual({ ok: true });
     expect(attempts).toBe(3);
   });
+
+  it("rebuilds multipart bodies before retrying after token refresh", async () => {
+    let attempts = 0;
+    let activeToken = "expired-token";
+    const sentBodies: BodyInit[] = [];
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (_input, init) => {
+      attempts += 1;
+      if (init?.body) sentBodies.push(init.body);
+      if (attempts === 1) return new Response("expired", { status: 401 });
+      if (attempts === 2) return new Response(JSON.stringify({ accessToken: "rotated-token" }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+      return new Response(JSON.stringify({ ok: true }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    });
+    setAuthTokenGetter(() => activeToken);
+    setAuthTokenUpdater(token => { activeToken = token; });
+    const bodyFactory = vi.fn(() => {
+      const form = new FormData();
+      form.append("purpose", "before");
+      return form;
+    });
+
+    await customFetch("/api/storm-patrol/jobs/job-id/photos", {
+      method: "POST",
+      bodyFactory,
+    });
+
+    expect(bodyFactory).toHaveBeenCalledTimes(2);
+    expect(sentBodies).toHaveLength(2);
+    expect(sentBodies[0]).not.toBe(sentBodies[1]);
+  });
 });

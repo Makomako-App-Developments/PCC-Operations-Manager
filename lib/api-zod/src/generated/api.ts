@@ -1800,6 +1800,7 @@ export const UploadAuditItemPhotoParams = zod.object({
 
 export const UploadAuditItemPhotoBody = zod.object({
   photo: zod.instanceof(File),
+  idempotencyKey: zod.string().optional(),
 });
 
 /**
@@ -2128,6 +2129,7 @@ export const UploadJobPhotoParams = zod.object({
 export const UploadJobPhotoBody = zod.object({
   photo: zod.instanceof(File),
   caption: zod.string().optional(),
+  idempotencyKey: zod.string().optional(),
 });
 
 /**
@@ -2204,7 +2206,36 @@ export const GetCurrentStormPatrolResponse = zod.object({
         }),
       ),
       observations: zod
-        .array(zod.record(zod.string(), zod.unknown()))
+        .array(
+          zod.object({
+            id: zod.string().uuid(),
+            eventId: zod.string().uuid(),
+            sourceJobId: zod.string().uuid().nullish(),
+            assetId: zod.string().uuid().nullish(),
+            description: zod.string(),
+            notes: zod.string().nullish(),
+            locationLat: zod.number(),
+            locationLng: zod.number(),
+            reactiveJobId: zod.string().uuid().nullish(),
+            createdAt: zod.date(),
+            photos: zod.array(
+              zod.object({
+                id: zod.string().uuid(),
+                purpose: zod.enum([
+                  "before",
+                  "after",
+                  "urgent_issue",
+                  "new_flooding",
+                  "new_slip",
+                  "observation",
+                ]),
+                blobUrl: zod.string(),
+                caption: zod.string().nullish(),
+                createdAt: zod.date(),
+              }),
+            ),
+          }),
+        )
         .optional(),
       followUps: zod.array(zod.record(zod.string(), zod.unknown())).optional(),
       alerts: zod
@@ -2405,6 +2436,24 @@ export const CompleteStormPatrolJobResponse = zod.object({
   }),
   followUp: zod.record(zod.string(), zod.unknown()).nullish(),
   replayed: zod.boolean(),
+});
+
+export const UploadStormPatrolJobPhotoParams = zod.object({
+  id: zod.coerce.string().uuid(),
+});
+
+export const UploadStormPatrolJobPhotoBody = zod.object({
+  photo: zod.instanceof(File),
+  purpose: zod.enum([
+    "before",
+    "after",
+    "urgent_issue",
+    "new_flooding",
+    "new_slip",
+    "observation",
+  ]),
+  caption: zod.string().optional(),
+  idempotencyKey: zod.string(),
 });
 
 export const CreateStormPatrolObservationBody = zod.object({

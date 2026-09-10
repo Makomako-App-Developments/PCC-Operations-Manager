@@ -1,11 +1,20 @@
-import { Router } from "express";
+import { Router, type Request } from "express";
 import multer from "multer";
 import path from "path";
-import { randomUUID } from "crypto";
+import { createHash, randomUUID } from "crypto";
 import { db, jobPhotosTable, jobsTable, mulchingRecordsTable, reactiveJobsTable, executeWithCircuitBreaker } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { requireAuth } from "../middlewares/auth";
 import { objectStorageClient } from "../lib/objectStorage";
+
+function logMissingAttachment(req: Request): void {
+  console.warn("[field-attachment-upload-missing]", JSON.stringify({
+    path: String(req.path ?? "").replace(/\/[0-9a-f-]{8,}/gi, "/:id"),
+    contentType: req.get?.("content-type")?.split(";")[0] ?? "missing",
+    contentLength: req.get?.("content-length") ?? "unknown",
+    bodyFields: Object.keys(req.body ?? {}).sort(),
+  }));
+}
 
 function isPrivilegedRole(role: string): boolean {
   return ["administrator", "manager", "supervisor"].includes(role);
@@ -36,12 +45,13 @@ async function uploadToGCS(
   buffer: Buffer,
   mimetype: string,
   originalName: string,
+  requestedObjectName?: string,
 ): Promise<string> {
   const bucketId = process.env["DEFAULT_OBJECT_STORAGE_BUCKET_ID"];
   if (!bucketId) throw new Error("DEFAULT_OBJECT_STORAGE_BUCKET_ID not set");
 
   const ext = path.extname(originalName) || ".bin";
-  const objectName = `uploads/${Date.now()}-${randomUUID()}${ext}`;
+  const objectName = requestedObjectName ?? `uploads/${Date.now()}-${randomUUID()}${ext}`;
 
   const bucket = objectStorageClient.bucket(bucketId);
   const file = bucket.file(objectName);
@@ -52,6 +62,30 @@ async function uploadToGCS(
   });
 
   return `/api/uploads/${objectName}`;
+}
+
+async function saveJobPhotoIdempotently(
+  file: Express.Multer.File,
+  values: Omit<typeof jobPhotosTable.$inferInsert, "blobUrl">,
+  scope: string,
+  idempotencyKey?: string,
+) {
+  if (!idempotencyKey) {
+    const blobUrl = await uploadToGCS(file.buffer, file.mimetype, file.originalname);
+    const [photo] = await executeWithCircuitBreaker(() => db.insert(jobPhotosTable).values({ ...values, blobUrl }).returning());
+    return photo;
+  }
+  const hash = createHash("sha256").update(`${scope}:${idempotencyKey}`).digest("hex");
+  const objectName = `uploads/field-${hash}`;
+  const blobUrl = `/api/uploads/${objectName}`;
+  return executeWithCircuitBreaker(() => db.transaction(async tx => {
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${hash}))`);
+    const [existing] = await tx.select().from(jobPhotosTable).where(eq(jobPhotosTable.blobUrl, blobUrl)).limit(1);
+    if (existing) return existing;
+    await uploadToGCS(file.buffer, file.mimetype, file.originalname, objectName);
+    const [photo] = await tx.insert(jobPhotosTable).values({ ...values, blobUrl }).returning();
+    return photo;
+  }));
 }
 
 /** Resolve whether :id belongs to a regular job or a mulching record. */
@@ -106,7 +140,7 @@ router.post(
   upload.single("photo"),
   async (req, res) => {
     const id = String(req.params.id);
-    if (!req.file) { res.status(400).json({ error: "No file uploaded" }); return; }
+    if (!req.file) { logMissingAttachment(req); res.status(400).json({ error: "No file uploaded" }); return; }
     const userId = req.auth?.userId;
     if (!userId) { res.status(401).json({ error: "Unauthorised" }); return; }
 
@@ -134,13 +168,13 @@ router.post(
       }
     }
 
-    const blobUrl = await uploadToGCS(req.file.buffer, req.file.mimetype, req.file.originalname);
     const caption = typeof req.body.caption === "string" ? req.body.caption : null;
+    const idempotencyKey = typeof req.body.idempotencyKey === "string" ? req.body.idempotencyKey : undefined;
     const values = kind === "mulching"
-      ? { mulchingRecordId: id, uploadedBy: userId, blobUrl, caption }
-      : { jobId: id, uploadedBy: userId, blobUrl, caption };
+      ? { mulchingRecordId: id, uploadedBy: userId, caption }
+      : { jobId: id, uploadedBy: userId, caption };
 
-    const [photo] = await executeWithCircuitBreaker(() => db.insert(jobPhotosTable).values(values).returning());
+    const photo = await saveJobPhotoIdempotently(req.file, values, `${kind}:${id}:${userId}`, idempotencyKey);
     res.status(201).json(photo);
   },
 );
@@ -171,7 +205,7 @@ router.post(
   upload.single("photo"),
   async (req, res) => {
     const id = String(req.params.id);
-    if (!req.file) { res.status(400).json({ error: "No file uploaded" }); return; }
+    if (!req.file) { logMissingAttachment(req); res.status(400).json({ error: "No file uploaded" }); return; }
     const userId = req.auth?.userId;
     if (!userId) { res.status(401).json({ error: "Unauthorised" }); return; }
 
@@ -188,13 +222,14 @@ router.post(
       res.status(409).json({ error: "This job has already been claimed by another team member.", code: "JOB_ALREADY_CLAIMED" }); return;
     }
 
-    const blobUrl = await uploadToGCS(req.file.buffer, req.file.mimetype, req.file.originalname);
     const caption = typeof req.body.caption === "string" ? req.body.caption : null;
-
-    const [photo] = await executeWithCircuitBreaker(() => db
-      .insert(jobPhotosTable)
-      .values({ reactiveJobId: id, uploadedBy: userId, blobUrl, caption })
-      .returning());
+    const idempotencyKey = typeof req.body.idempotencyKey === "string" ? req.body.idempotencyKey : undefined;
+    const photo = await saveJobPhotoIdempotently(
+      req.file,
+      { reactiveJobId: id, uploadedBy: userId, caption },
+      `reactive-job:${id}:${userId}`,
+      idempotencyKey,
+    );
 
     res.status(201).json(photo);
   },

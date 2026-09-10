@@ -8,4 +8,5 @@
 
 export type UploadAuditItemPhotoBody = {
   photo: Blob;
+  idempotencyKey?: string;
 };

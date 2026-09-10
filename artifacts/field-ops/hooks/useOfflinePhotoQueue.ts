@@ -6,6 +6,7 @@ import {
   type PhotoJobType,
   type QueuedPhoto,
 } from "@/lib/photoQueue";
+import type { AttachmentSource, DurableAttachment } from "@/lib/attachmentUpload";
 import { usePhotoQueueContext } from "@/context/PhotoQueueProvider";
 
 export type { PhotoJobType, QueuedPhoto };
@@ -35,11 +36,12 @@ export function useOfflinePhotoQueue(jobType: PhotoJobType, jobId: string) {
   }, [queueVersion, jobId, loadPending]);
 
   const add = useCallback(
-    async (uri: string, caption?: string): Promise<QueuedPhoto> => {
+    async (source: string | AttachmentSource | DurableAttachment, caption?: string): Promise<QueuedPhoto> => {
+      const uri = typeof source === "string" ? source : source.uri;
       if (Platform.OS === "web") {
         return { id: "", jobType, jobId, uri, caption, queuedAt: new Date().toISOString() };
       }
-      const item = await _enqueuePhoto(jobType, jobId, uri, caption);
+      const item = await _enqueuePhoto(jobType, jobId, source, caption);
       setPending(prev => [...prev, item]);
       return item;
     },

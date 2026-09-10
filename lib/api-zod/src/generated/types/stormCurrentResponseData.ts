@@ -7,15 +7,15 @@
  */
 import type { StormAlert } from "./stormAlert";
 import type { StormCurrentResponseDataFollowUpsItem } from "./stormCurrentResponseDataFollowUpsItem";
-import type { StormCurrentResponseDataObservationsItem } from "./stormCurrentResponseDataObservationsItem";
 import type { StormCurrentResponseDataSummary } from "./stormCurrentResponseDataSummary";
 import type { StormEvent } from "./stormEvent";
 import type { StormJob } from "./stormJob";
+import type { StormObservation } from "./stormObservation";
 
 export type StormCurrentResponseData = {
   event: StormEvent;
   jobs: StormJob[];
-  observations?: StormCurrentResponseDataObservationsItem[];
+  observations?: StormObservation[];
   followUps?: StormCurrentResponseDataFollowUpsItem[];
   alerts?: StormAlert[];
   summary: StormCurrentResponseDataSummary;

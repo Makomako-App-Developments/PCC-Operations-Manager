@@ -67,6 +67,16 @@ vi.mock("@workspace/api-client-react", () => ({
   useGetCurrentStormPatrol: () => mocks.currentResult,
 }));
 
+vi.mock("../attachmentUpload", () => ({
+  persistAttachment: vi.fn(async (source: any) => ({
+    uri: source.uri,
+    fileName: source.fileName ?? "photo.jpg",
+    mimeType: source.mimeType ?? "image/jpeg",
+    size: source.fileSize ?? source.size ?? 100,
+    managed: true,
+  })),
+}));
+
 vi.mock("expo-router", () => ({
   useFocusEffect: (callback: () => void) => React.useEffect(callback, []),
 }));
