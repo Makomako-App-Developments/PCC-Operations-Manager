@@ -11,7 +11,6 @@
 - [Asset description always shown](asset-description-always-shown.md) — site name must always have asset description subtitle so same-name gardens are distinguishable; pattern: semibold name + text-[10px] text-gray-400 subtitle.
 - [RN Web Modal portal always mounts children](rnweb-modal-portal.md) — React Native Web Modal renders children into a DOM portal even when visible=false; autoFocus or other mount-time side effects fire immediately → React error #300. Fix: conditionally mount with {condition && <Modal visible ...>}.
 - [Supervisor teamId — schedule API and unstable-native-tabs](supervisor-crash-lessons.md) — two bugs that crashed supervisors on login; {} vs [] and missing Badge export.
-- [Stat card filter-awareness pattern](stat-card-filter-awareness.md) — use a *BaseFiltered var (search/team/date only, no status) for per-status counts; declare it AFTER the sorted source to avoid TDZ.
 - [Geosequence-only push rule](geosequence-push-rule.md) — CRITICAL: jobs must ALWAYS be selected/ordered by routeOrder (geosequence) only. Never by duration or size. Push tail of route first.
 - [Accepted-skip draft lifecycle](accepted-skip-draft-lifecycle.md) — accepted regular skips are manager-only cycle reservations; capacity-safe placement must serialize by team/date.
 - [Generated API contract](generated-api-contract.md) — update the OpenAPI source and regenerate clients whenever shared route/schema fields change.
@@ -32,3 +31,4 @@
 - [Native bearer-token rotation](native-bearer-token-rotation.md) — refresh must replace the mobile bearer token, not only cookies; queue persistence must reconcile against the latest stored items.
 - [Durable native attachments](durable-native-attachments.md) — stage native files before queueing, rebuild multipart bodies per attempt, and commit queue removal before deleting files.
 - [Post-merge runtime validation](post-merge-runtime-validation.md) — restart affected services after task merges; static checks may miss malformed code in files excluded from type analysis.
+- [Queued photo storage read state](queued-photo-storage-read-state.md) — never turn unreadable AsyncStorage into an empty queue; warn and fail mutations closed.

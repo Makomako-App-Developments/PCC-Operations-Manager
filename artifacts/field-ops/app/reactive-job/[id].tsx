@@ -169,7 +169,6 @@ function AttachmentsSection({ jobId, readOnly }: { jobId: string; readOnly: bool
           </View>
         )}
       </View>
-
       {isLoading ? (
         <ActivityIndicator color={colors.primary} style={{ marginBottom: 14 }} />
       ) : totalCount === 0 ? (

@@ -11,11 +11,6 @@ import {
 const QUEUE_KEY = "@photo_upload_queue_v1";
 let queueMutation = Promise.resolve();
 
-async function rawLoadAllQueued(): Promise<QueuedPhoto[]> {
-  const raw = await AsyncStorage.getItem(QUEUE_KEY);
-  return raw ? (JSON.parse(raw) as QueuedPhoto[]) : [];
-}
-
 function withQueueMutation<T>(operation: () => Promise<T>): Promise<T> {
   const result = queueMutation.then(operation, operation);
   queueMutation = result.then(() => undefined, () => undefined);
@@ -37,12 +32,66 @@ export interface QueuedPhoto {
   lastError?: string;
 }
 
-export async function loadAllQueued(): Promise<QueuedPhoto[]> {
-  try {
-    return await rawLoadAllQueued();
-  } catch {
-    return [];
+export type QueueReadState = "empty" | "available" | "unavailable" | "corrupt";
+
+export interface QueueReadResult {
+  state: QueueReadState;
+  items: QueuedPhoto[];
+}
+
+export class QueueStorageReadError extends Error {
+  constructor(public readonly state: "unavailable" | "corrupt") {
+    super(state === "unavailable"
+      ? "Queued photos are temporarily unavailable."
+      : "Queued photos could not be read.");
+    this.name = "QueueStorageReadError";
   }
+}
+
+function isQueuedPhoto(value: unknown): value is QueuedPhoto {
+  if (!value || typeof value !== "object") return false;
+  const item = value as Partial<QueuedPhoto>;
+  return typeof item.id === "string"
+    && (item.jobType === "job" || item.jobType === "reactive-job" || item.jobType === "audit-item")
+    && typeof item.jobId === "string"
+    && typeof item.uri === "string"
+    && typeof item.queuedAt === "string";
+}
+
+export async function readQueuedPhotos(): Promise<QueueReadResult> {
+  let raw: string | null;
+  try {
+    raw = await AsyncStorage.getItem(QUEUE_KEY);
+  } catch {
+    return { state: "unavailable", items: [] };
+  }
+
+  if (raw === null) return { state: "empty", items: [] };
+
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (!Array.isArray(parsed) || !parsed.every(isQueuedPhoto)) {
+      return { state: "corrupt", items: [] };
+    }
+    return {
+      state: parsed.length === 0 ? "empty" : "available",
+      items: parsed,
+    };
+  } catch {
+    return { state: "corrupt", items: [] };
+  }
+}
+
+async function rawLoadAllQueued(): Promise<QueuedPhoto[]> {
+  const result = await readQueuedPhotos();
+  if (result.state === "unavailable" || result.state === "corrupt") {
+    throw new QueueStorageReadError(result.state);
+  }
+  return result.items;
+}
+
+export async function loadAllQueued(): Promise<QueuedPhoto[]> {
+  return rawLoadAllQueued();
 }
 
 export async function saveAllQueued(items: QueuedPhoto[]): Promise<void> {

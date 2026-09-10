@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   values: new Map<string, string>(),
+  getItem: vi.fn(),
   setItem: vi.fn(),
   removeManagedAttachment: vi.fn(),
   uploadAttachment: vi.fn(),
@@ -9,7 +10,7 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("@react-native-async-storage/async-storage", () => ({
   default: {
-    getItem: vi.fn(async (key: string) => mocks.values.get(key) ?? null),
+    getItem: mocks.getItem,
     setItem: mocks.setItem,
   },
 }));
@@ -29,16 +30,46 @@ vi.mock("../attachmentUpload", () => ({
   uploadAttachment: mocks.uploadAttachment,
 }));
 
-import { attemptUpload, enqueuePhoto, loadAllQueued, removeFromQueue } from "../photoQueue";
+import { attemptUpload, enqueuePhoto, loadAllQueued, readQueuedPhotos, removeFromQueue } from "../photoQueue";
 
 describe("photo queue durability", () => {
   beforeEach(() => {
     mocks.values.clear();
+    mocks.getItem.mockReset().mockImplementation(async (key: string) => mocks.values.get(key) ?? null);
     mocks.removeManagedAttachment.mockClear();
     mocks.uploadAttachment.mockReset().mockResolvedValue({ ok: true });
     mocks.setItem.mockReset().mockImplementation(async (key: string, value: string) => {
       mocks.values.set(key, value);
     });
+  });
+
+  it("distinguishes empty, available, unavailable, and corrupt queue storage", async () => {
+    await expect(readQueuedPhotos()).resolves.toEqual({ state: "empty", items: [] });
+
+    mocks.values.set("@photo_upload_queue_v1", JSON.stringify([{
+      id: "one",
+      jobType: "job",
+      jobId: "job-one",
+      uri: "file:///one.jpg",
+      queuedAt: "2026-09-10T00:00:00.000Z",
+    }]));
+    await expect(readQueuedPhotos()).resolves.toMatchObject({ state: "available" });
+
+    mocks.getItem.mockRejectedValueOnce(new Error("AsyncStorage unavailable"));
+    await expect(readQueuedPhotos()).resolves.toEqual({ state: "unavailable", items: [] });
+    await expect(readQueuedPhotos()).resolves.toMatchObject({ state: "available" });
+
+    mocks.values.set("@photo_upload_queue_v1", "{not-json");
+    await expect(readQueuedPhotos()).resolves.toEqual({ state: "corrupt", items: [] });
+  });
+
+  it("does not replace unreadable queue data with an empty list", async () => {
+    const persisted = "{not-json";
+    mocks.values.set("@photo_upload_queue_v1", persisted);
+
+    await expect(loadAllQueued()).rejects.toMatchObject({ state: "corrupt" });
+    expect(mocks.setItem).not.toHaveBeenCalled();
+    expect(mocks.values.get("@photo_upload_queue_v1")).toBe(persisted);
   });
 
   it("serializes concurrent enqueues without losing either attachment", async () => {
