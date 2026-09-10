@@ -1,12 +1,22 @@
 import { Feather } from "@expo/vector-icons";
 import React from "react";
-import { StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
 
 import type { QueueReadState } from "@/lib/photoQueue";
 
 type PhotoQueueStorageState = QueueReadState | "unknown";
 
-export function PhotoQueueStorageWarning({ state }: { state: PhotoQueueStorageState }) {
+interface PhotoQueueStorageWarningProps {
+  state: PhotoQueueStorageState;
+  isRetrying: boolean;
+  onRetry: () => void;
+}
+
+export function PhotoQueueStorageWarning({
+  state,
+  isRetrying,
+  onRetry,
+}: PhotoQueueStorageWarningProps) {
   if (state !== "unavailable" && state !== "corrupt") return null;
 
   const unavailable = state === "unavailable";
@@ -25,6 +35,21 @@ export function PhotoQueueStorageWarning({ state }: { state: PhotoQueueStorageSt
             : "Queued photos could not be read. They have not been deleted; do not clear app storage and try again later."}
         </Text>
       </View>
+      <Pressable
+        testID="photo-queue-storage-retry"
+        accessibilityRole="button"
+        accessibilityLabel="Retry reading queued photos"
+        disabled={isRetrying}
+        onPress={onRetry}
+        style={({ pressed }) => [
+          styles.retry,
+          (pressed || isRetrying) && styles.retryDisabled,
+        ]}
+      >
+        {isRetrying
+          ? <ActivityIndicator testID="photo-queue-storage-retry-loading" size="small" color="#92400e" />
+          : <Text style={styles.retryText}>Retry</Text>}
+      </Pressable>
     </View>
   );
 }
@@ -53,5 +78,23 @@ const styles = StyleSheet.create({
     fontFamily: "Inter_400Regular",
     fontSize: 12,
     lineHeight: 17,
+  },
+  retry: {
+    minHeight: 32,
+    minWidth: 54,
+    paddingHorizontal: 10,
+    borderWidth: 1,
+    borderColor: "#92400e",
+    borderRadius: 7,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  retryDisabled: {
+    opacity: 0.6,
+  },
+  retryText: {
+    color: "#92400e",
+    fontFamily: "Inter_600SemiBold",
+    fontSize: 12,
   },
 });

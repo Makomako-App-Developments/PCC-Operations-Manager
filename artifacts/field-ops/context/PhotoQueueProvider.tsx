@@ -35,12 +35,28 @@ export function usePhotoQueueContext() {
 
 export function PhotoQueueProvider({ children }: { children: React.ReactNode }) {
   const [isFlushing, setIsFlushing] = useState(false);
+  const [isRetryingStorage, setIsRetryingStorage] = useState(false);
   const [queueVersion, setQueueVersion] = useState(0);
   const [storageState, setStorageState] = useState<QueueReadState | "unknown">("unknown");
   const qc = useQueryClient();
   const flushingRef = useRef(false);
   const reportStorageState = useCallback((state: QueueReadState) => {
     setStorageState(state);
+  }, []);
+
+  const retryStorageRead = useCallback(async () => {
+    setIsRetryingStorage(true);
+    try {
+      const queue = await readQueuedPhotos();
+      setStorageState(queue.state);
+      if (queue.state === "empty" || queue.state === "available") {
+        setQueueVersion(version => version + 1);
+      }
+    } catch {
+      // Keep the existing warning visible if an unexpected storage error escapes.
+    } finally {
+      setIsRetryingStorage(false);
+    }
   }, []);
 
   const flushAll = useCallback(async () => {
@@ -98,7 +114,11 @@ export function PhotoQueueProvider({ children }: { children: React.ReactNode }) 
 
   return (
     <PhotoQueueContext.Provider value={{ isFlushing, queueVersion, reportStorageState }}>
-      <PhotoQueueStorageWarning state={storageState} />
+      <PhotoQueueStorageWarning
+        state={storageState}
+        isRetrying={isRetryingStorage}
+        onRetry={() => { void retryStorageRead(); }}
+      />
       {children}
     </PhotoQueueContext.Provider>
   );
