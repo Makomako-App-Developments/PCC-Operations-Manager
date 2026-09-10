@@ -176,6 +176,38 @@ describe("Storm Patrol work package asset filters", () => {
     expect(screen.getByText("1 issued field job ready for live operations.")).toBeVisible();
   });
 
+  it("marks same-phase allocated sites and makes them available again in another phase", async () => {
+    const user = userEvent.setup();
+    renderCommandCenter([{
+      id: "job-issued",
+      eventId: "event-1",
+      workPackageId: "package-1",
+      phase: "pre",
+      assetId: "asset-high-hotspot",
+      teamId: "team-1",
+      status: "issued",
+      routeOrder: 1,
+      assetName: "Bodman SW grate",
+    }]);
+
+    await user.click(screen.getByRole("button", { name: "Expand Create Work Package" }));
+
+    const allocatedCheckbox = screen.getByRole("checkbox", { name: "Select Bodman SW grate" });
+    expect(allocatedCheckbox).toBeChecked();
+    expect(allocatedCheckbox).toBeDisabled();
+    expect(screen.getByText("ALLOCATED")).toBeVisible();
+    expect(screen.getAllByTestId("storm-marker")[0]).toHaveAttribute("data-fill-color", "#2563eb");
+    expect(screen.getAllByTestId("storm-marker")[0]).toHaveAttribute("data-fill-opacity", "1");
+
+    await chooseSelect(user, "Response phase", "Mid-Storm Response");
+
+    expect(screen.getByRole("checkbox", { name: "Select Bodman SW grate" })).not.toBeChecked();
+    expect(screen.getByRole("checkbox", { name: "Select Bodman SW grate" })).toBeEnabled();
+    expect(screen.queryByText("ALLOCATED")).not.toBeInTheDocument();
+    expect(screen.getAllByTestId("storm-marker")[0]).toHaveAttribute("data-fill-color", "transparent");
+    expect(screen.getAllByTestId("storm-marker")[0]).toHaveAttribute("data-fill-opacity", "0");
+  });
+
   it("opens completed work in a modal and returns to Storm Patrol when closed", async () => {
     const user = userEvent.setup();
     renderCommandCenter([], [{

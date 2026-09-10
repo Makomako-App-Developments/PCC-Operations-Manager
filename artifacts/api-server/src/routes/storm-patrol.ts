@@ -218,10 +218,49 @@ router.post("/storm-patrol/assets/import/commit", requireAuth, requireRole("mana
       return;
     }
     const result = await executeWithCircuitBreaker(() => db.transaction(async tx => {
-      const existing = await tx.select().from(stormObservationsTable).where(eq(stormObservationsTable.idempotencyKey, b.idempotencyKey)).limit(1); if (existing[0]) return { observation: existing[0], replayed: true };
-      const [reactive] = await tx.insert(reactiveJobsTable).values({ assetId: b.assetId ?? null, raisedById: req.auth!.userId, issueType: "Storm Patrol observation", description: b.description, notes: b.notes ?? null, locationLat: b.locationLat, locationLng: b.locationLng, origin: "storm_patrol", stormEventId: b.eventId, stormSourceJobId: b.sourceJobId ?? null, idempotencyKey: `storm-observation:${b.idempotencyKey}` }).returning();
-      const [observation] = await tx.insert(stormObservationsTable).values({ ...b, raisedById: req.auth!.userId, reactiveJobId: reactive.id }).returning(); return { observation, reactiveJob: reactive, replayed: false };
-    })); res.status(result.replayed ? 200 : 201).json(result);
+      let created = 0;
+      let updated = 0;
+      for (const row of inspection.rows) {
+        const values = {
+          globalId: row.globalId,
+          name: row.name,
+          department: "stormwater",
+          gardenType: null,
+          standard: null,
+          areaM2: null,
+          serviceTimeMins: null,
+          frequency: null,
+          isSchedulable: false,
+          departmentDetails: {
+            placemarkId: row.placemarkId,
+            contractor: row.contractor,
+            assetType: row.assetType,
+            priority: row.priority,
+            hotspot: row.hotspot,
+            importFingerprint: inspection.batchKey,
+          },
+          teamId: null,
+          siteType: null,
+          suburb: row.suburb,
+          streetAddress: row.streetAddress,
+          lat: row.lat,
+          lng: row.lng,
+          routeOrder: row.routeOrder,
+          description: row.description,
+          isActive: true,
+          updatedAt: new Date(),
+        } as const;
+        const existing = inspection.existingByGlobalId.get(row.globalId);
+        if (existing) {
+          await tx.update(assetsTable).set(values).where(eq(assetsTable.id, existing.id));
+          updated++;
+        } else {
+          await tx.insert(assetsTable).values(values);
+          created++;
+        }
+      }
+      return { created, updated };
+    }));
     await auditLog({ tableName: "stormwater_asset_import", recordId: null, action: "INSERT", changedById: req.auth!.userId, newData: { batchKey: inspection.batchKey, ...result } });
     res.status(201).json({ batchKey: inspection.batchKey, ...result, alreadyImported: false });
   } catch (error) {
@@ -231,16 +270,12 @@ router.post("/storm-patrol/assets/import/commit", requireAuth, requireRole("mana
 });
 
 router.get("/storm-patrol/current", requireAuth, async (req, res) => {
-    const event = await executeWithCircuitBreaker(() => db.transaction(async tx => {
-      const rate = body.hourlyRateCents ?? (await tx.select().from(stormPatrolSettingsTable).limit(1))[0]?.hourlyRateCents ?? 0;
-      const [row] = await tx.insert(stormEventsTable).values({ name: body.name, status: body.activate ? "active" : "draft", hourlyRateCents: rate, createdById: req.auth!.userId, activatedById: body.activate ? req.auth!.userId : null, activatedAt: body.activate ? new Date() : null }).returning();
-      return row;
-    }));
+  const event = await activeEvent();
   if (!event) { res.json({ data: null }); return; }
   const where = !privileged(req.auth!.role) ? and(eq(stormJobsTable.eventId, event.id), eq(stormJobsTable.teamId, req.auth!.teamId ?? "")) : eq(stormJobsTable.eventId, event.id);
-  const jobs = await enrichedStormJobs(eq(stormJobsTable.eventId, event.id));
+  const jobs = await enrichedStormJobs(where);
   const completed = jobs.filter(j => j.status === "completed" || j.status === "too_dangerous");
-  const minutes = jobs.reduce((n, j) => n + (j.actualTimeMins ?? 0), 0);
+  const minutes = completed.reduce((n, j) => n + (j.actualTimeMins ?? 0), 0);
   const [observations, followUps, alerts] = await Promise.all([
     executeWithCircuitBreaker(() => db.select().from(stormObservationsTable).where(eq(stormObservationsTable.eventId, event.id)).orderBy(desc(stormObservationsTable.createdAt))),
     executeWithCircuitBreaker(() => db.select().from(reactiveJobsTable).where(and(eq(reactiveJobsTable.stormEventId, event.id), eq(reactiveJobsTable.origin, "storm_patrol"))).orderBy(desc(reactiveJobsTable.createdAt))),
@@ -281,7 +316,7 @@ router.get("/storm-patrol/events", requireAuth, requireRole("manager", "supervis
 });
 
 router.post("/storm-patrol/events", requireAuth, requireRole("manager"), validateBody(z.object({ name: z.string().trim().min(1).max(200), activate: z.boolean().default(true), hourlyRateCents: z.number().int().min(0).optional() })), async (req, res) => {
-  const id = String(req.params.id); const body = req.body as z.infer<typeof completion>; const mine = await ownJob(id, req.auth!.userId, req.auth!.teamId, req.auth!.role);
+  const body = req.body as { name: string; activate: boolean; hourlyRateCents?: number };
   try {
     const event = await executeWithCircuitBreaker(() => db.transaction(async tx => {
       const rate = body.hourlyRateCents ?? (await tx.select().from(stormPatrolSettingsTable).limit(1))[0]?.hourlyRateCents ?? 0;
@@ -298,7 +333,7 @@ router.post("/storm-patrol/events", requireAuth, requireRole("manager"), validat
 
 router.post("/storm-patrol/events/:id/close", requireAuth, requireRole("manager"), async (req, res) => {
   const id = String(req.params.id);
-  const [event] = await executeWithCircuitBreaker(() => db.select().from(stormEventsTable).where(eq(stormEventsTable.id, String(req.params.id))).limit(1));
+  const [event] = await executeWithCircuitBreaker(() => db.update(stormEventsTable).set({ status: "closed", closedAt: new Date(), closedById: req.auth!.userId, updatedAt: new Date() }).where(and(eq(stormEventsTable.id, id), eq(stormEventsTable.status, "active"))).returning());
   if (!event) { res.status(409).json({ error: "Only an active event can be closed." }); return; }
   await auditLog({ tableName: "storm_events", recordId: id, action: "UPDATE", changedById: req.auth!.userId, newData: event as any });
   res.json(event);
@@ -306,7 +341,7 @@ router.post("/storm-patrol/events/:id/close", requireAuth, requireRole("manager"
 router.post("/storm-patrol/events/:id/activate", requireAuth, requireRole("manager"), async (req, res) => {
   const id = String(req.params.id);
   try {
-  const [event] = await executeWithCircuitBreaker(() => db.select().from(stormEventsTable).where(eq(stormEventsTable.id, String(req.params.id))).limit(1));
+    const [event] = await executeWithCircuitBreaker(() => db.update(stormEventsTable).set({ status: "active", activatedAt: new Date(), activatedById: req.auth!.userId, updatedAt: new Date() }).where(and(eq(stormEventsTable.id, id), eq(stormEventsTable.status, "draft"))).returning());
     if (!event) { res.status(409).json({ error: "Only draft events can be activated." }); return; }
     await auditLog({ tableName: "storm_events", recordId: id, action: "UPDATE", changedById: req.auth!.userId, newData: event as any });
     res.json(event);
@@ -317,7 +352,7 @@ router.post("/storm-patrol/events/:id/activate", requireAuth, requireRole("manag
 });
 
 router.get("/storm-patrol/settings", requireAuth, requireRole("manager"), async (_req, res) => {
-  const [row] = await executeWithCircuitBreaker(() => db.insert(stormPatrolSettingsTable).values({ id: 1, hourlyRateCents: req.body.hourlyRateCents, updatedById: req.auth!.userId, updatedAt: new Date() }).onConflictDoUpdate({ target: stormPatrolSettingsTable.id, set: { hourlyRateCents: req.body.hourlyRateCents, updatedById: req.auth!.userId, updatedAt: new Date() } }).returning());
+  const [row] = await executeWithCircuitBreaker(() => db.select().from(stormPatrolSettingsTable).limit(1));
   res.json(row ?? { id: 1, hourlyRateCents: 0 });
 });
 router.put("/storm-patrol/settings", requireAuth, requireRole("manager"), validateBody(z.object({ hourlyRateCents: z.number().int().min(0) })), async (req, res) => {
@@ -327,15 +362,19 @@ router.put("/storm-patrol/settings", requireAuth, requireRole("manager"), valida
 });
 
 router.post("/storm-patrol/events/:id/packages", requireAuth, requireRole("manager"), validateBody(z.object({ phase: phases, teamId: z.string().uuid(), assetIds: z.array(z.string().uuid()).min(1), idempotencyKey: z.string().min(1).max(200).optional() })), async (req, res) => {
-  const eventId = res.locals.query.eventId as string | undefined;
-  const id = String(req.params.id); const body = req.body as z.infer<typeof completion>; const mine = await ownJob(id, req.auth!.userId, req.auth!.teamId, req.auth!.role);
+  const eventId = String(req.params.id); const body = req.body as { phase: z.infer<typeof phases>; teamId: string; assetIds: string[] };
   if (new Set(body.assetIds).size !== body.assetIds.length) { res.status(400).json({ error: "An asset can only be assigned once in a package." }); return; }
   try {
     const result = await executeWithCircuitBreaker(() => db.transaction(async tx => {
-      const existing = await tx.select().from(stormObservationsTable).where(eq(stormObservationsTable.idempotencyKey, b.idempotencyKey)).limit(1); if (existing[0]) return { observation: existing[0], replayed: true };
-      const [reactive] = await tx.insert(reactiveJobsTable).values({ assetId: b.assetId ?? null, raisedById: req.auth!.userId, issueType: "Storm Patrol observation", description: b.description, notes: b.notes ?? null, locationLat: b.locationLat, locationLng: b.locationLng, origin: "storm_patrol", stormEventId: b.eventId, stormSourceJobId: b.sourceJobId ?? null, idempotencyKey: `storm-observation:${b.idempotencyKey}` }).returning();
-      const [observation] = await tx.insert(stormObservationsTable).values({ ...b, raisedById: req.auth!.userId, reactiveJobId: reactive.id }).returning(); return { observation, reactiveJob: reactive, replayed: false };
-    })); res.status(result.replayed ? 200 : 201).json(result);
+      const [event, team] = await Promise.all([tx.select().from(stormEventsTable).where(and(eq(stormEventsTable.id, eventId), eq(stormEventsTable.status, "active"))).limit(1), tx.select({ id: teamsTable.id }).from(teamsTable).where(eq(teamsTable.id, body.teamId)).limit(1)]);
+      if (!event[0]) throw new Error("EVENT_INACTIVE"); if (!team[0]) throw new Error("TEAM_INVALID");
+      const assets = await tx.select({ id: assetsTable.id, department: assetsTable.department, isActive: assetsTable.isActive, routeOrder: assetsTable.routeOrder }).from(assetsTable).where(inArray(assetsTable.id, body.assetIds));
+      if (!arePublishableStormwaterAssets(assets, body.assetIds.length)) throw new Error("ASSET_INVALID");
+      const [pack] = await tx.insert(stormWorkPackagesTable).values({ eventId, phase: body.phase, teamId: body.teamId, createdById: req.auth!.userId, status: "published", publishedAt: new Date() }).returning();
+      const order = new Map(assets.map(a => [a.id, a.routeOrder]));
+      const jobs = await tx.insert(stormJobsTable).values(body.assetIds.map(assetId => ({ eventId, workPackageId: pack.id, phase: body.phase, assetId, teamId: body.teamId, routeOrder: order.get(assetId) ?? null }))).returning();
+      return { package: pack, jobs };
+    }));
     await auditLog({ tableName: "storm_work_packages", recordId: result.package.id, action: "INSERT", changedById: req.auth!.userId, newData: result.package as any });
     res.status(201).json(result);
   } catch (error: any) {
@@ -347,15 +386,13 @@ router.post("/storm-patrol/events/:id/packages", requireAuth, requireRole("manag
 
 router.get("/storm-patrol/jobs", requireAuth, validateQuery(z.object({ eventId: z.string().uuid().optional(), phase: phases.optional(), status: z.enum(["pending", "in_progress", "completed", "too_dangerous"]).optional() })), async (req, res) => {
   const q = res.locals.query as any; const conditions: any[] = [];
-  const q = res.locals.query as any; const conditions: any[] = [];
   if (q.eventId) conditions.push(eq(stormJobsTable.eventId, q.eventId)); if (q.phase) conditions.push(eq(stormJobsTable.phase, q.phase)); if (q.status) conditions.push(eq(stormJobsTable.status, q.status));
   if (!privileged(req.auth!.role)) conditions.push(eq(stormJobsTable.teamId, req.auth!.teamId ?? ""));
   res.json({ data: await enrichedStormJobs(conditions.length ? and(...conditions) : undefined) });
 });
 
 router.post("/storm-patrol/jobs/:id/claim", requireAuth, async (req, res) => {
-  const id = String(req.params.id);
-  const mine = await ownJob(String(req.params.id), req.auth!.userId, req.auth!.teamId, req.auth!.role); if (mine.error) { res.status(mine.error).json({ error: "Forbidden" }); return; }
+  const id = String(req.params.id); const mine = await ownJob(id, req.auth!.userId, req.auth!.teamId, req.auth!.role); if (mine.error) { res.status(mine.error).json({ error: mine.error === 404 ? "Storm job not found" : "Forbidden" }); return; }
   const [job] = await executeWithCircuitBreaker(() => db.update(stormJobsTable).set({ assignedUserId: req.auth!.userId, status: "in_progress", startedAt: new Date(), updatedAt: new Date() }).where(and(eq(stormJobsTable.id, id), eq(stormJobsTable.status, "pending"), isNull(stormJobsTable.assignedUserId))).returning());
   if (!job) { res.status(409).json({ error: "This job has already been claimed or started." }); return; }
   await auditLog({ tableName: "storm_jobs", recordId: id, action: "UPDATE", changedById: req.auth!.userId, newData: job as any }); res.json(job);
@@ -366,22 +403,24 @@ const completion = z.object({ outcome: z.enum(["completed", "too_dangerous"]), a
   if (v.outcome === "completed" && requiresStormVisualCheckComments(v.workTypes, v.comments)) c.addIssue({ code: "custom", message: "Comments are required when Visual check only is selected.", path: ["comments"] });
 });
 router.post("/storm-patrol/jobs/:id/complete", requireAuth, validateBody(completion), async (req, res) => {
-  const id = String(req.params.id);
   const id = String(req.params.id); const body = req.body as z.infer<typeof completion>; const mine = await ownJob(id, req.auth!.userId, req.auth!.teamId, req.auth!.role);
-  const mine = await ownJob(String(req.params.id), req.auth!.userId, req.auth!.teamId, req.auth!.role); if (mine.error) { res.status(mine.error).json({ error: "Forbidden" }); return; }
   if (mine.error) { res.status(mine.error).json({ error: mine.error === 404 ? "Storm job not found" : "Forbidden" }); return; }
-    const result = await executeWithCircuitBreaker(() => db.transaction(async tx => {
-      const existing = await tx.select().from(stormObservationsTable).where(eq(stormObservationsTable.idempotencyKey, b.idempotencyKey)).limit(1); if (existing[0]) return { observation: existing[0], replayed: true };
-      const [reactive] = await tx.insert(reactiveJobsTable).values({ assetId: b.assetId ?? null, raisedById: req.auth!.userId, issueType: "Storm Patrol observation", description: b.description, notes: b.notes ?? null, locationLat: b.locationLat, locationLng: b.locationLng, origin: "storm_patrol", stormEventId: b.eventId, stormSourceJobId: b.sourceJobId ?? null, idempotencyKey: `storm-observation:${b.idempotencyKey}` }).returning();
-      const [observation] = await tx.insert(stormObservationsTable).values({ ...b, raisedById: req.auth!.userId, reactiveJobId: reactive.id }).returning(); return { observation, reactiveJob: reactive, replayed: false };
-    })); res.status(result.replayed ? 200 : 201).json(result);
+  const result = await executeWithCircuitBreaker(() => db.transaction(async tx => {
+    const prior = await tx.select().from(stormJobsTable).where(eq(stormJobsTable.idempotencyKey, body.idempotencyKey)).limit(1); if (prior[0]) return { job: prior[0], replayed: true };
+    const [job] = await tx.update(stormJobsTable).set({ status: body.outcome, actualTimeMins: body.actualTimeMins, comments: body.comments ?? null, completedAt: new Date(), syncedAt: new Date(), idempotencyKey: body.idempotencyKey, updatedAt: new Date() }).where(and(eq(stormJobsTable.id, id), eq(stormJobsTable.assignedUserId, req.auth!.userId), eq(stormJobsTable.status, "in_progress"))).returning();
+    if (!job) throw new Error("NOT_CLAIMED");
+    if (body.workTypes.length) await tx.insert(stormCheckResultsTable).values([...new Set(body.workTypes)].map(workType => ({ stormJobId: job.id, workType })));
+    let followUp = null;
+    if (body.outcome === "too_dangerous") [followUp] = await tx.insert(reactiveJobsTable).values({ assetId: job.assetId, raisedById: req.auth!.userId, issueType: "Storm Patrol site too dangerous", description: body.dangerousReason!, priority: "urgent", origin: "storm_patrol", stormEventId: job.eventId, stormSourceJobId: job.id, locationLat: body.locationLat ?? null, locationLng: body.locationLng ?? null, idempotencyKey: `storm-danger:${body.idempotencyKey}` }).returning();
+    return { job, followUp, replayed: false };
+  })).catch((error: any) => { if (error?.message === "NOT_CLAIMED") return null; throw error; });
   if (!result) { res.status(409).json({ error: "Job must be claimed and in progress before completion." }); return; }
   if (!result.replayed) await auditLog({ tableName: "storm_jobs", recordId: result.job.id, action: "UPDATE", changedById: req.auth!.userId, newData: result.job as any });
   res.json(result);
 });
 
 router.post("/storm-patrol/observations", requireAuth, validateBody(z.object({ eventId: z.string().uuid(), assetId: z.string().uuid().optional(), sourceJobId: z.string().uuid().optional(), description: z.string().min(1), notes: z.string().optional(), locationLat: z.number(), locationLng: z.number(), idempotencyKey: z.string().min(1).max(200) })), async (req, res) => {
-  const b = req.body as any; const [existing] = await executeWithCircuitBreaker(() => db.select().from(stormAlertsTable).where(eq(stormAlertsTable.idempotencyKey, b.idempotencyKey)).limit(1));
+  const b = req.body as any;
   try {
     const result = await executeWithCircuitBreaker(() => db.transaction(async tx => {
       const existing = await tx.select().from(stormObservationsTable).where(eq(stormObservationsTable.idempotencyKey, b.idempotencyKey)).limit(1); if (existing[0]) return { observation: existing[0], replayed: true };
@@ -398,32 +437,27 @@ router.post("/storm-patrol/observations/photos", requireAuth, stormPhotoUpload, 
   const observationKey = typeof req.body.observationIdempotencyKey === "string" ? req.body.observationIdempotencyKey : "";
   const [observation] = await executeWithCircuitBreaker(() => db.select().from(stormObservationsTable).where(and(eq(stormObservationsTable.idempotencyKey, observationKey), eq(stormObservationsTable.raisedById, req.auth!.userId))).limit(1));
   if (!observation) { res.status(404).json({ error: "Observation must sync before its photo." }); return; }
-  const key = typeof req.body.idempotencyKey === "string" ? req.body.idempotencyKey : randomUUID(); const [old] = await executeWithCircuitBreaker(() => db.select().from(stormPhotosTable).where(eq(stormPhotosTable.idempotencyKey, key)).limit(1)); if (old) { res.json(old); return; }
-  const key = typeof req.body.idempotencyKey === "string" ? req.body.idempotencyKey : randomUUID(); const [old] = await executeWithCircuitBreaker(() => db.select().from(stormPhotosTable).where(eq(stormPhotosTable.idempotencyKey, key)).limit(1)); if (old) { res.json(old); return; }
+  const key = typeof req.body.idempotencyKey === "string" ? req.body.idempotencyKey : randomUUID();
+  const [old] = await executeWithCircuitBreaker(() => db.select().from(stormPhotosTable).where(eq(stormPhotosTable.idempotencyKey, key)).limit(1));
   if (old) { res.json(old); return; }
   const bucketId = process.env.DEFAULT_OBJECT_STORAGE_BUCKET_ID; if (!bucketId) { res.status(503).json({ error: "Object storage is not configured." }); return; }
-  const objectName = `uploads/storm-patrol/${randomUUID()}`; await objectStorageClient.bucket(bucketId).file(objectName).save(req.file.buffer, { metadata: { contentType: req.file.mimetype }, resumable: false });
+  const objectName = `uploads/storm-patrol/${randomUUID()}`;
   await objectStorageClient.bucket(bucketId).file(objectName).save(req.file.buffer, { metadata: { contentType: req.file.mimetype }, resumable: false });
-  const [photo] = await executeWithCircuitBreaker(() => db.insert(stormPhotosTable).values({ stormJobId: String(req.params.id), purpose: purpose.data, blobUrl: `/api/uploads/${objectName}`, caption: typeof req.body.caption === "string" ? req.body.caption : null, uploadedById: req.auth!.userId, idempotencyKey: key }).returning()); res.status(201).json(photo);
+  const [photo] = await executeWithCircuitBreaker(() => db.insert(stormPhotosTable).values({ reactiveJobId: observation.reactiveJobId, purpose: "observation", blobUrl: `/api/uploads/${objectName}`, uploadedById: req.auth!.userId, idempotencyKey: key }).returning());
   res.status(201).json(photo);
 });
 
 router.post("/storm-patrol/alerts", requireAuth, validateBody(z.object({ eventId: z.string().uuid(), stormJobId: z.string().uuid().optional(), message: z.string().min(1), photoUrl: z.string().optional(), idempotencyKey: z.string().min(1).max(200) })), async (req, res) => {
   const b = req.body as any; const [existing] = await executeWithCircuitBreaker(() => db.select().from(stormAlertsTable).where(eq(stormAlertsTable.idempotencyKey, b.idempotencyKey)).limit(1));
-  const b = req.body as any; const [existing] = await executeWithCircuitBreaker(() => db.select().from(stormAlertsTable).where(eq(stormAlertsTable.idempotencyKey, b.idempotencyKey)).limit(1));
   if (existing) { res.json(existing); return; }
-  const [alert] = await executeWithCircuitBreaker(() =>
-    db.select().from(stormAlertsTable).where(eq(stormAlertsTable.id, id)).limit(1),
-  );
+  const [alert] = await executeWithCircuitBreaker(() => db.insert(stormAlertsTable).values({ ...b, raisedById: req.auth!.userId }).returning());
   const recipients = await executeWithCircuitBreaker(() => db.select({ id: usersTable.id }).from(usersTable).where(inArray(usersTable.role, managers as any)));
   void notifyUsers(recipients.map(r => r.id), { title: "Urgent Storm Patrol issue", body: b.message, data: { eventId: b.eventId, alertId: alert.id } });
   void deliverStormAlertEmail(alert.id);
   res.status(201).json(alert);
 });
 router.post("/storm-patrol/alerts/:id/acknowledge", requireAuth, requireRole("manager"), async (req, res) => {
-  const [alert] = await executeWithCircuitBreaker(() =>
-    db.select().from(stormAlertsTable).where(eq(stormAlertsTable.id, id)).limit(1),
-  );
+  const [alert] = await executeWithCircuitBreaker(() => db.update(stormAlertsTable).set({ acknowledgedAt: new Date(), acknowledgedById: req.auth!.userId }).where(eq(stormAlertsTable.id, String(req.params.id))).returning());
   if (!alert) { res.status(404).json({ error: "Alert not found" }); return; } res.json(alert);
 });
 router.get("/storm-patrol/alerts", requireAuth, requireRole("manager", "supervisor"), validateQuery(z.object({ eventId: z.string().uuid().optional() })), async (_req, res) => {
@@ -451,7 +485,6 @@ router.post("/storm-patrol/jobs/:id/photos", requireAuth, stormPhotoUpload, asyn
   const mine = await ownJob(String(req.params.id), req.auth!.userId, req.auth!.teamId, req.auth!.role); if (mine.error) { res.status(mine.error).json({ error: "Forbidden" }); return; }
   const purpose = z.enum(["before", "after", "urgent_issue", "new_flooding", "new_slip", "observation"]).safeParse(req.body.purpose); if (!purpose.success) { res.status(400).json({ error: "Valid photo purpose is required." }); return; }
   const key = typeof req.body.idempotencyKey === "string" ? req.body.idempotencyKey : randomUUID(); const [old] = await executeWithCircuitBreaker(() => db.select().from(stormPhotosTable).where(eq(stormPhotosTable.idempotencyKey, key)).limit(1)); if (old) { res.json(old); return; }
-  const key = typeof req.body.idempotencyKey === "string" ? req.body.idempotencyKey : randomUUID(); const [old] = await executeWithCircuitBreaker(() => db.select().from(stormPhotosTable).where(eq(stormPhotosTable.idempotencyKey, key)).limit(1)); if (old) { res.json(old); return; }
   const bucketId = process.env.DEFAULT_OBJECT_STORAGE_BUCKET_ID; if (!bucketId) { res.status(503).json({ error: "Object storage is not configured." }); return; }
   const objectName = `uploads/storm-patrol/${randomUUID()}`; await objectStorageClient.bucket(bucketId).file(objectName).save(req.file.buffer, { metadata: { contentType: req.file.mimetype }, resumable: false });
   const [photo] = await executeWithCircuitBreaker(() => db.insert(stormPhotosTable).values({ stormJobId: String(req.params.id), purpose: purpose.data, blobUrl: `/api/uploads/${objectName}`, caption: typeof req.body.caption === "string" ? req.body.caption : null, uploadedById: req.auth!.userId, idempotencyKey: key }).returning()); res.status(201).json(photo);
@@ -469,7 +502,6 @@ router.get("/storm-patrol/events/:id/report", requireAuth, requireRole("manager"
     res.type("text/csv").attachment(`storm-patrol-${event.id}.csv`).send([headers.join(","), ...rows].join("\r\n")); return;
   }
   if (req.query.format === "pdf") {
-    const PDFDocument = (await import("pdfkit")).default; const doc = new PDFDocument({ margin: 48 });
     const PDFDocument = (await import("pdfkit")).default; const doc = new PDFDocument({ margin: 48 });
     res.type("application/pdf").attachment(`storm-patrol-${event.id}.pdf`); doc.pipe(res);
     doc.fontSize(20).text("Storm Patrol Report"); doc.moveDown().fontSize(13).text(event.name);

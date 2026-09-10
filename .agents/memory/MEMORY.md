@@ -31,3 +31,4 @@
 - [Missed-work identity](missed-work-identity.md) — prior-date scheduled work keeps its identity and original date; regeneration never silently replaces it, and resolution is explicit and audited.
 - [Native bearer-token rotation](native-bearer-token-rotation.md) — refresh must replace the mobile bearer token, not only cookies; queue persistence must reconcile against the latest stored items.
 - [Durable native attachments](durable-native-attachments.md) — stage native files before queueing, rebuild multipart bodies per attempt, and commit queue removal before deleting files.
+- [Post-merge runtime validation](post-merge-runtime-validation.md) — restart affected services after task merges; static checks may miss malformed code in files excluded from type analysis.

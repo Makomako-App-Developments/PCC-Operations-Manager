@@ -211,6 +211,10 @@ export default function CommandCenter({ data }: CommandCenterProps) {
     () => new Set(jobs.filter(job => job.phase === selectedPhase).map(job => job.assetId)),
     [jobs, selectedPhase],
   );
+  const selectableFilteredAssets = useMemo(
+    () => filteredAssets.filter(asset => !allocatedAssetIds.has(asset.id)),
+    [filteredAssets, allocatedAssetIds],
+  );
   const mapFocusAssets = useMemo(
     () => filteredAssets.filter(asset => selectedAssets.has(asset.id) || allocatedAssetIds.has(asset.id)),
     [filteredAssets, selectedAssets, allocatedAssetIds],
@@ -235,12 +239,11 @@ export default function CommandCenter({ data }: CommandCenterProps) {
 
   const selectAllFiltered = () => {
     const next = new Set(selectedAssets);
-    const selectableAssets = filteredAssets.filter(asset => !allocatedAssetIds.has(asset.id));
-    const allAdded = selectableAssets.length > 0 && selectableAssets.every(a => next.has(a.id));
+    const allAdded = selectableFilteredAssets.length > 0 && selectableFilteredAssets.every(a => next.has(a.id));
     if (allAdded) {
-      selectableAssets.forEach(a => next.delete(a.id));
+      selectableFilteredAssets.forEach(a => next.delete(a.id));
     } else {
-      selectableAssets.forEach(a => next.add(a.id));
+      selectableFilteredAssets.forEach(a => next.add(a.id));
     }
     setSelectedAssets(next);
   };
@@ -643,12 +646,12 @@ export default function CommandCenter({ data }: CommandCenterProps) {
                           variant="ghost"
                           size="sm"
                           onClick={selectAllFiltered}
-                          disabled={filteredAssets.length === 0}
+                           disabled={selectableFilteredAssets.length === 0}
                           className="h-8 text-xs text-white/60 hover:text-white hover:bg-white/10"
                         >
-                           {filteredAssets.length > 0 && filteredAssets.filter(a => !allocatedAssetIds.has(a.id)).every(a => selectedAssets.has(a.id))
+                           {selectableFilteredAssets.length > 0 && selectableFilteredAssets.every(a => selectedAssets.has(a.id))
                              ? "Deselect All"
-                             : "Select All Available"}
+                             : "Select All Filtered"}
                         </Button>
                       </div>
                     </div>
