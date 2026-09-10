@@ -20,6 +20,21 @@ export const PHOTO_CLEANUP_INTERVAL_MS = 30_000;
 const PHOTO_CLEANUP_BATCH_SIZE = 20;
 export const PHOTO_CLEANUP_LEASE_MS = 5 * 60 * 1000;
 
+type PhotoObjectCleanupEntry = {
+  id: string;
+  bucketId: string;
+  objectName: string;
+  route: string;
+  attempts: number;
+};
+
+export type PhotoObjectCleanupDatabase = Pick<typeof db, "transaction" | "delete" | "update">;
+
+export type PhotoObjectCleanupWorkerDependencies = {
+  database?: PhotoObjectCleanupDatabase;
+  deleteObject?: (bucketId: string, objectName: string) => Promise<void>;
+};
+
 type CleanupCounts = {
   pending: number;
   permanentlyFailed: number;
@@ -475,60 +490,69 @@ export async function ensurePhotoObjectCleanupQueue(): Promise<void> {
   `);
 }
 
+export async function claimPhotoObjectCleanupEntries(
+  cleanupDb: Pick<typeof db, "transaction">,
+  now: Date,
+  claimToken: string,
+): Promise<PhotoObjectCleanupEntry[]> {
+  const leaseUntil = new Date(now.getTime() + PHOTO_CLEANUP_LEASE_MS);
+  return cleanupDb.transaction(async tx => {
+    const result = await tx.execute<{
+      id: string;
+      bucket_id: string;
+      object_name: string;
+      route: string;
+      attempts: number;
+    }>(sql`
+      WITH candidates AS (
+        SELECT id
+        FROM photo_object_cleanup_queue
+        WHERE completed_at IS NULL
+          AND permanently_failed_at IS NULL
+          AND next_attempt_at <= ${now}
+          AND (lease_until IS NULL OR lease_until <= ${now})
+        ORDER BY next_attempt_at
+        LIMIT ${PHOTO_CLEANUP_BATCH_SIZE}
+        FOR UPDATE SKIP LOCKED
+      )
+      UPDATE photo_object_cleanup_queue AS queue
+      SET claim_token = ${claimToken},
+          lease_until = ${leaseUntil},
+          updated_at = ${now}
+      FROM candidates
+      WHERE queue.id = candidates.id
+      RETURNING
+        queue.id,
+        queue.bucket_id,
+        queue.object_name,
+        queue.route,
+        queue.attempts
+    `);
+    return (result.rows ?? []).map(row => ({
+      id: row.id,
+      bucketId: row.bucket_id,
+      objectName: row.object_name,
+      route: row.route,
+      attempts: row.attempts,
+    }));
+  });
+}
+
 export async function processPhotoObjectCleanupQueue(
   now = new Date(),
+  dependencies: PhotoObjectCleanupWorkerDependencies = {},
 ): Promise<void> {
+  const cleanupDb = dependencies.database ?? db;
+  const deleteObject = dependencies.deleteObject ?? (async (bucketId, objectName) => {
+    await objectStorageClient.bucket(bucketId).file(objectName).delete();
+  });
   const claimToken = randomUUID();
-  const leaseUntil = new Date(now.getTime() + PHOTO_CLEANUP_LEASE_MS);
-  let entries: Array<{
-    id: string;
-    bucketId: string;
-    objectName: string;
-    route: string;
-    attempts: number;
-  }>;
+  let entries: PhotoObjectCleanupEntry[];
 
   try {
-    entries = await executeWithCircuitBreaker(() => db.transaction(async tx => {
-      const result = await tx.execute<{
-        id: string;
-        bucket_id: string;
-        object_name: string;
-        route: string;
-        attempts: number;
-      }>(sql`
-        WITH candidates AS (
-          SELECT id
-          FROM photo_object_cleanup_queue
-          WHERE completed_at IS NULL
-            AND permanently_failed_at IS NULL
-            AND next_attempt_at <= ${now}
-            AND (lease_until IS NULL OR lease_until <= ${now})
-          ORDER BY next_attempt_at
-          LIMIT ${PHOTO_CLEANUP_BATCH_SIZE}
-          FOR UPDATE SKIP LOCKED
-        )
-        UPDATE photo_object_cleanup_queue AS queue
-        SET claim_token = ${claimToken},
-            lease_until = ${leaseUntil},
-            updated_at = ${now}
-        FROM candidates
-        WHERE queue.id = candidates.id
-        RETURNING
-          queue.id,
-          queue.bucket_id,
-          queue.object_name,
-          queue.route,
-          queue.attempts
-      `);
-      return (result.rows ?? []).map(row => ({
-        id: row.id,
-        bucketId: row.bucket_id,
-        objectName: row.object_name,
-        route: row.route,
-        attempts: row.attempts,
-      }));
-    }));
+    entries = await executeWithCircuitBreaker(() =>
+      claimPhotoObjectCleanupEntries(cleanupDb, now, claimToken),
+    );
   } catch {
     console.error("[photo-object-cleanup-worker] queue read failed");
     return;
@@ -537,8 +561,8 @@ export async function processPhotoObjectCleanupQueue(
   for (const entry of entries) {
     const attempt = entry.attempts + 1;
     try {
-      await objectStorageClient.bucket(entry.bucketId).file(entry.objectName).delete();
-      await db.delete(photoObjectCleanupTable)
+      await deleteObject(entry.bucketId, entry.objectName);
+      await cleanupDb.delete(photoObjectCleanupTable)
         .where(and(
           eq(photoObjectCleanupTable.id, entry.id),
           eq(photoObjectCleanupTable.claimToken, claimToken),
@@ -551,7 +575,7 @@ export async function processPhotoObjectCleanupQueue(
     } catch {
       const permanentlyFailed = attempt >= PHOTO_CLEANUP_MAX_ATTEMPTS;
       const attemptedAt = new Date(now);
-      await db.update(photoObjectCleanupTable).set({
+      await cleanupDb.update(photoObjectCleanupTable).set({
         attempts: attempt,
         lastAttemptAt: attemptedAt,
         updatedAt: attemptedAt,
