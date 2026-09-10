@@ -268,6 +268,12 @@ export interface StormObservationCreate {
   idempotencyKey: string;
 }
 
+export interface StormObservationPhotoUpload {
+  photo: Blob;
+  observationIdempotencyKey: string;
+  idempotencyKey: string;
+}
+
 export interface HealthStatus {
   status: string;
 }
@@ -1490,6 +1496,8 @@ export type CommitStormwaterAssetImportBody = {
   workbook: Blob;
   batchKey: string;
 };
+
+export type UploadStormPatrolObservationPhoto201 = { [key: string]: unknown };
 
 export type ListStormPatrolAlertsParams = {
   eventId?: string;

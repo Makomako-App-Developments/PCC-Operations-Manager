@@ -13,7 +13,7 @@ vi.mock("@react-native-async-storage/async-storage", () => ({
 }));
 vi.mock("@workspace/api-client-react", () => ({ customFetch }));
 
-import { clearQueuedStormPhotos, deserializeStormQueue, enqueueStormItem, flushStormQueue, isStormQueueItemReady, loadStormQueue, saveStormQueue, serializeStormQueue, validatePostStormConditions, validateStormCompletionComments, validateStormPhaseCompletion, type StormQueueItem } from "../stormPatrolQueue";
+import { clearQueuedStormPhotos, deserializeStormQueue, enqueueStormItem, enqueueStormObservationPhoto, flushStormQueue, isStormQueueItemReady, loadStormQueue, saveStormQueue, serializeStormQueue, validatePostStormConditions, validateStormCompletionComments, validateStormPhaseCompletion, type StormQueueItem } from "../stormPatrolQueue";
 
 beforeEach(() => {
   values.clear();
@@ -65,6 +65,13 @@ describe("Storm Patrol offline queue", () => {
 
     expect(await clearQueuedStormPhotos()).toEqual([completion, observation]);
     expect(await loadStormQueue()).toEqual([completion, observation]);
+  });
+
+  it("queues an observation photo behind its observation metadata", async () => {
+    const photo = await enqueueStormObservationPhoto("file:///observation.jpg", "observation-key", "observation-item");
+    expect(photo.kind).toBe("photo");
+    expect(photo.dependsOn).toBe("observation-item");
+    expect(photo.payload).toMatchObject({ observationIdempotencyKey: "observation-key", purpose: "observation" });
   });
 
   it("preserves an item enqueued while an earlier item is uploading", async () => {

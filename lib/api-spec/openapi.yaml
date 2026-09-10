@@ -1451,6 +1451,21 @@ paths:
                 },
             },
         }
+  /storm-patrol/observations/photos:
+    post:
+      operationId: uploadStormPatrolObservationPhoto
+      tags: [storm-patrol]
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema: { $ref: "#/components/schemas/StormObservationPhotoUpload" }
+      responses:
+        "201":
+          description: Observation photo uploaded
+          content:
+            application/json:
+              schema: { type: object, additionalProperties: true }
   /storm-patrol/alerts:
     get:
       operationId: listStormPatrolAlerts
@@ -1843,6 +1858,13 @@ components:
         notes: { type: string }
         locationLat: { type: number }
         locationLng: { type: number }
+        idempotencyKey: { type: string }
+    StormObservationPhotoUpload:
+      type: object
+      required: [photo, observationIdempotencyKey, idempotencyKey]
+      properties:
+        photo: { type: string, format: binary }
+        observationIdempotencyKey: { type: string }
         idempotencyKey: { type: string }
 
     # ─── Primitives / enums ─────────────────────────────────────────────────

@@ -96,6 +96,7 @@ import type {
   StormJob,
   StormJobListResponse,
   StormObservationCreate,
+  StormObservationPhotoUpload,
   StormObservationResponse,
   StormPackagePublish,
   StormPackagePublishResponse,
@@ -107,6 +108,7 @@ import type {
   UnauthorisedResponse,
   UploadAuditItemPhotoBody,
   UploadJobPhotoBody,
+  UploadStormPatrolObservationPhoto201,
   User,
   UserCreate,
   UserListResponse,
@@ -5637,6 +5639,99 @@ export const useCreateStormPatrolObservation = <
   TContext
 > => {
   return useMutation(getCreateStormPatrolObservationMutationOptions(options));
+};
+
+export const getUploadStormPatrolObservationPhotoUrl = () => {
+  return `/api/storm-patrol/observations/photos`;
+};
+
+export const uploadStormPatrolObservationPhoto = async (
+  stormObservationPhotoUpload: StormObservationPhotoUpload,
+  options?: RequestInit,
+): Promise<UploadStormPatrolObservationPhoto201> => {
+  const formData = new FormData();
+  formData.append(`photo`, stormObservationPhotoUpload.photo);
+  formData.append(
+    `observationIdempotencyKey`,
+    stormObservationPhotoUpload.observationIdempotencyKey,
+  );
+  formData.append(`idempotencyKey`, stormObservationPhotoUpload.idempotencyKey);
+
+  return customFetch<UploadStormPatrolObservationPhoto201>(
+    getUploadStormPatrolObservationPhotoUrl(),
+    {
+      ...options,
+      method: "POST",
+      body: formData,
+    },
+  );
+};
+
+export const getUploadStormPatrolObservationPhotoMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof uploadStormPatrolObservationPhoto>>,
+    TError,
+    { data: BodyType<StormObservationPhotoUpload> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof uploadStormPatrolObservationPhoto>>,
+  TError,
+  { data: BodyType<StormObservationPhotoUpload> },
+  TContext
+> => {
+  const mutationKey = ["uploadStormPatrolObservationPhoto"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof uploadStormPatrolObservationPhoto>>,
+    { data: BodyType<StormObservationPhotoUpload> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return uploadStormPatrolObservationPhoto(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type UploadStormPatrolObservationPhotoMutationResult = NonNullable<
+  Awaited<ReturnType<typeof uploadStormPatrolObservationPhoto>>
+>;
+export type UploadStormPatrolObservationPhotoMutationBody =
+  BodyType<StormObservationPhotoUpload>;
+export type UploadStormPatrolObservationPhotoMutationError = ErrorType<unknown>;
+
+export const useUploadStormPatrolObservationPhoto = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof uploadStormPatrolObservationPhoto>>,
+    TError,
+    { data: BodyType<StormObservationPhotoUpload> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof uploadStormPatrolObservationPhoto>>,
+  TError,
+  { data: BodyType<StormObservationPhotoUpload> },
+  TContext
+> => {
+  return useMutation(
+    getUploadStormPatrolObservationPhotoMutationOptions(options),
+  );
 };
 
 export const getListStormPatrolAlertsUrl = (

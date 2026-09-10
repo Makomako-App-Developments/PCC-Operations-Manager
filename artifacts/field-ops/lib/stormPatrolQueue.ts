@@ -142,6 +142,11 @@ export async function enqueueStormPhoto(jobId: string, uri: string, purpose: Sto
   return enqueueStormItem({ kind: "photo", idempotencyKey, dependsOn, payload: { jobId, uri, purpose, idempotencyKey } });
 }
 
+export async function enqueueStormObservationPhoto(uri: string, observationIdempotencyKey: string, dependsOn: string): Promise<StormQueueItem> {
+  const idempotencyKey = `storm-photo-${stormQueueId()}`;
+  return enqueueStormItem({ kind: "photo", idempotencyKey, dependsOn, payload: { uri, purpose: "observation", observationIdempotencyKey, idempotencyKey } });
+}
+
 async function send(item: StormQueueItem): Promise<void> {
   if (item.kind === "completion") {
     const { jobId, data } = item.payload as { jobId: string; data: StormCompletion };
@@ -156,13 +161,18 @@ async function send(item: StormQueueItem): Promise<void> {
     await customFetch("/api/storm-patrol/alerts", { method: "POST", body: JSON.stringify(item.payload) });
     return;
   }
-  const { jobId, uri, purpose, idempotencyKey } = item.payload as Record<string, string>;
+  const { jobId, uri, purpose, idempotencyKey, observationIdempotencyKey } = item.payload as Record<string, string>;
   const form = new FormData();
   const name = uri.split("/").pop() || "storm-photo.jpg";
   form.append("photo", { uri, name, type: name.endsWith(".png") ? "image/png" : "image/jpeg" } as any);
   form.append("purpose", purpose);
   form.append("idempotencyKey", idempotencyKey);
-  await customFetch(`/api/storm-patrol/jobs/${jobId}/photos`, { method: "POST", body: form });
+  if (observationIdempotencyKey) {
+    form.append("observationIdempotencyKey", observationIdempotencyKey);
+    await customFetch("/api/storm-patrol/observations/photos", { method: "POST", body: form });
+  } else {
+    await customFetch(`/api/storm-patrol/jobs/${jobId}/photos`, { method: "POST", body: form });
+  }
 }
 
 /** Processes in insertion order. Failed metadata stays ahead of its photos for a later retry. */

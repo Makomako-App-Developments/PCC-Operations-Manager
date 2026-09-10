@@ -373,6 +373,20 @@ router.post("/storm-patrol/observations", requireAuth, validateBody(z.object({ e
     })); res.status(result.replayed ? 200 : 201).json(result);
   } catch (e: any) { if (e?.code === "23505") { res.status(409).json({ error: "Duplicate observation." }); return; } throw e; }
 });
+router.post("/storm-patrol/observations/photos", requireAuth, upload.single("photo"), async (req, res) => {
+  if (!req.file) { res.status(400).json({ error: "Photo is required." }); return; }
+  const observationKey = typeof req.body.observationIdempotencyKey === "string" ? req.body.observationIdempotencyKey : "";
+  const [observation] = await executeWithCircuitBreaker(() => db.select().from(stormObservationsTable).where(and(eq(stormObservationsTable.idempotencyKey, observationKey), eq(stormObservationsTable.raisedById, req.auth!.userId))).limit(1));
+  if (!observation) { res.status(404).json({ error: "Observation must sync before its photo." }); return; }
+  const key = typeof req.body.idempotencyKey === "string" ? req.body.idempotencyKey : randomUUID();
+  const [old] = await executeWithCircuitBreaker(() => db.select().from(stormPhotosTable).where(eq(stormPhotosTable.idempotencyKey, key)).limit(1));
+  if (old) { res.json(old); return; }
+  const bucketId = process.env.DEFAULT_OBJECT_STORAGE_BUCKET_ID; if (!bucketId) { res.status(503).json({ error: "Object storage is not configured." }); return; }
+  const objectName = `uploads/storm-patrol/${randomUUID()}`;
+  await objectStorageClient.bucket(bucketId).file(objectName).save(req.file.buffer, { metadata: { contentType: req.file.mimetype }, resumable: false });
+  const [photo] = await executeWithCircuitBreaker(() => db.insert(stormPhotosTable).values({ reactiveJobId: observation.reactiveJobId, purpose: "observation", blobUrl: `/api/uploads/${objectName}`, uploadedById: req.auth!.userId, idempotencyKey: key }).returning());
+  res.status(201).json(photo);
+});
 
 router.post("/storm-patrol/alerts", requireAuth, validateBody(z.object({ eventId: z.string().uuid(), stormJobId: z.string().uuid().optional(), message: z.string().min(1), photoUrl: z.string().optional(), idempotencyKey: z.string().min(1).max(200) })), async (req, res) => {
   const b = req.body as any; const [existing] = await executeWithCircuitBreaker(() => db.select().from(stormAlertsTable).where(eq(stormAlertsTable.idempotencyKey, b.idempotencyKey)).limit(1));

@@ -2418,6 +2418,12 @@ export const CreateStormPatrolObservationBody = zod.object({
   idempotencyKey: zod.string(),
 });
 
+export const UploadStormPatrolObservationPhotoBody = zod.object({
+  photo: zod.instanceof(File),
+  observationIdempotencyKey: zod.string(),
+  idempotencyKey: zod.string(),
+});
+
 export const ListStormPatrolAlertsQueryParams = zod.object({
   eventId: zod.coerce.string().uuid().optional(),
 });
