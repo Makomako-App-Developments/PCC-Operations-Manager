@@ -7,7 +7,9 @@ export default defineConfig({
     environment: "jsdom",
     include: [
       "lib/**/*.test.ts",
+      "lib/**/*.test.tsx",
       "lib/**/*.spec.ts",
+      "lib/**/*.spec.tsx",
       "app/**/*.test.tsx",
     ],
   },

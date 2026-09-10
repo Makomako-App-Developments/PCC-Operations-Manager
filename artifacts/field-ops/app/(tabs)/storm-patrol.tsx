@@ -112,15 +112,28 @@ export default function StormPatrolScreen() {
   };
   const discardQueuedPhotos = () => {
     if (discardingPhotos) return;
-    setDiscardingPhotos(true);
-    setQueue(current => current.filter(item => item.kind !== "photo"));
-    void clearQueuedStormPhotos()
-      .then(setQueue)
-      .catch(error => {
-        Alert.alert("Unable to discard photos", error instanceof Error ? error.message : "Try again.");
-        return refreshQueue();
-      })
-      .finally(() => setDiscardingPhotos(false));
+    Alert.alert(
+      "Discard queued photos?",
+      `This will permanently remove ${queuedPhotoCount} local Storm Patrol photo${queuedPhotoCount === 1 ? "" : "s"} that could not upload. Completed patrol records, observations, and alerts will not be removed.`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Discard photos",
+          style: "destructive",
+          onPress: () => {
+            setDiscardingPhotos(true);
+            setQueue(current => current.filter(item => item.kind !== "photo"));
+            void clearQueuedStormPhotos()
+              .then(setQueue)
+              .catch(error => {
+                Alert.alert("Unable to discard photos", error instanceof Error ? error.message : "Try again.");
+                return refreshQueue();
+              })
+              .finally(() => setDiscardingPhotos(false));
+          },
+        },
+      ],
+    );
   };
   const complete = async () => {
     if (!selected) return;

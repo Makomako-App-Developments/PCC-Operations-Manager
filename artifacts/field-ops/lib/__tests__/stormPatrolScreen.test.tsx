@@ -1,0 +1,221 @@
+import { createRoot, type Root } from "react-dom/client";
+import React, { act } from "react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+const mocks = vi.hoisted(() => ({
+  alert: vi.fn(),
+  clearQueuedStormPhotos: vi.fn(),
+  flushStormQueue: vi.fn(),
+  loadStormQueue: vi.fn(),
+  refetch: vi.fn(),
+  currentResult: {
+    data: {
+      data: {
+        event: { id: "event-one", name: "Storm Alpha" },
+        jobs: [],
+        summary: { checkedCount: 0, selectedCount: 0 },
+      },
+    },
+    isLoading: false,
+    isRefetching: false,
+    refetch: vi.fn(),
+  },
+}));
+
+const failedQueue = [
+  {
+    id: "photo-before",
+    kind: "photo",
+    idempotencyKey: "photo-before",
+    createdAt: "2026-09-10T08:00:00.000Z",
+    attempts: 3,
+    lastError: "HTTP 400: Photo is required",
+    payload: { jobId: "job-one", uri: "file:///before.jpg", purpose: "before" },
+  },
+  {
+    id: "photo-after",
+    kind: "photo",
+    idempotencyKey: "photo-after",
+    createdAt: "2026-09-10T08:01:00.000Z",
+    attempts: 3,
+    lastError: "HTTP 400: Photo is required",
+    payload: { jobId: "job-one", uri: "file:///after.jpg", purpose: "after" },
+  },
+  {
+    id: "observation-one",
+    kind: "observation",
+    idempotencyKey: "observation-one",
+    createdAt: "2026-09-10T08:02:00.000Z",
+    attempts: 1,
+    lastError: "Network unavailable",
+    payload: { data: { description: "Blocked drain" } },
+  },
+] as const;
+
+const remainingQueue = [failedQueue[2]];
+
+vi.mock("@react-native-async-storage/async-storage", () => ({
+  default: {
+    getItem: vi.fn().mockResolvedValue(null),
+    setItem: vi.fn().mockResolvedValue(undefined),
+  },
+}));
+
+vi.mock("@workspace/api-client-react", () => ({
+  getGetCurrentStormPatrolQueryKey: () => ["storm-patrol"],
+  useClaimStormPatrolJob: () => ({ mutate: vi.fn() }),
+  useGetCurrentStormPatrol: () => mocks.currentResult,
+}));
+
+vi.mock("expo-router", () => ({
+  useFocusEffect: (callback: () => void) => React.useEffect(callback, []),
+}));
+
+vi.mock("@expo/vector-icons", () => ({
+  Feather: () => null,
+}));
+
+vi.mock("expo-image-picker", () => ({
+  launchCameraAsync: vi.fn(),
+  launchImageLibraryAsync: vi.fn(),
+}));
+
+vi.mock("expo-location", () => ({
+  Accuracy: { High: "high" },
+  requestForegroundPermissionsAsync: vi.fn(),
+  getCurrentPositionAsync: vi.fn(),
+}));
+
+vi.mock("react-native", async () => {
+  const React = await import("react");
+  const element = (tag: string) =>
+    ({
+      children,
+      style: _style,
+      onPress,
+      testID,
+      refreshControl: _refreshControl,
+      contentContainerStyle: _contentContainerStyle,
+      ...props
+    }: {
+      children?: React.ReactNode;
+      onPress?: () => void;
+      testID?: string;
+      [key: string]: unknown;
+    }) => React.createElement(tag, { ...props, "data-testid": testID, onClick: onPress }, children);
+
+  return {
+    ActivityIndicator: element("span"),
+    Alert: { alert: mocks.alert },
+    Image: element("img"),
+    Linking: { openURL: vi.fn() },
+    Modal: element("div"),
+    Platform: { OS: "web" },
+    Pressable: element("button"),
+    RefreshControl: () => null,
+    ScrollView: element("div"),
+    StyleSheet: { create: (styles: unknown) => styles, hairlineWidth: 1 },
+    Text: element("span"),
+    TextInput: element("input"),
+    TouchableOpacity: element("button"),
+    View: element("div"),
+  };
+});
+
+vi.mock("react-native-safe-area-context", () => ({
+  useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }),
+}));
+
+vi.mock("@/components/PinMap", () => ({ PinMap: () => null }));
+vi.mock("@/hooks/usePhotoLibraryPermission", () => ({
+  requestCameraPermission: vi.fn(),
+  requestMediaLibraryPermission: vi.fn(),
+}));
+vi.mock("@/hooks/useColors", () => ({
+  useColors: () => ({
+    background: "#fff",
+    card: "#fff",
+    border: "#ddd",
+    foreground: "#111",
+    mutedForeground: "#666",
+    primary: "#007c91",
+    secondary: "#eef8fa",
+    destructive: "#b42318",
+    success: "#16803a",
+  }),
+}));
+vi.mock("@/lib/stormPatrolQueue", () => ({
+  clearQueuedStormPhotos: mocks.clearQueuedStormPhotos,
+  enqueueStormAlert: vi.fn(),
+  enqueueStormCompletion: vi.fn(),
+  enqueueStormObservation: vi.fn(),
+  enqueueStormObservationPhoto: vi.fn(),
+  enqueueStormPhoto: vi.fn(),
+  flushStormQueue: mocks.flushStormQueue,
+  getStormPatrolCompletionRequirements: vi.fn(() => []),
+  loadStormQueue: mocks.loadStormQueue,
+  stormQueueId: vi.fn(() => "queue-id"),
+}));
+
+import StormPatrolScreen from "../../app/(tabs)/storm-patrol";
+
+let root: Root | undefined;
+
+async function settle() {
+  await act(async () => {
+    await Promise.resolve();
+    await Promise.resolve();
+  });
+}
+
+beforeEach(() => {
+  document.body.innerHTML = '<div id="root"></div>';
+  mocks.alert.mockReset();
+  mocks.refetch.mockReset().mockResolvedValue(undefined);
+  mocks.currentResult.refetch = mocks.refetch;
+  mocks.loadStormQueue.mockReset().mockResolvedValue(failedQueue);
+  mocks.flushStormQueue
+    .mockReset()
+    .mockResolvedValueOnce(failedQueue)
+    .mockResolvedValueOnce(remainingQueue);
+  mocks.clearQueuedStormPhotos.mockReset().mockResolvedValue(remainingQueue);
+});
+
+afterEach(() => {
+  act(() => root?.unmount());
+  root = undefined;
+  document.body.innerHTML = "";
+  vi.clearAllMocks();
+});
+
+describe("Storm Patrol blocked photo recovery", () => {
+  it("discards failed photos while leaving non-photo queue records waiting", async () => {
+    await act(async () => {
+      root = createRoot(document.getElementById("root")!);
+      root.render(<StormPatrolScreen />);
+    });
+    await settle();
+
+    expect(document.body.textContent).toContain("3 items waiting to sync");
+    const discard = document.querySelector('[data-testid="storm-sync-clear-photos"]') as HTMLButtonElement;
+    expect(discard).not.toBeNull();
+    expect(discard.textContent).toContain("Discard 2 queued photos");
+
+    act(() => discard.click());
+    const destructiveAction = mocks.alert.mock.calls[0]?.[2]?.find(
+      (action: { text?: string }) => action.text === "Discard photos",
+    );
+    expect(destructiveAction).toBeDefined();
+
+    await act(async () => {
+      destructiveAction.onPress();
+    });
+    await settle();
+
+    expect(mocks.clearQueuedStormPhotos).toHaveBeenCalledOnce();
+    expect(mocks.flushStormQueue).toHaveBeenCalledOnce();
+    expect(document.body.textContent).toContain("1 item waiting to sync");
+    expect(document.body.textContent).not.toContain("queued photo");
+    expect(document.querySelector('[data-testid="storm-sync-clear-photos"]')).toBeNull();
+  });
+});
