@@ -34,6 +34,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 
 import { StatusBadge } from "@/components/StatusBadge";
 import { BoundaryMap } from "@/components/BoundaryMap";
+import { PhotoQueueActions } from "@/components/PhotoQueueActions";
 import { useAuth } from "@/context/auth";
 import { useColors } from "@/hooks/useColors";
 import { getApiUrl, trackedFetch } from "@/lib/api";
@@ -373,7 +374,13 @@ function PhotoSection({ jobId, readOnly }: { jobId: string; readOnly: boolean })
           <Text style={[styles.optionalErrorText, { color: "#9a3412" }]}>
             Photos are unavailable right now.
           </Text>
-          <TouchableOpacity onPress={() => refetch()} disabled={isFetching} style={styles.retryButton}>
+          <TouchableOpacity
+            accessibilityRole="button"
+            accessibilityLabel="Retry loading attached photos"
+            onPress={() => refetch()}
+            disabled={isFetching}
+            style={styles.retryButton}
+          >
             {isFetching ? <ActivityIndicator size="small" color={colors.primary} /> : <Text style={[styles.retryText, { color: colors.primary }]}>Retry</Text>}
           </TouchableOpacity>
         </View>
@@ -431,32 +438,15 @@ function PhotoSection({ jobId, readOnly }: { jobId: string; readOnly: boolean })
       )}
 
       {!readOnly && (
-        <View style={[styles.photoActions, { borderTopColor: colors.border }]}>
-          <TouchableOpacity
-            style={[styles.photoBtn, { borderColor: colors.border, borderRadius: colors.radius, flex: 1 }]}
-            onPress={takePhoto}
-            activeOpacity={0.8}
-            disabled={uploadPhoto.isPending}
-          >
-            <Feather name="camera" size={15} color={colors.primary} />
-            <Text style={[styles.photoBtnText, { color: colors.foreground }]}>Camera</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.photoBtn, { borderColor: colors.border, borderRadius: colors.radius, flex: 1 }]}
-            onPress={pickFromLibrary}
-            activeOpacity={0.8}
-            disabled={uploadPhoto.isPending}
-          >
-            {uploadPhoto.isPending ? (
-              <ActivityIndicator size="small" color={colors.primary} />
-            ) : (
-              <>
-                <Feather name="image" size={15} color={colors.primary} />
-                <Text style={[styles.photoBtnText, { color: colors.foreground }]}>Library</Text>
-              </>
-            )}
-          </TouchableOpacity>
-        </View>
+        <PhotoQueueActions
+          containerStyle={[styles.photoActions, { borderTopColor: colors.border }]}
+          buttonStyle={[styles.photoBtn, { borderColor: colors.border, borderRadius: colors.radius, flex: 1 }]}
+          textStyle={[styles.photoBtnText, { color: colors.foreground }]}
+          iconColor={colors.primary}
+          isPending={uploadPhoto.isPending}
+          onTakePhoto={takePhoto}
+          onPickFromLibrary={pickFromLibrary}
+        />
       )}
     </View>
   );

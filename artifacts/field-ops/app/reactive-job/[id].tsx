@@ -23,6 +23,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useColors } from "@/hooks/useColors";
 import { getApiUrl } from "@/lib/api";
 import { useOfflinePhotoQueue } from "@/hooks/useOfflinePhotoQueue";
+import { PhotoQueueActions } from "@/components/PhotoQueueActions";
 import { PinMap } from "@/components/PinMap";
 import { useAuth } from "@/context/auth";
 import { useGetReactiveJob, useUpdateReactiveJob } from "@workspace/api-client-react";
@@ -228,32 +229,15 @@ function AttachmentsSection({ jobId, readOnly }: { jobId: string; readOnly: bool
       )}
 
       {!readOnly && (
-        <View style={[styles.photoActions, { borderTopColor: colors.border }]}>
-          <TouchableOpacity
-            style={[styles.photoBtn, { borderColor: colors.border, borderRadius: colors.radius, flex: 1 }]}
-            onPress={takePhoto}
-            activeOpacity={0.8}
-            disabled={upload.isPending}
-          >
-            <Feather name="camera" size={15} color={colors.primary} />
-            <Text style={[styles.photoBtnText, { color: colors.foreground }]}>Camera</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.photoBtn, { borderColor: colors.border, borderRadius: colors.radius, flex: 1 }]}
-            onPress={pickFromLibrary}
-            activeOpacity={0.8}
-            disabled={upload.isPending}
-          >
-            {upload.isPending ? (
-              <ActivityIndicator size="small" color={colors.primary} />
-            ) : (
-              <>
-                <Feather name="image" size={15} color={colors.primary} />
-                <Text style={[styles.photoBtnText, { color: colors.foreground }]}>Library</Text>
-              </>
-            )}
-          </TouchableOpacity>
-        </View>
+        <PhotoQueueActions
+          containerStyle={[styles.photoActions, { borderTopColor: colors.border }]}
+          buttonStyle={[styles.photoBtn, { borderColor: colors.border, borderRadius: colors.radius, flex: 1 }]}
+          textStyle={[styles.photoBtnText, { color: colors.foreground }]}
+          iconColor={colors.primary}
+          isPending={upload.isPending}
+          onTakePhoto={takePhoto}
+          onPickFromLibrary={pickFromLibrary}
+        />
       )}
     </View>
   );
