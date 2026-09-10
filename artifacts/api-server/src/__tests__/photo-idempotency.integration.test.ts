@@ -12,6 +12,7 @@ const state = vi.hoisted(() => ({
   ambiguousCommitFailureFor: new Set<string>(),
   ambiguousInsertFailureFor: new Set<string>(),
   failDeletes: false,
+  deleteFailuresRemaining: 0,
   diagnostics: [] as any[],
   nextId: 1,
   transactionTail: Promise.resolve(),
@@ -23,7 +24,7 @@ const tables = vi.hoisted(() => Object.fromEntries([
   "auditsTable", "auditItemsTable", "auditPhotosTable", "teamsTable", "assetsTable",
   "usersTable", "stormJobsTable", "stormObservationsTable", "stormPhotosTable",
   "stormEventsTable", "stormWorkPackagesTable", "stormCheckResultsTable",
-  "stormAlertsTable", "stormPatrolSettingsTable",
+  "stormAlertsTable", "stormPatrolSettingsTable", "photoObjectCleanupTable",
 ].map(name => [name, new Proxy({ name }, { get: (target, key) => key === "name" ? target.name : `${target.name}.${String(key)}` })])));
 
 function rowsFor(table: any) {
@@ -84,6 +85,20 @@ vi.mock("@workspace/db", async importOriginal => {
     db: {
       select: vi.fn(() => chain()),
       insert: vi.fn((table: any) => insertChain(table)),
+        delete: vi.fn((table: any) => ({
+          where: vi.fn(async (condition: any) => {
+            state.rows.set(table.name, rowsFor(table).filter(row => !matches(row, condition)));
+          }),
+        })),
+        update: vi.fn((table: any) => ({
+          set: vi.fn((values: any) => ({
+            where: vi.fn(async (condition: any) => {
+              state.rows.set(table.name, rowsFor(table).map(row =>
+                matches(row, condition) ? { ...row, ...values } : row,
+              ));
+            }),
+          })),
+        })),
       transaction: vi.fn(async (fn: any) => {
         const previous = state.transactionTail;
         let release!: () => void;
@@ -126,7 +141,7 @@ vi.mock("@workspace/db", async importOriginal => {
 vi.mock("drizzle-orm", () => ({
   and: vi.fn((...conditions: any[]) => ({ op: "and", conditions })),
   or: vi.fn(), asc: vi.fn(), desc: vi.fn(), inArray: vi.fn(),
-  isNull: vi.fn(),
+  isNull: vi.fn(), lte: vi.fn((left: any, right: any) => ({ op: "lte", left, right })),
   eq: vi.fn((left: any, right: any) => ({ op: "eq", left, right })),
   sql: Object.assign((parts: TemplateStringsArray) => parts.join(""), { raw: vi.fn() }),
 }));
@@ -147,7 +162,10 @@ vi.mock("../lib/objectStorage", () => ({
           state.saves(name);
         }),
         delete: vi.fn(async () => {
-          if (state.failDeletes) throw new Error("provider-token secret-object-name");
+          if (state.failDeletes || state.deleteFailuresRemaining > 0) {
+            state.deleteFailuresRemaining--;
+            throw new Error("provider-token secret-object-name");
+          }
           state.objects.delete(name);
           state.deletes(name);
         }),
@@ -164,6 +182,7 @@ import photosRouter from "../routes/photos";
 import auditsRouter from "../routes/audits";
 import stormRouter from "../routes/storm-patrol";
 import { fieldOpsDiagnosticMiddleware } from "../app";
+import { processPhotoObjectCleanupQueue } from "../lib/photo-object-cleanup";
 
 const ids = {
   job: "00000000-0000-0000-0000-000000000010",
@@ -208,6 +227,7 @@ beforeEach(() => {
   state.failNextCommitFor.clear(); state.ambiguousCommitFailureFor.clear();
   state.ambiguousInsertFailureFor.clear();
   state.failDeletes = false;
+  state.deleteFailuresRemaining = 0;
   state.transactionTail = Promise.resolve();
   state.breakerFailures = 0;
   process.env.DEFAULT_OBJECT_STORAGE_BUCKET_ID = "test-bucket";
@@ -451,6 +471,22 @@ describe("photo routes: real multipart idempotency", () => {
     expect(log).not.toContain("provider-token");
     expect(log).not.toContain("secret-object-name");
     consoleError.mockRestore();
+  });
+
+  it("retries a transient deletion failure and removes the queue row after success", async () => {
+    state.failNextInsertFor.add("jobPhotosTable");
+    state.deleteFailuresRemaining = 1;
+
+    await multipart(`/api/jobs/${ids.job}/photos`, "transient-cleanup");
+
+    expect(rowsFor(tables.photoObjectCleanupTable)).toHaveLength(1);
+    expect(state.objects).toHaveLength(1);
+
+    await processPhotoObjectCleanupQueue(new Date());
+
+    expect(rowsFor(tables.photoObjectCleanupTable)).toHaveLength(0);
+    expect(state.objects).toHaveLength(0);
+    expect(state.deletes).toHaveBeenCalledTimes(1);
   });
 });
 

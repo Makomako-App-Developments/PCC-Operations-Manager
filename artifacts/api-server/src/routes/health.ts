@@ -3,6 +3,7 @@ import { db, dbCircuitBreaker, executeWithCircuitBreaker } from "@workspace/db";
 import { sql } from "drizzle-orm";
 import circuitBreakerRouter from "./health-circuit-breaker";
 import { getAuditFailureCount } from "../lib/audit";
+import { getPhotoObjectCleanupCounts } from "../lib/photo-object-cleanup";
 
 const router: IRouter = Router();
 const startTime = Date.now();
@@ -66,6 +67,15 @@ router.get("/health", async (_req, res) => {
     const t0 = Date.now();
     await executeWithCircuitBreaker(() => db.execute(sql`SELECT 1`));
     const dbLatencyMs = Date.now() - t0;
+    let photoCleanup = { pending: 0, permanentlyFailed: 0 };
+    try {
+      photoCleanup = await getPhotoObjectCleanupCounts();
+    } catch {
+      // Cleanup metrics must not make a healthy API look unavailable. The
+      // startup DDL normally guarantees this query succeeds; if it does not,
+      // the worker logs the queue error and the next health check retries.
+      console.error("[health] photo cleanup counts unavailable");
+    }
     res.json({
       status: "ok",
       version: process.env["npm_package_version"] ?? "0.0.0",
@@ -74,6 +84,8 @@ router.get("/health", async (_req, res) => {
       nodeVersion: process.version,
       cbState: dbCircuitBreaker.getState(),
       auditFailures: getAuditFailureCount(),
+      photoCleanupPending: photoCleanup.pending,
+      photoCleanupPermanentFailures: photoCleanup.permanentlyFailed,
     });
   } catch {
     const cbState = dbCircuitBreaker.getState();

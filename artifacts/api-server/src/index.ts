@@ -2,6 +2,10 @@ import app from "./app";
 import { startOverdueChecker } from "./lib/overdue-checker";
 import { runStartupPatches } from "./lib/startup-patch";
 import { runProductionTestingBacklogCleanup } from "./lib/testing-backlog-cleanup";
+import {
+  ensurePhotoObjectCleanupQueue,
+  startPhotoObjectCleanupWorker,
+} from "./lib/photo-object-cleanup";
 
 process.on("unhandledRejection", (reason) => {
   console.error("[unhandledRejection]", reason);
@@ -30,8 +34,10 @@ async function startServer(): Promise<void> {
   // expose it to the client. Failure aborts startup so the app never serves a
   // partially applied cleanup; the single SQL statement is atomic and safe to retry.
   await runProductionTestingBacklogCleanup();
+  await ensurePhotoObjectCleanupQueue();
 
   startOverdueChecker();
+  startPhotoObjectCleanupWorker();
   void runStartupPatches();
 
   app.listen(port, () => {

@@ -10,3 +10,4 @@ export * from "./team-availability";
 export * from "./system-settings";
 export * from "./plant-palette";
 export * from "./storm-patrol";
+export * from "./photo-object-cleanup";
