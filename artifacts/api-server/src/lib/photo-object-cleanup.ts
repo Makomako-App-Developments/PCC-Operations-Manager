@@ -6,7 +6,7 @@ import {
 } from "@workspace/db";
 import { and, eq, sql } from "drizzle-orm";
 import {
-  objectStorageClient,
+  deleteStoredObject,
   type StoredPhotoObject,
   type StoredPhotoObjectPage,
 } from "./objectStorage";
@@ -19,6 +19,7 @@ export const PHOTO_CLEANUP_MAX_DELAY_MS = 60 * 60 * 1000;
 export const PHOTO_CLEANUP_INTERVAL_MS = 30_000;
 const PHOTO_CLEANUP_BATCH_SIZE = 20;
 export const PHOTO_CLEANUP_LEASE_MS = 5 * 60 * 1000;
+export const PHOTO_CLEANUP_PROVIDER_TIMEOUT_MS = PHOTO_CLEANUP_LEASE_MS - 30_000;
 
 type PhotoObjectCleanupEntry = {
   id: string;
@@ -32,7 +33,13 @@ export type PhotoObjectCleanupDatabase = Pick<typeof db, "transaction" | "delete
 
 export type PhotoObjectCleanupWorkerDependencies = {
   database?: PhotoObjectCleanupDatabase;
-  deleteObject?: (bucketId: string, objectName: string) => Promise<void>;
+  deleteObject?: (
+    bucketId: string,
+    objectName: string,
+    signal: AbortSignal,
+  ) => Promise<void>;
+  /** Test hook for exercising a stalled provider without waiting four minutes. */
+  providerTimeoutMs?: number;
 };
 
 type CleanupCounts = {
@@ -192,9 +199,7 @@ const reconciliationDependencies: PhotoObjectReconciliationDependencies = {
   isBlobUrlsReferenced: arePhotoBlobUrlsReferenced,
   deleteObject: async (bucketId, objectName, generation) => {
     try {
-      await objectStorageClient.bucket(bucketId).file(objectName).delete({
-        ifGenerationMatch: generation,
-      } as never);
+      await deleteStoredObject(bucketId, objectName, { generation });
       return "deleted";
     } catch (error) {
       const code = (error as { code?: unknown } | null)?.code;
@@ -422,7 +427,7 @@ export async function removeUncommittedPhotoObject(
   route: PhotoRoute,
 ): Promise<void> {
   try {
-    await objectStorageClient.bucket(bucketId).file(objectName).delete();
+    await deleteStoredObject(bucketId, objectName);
   } catch {
     logCleanupFailure(objectName, route);
     await enqueuePhotoObjectCleanup(bucketId, objectName, route);
@@ -543,9 +548,14 @@ export async function processPhotoObjectCleanupQueue(
   dependencies: PhotoObjectCleanupWorkerDependencies = {},
 ): Promise<void> {
   const cleanupDb = dependencies.database ?? db;
-  const deleteObject = dependencies.deleteObject ?? (async (bucketId, objectName) => {
-    await objectStorageClient.bucket(bucketId).file(objectName).delete();
-  });
+  const deleteObject = dependencies.deleteObject
+    ?? (async (bucketId: string, objectName: string, signal: AbortSignal) => {
+      await deleteStoredObject(bucketId, objectName, { signal });
+    });
+  const providerTimeoutMs = Math.min(
+    Math.max(1, dependencies.providerTimeoutMs ?? PHOTO_CLEANUP_PROVIDER_TIMEOUT_MS),
+    PHOTO_CLEANUP_PROVIDER_TIMEOUT_MS,
+  );
   const claimToken = randomUUID();
   let entries: PhotoObjectCleanupEntry[];
 
@@ -561,7 +571,28 @@ export async function processPhotoObjectCleanupQueue(
   for (const entry of entries) {
     const attempt = entry.attempts + 1;
     try {
-      await deleteObject(entry.bucketId, entry.objectName);
+      const providerAbort = new AbortController();
+      let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
+      const deletion = Promise.resolve().then(() =>
+        deleteObject(entry.bucketId, entry.objectName, providerAbort.signal),
+      );
+      // A custom provider must not be able to keep the worker stuck forever
+      // after the lease deadline. Its rejection is observed even if the
+      // timeout wins the race, preventing an unhandled rejection later.
+      deletion.catch(() => undefined);
+      try {
+        await Promise.race([
+          deletion,
+          new Promise<never>((_, reject) => {
+            timeoutHandle = setTimeout(() => {
+              providerAbort.abort();
+              reject(new Error("Photo object provider deletion timed out"));
+            }, providerTimeoutMs);
+          }),
+        ]);
+      } finally {
+        if (timeoutHandle) clearTimeout(timeoutHandle);
+      }
       await cleanupDb.delete(photoObjectCleanupTable)
         .where(and(
           eq(photoObjectCleanupTable.id, entry.id),

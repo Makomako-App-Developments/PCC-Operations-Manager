@@ -188,6 +188,14 @@ vi.mock("../middlewares/auth", () => ({
   requireRole: () => (_req: any, _res: any, next: any) => next(),
 }));
 vi.mock("../lib/objectStorage", () => ({
+  deleteStoredObject: vi.fn(async (_bucketId: string, name: string) => {
+    if (state.failDeletes || state.deleteFailuresRemaining > 0) {
+      state.deleteFailuresRemaining--;
+      throw new Error("provider-token secret-object-name");
+    }
+    state.objects.delete(name);
+    state.deletes(name);
+  }),
   objectStorageClient: {
     bucket: vi.fn(() => ({
       file: vi.fn((name: string) => ({
@@ -217,7 +225,10 @@ import photosRouter from "../routes/photos";
 import auditsRouter from "../routes/audits";
 import stormRouter from "../routes/storm-patrol";
 import { fieldOpsDiagnosticMiddleware } from "../app";
-import { processPhotoObjectCleanupQueue } from "../lib/photo-object-cleanup";
+import {
+  PHOTO_CLEANUP_LEASE_MS,
+  processPhotoObjectCleanupQueue,
+} from "../lib/photo-object-cleanup";
 
 const ids = {
   job: "00000000-0000-0000-0000-000000000010",
@@ -570,6 +581,56 @@ describe("photo routes: real multipart idempotency", () => {
     expect(state.deletes).toHaveBeenCalledTimes(1);
     expect(rowsFor(tables.photoObjectCleanupTable)).toHaveLength(0);
     expect(state.objects).toHaveLength(0);
+  });
+
+  it("abandons a stalled provider before reclaim and fences the old worker", async () => {
+    const startedAt = new Date();
+    state.rows.set("photoObjectCleanupTable", [{
+      id: "cleanup-stalled-provider",
+      bucketId: "test-bucket",
+      objectName: "uploads/stalled-provider.jpg",
+      route: "scheduled",
+      attempts: 0,
+      nextAttemptAt: new Date(startedAt.getTime() - 1),
+      leaseUntil: null,
+      completedAt: null,
+      permanentlyFailedAt: null,
+    }]);
+    let releaseStalledProvider!: () => void;
+    let stalledSignal!: AbortSignal;
+    const stalledDelete = vi.fn(async (
+      _bucketId: string,
+      _objectName: string,
+      signal: AbortSignal,
+    ) => {
+      stalledSignal = signal;
+      await new Promise<void>(resolve => {
+        releaseStalledProvider = resolve;
+      });
+    });
+
+    const firstWorker = processPhotoObjectCleanupQueue(startedAt, {
+      providerTimeoutMs: 10,
+      deleteObject: stalledDelete,
+    });
+    await vi.waitFor(() => expect(stalledDelete).toHaveBeenCalledTimes(1));
+    await firstWorker;
+
+    expect(stalledSignal.aborted).toBe(true);
+
+    const reclaimedAt = new Date(startedAt.getTime() + PHOTO_CLEANUP_LEASE_MS + 1);
+    const reclaimedDelete = vi.fn(async () => undefined);
+    await processPhotoObjectCleanupQueue(reclaimedAt, {
+      deleteObject: reclaimedDelete,
+    });
+
+    expect(reclaimedDelete).toHaveBeenCalledTimes(1);
+    expect(rowsFor(tables.photoObjectCleanupTable)).toHaveLength(0);
+
+    // The original provider call may return after the row has been reclaimed,
+    // but the old worker has already timed out and cannot finalize it.
+    releaseStalledProvider();
+    expect(rowsFor(tables.photoObjectCleanupTable)).toHaveLength(0);
   });
 });
 

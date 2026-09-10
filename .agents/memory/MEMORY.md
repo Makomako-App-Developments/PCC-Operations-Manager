@@ -34,3 +34,4 @@
 - [Queued photo storage read state](queued-photo-storage-read-state.md) — never turn unreadable AsyncStorage into an empty queue; warn and fail mutations closed.
 - [Photo cleanup after ambiguous writes](photo-cleanup-ambiguous-writes.md) — confirm no committed DB owner exists before deleting an upload after any failed photo-row write.
 - [Operational alert state transitions](operational-alert-state-transitions.md) — mark incident state before async delivery; only successful metrics can clear it, and recovery stays visible.
+- [Photo cleanup provider deadlines](photo-cleanup-provider-deadlines.md) — bound storage deletes below the queue lease and pass cancellation so reclaimed rows do not duplicate in-flight provider traffic.

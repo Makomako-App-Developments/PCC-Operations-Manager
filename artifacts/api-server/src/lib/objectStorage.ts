@@ -37,10 +37,19 @@ export type StoredPhotoObject = {
 };
 
 export const STORED_PHOTO_OBJECT_PAGE_SIZE = 100;
+// Keep provider requests shorter than the cleanup queue lease. The cleanup
+// worker adds its own deadline so injected providers are fenced as well.
+export const PHOTO_OBJECT_DELETE_TIMEOUT_MS = 4 * 60 * 1000;
 
 export type StoredPhotoObjectPage = {
   objects: StoredPhotoObject[];
   nextPageToken?: string;
+};
+
+export type DeleteStoredObjectOptions = {
+  generation?: string;
+  timeoutMs?: number;
+  signal?: AbortSignal;
 };
 
 export class ObjectNotFoundError extends Error {
@@ -277,6 +286,31 @@ export async function listStoredPhotoObjectsPage(
     objects,
     nextPageToken: response?.nextPageToken,
   };
+}
+
+/**
+ * Delete one object with a bounded provider request.
+ *
+ * File.delete() only exposes preconditions in its public options. Calling the
+ * underlying request method lets us pass the HTTP timeout and abort signal so
+ * a provider outage cannot leave a cleanup attempt in flight until the queue
+ * lease is reclaimed.
+ */
+export async function deleteStoredObject(
+  bucketId: string,
+  objectName: string,
+  options: DeleteStoredObjectOptions = {},
+): Promise<void> {
+  const file = objectStorageClient.bucket(bucketId).file(objectName);
+  await file.request({
+    method: "DELETE",
+    uri: "",
+    timeout: options.timeoutMs ?? PHOTO_OBJECT_DELETE_TIMEOUT_MS,
+    ...(options.generation
+      ? { qs: { ifGenerationMatch: options.generation } }
+      : {}),
+    ...(options.signal ? { signal: options.signal } : {}),
+  } as never);
 }
 
 /**
