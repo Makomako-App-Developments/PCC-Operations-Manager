@@ -172,6 +172,7 @@ const ids = {
   item: "00000000-0000-0000-0000-000000000013",
   stormJob: "00000000-0000-0000-0000-000000000014",
   observation: "00000000-0000-0000-0000-000000000015",
+  otherStormJob: "00000000-0000-0000-0000-000000000016",
 };
 
 function app() {
@@ -182,11 +183,17 @@ function app() {
   server.use("/api", stormRouter);
   return server;
 }
-function multipart(path: string, key: string | undefined, extra: Record<string, string> = {}, server = app()) {
+function multipart(
+  path: string,
+  key: string | undefined,
+  extra: Record<string, string> = {},
+  server = app(),
+  bytes = "real multipart bytes",
+) {
   let req = request(server).post(path).set("x-test", "multipart");
   if (key !== undefined) req = req.field("idempotencyKey", key);
   for (const [name, value] of Object.entries(extra)) req = req.field(name, value);
-  return req.attach("photo", Buffer.from("real multipart bytes"), "photo.jpg");
+  return req.attach("photo", Buffer.from(bytes), "photo.jpg");
 }
 function photoRows() {
   return [
@@ -208,7 +215,10 @@ beforeEach(() => {
   state.rows.set("reactiveJobsTable", [{ id: ids.reactive, assignedTeamId: null, assignedUserId: null }]);
   state.rows.set("auditsTable", [{ id: ids.audit, teamId: null, auditorId: "manager" }]);
   state.rows.set("auditItemsTable", [{ id: ids.item, auditId: ids.audit }]);
-  state.rows.set("stormJobsTable", [{ id: ids.stormJob, teamId: null, assignedUserId: null }]);
+  state.rows.set("stormJobsTable", [
+    { id: ids.stormJob, teamId: null, assignedUserId: null },
+    { id: ids.otherStormJob, teamId: null, assignedUserId: null },
+  ]);
   state.rows.set("stormObservationsTable", [{ id: ids.observation, idempotencyKey: "observation-key", raisedById: "00000000-0000-0000-0000-000000000001", reactiveJobId: ids.reactive }]);
 });
 
@@ -310,6 +320,121 @@ describe("photo routes: real multipart idempotency", () => {
     expect(rowsFor(tables[table])).toHaveLength(1);
     expect(state.objects).toHaveLength(1);
     expect(state.deletes).not.toHaveBeenCalled();
+  });
+
+  it("rejects a Storm Patrol photo key reused for a different job without another upload", async () => {
+    const key = "storm-cross-job-conflict";
+    const first = await multipart(
+      `/api/storm-patrol/jobs/${ids.stormJob}/photos`,
+      key,
+      { purpose: "before" },
+    );
+
+    const conflict = await multipart(
+      `/api/storm-patrol/jobs/${ids.otherStormJob}/photos`,
+      key,
+      { purpose: "before" },
+    );
+
+    expect(first.status).toBe(201);
+    expect(conflict.status).toBe(409);
+    expect(conflict.body).toEqual({ error: "Photo idempotency key conflicts with an existing attachment." });
+    expect(rowsFor(tables.stormPhotosTable)).toHaveLength(1);
+    expect(state.objects).toHaveLength(1);
+    expect(state.saves).toHaveBeenCalledTimes(1);
+    expect(state.breakerFailures).toBe(0);
+  });
+
+  it("rejects a Storm Patrol job photo key reused for an observation without another upload", async () => {
+    const key = "storm-job-observation-conflict";
+    const first = await multipart(
+      `/api/storm-patrol/jobs/${ids.stormJob}/photos`,
+      key,
+      { purpose: "before" },
+    );
+
+    const conflict = await multipart(
+      "/api/storm-patrol/observations/photos",
+      key,
+      { observationIdempotencyKey: "observation-key" },
+    );
+
+    expect(first.status).toBe(201);
+    expect(conflict.status).toBe(409);
+    expect(conflict.body).toEqual({ error: "Photo idempotency key conflicts with an existing attachment." });
+    expect(rowsFor(tables.stormPhotosTable)).toHaveLength(1);
+    expect(state.objects).toHaveLength(1);
+    expect(state.saves).toHaveBeenCalledTimes(1);
+    expect(state.breakerFailures).toBe(0);
+  });
+
+  it("rejects a Storm Patrol photo key reused with a different caption", async () => {
+    const key = "storm-caption-conflict";
+    const first = await multipart(
+      `/api/storm-patrol/jobs/${ids.stormJob}/photos`,
+      key,
+      { purpose: "before", caption: "Blocked inlet" },
+    );
+
+    const conflict = await multipart(
+      `/api/storm-patrol/jobs/${ids.stormJob}/photos`,
+      key,
+      { purpose: "before", caption: "Cleared inlet" },
+    );
+
+    expect(first.status).toBe(201);
+    expect(conflict.status).toBe(409);
+    expect(conflict.body).toEqual({ error: "Photo idempotency key conflicts with an existing attachment." });
+    expect(rowsFor(tables.stormPhotosTable)).toHaveLength(1);
+    expect(state.objects).toHaveLength(1);
+    expect(state.saves).toHaveBeenCalledTimes(1);
+    expect(state.breakerFailures).toBe(0);
+  });
+
+  it("rejects a Storm Patrol photo key reused with different image bytes", async () => {
+    const key = "storm-content-conflict";
+    const path = `/api/storm-patrol/jobs/${ids.stormJob}/photos`;
+    const first = await multipart(path, key, { purpose: "before" }, app(), "first image bytes");
+
+    const conflict = await multipart(path, key, { purpose: "before" }, app(), "different image bytes");
+
+    expect(first.status).toBe(201);
+    expect(conflict.status).toBe(409);
+    expect(conflict.body).toEqual({ error: "Photo idempotency key conflicts with an existing attachment." });
+    expect(rowsFor(tables.stormPhotosTable)).toHaveLength(1);
+    expect(state.objects).toHaveLength(1);
+    expect(state.saves).toHaveBeenCalledTimes(1);
+    expect(state.breakerFailures).toBe(0);
+  });
+
+  it("allows a matching replay of a Storm Patrol photo created before content identity was recorded", async () => {
+    const key = "legacy-storm-photo-replay";
+    const legacyPhoto = {
+      id: "legacy-photo",
+      stormJobId: ids.stormJob,
+      reactiveJobId: null,
+      purpose: "before",
+      caption: null,
+      uploadedById: "00000000-0000-0000-0000-000000000001",
+      idempotencyKey: key,
+      blobUrl: "/api/uploads/uploads/storm-patrol/legacy",
+      contentHash: null,
+      contentType: null,
+    };
+    state.rows.set("stormPhotosTable", [legacyPhoto]);
+
+    const replay = await multipart(
+      `/api/storm-patrol/jobs/${ids.stormJob}/photos`,
+      key,
+      { purpose: "before" },
+    );
+
+    expect(replay.status).toBe(200);
+    expect(replay.body).toMatchObject({ id: legacyPhoto.id, blobUrl: legacyPhoto.blobUrl });
+    expect(rowsFor(tables.stormPhotosTable)).toHaveLength(1);
+    expect(state.objects).toHaveLength(0);
+    expect(state.saves).not.toHaveBeenCalled();
+    expect(state.breakerFailures).toBe(0);
   });
 
   it("logs cleanup failures without object names or provider details", async () => {

@@ -83,6 +83,8 @@ export const stormPhotosTable = pgTable("storm_photos", {
   caption: text("caption"),
   uploadedById: uuid("uploaded_by_id").notNull().references(() => usersTable.id),
   idempotencyKey: text("idempotency_key"),
+  contentHash: text("content_hash"),
+  contentType: text("content_type"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 }, (t) => [uniqueIndex("storm_photos_idempotency_key_idx").on(t.idempotencyKey)]);
 

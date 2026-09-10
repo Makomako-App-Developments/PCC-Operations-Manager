@@ -59,6 +59,21 @@ const workbookUpload = multer({
   fileFilter: (_req, file, cb) => cb(null, file.originalname.toLowerCase().endsWith(".xlsx")),
 });
 
+const STORM_PHOTO_IDEMPOTENCY_CONFLICT = "STORM_PHOTO_IDEMPOTENCY_CONFLICT";
+
+function isSameStormPhotoReplay(
+  existing: typeof stormPhotosTable.$inferSelect,
+  values: Omit<typeof stormPhotosTable.$inferInsert, "blobUrl">,
+) {
+  return (existing.stormJobId ?? null) === (values.stormJobId ?? null)
+    && (existing.reactiveJobId ?? null) === (values.reactiveJobId ?? null)
+    && existing.uploadedById === values.uploadedById
+    && existing.purpose === values.purpose
+    && (existing.caption ?? null) === (values.caption ?? null)
+    && (existing.contentHash == null || existing.contentHash === values.contentHash)
+    && (existing.contentType == null || existing.contentType === values.contentType);
+}
+
 /**
  * Persist a Storm Patrol photo under one stable object name.  The advisory
  * transaction lock is important here: checking for an existing row and
@@ -73,6 +88,9 @@ async function saveStormPhotoIdempotently(
   idempotencyKey: string,
 ) {
   const hash = createHash("sha256").update(`storm-photo:${idempotencyKey}`).digest("hex");
+  const contentHash = createHash("sha256").update(buffer).digest("hex");
+  const contentType = mimetype.trim().toLowerCase();
+  const photoValues = { ...values, contentHash, contentType };
   const objectName = `uploads/storm-patrol/${hash}`;
   const blobUrl = `/api/uploads/${objectName}`;
   const bucketId = process.env.DEFAULT_OBJECT_STORAGE_BUCKET_ID;
@@ -84,7 +102,12 @@ async function saveStormPhotoIdempotently(
       await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${hash}))`);
       const [existing] = await tx.select().from(stormPhotosTable)
         .where(eq(stormPhotosTable.idempotencyKey, idempotencyKey)).limit(1);
-      if (existing) return { photo: existing, replayed: true };
+      if (existing) {
+        if (!isSameStormPhotoReplay(existing, photoValues)) {
+          return { conflict: true as const };
+        }
+        return { photo: existing, replayed: true };
+      }
 
       try {
         await objectStorageClient.bucket(bucketId).file(objectName).save(buffer, {
@@ -99,11 +122,12 @@ async function saveStormPhotoIdempotently(
         return { storageError };
       }
       const [photo] = await tx.insert(stormPhotosTable)
-        .values({ ...values, blobUrl, idempotencyKey })
+        .values({ ...photoValues, blobUrl, idempotencyKey })
         .returning();
       return { photo, replayed: false };
     })).then(result => {
       if ("storageError" in result) throw result.storageError;
+      if ("conflict" in result) throw new Error(STORM_PHOTO_IDEMPOTENCY_CONFLICT);
       return result;
     });
   } catch (error) {
@@ -510,6 +534,10 @@ router.post("/storm-patrol/observations/photos", requireAuth, stormPhotoUpload, 
     );
     res.status(result.replayed ? 200 : 201).json(result.photo);
   } catch (error) {
+    if (error instanceof Error && error.message === STORM_PHOTO_IDEMPOTENCY_CONFLICT) {
+      res.status(409).json({ error: "Photo idempotency key conflicts with an existing attachment." });
+      return;
+    }
     if (error instanceof Error && error.message === "Object storage is not configured.") {
       res.status(503).json({ error: error.message });
       return;
@@ -573,6 +601,10 @@ router.post("/storm-patrol/jobs/:id/photos", requireAuth, stormPhotoUpload, asyn
     );
     res.status(result.replayed ? 200 : 201).json(result.photo);
   } catch (error) {
+    if (error instanceof Error && error.message === STORM_PHOTO_IDEMPOTENCY_CONFLICT) {
+      res.status(409).json({ error: "Photo idempotency key conflicts with an existing attachment." });
+      return;
+    }
     if (error instanceof Error && error.message === "Object storage is not configured.") {
       res.status(503).json({ error: error.message });
       return;
