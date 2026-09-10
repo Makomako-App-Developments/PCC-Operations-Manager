@@ -43,6 +43,7 @@ export default function StormPatrolScreen() {
   const [observationPhoto, setObservationPhoto] = useState<string | null>(null);
   const [observationLocation, setObservationLocation] = useState<{ locationLat: number; locationLng: number } | null>(null);
   const [capturingLocation, setCapturingLocation] = useState(false);
+  const [discardingPhotos, setDiscardingPhotos] = useState(false);
   const [flooding, setFlooding] = useState(false);
   const [floodingDescription, setFloodingDescription] = useState("");
   const [slips, setSlips] = useState(false);
@@ -118,12 +119,17 @@ export default function StormPatrolScreen() {
           text: "Discard photos",
           style: "destructive",
           onPress: () => {
+            setDiscardingPhotos(true);
             void clearQueuedStormPhotos()
               .then(async remaining => {
                 setQueue(remaining);
                 if (remaining.length > 0) await sync();
               })
-              .catch(refreshQueue);
+              .catch(error => {
+                Alert.alert("Unable to discard photos", error instanceof Error ? error.message : "Try again.");
+                return refreshQueue();
+              })
+              .finally(() => setDiscardingPhotos(false));
           },
         },
       ],
@@ -286,8 +292,8 @@ export default function StormPatrolScreen() {
           <Feather name="upload-cloud" color={colors.primary} size={16}/>
           <View style={{ flex: 1 }}><Text style={{ color: colors.foreground }}>{queue.length} item{queue.length === 1 ? "" : "s"} waiting to sync — Retry</Text>{queue[0].lastError ? <Text style={[styles.syncError, { color: colors.mutedForeground }]} numberOfLines={2}>{queue[0].lastError}</Text> : null}</View>
         </Pressable>
-        {photoQueueBlocked && <TouchableOpacity testID="storm-sync-clear-photos" onPress={confirmClearQueuedPhotos} style={[styles.clearPhotos, { borderColor: colors.destructive }]}>
-          <Text style={[styles.clearPhotosText, { color: colors.destructive }]}>Discard {queuedPhotoCount} queued photo{queuedPhotoCount === 1 ? "" : "s"}</Text>
+        {photoQueueBlocked && <TouchableOpacity testID="storm-sync-clear-photos" disabled={discardingPhotos} onPress={confirmClearQueuedPhotos} style={[styles.clearPhotos, { borderColor: colors.destructive, opacity: discardingPhotos ? 0.6 : 1 }]}>
+          <Text style={[styles.clearPhotosText, { color: colors.destructive }]}>{discardingPhotos ? "Discarding queued photos…" : `Discard ${queuedPhotoCount} queued photo${queuedPhotoCount === 1 ? "" : "s"}`}</Text>
         </TouchableOpacity>}
       </View>}
       {grouped.map(([phase, jobs]) => jobs.length ? <View key={phase}><Text style={[styles.phase, { color: colors.primary }]}>{label(phase)}</Text>{jobs.map(job => <Pressable key={job.id} onPress={() => job.status === "pending" ? claim.mutate({ id: job.id }, { onSuccess: claimed => { const started = (claimed as Job).startedAt ?? new Date().toISOString(); setSelected({ ...job, ...claimed, startedAt: started }); current.refetch(); }, onError: () => Alert.alert("Unable to claim", "This patrol may have been claimed by another crew member.") }) : setSelected(job)} style={[styles.job, { backgroundColor: colors.card, borderColor: colors.border }]}><View style={{ flex: 1 }}><Text style={[styles.jobTitle, { color: colors.foreground }]}>{job.assetName ?? "Stormwater site"}</Text><Text style={[styles.sub, { color: colors.mutedForeground }]}>Route {job.routeOrder ?? "—"} · {job.status.replace("_", " ")}</Text></View><Text style={{ color: colors.primary, fontFamily: "Inter_600SemiBold" }}>{job.status === "pending" ? "Claim" : "Open"}</Text></Pressable>)}</View> : null)}</>

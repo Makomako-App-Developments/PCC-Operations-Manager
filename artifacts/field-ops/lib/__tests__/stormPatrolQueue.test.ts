@@ -67,6 +67,39 @@ describe("Storm Patrol offline queue", () => {
     expect(await loadStormQueue()).toEqual([completion, observation]);
   });
 
+  it("clears photos after an overlapping automatic flush finishes", async () => {
+    const photo: StormQueueItem = {
+      ...item,
+      id: "photo",
+      kind: "photo",
+      attempts: 1,
+      lastError: "HTTP 400: Photo is required",
+      payload: {
+        jobId: "job",
+        uri: "file:///storm-photo.jpg",
+        purpose: "before",
+        idempotencyKey: "photo-one",
+      },
+    };
+    await saveStormQueue([photo]);
+    let rejectUpload!: (error: Error) => void;
+    const uploadStarted = new Promise<void>(resolve => {
+      customFetch.mockImplementationOnce(() => new Promise((_uploadResolve, uploadReject) => {
+        rejectUpload = uploadReject;
+        resolve();
+      }));
+    });
+
+    const flushing = flushStormQueue();
+    await uploadStarted;
+    const clearing = clearQueuedStormPhotos();
+    rejectUpload(new Error("HTTP 400: Photo is required"));
+
+    await flushing;
+    expect(await clearing).toEqual([]);
+    expect(await loadStormQueue()).toEqual([]);
+  });
+
   it("queues an observation photo behind its observation metadata", async () => {
     const photo = await enqueueStormObservationPhoto("file:///observation.jpg", "observation-key", "observation-item");
     expect(photo.kind).toBe("photo");

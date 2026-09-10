@@ -105,11 +105,14 @@ export async function saveStormQueue(items: StormQueueItem[]): Promise<void> {
 
 /** Removes only local photo uploads; completion, observation, and alert records remain queued. */
 export async function clearQueuedStormPhotos(): Promise<StormQueueItem[]> {
-  return withStorageMutation(async () => {
-    const remaining = (await rawLoadStormQueue()).filter(item => item.kind !== "photo");
-    await rawSaveStormQueue(remaining);
-    return remaining;
-  });
+  const operation = () => withStorageMutation(async () => {
+      const remaining = (await rawLoadStormQueue()).filter(item => item.kind !== "photo");
+      await rawSaveStormQueue(remaining);
+      return remaining;
+    });
+  const result = queueFlush.then(operation, operation);
+  queueFlush = result.then(() => undefined, () => undefined);
+  return result;
 }
 
 /** De-duplicates by idempotency key, so a retry or app restart cannot add a second result. */
