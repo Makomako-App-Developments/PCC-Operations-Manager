@@ -202,6 +202,8 @@ export default function StormPatrolScreen() {
 
   if (selected) return <><ScrollView style={[styles.root, { backgroundColor: colors.background }]} contentContainerStyle={[styles.detail, { paddingTop: insets.top + 16, paddingBottom: insets.bottom + 100 }]}>
     <TouchableOpacity onPress={() => setSelected(null)}><Text style={{ color: colors.primary, fontFamily: "Inter_600SemiBold" }}>‹ Patrol list</Text></TouchableOpacity>
+    <Text style={[styles.title, { color: colors.foreground }]}>{selected.assetName ?? "Stormwater site"}</Text>
+    <Text style={[styles.sub, { color: colors.mutedForeground }]}>{label(selected.phase)} · Route {selected.routeOrder ?? "—"}</Text>
     {hasSelectedCoordinates ? <View style={styles.assetMapSection}>
       <View style={[styles.mapToggle, { backgroundColor: colors.card, borderColor: colors.border }]}>
         <TouchableOpacity onPress={() => setJobMapType("map")} style={[styles.mapToggleButton, jobMapType === "map" && { backgroundColor: colors.primary }]}>
@@ -221,8 +223,6 @@ export default function StormPatrolScreen() {
       <Feather name="map-pin" size={18} color={colors.mutedForeground}/>
       <Text style={[styles.help, { color: colors.mutedForeground }]}>No mapped location is available for this asset.</Text>
     </View>}
-    <Text style={[styles.title, { color: colors.foreground }]}>{selected.assetName ?? "Stormwater site"}</Text>
-    <Text style={[styles.sub, { color: colors.mutedForeground }]}>{label(selected.phase)} · Route {selected.routeOrder ?? "—"}</Text>
     <Text style={[styles.heading, { color: colors.foreground }]}>1. Before photo</Text>
     <Button title="Before photo" icon="camera" onPress={() => choosePhoto("before")} color={colors.primary}/>
     {photos.length > 0 && <ScrollView horizontal contentContainerStyle={styles.photos}>{photos.map((p, i) => <View key={`${p.uri}-${i}`}><Image source={{ uri: p.uri }} style={styles.photo}/><Text style={[styles.caption, { color: colors.mutedForeground }]}>{p.purpose.replace("_", " ")}</Text></View>)}</ScrollView>}
