@@ -36,6 +36,13 @@ export type StoredPhotoObject = {
   createdAt: Date;
 };
 
+export const STORED_PHOTO_OBJECT_PAGE_SIZE = 100;
+
+export type StoredPhotoObjectPage = {
+  objects: StoredPhotoObject[];
+  nextPageToken?: string;
+};
+
 export class ObjectNotFoundError extends Error {
   constructor() {
     super("Object not found");
@@ -217,16 +224,22 @@ export class ObjectStorageService {
  * Lists only objects created by the API photo upload routes. Object names stay
  * internal to the cleanup process and must not be included in operator output.
  */
-export async function listStoredPhotoObjects(): Promise<StoredPhotoObject[]> {
+export async function listStoredPhotoObjectsPage(
+  pageToken?: string,
+): Promise<StoredPhotoObjectPage> {
   const bucketId = process.env.DEFAULT_OBJECT_STORAGE_BUCKET_ID;
   if (!bucketId) {
     throw new Error("DEFAULT_OBJECT_STORAGE_BUCKET_ID not set");
   }
-  const [files] = await objectStorageClient.bucket(bucketId).getFiles({
+  const [files, , apiResponse] = await objectStorageClient.bucket(bucketId).getFiles({
     prefix: "uploads/",
+    autoPaginate: false,
+    maxResults: STORED_PHOTO_OBJECT_PAGE_SIZE,
+    ...(pageToken ? { pageToken } : {}),
   });
 
-  return Promise.all(files.map(async (file) => {
+  const objects: StoredPhotoObject[] = [];
+  const metadataResults = await Promise.allSettled(files.map(async (file) => {
     const [metadata] = await file.getMetadata();
     const created = metadata.timeCreated ?? metadata.updated;
     const generation = metadata.generation;
@@ -244,6 +257,53 @@ export async function listStoredPhotoObjects(): Promise<StoredPhotoObject[]> {
       createdAt,
     };
   }));
+
+  for (let index = 0; index < metadataResults.length; index++) {
+    const result = metadataResults[index];
+    if (result.status === "fulfilled") {
+      objects.push(result.value);
+      continue;
+    }
+
+    // A metadata failure must not discard the rest of a bounded page. The
+    // object is omitted and therefore cannot be selected for deletion.
+    console.warn("[photo-object-metadata-failed]", JSON.stringify({
+      objectId: createObjectFingerprint(files[index].name),
+    }));
+  }
+
+  const response = apiResponse as { nextPageToken?: string } | undefined;
+  return {
+    objects,
+    nextPageToken: response?.nextPageToken,
+  };
+}
+
+/**
+ * Compatibility helper for callers that explicitly need a complete snapshot.
+ * Historical reconciliation uses listStoredPhotoObjectsPage directly so it
+ * never holds the full object collection in memory.
+ */
+export async function listStoredPhotoObjects(): Promise<StoredPhotoObject[]> {
+  const objects: StoredPhotoObject[] = [];
+  let pageToken: string | undefined;
+  do {
+    const page = await listStoredPhotoObjectsPage(pageToken);
+    objects.push(...page.objects);
+    pageToken = page.nextPageToken;
+  } while (pageToken);
+  return objects;
+}
+
+function createObjectFingerprint(objectName: string): string {
+  // Keep provider failures out of logs while still making one failed object
+  // distinguishable from another during an operational investigation.
+  let hash = 2166136261;
+  for (let index = 0; index < objectName.length; index++) {
+    hash ^= objectName.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return (hash >>> 0).toString(16).padStart(8, "0");
 }
 
 function parseObjectPath(path: string): {

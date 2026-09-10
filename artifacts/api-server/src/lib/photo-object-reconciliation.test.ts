@@ -135,4 +135,87 @@ describe("reconcilePhotoObjects", () => {
       generationChanged: true,
     });
   });
+
+  it("processes each storage page and batches its scan ownership checks", async () => {
+    const listObjectsPage = vi.fn()
+      .mockResolvedValueOnce({
+        objects: [
+          object("uploads/page-one-referenced.jpg"),
+          object("uploads/page-one-orphan.jpg"),
+        ],
+        nextPageToken: "page-2",
+      })
+      .mockResolvedValueOnce({
+        objects: [
+          object("uploads/page-two-orphan.jpg"),
+          object("uploads/page-two-recent.jpg", new Date(now.getTime() - 1000)),
+        ],
+      });
+    const isBlobUrlsReferenced = vi.fn(async (blobUrls: string[]) => new Set(
+      blobUrls.filter((blobUrl) => blobUrl.includes("referenced")),
+    ));
+
+    const report = await reconcilePhotoObjects({
+      gracePeriodMs: PHOTO_RECONCILIATION_MIN_GRACE_MS,
+      now,
+      dependencies: {
+        listObjectsPage,
+        isBlobUrlsReferenced,
+        deleteObject: async () => "deleted",
+      },
+    });
+
+    expect(listObjectsPage).toHaveBeenNthCalledWith(1, undefined);
+    expect(listObjectsPage).toHaveBeenNthCalledWith(2, "page-2");
+    expect(isBlobUrlsReferenced).toHaveBeenCalledTimes(2);
+    expect(isBlobUrlsReferenced).toHaveBeenNthCalledWith(1, [
+      "/api/uploads/uploads/page-one-referenced.jpg",
+      "/api/uploads/uploads/page-one-orphan.jpg",
+    ]);
+    expect(isBlobUrlsReferenced).toHaveBeenNthCalledWith(2, [
+      "/api/uploads/uploads/page-two-orphan.jpg",
+    ]);
+    expect(report).toMatchObject({
+      scanned: 4,
+      referenced: 1,
+      recent: 1,
+    });
+    expect(report.unreferenced).toHaveLength(2);
+  });
+
+  it("keeps successful pages and objects progressing after partial provider failures", async () => {
+    const listObjectsPage = vi.fn()
+      .mockResolvedValueOnce({
+        objects: [
+          object("uploads/provider-delete-failure.jpg"),
+          object("uploads/provider-delete-success.jpg"),
+        ],
+        nextPageToken: "page-that-fails",
+      })
+      .mockRejectedValueOnce(new Error("storage provider unavailable"));
+    const isBlobUrlsReferenced = vi.fn(async () => new Set<string>());
+    const isBlobUrlReferenced = vi.fn(async () => false);
+    const deleteObject = vi.fn()
+      .mockRejectedValueOnce(new Error("delete provider unavailable"))
+      .mockResolvedValueOnce("deleted" as const);
+
+    const report = await reconcilePhotoObjects({
+      dryRun: false,
+      gracePeriodMs: PHOTO_RECONCILIATION_MIN_GRACE_MS,
+      now,
+      dependencies: {
+        listObjectsPage,
+        isBlobUrlsReferenced,
+        isBlobUrlReferenced,
+        deleteObject,
+      },
+    });
+
+    expect(report.scanned).toBe(2);
+    expect(deleteObject).toHaveBeenCalledTimes(2);
+    expect(report.unreferenced).toHaveLength(2);
+    expect(report.unreferenced[0].deleted).toBe(false);
+    expect(report.unreferenced[1].deleted).toBe(true);
+    expect(isBlobUrlReferenced).toHaveBeenCalledTimes(2);
+  });
 });

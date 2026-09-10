@@ -5,7 +5,11 @@ import {
   photoObjectCleanupTable,
 } from "@workspace/db";
 import { and, eq, sql } from "drizzle-orm";
-import { objectStorageClient, type StoredPhotoObject } from "./objectStorage";
+import {
+  objectStorageClient,
+  type StoredPhotoObject,
+  type StoredPhotoObjectPage,
+} from "./objectStorage";
 
 type PhotoRoute = "scheduled" | "reactive" | "audit" | "storm-patrol";
 
@@ -99,6 +103,7 @@ export function resetPhotoObjectCleanupAlertState(): void {
 }
 
 export const PHOTO_RECONCILIATION_MIN_GRACE_MS = 60 * 60 * 1000;
+export const PHOTO_RECONCILIATION_DB_BATCH_SIZE = 100;
 
 export type PhotoObjectReconciliationReport = {
   dryRun: boolean;
@@ -115,8 +120,10 @@ export type PhotoObjectReconciliationReport = {
 };
 
 type PhotoObjectReconciliationDependencies = {
-  listObjects: () => Promise<StoredPhotoObject[]>;
-  isBlobUrlReferenced: (blobUrl: string) => Promise<boolean>;
+  listObjects?: () => Promise<StoredPhotoObject[]>;
+  listObjectsPage?: (pageToken?: string) => Promise<StoredPhotoObjectPage>;
+  isBlobUrlReferenced?: (blobUrl: string) => Promise<boolean>;
+  isBlobUrlsReferenced?: (blobUrls: string[]) => Promise<ReadonlySet<string>>;
   deleteObject: (
     bucketId: string,
     objectName: string,
@@ -136,24 +143,38 @@ export function photoBlobUrlForObjectName(objectName: string): string {
 }
 
 async function isPhotoBlobUrlReferenced(blobUrl: string): Promise<boolean> {
-  const result = await executeWithCircuitBreaker(() => db.execute<{ referenced: boolean }>(sql`
-    SELECT EXISTS (
-      SELECT 1 FROM job_photos WHERE blob_url = ${blobUrl}
-      UNION ALL
-      SELECT 1 FROM audit_photos WHERE blob_url = ${blobUrl}
-      UNION ALL
-      SELECT 1 FROM storm_photos WHERE blob_url = ${blobUrl}
-    ) AS referenced
+  const referenced = await arePhotoBlobUrlsReferenced([blobUrl]);
+  return referenced.has(blobUrl);
+}
+
+async function arePhotoBlobUrlsReferenced(blobUrls: string[]): Promise<Set<string>> {
+  if (blobUrls.length === 0) return new Set();
+
+  const values = sql.join(blobUrls.map((blobUrl) => sql`${blobUrl}`), sql`, `);
+  const result = await executeWithCircuitBreaker(() => db.execute<{ blob_url: string }>(sql`
+    SELECT blob_url
+    FROM (
+      SELECT blob_url FROM job_photos WHERE blob_url IN (${values})
+      UNION
+      SELECT blob_url FROM audit_photos WHERE blob_url IN (${values})
+      UNION
+      SELECT blob_url FROM storm_photos WHERE blob_url IN (${values})
+    ) AS referenced_blobs
   `), { safeRead: true });
-  return result.rows?.[0]?.referenced === true;
+  return new Set(
+    (result.rows ?? [])
+      .map((row) => (row as { blob_url?: unknown }).blob_url)
+      .filter((blobUrl): blobUrl is string => typeof blobUrl === "string"),
+  );
 }
 
 const reconciliationDependencies: PhotoObjectReconciliationDependencies = {
-  listObjects: async () => {
-    const { listStoredPhotoObjects } = await import("./objectStorage");
-    return listStoredPhotoObjects();
+  listObjectsPage: async (pageToken) => {
+    const { listStoredPhotoObjectsPage } = await import("./objectStorage");
+    return listStoredPhotoObjectsPage(pageToken);
   },
   isBlobUrlReferenced: isPhotoBlobUrlReferenced,
+  isBlobUrlsReferenced: arePhotoBlobUrlsReferenced,
   deleteObject: async (bucketId, objectName, generation) => {
     try {
       await objectStorageClient.bucket(bucketId).file(objectName).delete({
@@ -189,58 +210,161 @@ export async function reconcilePhotoObjects({
     throw new Error(`Photo reconciliation grace period must be at least ${PHOTO_RECONCILIATION_MIN_GRACE_MS}ms`);
   }
 
-  const objects = await dependencies.listObjects();
   const report: PhotoObjectReconciliationReport = {
     dryRun,
-    scanned: objects.length,
+    scanned: 0,
     referenced: 0,
     recent: 0,
     unreferenced: [],
   };
 
-  for (const object of objects) {
-    const ageMs = now.getTime() - object.createdAt.getTime();
-    if (ageMs < gracePeriodMs) {
-      report.recent++;
-      continue;
-    }
-    const blobUrl = photoBlobUrlForObjectName(object.objectName);
-    if (await dependencies.isBlobUrlReferenced(blobUrl)) {
-      report.referenced++;
-      continue;
+  let pageToken: string | undefined;
+  const seenPageTokens = new Set<string>();
+  do {
+    if (pageToken) {
+      if (seenPageTokens.has(pageToken)) {
+        console.warn("[photo-object-reconciliation-page-token-repeated]");
+        break;
+      }
+      seenPageTokens.add(pageToken);
     }
 
-    const item = {
-      objectId: objectFingerprint(object.objectName),
-      ageMs,
-      deleted: false,
-      ownershipChanged: false,
-      generationChanged: false,
-    };
-    report.unreferenced.push(item);
-    if (dryRun) continue;
+    let page: StoredPhotoObjectPage;
+    try {
+      page = dependencies.listObjectsPage
+        ? await dependencies.listObjectsPage(pageToken)
+        : {
+            objects: pageToken || !dependencies.listObjects
+              ? []
+              : await dependencies.listObjects(),
+          };
+    } catch {
+      // A failed page is unknown, not empty. Keep the objects from successful
+      // pages reconciled and leave the failed page in storage for a later run.
+      console.warn("[photo-object-reconciliation-page-failed]");
+      break;
+    }
 
-    // Ownership can be committed after the scan. Recheck immediately before
-    // deletion and fail closed if the database cannot answer.
-    if (await dependencies.isBlobUrlReferenced(blobUrl)) {
-      item.ownershipChanged = true;
-      report.referenced++;
-      continue;
+    report.scanned += page.objects.length;
+    const candidates: Array<{
+      object: StoredPhotoObject;
+      blobUrl: string;
+      ageMs: number;
+    }> = [];
+
+    for (const object of page.objects) {
+      const ageMs = now.getTime() - object.createdAt.getTime();
+      if (ageMs < gracePeriodMs) {
+        report.recent++;
+        continue;
+      }
+      candidates.push({
+        object,
+        blobUrl: photoBlobUrlForObjectName(object.objectName),
+        ageMs,
+      });
     }
-    const deletion = await dependencies.deleteObject(
-      object.bucketId,
-      object.objectName,
-      object.generation,
-    );
-    if (deletion === "changed") {
-      item.generationChanged = true;
-      continue;
+
+    const scanReferences = new Set<string>();
+    const scanOwnershipFailures = new Set<string>();
+    for (let start = 0; start < candidates.length; start += PHOTO_RECONCILIATION_DB_BATCH_SIZE) {
+      const batch = candidates.slice(start, start + PHOTO_RECONCILIATION_DB_BATCH_SIZE);
+      const blobUrls = batch.map((candidate) => candidate.blobUrl);
+      try {
+        const referenced = dependencies.isBlobUrlsReferenced
+          ? await dependencies.isBlobUrlsReferenced(blobUrls)
+          : await findReferencesWithSingleChecks(blobUrls, dependencies);
+        for (const blobUrl of referenced) scanReferences.add(blobUrl);
+      } catch {
+        // Unknown ownership is treated as referenced so a transient database
+        // failure can never turn into a destructive delete.
+        for (const blobUrl of blobUrls) scanOwnershipFailures.add(blobUrl);
+        console.warn("[photo-object-reconciliation-ownership-batch-failed]", JSON.stringify({
+          count: blobUrls.length,
+        }));
+      }
     }
-    item.deleted = true;
-  }
+
+    for (const candidate of candidates) {
+      if (scanReferences.has(candidate.blobUrl)) {
+        report.referenced++;
+        continue;
+      }
+      if (scanOwnershipFailures.has(candidate.blobUrl)) continue;
+
+      const item = {
+        objectId: objectFingerprint(candidate.object.objectName),
+        ageMs: candidate.ageMs,
+        deleted: false,
+        ownershipChanged: false,
+        generationChanged: false,
+      };
+      report.unreferenced.push(item);
+      if (dryRun) continue;
+
+      try {
+        // Ownership can be committed after the scan. Recheck immediately
+        // before deletion and fail closed if the database cannot answer.
+        const ownershipChanged = await isBlobUrlReferencedForDependency(
+          candidate.blobUrl,
+          dependencies,
+        );
+        if (ownershipChanged) {
+          item.ownershipChanged = true;
+          report.referenced++;
+          continue;
+        }
+        const deletion = await dependencies.deleteObject(
+          candidate.object.bucketId,
+          candidate.object.objectName,
+          candidate.object.generation,
+        );
+        if (deletion === "changed") {
+          item.generationChanged = true;
+          continue;
+        }
+        item.deleted = true;
+      } catch {
+        // Keep reconciling the rest of the page. This object remains in
+        // storage and will be reconsidered on the next run.
+        console.warn("[photo-object-reconciliation-object-failed]", JSON.stringify({
+          objectId: item.objectId,
+        }));
+      }
+    }
+
+    pageToken = page.nextPageToken;
+  } while (pageToken);
 
   console.info("[photo-object-reconciliation]", JSON.stringify(report));
   return report;
+}
+
+async function findReferencesWithSingleChecks(
+  blobUrls: string[],
+  dependencies: PhotoObjectReconciliationDependencies,
+): Promise<Set<string>> {
+  if (!dependencies.isBlobUrlReferenced) {
+    throw new Error("Photo reconciliation ownership dependency is not configured");
+  }
+  const referenced = new Set<string>();
+  for (const blobUrl of blobUrls) {
+    if (await dependencies.isBlobUrlReferenced(blobUrl)) referenced.add(blobUrl);
+  }
+  return referenced;
+}
+
+async function isBlobUrlReferencedForDependency(
+  blobUrl: string,
+  dependencies: PhotoObjectReconciliationDependencies,
+): Promise<boolean> {
+  if (dependencies.isBlobUrlReferenced) {
+    return dependencies.isBlobUrlReferenced(blobUrl);
+  }
+  if (dependencies.isBlobUrlsReferenced) {
+    return (await dependencies.isBlobUrlsReferenced([blobUrl])).has(blobUrl);
+  }
+  throw new Error("Photo reconciliation ownership dependency is not configured");
 }
 
 function logCleanupFailure(objectName: string, route: PhotoRoute): void {
