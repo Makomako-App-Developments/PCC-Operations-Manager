@@ -61,3 +61,54 @@ jobs:
 
       - name: Build
         run: pnpm --filter @workspace/api-server run build && pnpm --filter @workspace/web-app run build
+
+  photo-cleanup-postgres:
+    name: Photo cleanup · PostgreSQL concurrency
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: pcc
+          POSTGRES_PASSWORD: pcc
+          POSTGRES_DB: pcc_photo_cleanup
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DATABASE_URL: postgresql://pcc:pcc@localhost:5432/pcc_photo_cleanup
+      NODE_ENV: test
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Apply photo cleanup migrations
+        run: |
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 \
+            -f lib/db/drizzle/0018_photo_object_cleanup_queue.sql
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 \
+            -f lib/db/drizzle/0019_photo_object_cleanup_leases.sql
+
+      - name: Run PostgreSQL photo cleanup integration test
+        run: >-
+          pnpm --filter @workspace/api-server exec vitest run
+          src/__tests__/photo-cleanup-postgres.integration.test.ts
