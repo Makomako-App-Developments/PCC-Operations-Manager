@@ -3,6 +3,7 @@ import { randomUUID } from "crypto";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { pool } from "@workspace/db";
 import {
+  PHOTO_CLEANUP_BASE_DELAY_MS,
   type PhotoObjectCleanupWorkerDependencies,
   processPhotoObjectCleanupQueue,
 } from "../lib/photo-object-cleanup";
@@ -116,6 +117,75 @@ describe.skipIf(!runWithPostgres)("photo cleanup queue: real PostgreSQL workers"
       );
 
       expect(providerDeleteAttempts).toBe(1);
+      const remaining = await workerClientA.query(
+        "SELECT id FROM photo_object_cleanup_queue WHERE id = $1",
+        [rowId],
+      );
+      expect(remaining.rows).toHaveLength(0);
+    } finally {
+      await removeQueueRow(rowId);
+    }
+  });
+
+  it("persists a provider failure for a later independent worker to retry", async () => {
+    const now = new Date();
+    const objectName = `uploads/photo-cleanup-provider-failure-${randomUUID()}.jpg`;
+    const rowId = await insertQueueRow(objectName, {
+      nextAttemptAt: new Date(now.getTime() - 1),
+    });
+    let failedWorkerDeleteAttempts = 0;
+    let retryWorkerDeleteAttempts = 0;
+
+    try {
+      await processPhotoObjectCleanupQueue(
+        now,
+        worker(workerDbA, async () => {
+          failedWorkerDeleteAttempts++;
+          throw new Error("provider unavailable");
+        }),
+      );
+
+      expect(failedWorkerDeleteAttempts).toBe(1);
+      const failed = await workerClientA.query<{
+        attempts: number;
+        last_attempt_at: Date | null;
+        next_attempt_at: Date;
+        claim_token: string | null;
+        lease_until: Date | null;
+      }>(
+        `SELECT attempts, last_attempt_at, next_attempt_at, claim_token, lease_until
+           FROM photo_object_cleanup_queue
+          WHERE id = $1`,
+        [rowId],
+      );
+      expect(failed.rows).toHaveLength(1);
+      expect(failed.rows[0]).toMatchObject({
+        attempts: 1,
+        last_attempt_at: now,
+        claim_token: null,
+        lease_until: null,
+      });
+      expect(failed.rows[0]!.next_attempt_at).toEqual(
+        new Date(now.getTime() + PHOTO_CLEANUP_BASE_DELAY_MS),
+      );
+
+      await processPhotoObjectCleanupQueue(
+        now,
+        worker(workerDbB, async () => {
+          retryWorkerDeleteAttempts++;
+        }),
+      );
+      expect(retryWorkerDeleteAttempts).toBe(0);
+
+      const retryAt = new Date(now.getTime() + PHOTO_CLEANUP_BASE_DELAY_MS + 1);
+      await processPhotoObjectCleanupQueue(
+        retryAt,
+        worker(workerDbB, async () => {
+          retryWorkerDeleteAttempts++;
+        }),
+      );
+
+      expect(retryWorkerDeleteAttempts).toBe(1);
       const remaining = await workerClientA.query(
         "SELECT id FROM photo_object_cleanup_queue WHERE id = $1",
         [rowId],
