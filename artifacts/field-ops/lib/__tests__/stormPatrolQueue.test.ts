@@ -13,7 +13,7 @@ vi.mock("@react-native-async-storage/async-storage", () => ({
 }));
 vi.mock("@workspace/api-client-react", () => ({ customFetch }));
 
-import { clearQueuedStormPhotos, deserializeStormQueue, enqueueStormItem, enqueueStormObservationPhoto, flushStormQueue, isStormQueueItemReady, loadStormQueue, saveStormQueue, serializeStormQueue, validatePostStormConditions, validateStormCompletionComments, validateStormPhaseCompletion, type StormQueueItem } from "../stormPatrolQueue";
+import { clearQueuedStormPhotos, deserializeStormQueue, enqueueStormItem, enqueueStormObservationPhoto, flushStormQueue, getStormPatrolCompletionRequirements, isStormQueueItemReady, loadStormQueue, saveStormQueue, serializeStormQueue, validatePostStormConditions, validateStormCompletionComments, validateStormPhaseCompletion, type StormQueueItem } from "../stormPatrolQueue";
 
 beforeEach(() => {
   values.clear();
@@ -48,6 +48,36 @@ describe("Storm Patrol offline queue", () => {
     expect(validateStormCompletionComments(["visual_check_only"], "   ")).toMatch(/comments/i);
     expect(validateStormCompletionComments(["visual_check_only"], "Inlet clear and flowing normally.")).toBeNull();
     expect(validateStormCompletionComments(["debris_clearance"], "")).toBeNull();
+  });
+
+  it("lists every missing patrol requirement at once", () => {
+    expect(getStormPatrolCompletionRequirements({
+      photoPurposes: [],
+      workTypes: [],
+      comments: "",
+      tooDangerous: false,
+      dangerousReason: "",
+      flooding: { present: true, description: "", hasPhoto: false },
+      slips: { present: true, description: "", hasPhoto: false },
+    })).toEqual([
+      "Add a before photo.",
+      "Select at least one Work completed option.",
+      "Add an after photo.",
+      "Describe the new flooding.",
+      "Add a new flooding photo.",
+      "Describe the new slip.",
+      "Add a new slip photo.",
+    ]);
+  });
+
+  it("only requires a reason when the patrol is too dangerous", () => {
+    expect(getStormPatrolCompletionRequirements({
+      photoPurposes: [],
+      workTypes: [],
+      comments: "",
+      tooDangerous: true,
+      dangerousReason: "",
+    })).toEqual(["Explain why the site is too dangerous."]);
   });
 
   it("does not permit a dependent photo before its observation or alert metadata", () => {

@@ -71,6 +71,37 @@ export function validateStormCompletionComments(
   return null;
 }
 
+export function getStormPatrolCompletionRequirements(input: {
+  photoPurposes: readonly string[];
+  workTypes: readonly string[];
+  comments: string;
+  tooDangerous: boolean;
+  dangerousReason: string;
+  flooding?: { present: boolean; description: string; hasPhoto: boolean };
+  slips?: { present: boolean; description: string; hasPhoto: boolean };
+}): string[] {
+  const missing: string[] = [];
+  if (input.tooDangerous) {
+    if (!input.dangerousReason.trim()) missing.push("Explain why the site is too dangerous.");
+    return missing;
+  }
+  if (!input.photoPurposes.includes("before")) missing.push("Add a before photo.");
+  if (input.workTypes.length === 0) missing.push("Select at least one Work completed option.");
+  if (input.workTypes.includes("visual_check_only") && !input.comments.trim()) {
+    missing.push("Add comments describing what you observed during the visual check.");
+  }
+  if (!input.photoPurposes.includes("after")) missing.push("Add an after photo.");
+  if (input.flooding?.present) {
+    if (!input.flooding.description.trim()) missing.push("Describe the new flooding.");
+    if (!input.flooding.hasPhoto) missing.push("Add a new flooding photo.");
+  }
+  if (input.slips?.present) {
+    if (!input.slips.description.trim()) missing.push("Describe the new slip.");
+    if (!input.slips.hasPhoto) missing.push("Add a new slip photo.");
+  }
+  return missing;
+}
+
 export function serializeStormQueue(items: StormQueueItem[]): string {
   return JSON.stringify(items);
 }

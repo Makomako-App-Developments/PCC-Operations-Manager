@@ -10,7 +10,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { PinMap } from "@/components/PinMap";
 import { requestCameraPermission, requestMediaLibraryPermission } from "@/hooks/usePhotoLibraryPermission";
 import { useColors } from "@/hooks/useColors";
-import { clearQueuedStormPhotos, enqueueStormAlert, enqueueStormCompletion, enqueueStormObservation, enqueueStormObservationPhoto, enqueueStormPhoto, flushStormQueue, loadStormQueue, stormQueueId, validatePostStormConditions, validateStormCompletionComments, validateStormPhaseCompletion, type StormPhotoPurpose, type StormQueueItem } from "@/lib/stormPatrolQueue";
+import { clearQueuedStormPhotos, enqueueStormAlert, enqueueStormCompletion, enqueueStormObservation, enqueueStormObservationPhoto, enqueueStormPhoto, flushStormQueue, getStormPatrolCompletionRequirements, loadStormQueue, stormQueueId, type StormPhotoPurpose, type StormQueueItem } from "@/lib/stormPatrolQueue";
 
 const CACHE_KEY = "@storm_patrol_current_v1";
 const WORK_TYPES = [
@@ -137,17 +137,20 @@ export default function StormPatrolScreen() {
   };
   const complete = async () => {
     if (!selected) return;
-    const commentsError = dangerous ? null : validateStormCompletionComments(workTypes, comments);
-    if (commentsError) { Alert.alert("Comments required", commentsError); return; }
-    const evidenceError = validateStormPhaseCompletion(selected.phase, photos.map(p => p.purpose), dangerous);
-    if (evidenceError) { Alert.alert("Photos required", evidenceError); return; }
-    if (dangerous && !dangerReason.trim()) { Alert.alert("Reason required", "Explain why the site is too dangerous."); return; }
+    const missing = getStormPatrolCompletionRequirements({
+      photoPurposes: photos.map(p => p.purpose),
+      workTypes,
+      comments,
+      tooDangerous: dangerous,
+      dangerousReason: dangerReason,
+      flooding: selected.phase === "post" ? { present: flooding, description: floodingDescription, hasPhoto: photos.some(p => p.purpose === "new_flooding") } : undefined,
+      slips: selected.phase === "post" ? { present: slips, description: slipDescription, hasPhoto: photos.some(p => p.purpose === "new_slip") } : undefined,
+    });
+    if (missing.length > 0) {
+      Alert.alert("Complete these items", missing.map(item => `• ${item}`).join("\n"));
+      return;
+    }
     try {
-      const postError = selected.phase === "post" ? validatePostStormConditions(
-        { present: flooding, description: floodingDescription, hasPhoto: photos.some(p => p.purpose === "new_flooding") },
-        { present: slips, description: slipDescription, hasPhoto: photos.some(p => p.purpose === "new_slip") },
-      ) : null;
-      if (postError) { Alert.alert("Post-storm check incomplete", postError); return; }
       const point = await location();
       const observationItems: StormQueueItem[] = [];
       if (selected.phase === "post") {
