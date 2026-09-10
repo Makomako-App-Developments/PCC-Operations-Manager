@@ -7,7 +7,7 @@ import {
   stormCheckResultsTable, stormObservationsTable, stormAlertsTable, stormPatrolSettingsTable,
   stormPhotosTable, reactiveJobsTable, assetsTable, teamsTable, usersTable,
 } from "@workspace/db";
-import { and, asc, desc, eq, inArray, isNull } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { z } from "zod";
 import { requireAuth, requireRole } from "../middlewares/auth";
 import { validateBody, validateQuery } from "../middlewares/validate";
@@ -57,6 +57,52 @@ const workbookUpload = multer({
   limits: { fileSize: 5 * 1024 * 1024 },
   fileFilter: (_req, file, cb) => cb(null, file.originalname.toLowerCase().endsWith(".xlsx")),
 });
+
+/**
+ * Persist a Storm Patrol photo under one stable object name.  The advisory
+ * transaction lock is important here: checking for an existing row and
+ * creating the object must be one serialized operation, otherwise two
+ * requests arriving before either insert commits can each upload a different
+ * object (and then both insert).
+ */
+async function saveStormPhotoIdempotently(
+  values: Omit<typeof stormPhotosTable.$inferInsert, "blobUrl">,
+  buffer: Buffer,
+  mimetype: string,
+  idempotencyKey: string,
+) {
+  const hash = createHash("sha256").update(`storm-photo:${idempotencyKey}`).digest("hex");
+  const objectName = `uploads/storm-patrol/${hash}`;
+  const blobUrl = `/api/uploads/${objectName}`;
+  const bucketId = process.env.DEFAULT_OBJECT_STORAGE_BUCKET_ID;
+  if (!bucketId) throw new Error("Object storage is not configured.");
+
+  return executeWithCircuitBreaker(() => db.transaction(async tx => {
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${hash}))`);
+    const [existing] = await tx.select().from(stormPhotosTable)
+      .where(eq(stormPhotosTable.idempotencyKey, idempotencyKey)).limit(1);
+    if (existing) return { photo: existing, replayed: true };
+
+    try {
+      await objectStorageClient.bucket(bucketId).file(objectName).save(buffer, {
+        metadata: { contentType: mimetype },
+        resumable: false,
+      });
+    } catch (storageError) {
+      // Resolve the DB callback so a GCS/provider rejection is not counted as
+      // a PostgreSQL failure by executeWithCircuitBreaker. The transaction has
+      // made no data changes and may release its advisory lock normally.
+      return { storageError };
+    }
+    const [photo] = await tx.insert(stormPhotosTable)
+      .values({ ...values, blobUrl, idempotencyKey })
+      .returning();
+    return { photo, replayed: false };
+  })).then(result => {
+    if ("storageError" in result) throw result.storageError;
+    return result;
+  });
+}
 
 type StormAssetImportRow = {
   rowNumber: number;
@@ -438,13 +484,24 @@ router.post("/storm-patrol/observations/photos", requireAuth, stormPhotoUpload, 
   const [observation] = await executeWithCircuitBreaker(() => db.select().from(stormObservationsTable).where(and(eq(stormObservationsTable.idempotencyKey, observationKey), eq(stormObservationsTable.raisedById, req.auth!.userId))).limit(1));
   if (!observation) { res.status(404).json({ error: "Observation must sync before its photo." }); return; }
   const key = typeof req.body.idempotencyKey === "string" ? req.body.idempotencyKey : randomUUID();
-  const [old] = await executeWithCircuitBreaker(() => db.select().from(stormPhotosTable).where(eq(stormPhotosTable.idempotencyKey, key)).limit(1));
-  if (old) { res.json(old); return; }
-  const bucketId = process.env.DEFAULT_OBJECT_STORAGE_BUCKET_ID; if (!bucketId) { res.status(503).json({ error: "Object storage is not configured." }); return; }
-  const objectName = `uploads/storm-patrol/${randomUUID()}`;
-  await objectStorageClient.bucket(bucketId).file(objectName).save(req.file.buffer, { metadata: { contentType: req.file.mimetype }, resumable: false });
-  const [photo] = await executeWithCircuitBreaker(() => db.insert(stormPhotosTable).values({ reactiveJobId: observation.reactiveJobId, purpose: "observation", blobUrl: `/api/uploads/${objectName}`, uploadedById: req.auth!.userId, idempotencyKey: key }).returning());
-  res.status(201).json(photo);
+  try {
+    const result = await saveStormPhotoIdempotently(
+      { reactiveJobId: observation.reactiveJobId, purpose: "observation", uploadedById: req.auth!.userId },
+      req.file.buffer,
+      req.file.mimetype,
+      key,
+    );
+    res.status(result.replayed ? 200 : 201).json(result.photo);
+  } catch (error) {
+    if (error instanceof Error && error.message === "Object storage is not configured.") {
+      res.status(503).json({ error: error.message });
+      return;
+    }
+    // Do not pass provider errors through the request error handler: storage
+    // SDK messages can contain request metadata.  The route diagnostic
+    // middleware records only the status and route label.
+    res.status(503).json({ error: "Photo upload failed." });
+  }
 });
 
 router.post("/storm-patrol/alerts", requireAuth, validateBody(z.object({ eventId: z.string().uuid(), stormJobId: z.string().uuid().optional(), message: z.string().min(1), photoUrl: z.string().optional(), idempotencyKey: z.string().min(1).max(200) })), async (req, res) => {
@@ -484,10 +541,27 @@ router.post("/storm-patrol/jobs/:id/photos", requireAuth, stormPhotoUpload, asyn
   }
   const mine = await ownJob(String(req.params.id), req.auth!.userId, req.auth!.teamId, req.auth!.role); if (mine.error) { res.status(mine.error).json({ error: "Forbidden" }); return; }
   const purpose = z.enum(["before", "after", "urgent_issue", "new_flooding", "new_slip", "observation"]).safeParse(req.body.purpose); if (!purpose.success) { res.status(400).json({ error: "Valid photo purpose is required." }); return; }
-  const key = typeof req.body.idempotencyKey === "string" ? req.body.idempotencyKey : randomUUID(); const [old] = await executeWithCircuitBreaker(() => db.select().from(stormPhotosTable).where(eq(stormPhotosTable.idempotencyKey, key)).limit(1)); if (old) { res.json(old); return; }
-  const bucketId = process.env.DEFAULT_OBJECT_STORAGE_BUCKET_ID; if (!bucketId) { res.status(503).json({ error: "Object storage is not configured." }); return; }
-  const objectName = `uploads/storm-patrol/${randomUUID()}`; await objectStorageClient.bucket(bucketId).file(objectName).save(req.file.buffer, { metadata: { contentType: req.file.mimetype }, resumable: false });
-  const [photo] = await executeWithCircuitBreaker(() => db.insert(stormPhotosTable).values({ stormJobId: String(req.params.id), purpose: purpose.data, blobUrl: `/api/uploads/${objectName}`, caption: typeof req.body.caption === "string" ? req.body.caption : null, uploadedById: req.auth!.userId, idempotencyKey: key }).returning()); res.status(201).json(photo);
+  const key = typeof req.body.idempotencyKey === "string" ? req.body.idempotencyKey : randomUUID();
+  try {
+    const result = await saveStormPhotoIdempotently(
+      {
+        stormJobId: String(req.params.id),
+        purpose: purpose.data,
+        caption: typeof req.body.caption === "string" ? req.body.caption : null,
+        uploadedById: req.auth!.userId,
+      },
+      req.file.buffer,
+      req.file.mimetype,
+      key,
+    );
+    res.status(result.replayed ? 200 : 201).json(result.photo);
+  } catch (error) {
+    if (error instanceof Error && error.message === "Object storage is not configured.") {
+      res.status(503).json({ error: error.message });
+      return;
+    }
+    res.status(503).json({ error: "Photo upload failed." });
+  }
 });
 
 router.get("/storm-patrol/events/:id/report", requireAuth, requireRole("manager", "supervisor"), async (req, res) => {
