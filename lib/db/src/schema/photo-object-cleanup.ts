@@ -15,12 +15,15 @@ export const photoObjectCleanupTable = pgTable("photo_object_cleanup_queue", {
   attempts: integer("attempts").notNull().default(0),
   nextAttemptAt: timestamp("next_attempt_at").notNull().defaultNow(),
   lastAttemptAt: timestamp("last_attempt_at"),
+  claimToken: text("claim_token"),
+  leaseUntil: timestamp("lease_until"),
   completedAt: timestamp("completed_at"),
   permanentlyFailedAt: timestamp("permanently_failed_at"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 }, (t) => [
   index("photo_object_cleanup_pending_idx").on(t.nextAttemptAt),
+  index("photo_object_cleanup_lease_idx").on(t.leaseUntil),
   index("photo_object_cleanup_permanent_idx").on(t.permanentlyFailedAt),
 ]);
 

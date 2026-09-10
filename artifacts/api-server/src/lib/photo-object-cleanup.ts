@@ -1,10 +1,10 @@
-import { createHash } from "crypto";
+import { createHash, randomUUID } from "crypto";
 import {
   db,
   executeWithCircuitBreaker,
   photoObjectCleanupTable,
 } from "@workspace/db";
-import { and, asc, eq, isNull, lte, sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { objectStorageClient, type StoredPhotoObject } from "./objectStorage";
 
 type PhotoRoute = "scheduled" | "reactive" | "audit" | "storm-patrol";
@@ -14,6 +14,7 @@ export const PHOTO_CLEANUP_BASE_DELAY_MS = 30_000;
 export const PHOTO_CLEANUP_MAX_DELAY_MS = 60 * 60 * 1000;
 export const PHOTO_CLEANUP_INTERVAL_MS = 30_000;
 const PHOTO_CLEANUP_BATCH_SIZE = 20;
+export const PHOTO_CLEANUP_LEASE_MS = 5 * 60 * 1000;
 
 type CleanupCounts = {
   pending: number;
@@ -246,6 +247,8 @@ export async function ensurePhotoObjectCleanupQueue(): Promise<void> {
       attempts integer NOT NULL DEFAULT 0,
       next_attempt_at timestamp NOT NULL DEFAULT now(),
       last_attempt_at timestamp,
+      claim_token text,
+      lease_until timestamp,
       completed_at timestamp,
       permanently_failed_at timestamp,
       created_at timestamp NOT NULL DEFAULT now(),
@@ -253,8 +256,17 @@ export async function ensurePhotoObjectCleanupQueue(): Promise<void> {
     )
   `);
   await db.execute(sql`
+    ALTER TABLE photo_object_cleanup_queue
+      ADD COLUMN IF NOT EXISTS claim_token text,
+      ADD COLUMN IF NOT EXISTS lease_until timestamp
+  `);
+  await db.execute(sql`
     CREATE INDEX IF NOT EXISTS photo_object_cleanup_pending_idx
       ON photo_object_cleanup_queue (next_attempt_at)
+  `);
+  await db.execute(sql`
+    CREATE INDEX IF NOT EXISTS photo_object_cleanup_lease_idx
+      ON photo_object_cleanup_queue (lease_until)
   `);
   await db.execute(sql`
     CREATE INDEX IF NOT EXISTS photo_object_cleanup_permanent_idx
@@ -265,6 +277,8 @@ export async function ensurePhotoObjectCleanupQueue(): Promise<void> {
 export async function processPhotoObjectCleanupQueue(
   now = new Date(),
 ): Promise<void> {
+  const claimToken = randomUUID();
+  const leaseUntil = new Date(now.getTime() + PHOTO_CLEANUP_LEASE_MS);
   let entries: Array<{
     id: string;
     bucketId: string;
@@ -274,20 +288,46 @@ export async function processPhotoObjectCleanupQueue(
   }>;
 
   try {
-    entries = await db.select({
-      id: photoObjectCleanupTable.id,
-      bucketId: photoObjectCleanupTable.bucketId,
-      objectName: photoObjectCleanupTable.objectName,
-      route: photoObjectCleanupTable.route,
-      attempts: photoObjectCleanupTable.attempts,
-    }).from(photoObjectCleanupTable)
-      .where(and(
-        isNull(photoObjectCleanupTable.completedAt),
-        isNull(photoObjectCleanupTable.permanentlyFailedAt),
-        lte(photoObjectCleanupTable.nextAttemptAt, now),
-      ))
-      .orderBy(asc(photoObjectCleanupTable.nextAttemptAt))
-      .limit(PHOTO_CLEANUP_BATCH_SIZE);
+    entries = await executeWithCircuitBreaker(() => db.transaction(async tx => {
+      const result = await tx.execute<{
+        id: string;
+        bucket_id: string;
+        object_name: string;
+        route: string;
+        attempts: number;
+      }>(sql`
+        WITH candidates AS (
+          SELECT id
+          FROM photo_object_cleanup_queue
+          WHERE completed_at IS NULL
+            AND permanently_failed_at IS NULL
+            AND next_attempt_at <= ${now}
+            AND (lease_until IS NULL OR lease_until <= ${now})
+          ORDER BY next_attempt_at
+          LIMIT ${PHOTO_CLEANUP_BATCH_SIZE}
+          FOR UPDATE SKIP LOCKED
+        )
+        UPDATE photo_object_cleanup_queue AS queue
+        SET claim_token = ${claimToken},
+            lease_until = ${leaseUntil},
+            updated_at = ${now}
+        FROM candidates
+        WHERE queue.id = candidates.id
+        RETURNING
+          queue.id,
+          queue.bucket_id,
+          queue.object_name,
+          queue.route,
+          queue.attempts
+      `);
+      return (result.rows ?? []).map(row => ({
+        id: row.id,
+        bucketId: row.bucket_id,
+        objectName: row.object_name,
+        route: row.route,
+        attempts: row.attempts,
+      }));
+    }));
   } catch {
     console.error("[photo-object-cleanup-worker] queue read failed");
     return;
@@ -298,7 +338,10 @@ export async function processPhotoObjectCleanupQueue(
     try {
       await objectStorageClient.bucket(entry.bucketId).file(entry.objectName).delete();
       await db.delete(photoObjectCleanupTable)
-        .where(eq(photoObjectCleanupTable.id, entry.id));
+        .where(and(
+          eq(photoObjectCleanupTable.id, entry.id),
+          eq(photoObjectCleanupTable.claimToken, claimToken),
+        ));
       console.info("[photo-object-cleanup-retried]", JSON.stringify({
         route: entry.route,
         objectId: objectFingerprint(entry.objectName),
@@ -314,7 +357,12 @@ export async function processPhotoObjectCleanupQueue(
         ...(permanentlyFailed
           ? { permanentlyFailedAt: attemptedAt }
           : { nextAttemptAt: new Date(now.getTime() + retryDelayMs(attempt)) }),
-      }).where(eq(photoObjectCleanupTable.id, entry.id));
+        claimToken: null,
+        leaseUntil: null,
+      }).where(and(
+        eq(photoObjectCleanupTable.id, entry.id),
+        eq(photoObjectCleanupTable.claimToken, claimToken),
+      ));
       console.warn("[photo-object-cleanup-retry-failed]", JSON.stringify({
         route: entry.route,
         objectId: objectFingerprint(entry.objectName),

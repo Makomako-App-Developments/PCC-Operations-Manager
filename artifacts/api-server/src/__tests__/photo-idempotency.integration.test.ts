@@ -71,7 +71,39 @@ function rowFor(table: any, value: any) {
 }
 function tx() {
   return {
-    execute: vi.fn().mockResolvedValue([]),
+    execute: vi.fn(async (query: any) => {
+      const text = query?.text ?? String(query);
+      if (!text.includes("UPDATE photo_object_cleanup_queue AS queue")) return { rows: [] };
+
+      const values = query.values as any[];
+      const now = values[0] as Date;
+      const claimToken = values[3] as string;
+      const leaseUntil = values[4] as Date;
+      const queueRows = rowsFor(tables.photoObjectCleanupTable);
+      const claimed = queueRows
+        .filter(row =>
+          row.completedAt == null
+          && row.permanentlyFailedAt == null
+          && row.nextAttemptAt <= now
+          && (row.leaseUntil == null || row.leaseUntil <= now),
+        )
+        .sort((left, right) => left.nextAttemptAt.getTime() - right.nextAttemptAt.getTime())
+        .slice(0, 20);
+      state.rows.set("photoObjectCleanupTable", queueRows.map(row =>
+        claimed.some(candidate => candidate.id === row.id)
+          ? { ...row, claimToken, leaseUntil }
+          : row,
+      ));
+      return {
+        rows: claimed.map(row => ({
+          id: row.id,
+          bucket_id: row.bucketId,
+          object_name: row.objectName,
+          route: row.route,
+          attempts: row.attempts,
+        })),
+      };
+    }),
     select: vi.fn(() => chain()),
     insert: vi.fn((table: any) => insertChain(table)),
   };
@@ -143,7 +175,10 @@ vi.mock("drizzle-orm", () => ({
   or: vi.fn(), asc: vi.fn(), desc: vi.fn(), inArray: vi.fn(),
   isNull: vi.fn(), lte: vi.fn((left: any, right: any) => ({ op: "lte", left, right })),
   eq: vi.fn((left: any, right: any) => ({ op: "eq", left, right })),
-  sql: Object.assign((parts: TemplateStringsArray) => parts.join(""), { raw: vi.fn() }),
+  sql: Object.assign((parts: TemplateStringsArray, ...values: any[]) => ({
+    text: parts.join(""),
+    values,
+  }), { raw: vi.fn() }),
 }));
 vi.mock("../middlewares/auth", () => ({
   requireAuth: (req: any, _res: any, next: any) => {
@@ -487,6 +522,54 @@ describe("photo routes: real multipart idempotency", () => {
     expect(rowsFor(tables.photoObjectCleanupTable)).toHaveLength(0);
     expect(state.objects).toHaveLength(0);
     expect(state.deletes).toHaveBeenCalledTimes(1);
+  });
+
+  it("claims a queued object once when two workers race", async () => {
+    const now = new Date();
+    state.rows.set("photoObjectCleanupTable", [{
+      id: "cleanup-race",
+      bucketId: "test-bucket",
+      objectName: "uploads/race.jpg",
+      route: "scheduled",
+      attempts: 0,
+      nextAttemptAt: now,
+      leaseUntil: null,
+      completedAt: null,
+      permanentlyFailedAt: null,
+    }]);
+    state.objects.add("uploads/race.jpg");
+
+    await Promise.all([
+      processPhotoObjectCleanupQueue(now),
+      processPhotoObjectCleanupQueue(now),
+    ]);
+
+    expect(state.deletes).toHaveBeenCalledTimes(1);
+    expect(rowsFor(tables.photoObjectCleanupTable)).toHaveLength(0);
+    expect(state.objects).toHaveLength(0);
+  });
+
+  it("reclaims a queued object after a crashed worker's lease expires", async () => {
+    const now = new Date();
+    state.rows.set("photoObjectCleanupTable", [{
+      id: "cleanup-expired-lease",
+      bucketId: "test-bucket",
+      objectName: "uploads/expired-lease.jpg",
+      route: "scheduled",
+      attempts: 0,
+      nextAttemptAt: new Date(now.getTime() - 1),
+      claimToken: "crashed-worker",
+      leaseUntil: new Date(now.getTime() - 1),
+      completedAt: null,
+      permanentlyFailedAt: null,
+    }]);
+    state.objects.add("uploads/expired-lease.jpg");
+
+    await processPhotoObjectCleanupQueue(now);
+
+    expect(state.deletes).toHaveBeenCalledTimes(1);
+    expect(rowsFor(tables.photoObjectCleanupTable)).toHaveLength(0);
+    expect(state.objects).toHaveLength(0);
   });
 });
 
