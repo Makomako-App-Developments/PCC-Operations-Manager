@@ -239,7 +239,10 @@ async function send(item: StormQueueItem): Promise<DurableAttachment | undefined
     await customFetch("/api/storm-patrol/alerts", { method: "POST", body: JSON.stringify(item.payload) });
     return undefined;
   }
-  const { jobId, uri, purpose, idempotencyKey, observationIdempotencyKey } = item.payload as Record<string, string>;
+  const { jobId, uri, purpose, observationIdempotencyKey } = item.payload as Record<string, string>;
+  // The queue item is the source of truth. Older records may not duplicate
+  // the key in payload, and retries must always preserve the same identity.
+  const idempotencyKey = item.idempotencyKey;
   const saved = item.payload.attachment as DurableAttachment | undefined;
   const attachment = await persistAttachment(saved ?? { uri });
   if (!saved || saved.uri !== attachment.uri || saved.size !== attachment.size) {

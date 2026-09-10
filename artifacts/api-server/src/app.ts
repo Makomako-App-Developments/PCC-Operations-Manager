@@ -78,9 +78,10 @@ app.use("/api/auth", authLimiter);
 // are excluded because they ARE the probes that close the circuit.
 app.use("/api", dbCircuitBreakerMiddleware);
 
-// Request-level diagnostics for the Field Ops job-detail fan-out. Keep this
-// deliberately narrow: these events contain only a route label and opaque
-// record id, never query strings, headers, bodies, or response data.
+// Request-level diagnostics for Field Ops detail and photo-upload flows. Keep
+// this deliberately narrow: these events contain only a route label and an
+// opaque record id where the route has one, never query strings, headers,
+// bodies, or response data.
 export function fieldOpsDiagnosticMiddleware(
   req: Request,
   res: Response,
@@ -93,10 +94,15 @@ export function fieldOpsDiagnosticMiddleware(
     /^\/jobs\/[^/]+(?:\/(?:photos|task-skip-reasons))?$/.test(pathOnly) ||
     /^\/assets\/[^/]+$/.test(pathOnly) ||
     pathOnly === "/schedule/week";
-  if (!isJobDetailRequest) { next(); return; }
+  const isPhotoUploadRequest =
+    /^\/reactive-jobs\/[^/]+\/photos$/.test(pathOnly) ||
+    /^\/audits\/[^/]+\/items\/[^/]+\/photos$/.test(pathOnly) ||
+    /^\/storm-patrol\/jobs\/[^/]+\/photos$/.test(pathOnly) ||
+    pathOnly === "/storm-patrol/observations/photos";
+  if (!isJobDetailRequest && !isPhotoUploadRequest) { next(); return; }
 
   const jobId = match?.[1] && /^[0-9a-f-]{8,}$/i.test(match[1]) ? match[1] : undefined;
-  const endpoint = jobId ? pathOnly.replace(jobId, ":id") : pathOnly;
+  const endpoint = pathOnly.replace(/\/[0-9a-f-]{8,}/gi, "/:id");
   res.once("finish", () => {
     const durationMs = Math.round(performance.now() - startedAt);
     const failureCategory =

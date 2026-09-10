@@ -91,4 +91,54 @@ describe("photo queue durability", () => {
       { caption: undefined },
     );
   });
+
+  it("keeps a staged photo across network loss and a reload before clearing it", async () => {
+    const queued = await enqueuePhoto("job", "job-one", {
+      uri: "file:///scheduled.jpg",
+      uploadId: "scheduled-upload-one",
+    });
+
+    mocks.uploadAttachment.mockRejectedValueOnce(new Error("Network unavailable"));
+    await expect(attemptUpload(queued)).resolves.toBe(false);
+
+    // A new app process reads the durable record rather than relying on the
+    // in-memory object that was used for the failed attempt.
+    const afterRestart = (await loadAllQueued())[0];
+    expect(afterRestart).toMatchObject({
+      id: "scheduled-upload-one",
+      attempts: 1,
+      attachment: { uploadId: "scheduled-upload-one", uri: "file:///scheduled.jpg" },
+    });
+
+    mocks.uploadAttachment.mockResolvedValueOnce({ id: "server-photo-one" });
+    await expect(attemptUpload(afterRestart)).resolves.toBe(true);
+    expect(mocks.uploadAttachment).toHaveBeenLastCalledWith(
+      "/api/jobs/job-one/photos",
+      expect.objectContaining({ uploadId: "scheduled-upload-one" }),
+      { caption: undefined },
+    );
+    await removeFromQueue(afterRestart.id);
+    expect(await loadAllQueued()).toEqual([]);
+    expect(mocks.removeManagedAttachment).toHaveBeenCalledWith(
+      expect.objectContaining({ uploadId: "scheduled-upload-one" }),
+    );
+  });
+
+  it.each([
+    ["job", "job-one", undefined, "/api/jobs/job-one/photos"],
+    ["reactive-job", "reactive-one", undefined, "/api/reactive-jobs/reactive-one/photos"],
+    ["audit-item", "item-one", "audit-one", "/api/audits/audit-one/items/item-one/photos"],
+  ] as const)("uses the durable upload path for %s photos", async (jobType, jobId, auditId, endpoint) => {
+    const item = await enqueuePhoto(jobType, jobId, {
+      uri: `file:///${jobType}.jpg`,
+      uploadId: `${jobType}-upload-one`,
+    }, undefined, auditId);
+
+    await expect(attemptUpload(item)).resolves.toBe(true);
+    expect(mocks.uploadAttachment).toHaveBeenCalledWith(
+      endpoint,
+      expect.objectContaining({ uploadId: `${jobType}-upload-one` }),
+      { caption: undefined },
+    );
+  });
 });

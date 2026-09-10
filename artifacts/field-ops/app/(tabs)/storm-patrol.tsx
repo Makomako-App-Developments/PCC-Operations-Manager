@@ -266,8 +266,7 @@ export default function StormPatrolScreen() {
   if (selected) return <><ScrollView style={[styles.root, { backgroundColor: colors.background }]} contentContainerStyle={[styles.detail, { paddingTop: insets.top + 16, paddingBottom: insets.bottom + 100 }]}>
     <TouchableOpacity onPress={() => setSelected(null)}><Text style={{ color: colors.primary, fontFamily: "Inter_600SemiBold" }}>‹ Patrol list</Text></TouchableOpacity>
     <Text style={[styles.title, { color: colors.foreground }]}>{selected.assetName ?? "Stormwater site"}</Text>
-     <Text style={[styles.sub, { color: colors.foreground }]}>{selected.streetAddress || "Address unavailable"}</Text>
-     <Text style={[styles.sub, { color: colors.mutedForeground }]}>{label(selected.phase)}</Text>
+    <Text style={[styles.sub, { color: colors.mutedForeground }]}>{label(selected.phase)} · Route {selected.routeOrder ?? "—"}</Text>
     {hasSelectedCoordinates ? <View style={styles.assetMapSection}>
       <View style={[styles.mapToggle, { backgroundColor: colors.card, borderColor: colors.border }]}>
         <TouchableOpacity onPress={() => setJobMapType("map")} style={[styles.mapToggleButton, jobMapType === "map" && { backgroundColor: colors.primary }]}>
@@ -371,19 +370,34 @@ export default function StormPatrolScreen() {
           <Text style={[styles.clearPhotosText, { color: colors.destructive }]}>{discardingStaleItems ? "Removing stale items…" : `Remove ${staleCompletionItems.length} stale sync item${staleCompletionItems.length === 1 ? "" : "s"}`}</Text>
         </TouchableOpacity>}
       </View>}
-       {grouped.map(([phase, jobs]) => jobs.length ? <View key={phase}><Text style={[styles.phase, { color: colors.primary }]}>{label(phase)}</Text>{jobs.map((job, index) => <Pressable key={job.id} onPress={() => job.status === "pending" ? claim.mutate({ id: job.id }, { onSuccess: claimed => { const started = (claimed as Job).startedAt ?? new Date().toISOString(); setSelected({ ...job, ...claimed, startedAt: started }); current.refetch(); }, onError: () => Alert.alert("Unable to claim", "This patrol may have been claimed by another crew member.") }) : setSelected(job)} style={[styles.job, { backgroundColor: colors.card, borderColor: colors.border }]}><View style={[styles.jobSequence, { backgroundColor: colors.primary }]}><Text style={styles.jobSequenceText}>{index + 1}</Text></View><View style={{ flex: 1 }}><Text style={[styles.jobTitle, { color: colors.foreground }]}>{job.assetName ?? "Stormwater site"}</Text><Text style={[styles.sub, { color: colors.foreground }]}>{job.streetAddress || "Address unavailable"}</Text><Text style={[styles.sub, { color: colors.mutedForeground }]}>{job.status.replace("_", " ")}</Text></View><Text style={{ color: colors.primary, fontFamily: "Inter_600SemiBold" }}>{job.status === "pending" ? "Start" : job.status === "completed" || job.status === "too_dangerous" ? "Complete" : "Open"}</Text></Pressable>)}</View> : null)}</>
+      {grouped.map(([phase, jobs]) => jobs.length ? <View key={phase}><Text style={[styles.phase, { color: colors.primary }]}>{label(phase)}</Text>{jobs.map((job, index) => <Pressable key={job.id} onPress={() => job.status === "pending" ? claim.mutate({ id: job.id }, { onSuccess: claimed => { const started = (claimed as Job).startedAt ?? new Date().toISOString(); setSelected({ ...job, ...claimed, startedAt: started }); current.refetch(); }, onError: () => Alert.alert("Unable to claim", "This patrol may have been claimed by another crew member.") }) : setSelected(job)} style={[styles.job, { backgroundColor: colors.card, borderColor: colors.border }]}><View style={[styles.jobSequence, { backgroundColor: colors.primary }]}><Text style={styles.jobSequenceText}>{index + 1}</Text></View><View style={{ flex: 1 }}><Text style={[styles.jobTitle, { color: colors.foreground }]}>{job.assetName ?? "Stormwater site"}</Text><Text style={[styles.sub, { color: colors.mutedForeground }]}>Route {job.routeOrder ?? "—"} · {job.status.replace("_", " ")}</Text></View><Text style={{ color: colors.primary, fontFamily: "Inter_600SemiBold" }}>{job.status === "pending" ? "Start" : "Open"}</Text></Pressable>)}</View> : null)}</>
       : current.isLoading ? <ActivityIndicator color={colors.primary} style={{ marginTop: 50 }}/> : <Text style={[styles.empty, { color: colors.mutedForeground }]}>There is no active Storm Patrol for your team.</Text>}
     {patrol && <View style={[styles.observation, { borderColor: colors.border }]}>
       <Text style={[styles.heading, { color: colors.foreground }]}>General observation</Text>
       <Text style={[styles.help, { color: colors.mutedForeground }]}>Record storm related issues on new, unregistered sites.</Text>
       <TextInput value={observation} onChangeText={setObservation} multiline placeholder="Describe what you see" placeholderTextColor={colors.mutedForeground} style={[styles.input, styles.note, { color: colors.foreground, borderColor: colors.border }]}/>
-       <Button title={observationPhoto ? "Change observation photo" : "Observation photo"} icon="camera" onPress={() => { void take("observation"); }} color={colors.primary}/>
+      <Button title={observationPhoto ? "Change observation photo" : "Observation photo"} icon="camera" onPress={() => choosePhoto("observation")} color={colors.primary}/>
       {observationPhoto && <Image source={{ uri: observationPhoto.uri }} style={styles.observationPhoto}/>}
       <Button title={capturingLocation ? "Capturing location…" : "Capture location"} icon="map-pin" onPress={() => { if (!capturingLocation) void captureObservationLocation(); }} color={colors.primary}/>
       {observationLocation && <Text style={[styles.locationStatus, { color: colors.success }]}>Location captured: {observationLocation.locationLat.toFixed(5)}, {observationLocation.locationLng.toFixed(5)}</Text>}
       <Button title="Send observation" icon="send" onPress={submitObservation} color={colors.success}/>
     </View>}
   </ScrollView></View>
+    {photoSourcePurpose && !selected && <Modal transparent animationType="fade" visible onRequestClose={() => setPhotoSourcePurpose(null)}>
+      <Pressable style={styles.photoSourceOverlay} onPress={() => setPhotoSourcePurpose(null)}>
+        <Pressable style={[styles.photoSourceCard, { backgroundColor: colors.card, borderColor: colors.border }]} onPress={(event) => event.stopPropagation()}>
+          <Text style={[styles.photoSourceTitle, { color: colors.foreground }]}>Add observation photo</Text>
+          <Text style={[styles.help, { color: colors.mutedForeground }]}>Choose where to get the photo.</Text>
+          <TouchableOpacity style={[styles.photoSourceAction, { backgroundColor: colors.primary }]} onPress={() => { setPhotoSourcePurpose(null); void take("observation"); }}>
+            <Feather name="camera" size={18} color="#fff"/><Text style={styles.photoSourceActionText}>Take photo</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={[styles.photoSourceAction, { backgroundColor: colors.secondary }]} onPress={() => { setPhotoSourcePurpose(null); void library("observation"); }}>
+            <Feather name="image" size={18} color={colors.primary}/><Text style={[styles.photoSourceActionText, { color: colors.foreground }]}>Choose from library</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.photoSourceCancel} onPress={() => setPhotoSourcePurpose(null)}><Text style={[styles.photoSourceCancelText, { color: colors.mutedForeground }]}>Cancel</Text></TouchableOpacity>
+        </Pressable>
+      </Pressable>
+    </Modal>}
   </>;
 }
 function Button({ title, icon, onPress, color }: { title: string; icon: any; onPress: () => void; color: string }) { return <TouchableOpacity onPress={onPress} style={[styles.button, { backgroundColor: color }]}><Feather name={icon} size={16} color="#fff"/><Text style={styles.buttonText}>{title}</Text></TouchableOpacity>; }

@@ -251,4 +251,41 @@ describe("Storm Patrol offline queue", () => {
     expect(remaining[0]).toMatchObject({ id: "failed-photo", attempts: 1 });
     expect(customFetch).toHaveBeenCalledTimes(1);
   });
+
+  it("keeps a Storm Patrol photo after an offline attempt and delivers it once after reconnecting", async () => {
+    const photo = await enqueueStormItem({
+      kind: "photo",
+      idempotencyKey: "storm-photo-one",
+      payload: {
+        jobId: "storm-job",
+        purpose: "before",
+        attachment: {
+          uri: "file:///storm-photo.jpg",
+          uploadId: "storm-upload-one",
+          fileName: "storm-photo.jpg",
+          mimeType: "image/jpeg",
+          size: 100,
+          managed: true,
+        },
+      },
+    });
+
+    uploadAttachment.mockRejectedValueOnce(new Error("Network unavailable"));
+    await flushStormQueue();
+    expect(await loadStormQueue()).toMatchObject([
+      { id: photo.id, attempts: 1, idempotencyKey: "storm-photo-one" },
+    ]);
+
+    uploadAttachment.mockResolvedValueOnce({ id: "server-storm-photo-one" });
+    await flushStormQueue();
+    expect(uploadAttachment).toHaveBeenLastCalledWith(
+      "/api/storm-patrol/jobs/storm-job/photos",
+      expect.objectContaining({ uploadId: "storm-upload-one" }),
+      { purpose: "before", idempotencyKey: "storm-photo-one", observationIdempotencyKey: undefined },
+    );
+    expect(await loadStormQueue()).toEqual([]);
+    expect(removeManagedAttachment).toHaveBeenCalledWith(
+      expect.objectContaining({ uploadId: "storm-upload-one" }),
+    );
+  });
 });

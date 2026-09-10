@@ -63,4 +63,37 @@ describe("Field Ops server diagnostics", () => {
 
     expect(addBreadcrumb).not.toHaveBeenCalled();
   });
+
+  it.each([
+    "/api/reactive-jobs/123e4567-e89b-12d3-a456-426614174000/photos",
+    "/api/audits/123e4567-e89b-12d3-a456-426614174000/items/987e6543-e21b-12d3-a456-426614174000/photos",
+    "/api/storm-patrol/jobs/123e4567-e89b-12d3-a456-426614174000/photos",
+    "/api/storm-patrol/observations/photos",
+  ])("emits a sanitized diagnostic for photo upload %s", async path => {
+    const app = express();
+    app.use("/api", fieldOpsDiagnosticMiddleware);
+    app.post(path, (_req, res) => res.status(503).json({
+      error: "private upload details must not be recorded",
+    }));
+
+    await request(app)
+      .post(path)
+      .set("authorization", "Bearer secret-header")
+      .query({ photoUrl: "https://private.example/photo.jpg" })
+      .send({ caption: "private caption" });
+
+    expect(addBreadcrumb).toHaveBeenCalledTimes(1);
+    const diagnostic = addBreadcrumb.mock.calls[0][0].data;
+    expect(diagnostic).toMatchObject({
+      method: "POST",
+      status: 503,
+      failureCategory: "http_5xx",
+    });
+    expect(diagnostic.endpoint).not.toContain("123e4567");
+    expect(diagnostic.endpoint).not.toContain("987e6543");
+    const serialized = JSON.stringify(diagnostic);
+    expect(serialized).not.toContain("private.example");
+    expect(serialized).not.toContain("private caption");
+    expect(serialized).not.toContain("secret-header");
+  });
 });

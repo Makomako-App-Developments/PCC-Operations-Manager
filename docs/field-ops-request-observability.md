@@ -7,6 +7,10 @@ Job detail views fan out into these safe, searchable endpoint labels:
 - `/api/jobs/:id/photos` — optional photo metadata
 - `/api/jobs/:id/task-skip-reasons` — optional task-skip data
 - `/api/schedule/week` — optional route-order check
+- `/api/reactive-jobs/:id/photos` — reactive report photo upload
+- `/api/audits/:id/items/:id/photos` — audit evidence upload
+- `/api/storm-patrol/jobs/:id/photos` — Storm Patrol job photo upload
+- `/api/storm-patrol/observations/photos` — Storm Patrol observation photo upload
 
 The mobile app records a `field-ops.request` Sentry breadcrumb for every
 attempt. Each breadcrumb has `method`, `endpoint`, `jobId` (the opaque record
@@ -17,7 +21,9 @@ task-skip requests. A network/timeout failure has no HTTP status.
 
 The API records the matching `field-ops.server-request` breadcrumb and emits a
 `Field Ops request diagnostic` Sentry event for HTTP failures or requests
-taking at least one second. Server event tags are:
+taking at least one second, including all photo-upload routes listed above.
+Photo-upload endpoint labels replace UUID path segments with `:id`. Server
+event tags are:
 
 - `field_ops_endpoint`
 - `field_ops_status`
