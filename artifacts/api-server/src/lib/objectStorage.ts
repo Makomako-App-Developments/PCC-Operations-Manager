@@ -29,6 +29,13 @@ export const objectStorageClient = new Storage({
   projectId: "",
 });
 
+export type StoredPhotoObject = {
+  bucketId: string;
+  objectName: string;
+  generation: string;
+  createdAt: Date;
+};
+
 export class ObjectNotFoundError extends Error {
   constructor() {
     super("Object not found");
@@ -204,6 +211,39 @@ export class ObjectStorageService {
       requestedPermission: requestedPermission ?? ObjectPermission.READ,
     });
   }
+}
+
+/**
+ * Lists only objects created by the API photo upload routes. Object names stay
+ * internal to the cleanup process and must not be included in operator output.
+ */
+export async function listStoredPhotoObjects(): Promise<StoredPhotoObject[]> {
+  const bucketId = process.env.DEFAULT_OBJECT_STORAGE_BUCKET_ID;
+  if (!bucketId) {
+    throw new Error("DEFAULT_OBJECT_STORAGE_BUCKET_ID not set");
+  }
+  const [files] = await objectStorageClient.bucket(bucketId).getFiles({
+    prefix: "uploads/",
+  });
+
+  return Promise.all(files.map(async (file) => {
+    const [metadata] = await file.getMetadata();
+    const created = metadata.timeCreated ?? metadata.updated;
+    const generation = metadata.generation;
+    const createdAt = created ? new Date(created) : new Date(Number.NaN);
+    if (Number.isNaN(createdAt.getTime())) {
+      throw new Error("Photo object is missing a valid creation timestamp");
+    }
+    if (!generation) {
+      throw new Error("Photo object is missing a storage generation");
+    }
+    return {
+      bucketId,
+      objectName: file.name,
+      generation: String(generation),
+      createdAt,
+    };
+  }));
 }
 
 function parseObjectPath(path: string): {

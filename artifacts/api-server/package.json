@@ -11,7 +11,8 @@
     "lint": "eslint src/routes/health-circuit-breaker.ts",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:coverage": "vitest run --coverage"
+    "test:coverage": "vitest run --coverage",
+    "photos:reconcile": "tsx ./src/scripts/reconcile-photo-objects.ts"
   },
   "dependencies": {
     "@google-cloud/storage": "^7.19.0",

@@ -5,7 +5,7 @@ import {
   photoObjectCleanupTable,
 } from "@workspace/db";
 import { and, asc, eq, isNull, lte, sql } from "drizzle-orm";
-import { objectStorageClient } from "./objectStorage";
+import { objectStorageClient, type StoredPhotoObject } from "./objectStorage";
 
 type PhotoRoute = "scheduled" | "reactive" | "audit" | "storm-patrol";
 
@@ -20,8 +20,149 @@ type CleanupCounts = {
   permanentlyFailed: number;
 };
 
+export const PHOTO_RECONCILIATION_MIN_GRACE_MS = 60 * 60 * 1000;
+
+export type PhotoObjectReconciliationReport = {
+  dryRun: boolean;
+  scanned: number;
+  referenced: number;
+  recent: number;
+  unreferenced: Array<{
+    objectId: string;
+    ageMs: number;
+    deleted: boolean;
+    ownershipChanged: boolean;
+    generationChanged: boolean;
+  }>;
+};
+
+type PhotoObjectReconciliationDependencies = {
+  listObjects: () => Promise<StoredPhotoObject[]>;
+  isBlobUrlReferenced: (blobUrl: string) => Promise<boolean>;
+  deleteObject: (
+    bucketId: string,
+    objectName: string,
+    generation: string,
+  ) => Promise<"deleted" | "changed">;
+};
+
 function objectFingerprint(objectName: string): string {
   return createHash("sha256").update(objectName).digest("hex").slice(0, 16);
+}
+
+export function photoBlobUrlForObjectName(objectName: string): string {
+  if (!objectName.startsWith("uploads/")) {
+    throw new Error("Photo object is outside the uploads namespace");
+  }
+  return `/api/uploads/${objectName}`;
+}
+
+async function isPhotoBlobUrlReferenced(blobUrl: string): Promise<boolean> {
+  const result = await executeWithCircuitBreaker(() => db.execute<{ referenced: boolean }>(sql`
+    SELECT EXISTS (
+      SELECT 1 FROM job_photos WHERE blob_url = ${blobUrl}
+      UNION ALL
+      SELECT 1 FROM audit_photos WHERE blob_url = ${blobUrl}
+      UNION ALL
+      SELECT 1 FROM storm_photos WHERE blob_url = ${blobUrl}
+    ) AS referenced
+  `), { safeRead: true });
+  return result.rows?.[0]?.referenced === true;
+}
+
+const reconciliationDependencies: PhotoObjectReconciliationDependencies = {
+  listObjects: async () => {
+    const { listStoredPhotoObjects } = await import("./objectStorage");
+    return listStoredPhotoObjects();
+  },
+  isBlobUrlReferenced: isPhotoBlobUrlReferenced,
+  deleteObject: async (bucketId, objectName, generation) => {
+    try {
+      await objectStorageClient.bucket(bucketId).file(objectName).delete({
+        ifGenerationMatch: generation,
+      } as never);
+      return "deleted";
+    } catch (error) {
+      const code = (error as { code?: unknown } | null)?.code;
+      // A missing object or failed generation precondition means the scanned
+      // generation was removed/replaced concurrently. Never delete the new one.
+      if (code === 404 || code === 412) return "changed";
+      throw error;
+    }
+  },
+};
+
+/**
+ * Reconciles historical photo uploads against every photo record table.
+ * Dry-run is the default. Reports expose only stable hashes of object names.
+ */
+export async function reconcilePhotoObjects({
+  dryRun = true,
+  gracePeriodMs,
+  now = new Date(),
+  dependencies = reconciliationDependencies,
+}: {
+  dryRun?: boolean;
+  gracePeriodMs: number;
+  now?: Date;
+  dependencies?: PhotoObjectReconciliationDependencies;
+}): Promise<PhotoObjectReconciliationReport> {
+  if (!Number.isFinite(gracePeriodMs) || gracePeriodMs < PHOTO_RECONCILIATION_MIN_GRACE_MS) {
+    throw new Error(`Photo reconciliation grace period must be at least ${PHOTO_RECONCILIATION_MIN_GRACE_MS}ms`);
+  }
+
+  const objects = await dependencies.listObjects();
+  const report: PhotoObjectReconciliationReport = {
+    dryRun,
+    scanned: objects.length,
+    referenced: 0,
+    recent: 0,
+    unreferenced: [],
+  };
+
+  for (const object of objects) {
+    const ageMs = now.getTime() - object.createdAt.getTime();
+    if (ageMs < gracePeriodMs) {
+      report.recent++;
+      continue;
+    }
+    const blobUrl = photoBlobUrlForObjectName(object.objectName);
+    if (await dependencies.isBlobUrlReferenced(blobUrl)) {
+      report.referenced++;
+      continue;
+    }
+
+    const item = {
+      objectId: objectFingerprint(object.objectName),
+      ageMs,
+      deleted: false,
+      ownershipChanged: false,
+      generationChanged: false,
+    };
+    report.unreferenced.push(item);
+    if (dryRun) continue;
+
+    // Ownership can be committed after the scan. Recheck immediately before
+    // deletion and fail closed if the database cannot answer.
+    if (await dependencies.isBlobUrlReferenced(blobUrl)) {
+      item.ownershipChanged = true;
+      report.referenced++;
+      continue;
+    }
+    const deletion = await dependencies.deleteObject(
+      object.bucketId,
+      object.objectName,
+      object.generation,
+    );
+    if (deletion === "changed") {
+      item.generationChanged = true;
+      continue;
+    }
+    item.deleted = true;
+  }
+
+  console.info("[photo-object-reconciliation]", JSON.stringify(report));
+  return report;
 }
 
 function logCleanupFailure(objectName: string, route: PhotoRoute): void {
