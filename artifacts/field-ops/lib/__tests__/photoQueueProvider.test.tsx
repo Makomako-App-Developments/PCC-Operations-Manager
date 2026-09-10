@@ -5,30 +5,58 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   readQueuedPhotos: vi.fn(),
-  warningProps: null as null | {
-    state: string;
-    isRetrying: boolean;
-    onRetry: () => void;
-  },
 }));
 
-vi.mock("react-native", () => ({
-  AppState: { addEventListener: () => ({ remove: vi.fn() }) },
-  Platform: { OS: "web" },
+vi.mock("@expo/vector-icons", () => ({
+  Feather: () => null,
 }));
+
+vi.mock("react-native", async () => {
+  const React = await import("react");
+  const element = (tag: string) =>
+    ({
+      accessibilityLabel,
+      accessibilityRole,
+      children,
+      disabled,
+      onPress,
+      style: _style,
+      testID,
+      ...props
+    }: {
+      accessibilityLabel?: string;
+      accessibilityRole?: string;
+      children?: React.ReactNode;
+      disabled?: boolean;
+      onPress?: () => void;
+      style?: unknown | ((state: { pressed: boolean }) => unknown);
+      testID?: string;
+      [key: string]: unknown;
+    }) => React.createElement(tag, {
+      ...props,
+      "aria-label": accessibilityLabel,
+      "data-testid": testID,
+      disabled,
+      onClick: onPress,
+      role: accessibilityRole,
+    }, children);
+
+  return {
+    ActivityIndicator: element("span"),
+    AppState: { addEventListener: () => ({ remove: vi.fn() }) },
+    Platform: { OS: "web" },
+    Pressable: element("button"),
+    StyleSheet: { create: (styles: unknown) => styles },
+    Text: element("span"),
+    View: element("div"),
+  };
+});
 
 vi.mock("../photoQueue", () => ({
   attemptUpload: vi.fn(),
   QueueStorageReadError: class QueueStorageReadError extends Error {},
   readQueuedPhotos: mocks.readQueuedPhotos,
   removeFromQueue: vi.fn(),
-}));
-
-vi.mock("@/components/PhotoQueueStorageWarning", () => ({
-  PhotoQueueStorageWarning: (props: typeof mocks.warningProps) => {
-    mocks.warningProps = props;
-    return null;
-  },
 }));
 
 import {
@@ -49,7 +77,6 @@ describe("PhotoQueueProvider storage retry", () => {
   beforeEach(() => {
     vi.useFakeTimers();
     mocks.readQueuedPhotos.mockReset();
-    mocks.warningProps = null;
     container = document.createElement("div");
     document.body.appendChild(container);
     root = createRoot(container);
@@ -77,10 +104,24 @@ describe("PhotoQueueProvider storage retry", () => {
       );
     });
 
-    expect(mocks.warningProps?.state).toBe("unavailable");
+    const warning = document.querySelector('[data-testid="photo-queue-storage-warning"]');
+    const retry = document.querySelector(
+      '[data-testid="photo-queue-storage-retry"]',
+    ) as HTMLButtonElement;
+    expect(warning).not.toBeNull();
+    expect(warning?.getAttribute("role")).toBe("alert");
+    expect(retry.getAttribute("role")).toBe("button");
+    expect(retry.getAttribute("aria-label")).toBe("Retry reading queued photos");
+    expect(retry.disabled).toBe(false);
 
-    act(() => mocks.warningProps?.onRetry());
-    expect(mocks.warningProps?.isRetrying).toBe(true);
+    act(() => retry.click());
+    expect(retry.disabled).toBe(true);
+    expect(document.querySelector(
+      '[data-testid="photo-queue-storage-retry-loading"]',
+    )).not.toBeNull();
+    expect(mocks.readQueuedPhotos).toHaveBeenCalledTimes(1);
+
+    act(() => retry.click());
     expect(mocks.readQueuedPhotos).toHaveBeenCalledTimes(1);
 
     await act(async () => {
@@ -88,8 +129,9 @@ describe("PhotoQueueProvider storage retry", () => {
       await Promise.resolve();
     });
 
-    expect(mocks.warningProps?.state).toBe("available");
-    expect(mocks.warningProps?.isRetrying).toBe(false);
+    expect(document.querySelector(
+      '[data-testid="photo-queue-storage-warning"]',
+    )).toBeNull();
   });
 
   it("keeps the warning actionable after an unexpected read failure", async () => {
@@ -105,12 +147,25 @@ describe("PhotoQueueProvider storage retry", () => {
       );
     });
 
+    const retry = document.querySelector(
+      '[data-testid="photo-queue-storage-retry"]',
+    ) as HTMLButtonElement;
+
     await act(async () => {
-      mocks.warningProps?.onRetry();
+      retry.click();
       await Promise.resolve();
     });
 
-    expect(mocks.warningProps?.state).toBe("unavailable");
-    expect(mocks.warningProps?.isRetrying).toBe(false);
+    const retryAfterFailure = document.querySelector(
+      '[data-testid="photo-queue-storage-retry"]',
+    ) as HTMLButtonElement;
+    expect(document.querySelector(
+      '[data-testid="photo-queue-storage-warning"]',
+    )).not.toBeNull();
+    expect(retryAfterFailure.disabled).toBe(false);
+    expect(retryAfterFailure.textContent).toContain("Retry");
+    expect(document.querySelector(
+      '[data-testid="photo-queue-storage-retry-loading"]',
+    )).toBeNull();
   });
 });
