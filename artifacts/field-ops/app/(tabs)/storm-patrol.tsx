@@ -110,31 +110,17 @@ export default function StormPatrolScreen() {
     }
     return remaining;
   };
-  const confirmClearQueuedPhotos = () => {
-    Alert.alert(
-      "Discard queued photos?",
-      `This will permanently remove ${queuedPhotoCount} local Storm Patrol photo${queuedPhotoCount === 1 ? "" : "s"} that could not upload. Completed patrol records, observations, and alerts will not be removed.`,
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Discard photos",
-          style: "destructive",
-          onPress: () => {
-            setDiscardingPhotos(true);
-            void clearQueuedStormPhotos()
-              .then(async remaining => {
-                setQueue(remaining);
-                if (remaining.length > 0) await sync();
-              })
-              .catch(error => {
-                Alert.alert("Unable to discard photos", error instanceof Error ? error.message : "Try again.");
-                return refreshQueue();
-              })
-              .finally(() => setDiscardingPhotos(false));
-          },
-        },
-      ],
-    );
+  const discardQueuedPhotos = () => {
+    if (discardingPhotos) return;
+    setDiscardingPhotos(true);
+    setQueue(current => current.filter(item => item.kind !== "photo"));
+    void clearQueuedStormPhotos()
+      .then(setQueue)
+      .catch(error => {
+        Alert.alert("Unable to discard photos", error instanceof Error ? error.message : "Try again.");
+        return refreshQueue();
+      })
+      .finally(() => setDiscardingPhotos(false));
   };
   const complete = async () => {
     if (!selected) return;
@@ -310,7 +296,7 @@ export default function StormPatrolScreen() {
           <Feather name="upload-cloud" color={colors.primary} size={16}/>
           <View style={{ flex: 1 }}><Text style={{ color: colors.foreground }}>{queue.length} item{queue.length === 1 ? "" : "s"} waiting to sync — Retry</Text>{queue[0].lastError ? <Text style={[styles.syncError, { color: colors.mutedForeground }]} numberOfLines={2}>{queue[0].lastError}</Text> : null}</View>
         </Pressable>
-        {photoQueueBlocked && <TouchableOpacity testID="storm-sync-clear-photos" disabled={discardingPhotos} onPress={confirmClearQueuedPhotos} style={[styles.clearPhotos, { borderColor: colors.destructive, opacity: discardingPhotos ? 0.6 : 1 }]}>
+        {photoQueueBlocked && <TouchableOpacity testID="storm-sync-clear-photos" disabled={discardingPhotos} onPress={discardQueuedPhotos} style={[styles.clearPhotos, { borderColor: colors.destructive, opacity: discardingPhotos ? 0.6 : 1 }]}>
           <Text style={[styles.clearPhotosText, { color: colors.destructive }]}>{discardingPhotos ? "Discarding queued photos…" : `Discard ${queuedPhotoCount} queued photo${queuedPhotoCount === 1 ? "" : "s"}`}</Text>
         </TouchableOpacity>}
       </View>}
