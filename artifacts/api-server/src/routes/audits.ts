@@ -7,6 +7,7 @@ import { eq, and, desc, sql, or } from "drizzle-orm";
 import { requireAuth, requireRole } from "../middlewares/auth";
 import { auditLog } from "../lib/audit";
 import { objectStorageClient } from "../lib/objectStorage";
+import { reconcileUncommittedPhotoObject, removeUncommittedPhotoObject } from "../lib/photo-object-cleanup";
 import { linkQuotaItemIfMatches } from "./audit-quota";
 
 function isPrivilegedRole(role: string): boolean {
@@ -54,20 +55,46 @@ async function saveAuditPhotoIdempotently(
 ) {
   if (!idempotencyKey) {
     const blobUrl = await uploadPhotoToGCS(file.buffer, file.mimetype, file.originalname);
-    const [photo] = await executeWithCircuitBreaker(() => db.insert(auditPhotosTable).values({ auditItemId, uploadedBy: userId, blobUrl }).returning());
-    return photo;
+    const objectName = blobUrl.slice("/api/uploads/".length);
+    try {
+      const [photo] = await executeWithCircuitBreaker(() => db.insert(auditPhotosTable).values({ auditItemId, uploadedBy: userId, blobUrl }).returning());
+      return photo;
+    } catch (error) {
+      await reconcileUncommittedPhotoObject(objectName, "audit", async () => {
+        const [owner] = await executeWithCircuitBreaker(() => db.select({ id: auditPhotosTable.id }).from(auditPhotosTable)
+          .where(eq(auditPhotosTable.blobUrl, blobUrl)).limit(1));
+        if (!owner) await removeUncommittedPhotoObject(process.env["DEFAULT_OBJECT_STORAGE_BUCKET_ID"]!, objectName, "audit");
+      });
+      throw error;
+    }
   }
   const hash = createHash("sha256").update(`audit:${auditId}:${auditItemId}:${userId}:${idempotencyKey}`).digest("hex");
   const objectName = `uploads/audit-${hash}`;
   const blobUrl = `/api/uploads/${objectName}`;
-  return executeWithCircuitBreaker(() => db.transaction(async tx => {
-    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${hash}))`);
-    const [existing] = await tx.select().from(auditPhotosTable).where(eq(auditPhotosTable.blobUrl, blobUrl)).limit(1);
-    if (existing) return existing;
-    await uploadPhotoToGCS(file.buffer, file.mimetype, file.originalname, objectName);
-    const [photo] = await tx.insert(auditPhotosTable).values({ auditItemId, uploadedBy: userId, blobUrl }).returning();
-    return photo;
-  }));
+  let uploaded = false;
+  try {
+    return await executeWithCircuitBreaker(() => db.transaction(async tx => {
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${hash}))`);
+      const [existing] = await tx.select().from(auditPhotosTable).where(eq(auditPhotosTable.blobUrl, blobUrl)).limit(1);
+      if (existing) return existing;
+      await uploadPhotoToGCS(file.buffer, file.mimetype, file.originalname, objectName);
+      uploaded = true;
+      const [photo] = await tx.insert(auditPhotosTable).values({ auditItemId, uploadedBy: userId, blobUrl }).returning();
+      return photo;
+    }));
+  } catch (error) {
+    if (uploaded) {
+      await reconcileUncommittedPhotoObject(objectName, "audit", () =>
+        executeWithCircuitBreaker(() => db.transaction(async tx => {
+          await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${hash}))`);
+          const [owner] = await tx.select({ id: auditPhotosTable.id }).from(auditPhotosTable)
+            .where(eq(auditPhotosTable.blobUrl, blobUrl)).limit(1);
+          if (!owner) await removeUncommittedPhotoObject(process.env["DEFAULT_OBJECT_STORAGE_BUCKET_ID"]!, objectName, "audit");
+        })),
+      );
+    }
+    throw error;
+  }
 }
 
 // ── helpers ──────────────────────────────────────────────────────────────────

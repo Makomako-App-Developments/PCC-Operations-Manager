@@ -6,6 +6,7 @@ import { db, jobPhotosTable, jobsTable, mulchingRecordsTable, reactiveJobsTable,
 import { eq, sql } from "drizzle-orm";
 import { requireAuth } from "../middlewares/auth";
 import { objectStorageClient } from "../lib/objectStorage";
+import { reconcileUncommittedPhotoObject, removeUncommittedPhotoObject } from "../lib/photo-object-cleanup";
 
 function logMissingAttachment(req: Request): void {
   console.warn("[field-attachment-upload-missing]", JSON.stringify({
@@ -69,23 +70,50 @@ async function saveJobPhotoIdempotently(
   values: Omit<typeof jobPhotosTable.$inferInsert, "blobUrl">,
   scope: string,
   idempotencyKey?: string,
+  route: "scheduled" | "reactive" = "scheduled",
 ) {
   if (!idempotencyKey) {
     const blobUrl = await uploadToGCS(file.buffer, file.mimetype, file.originalname);
-    const [photo] = await executeWithCircuitBreaker(() => db.insert(jobPhotosTable).values({ ...values, blobUrl }).returning());
-    return photo;
+    const objectName = blobUrl.slice("/api/uploads/".length);
+    try {
+      const [photo] = await executeWithCircuitBreaker(() => db.insert(jobPhotosTable).values({ ...values, blobUrl }).returning());
+      return photo;
+    } catch (error) {
+      await reconcileUncommittedPhotoObject(objectName, route, async () => {
+        const [owner] = await executeWithCircuitBreaker(() => db.select({ id: jobPhotosTable.id }).from(jobPhotosTable)
+          .where(eq(jobPhotosTable.blobUrl, blobUrl)).limit(1));
+        if (!owner) await removeUncommittedPhotoObject(process.env["DEFAULT_OBJECT_STORAGE_BUCKET_ID"]!, objectName, route);
+      });
+      throw error;
+    }
   }
   const hash = createHash("sha256").update(`${scope}:${idempotencyKey}`).digest("hex");
   const objectName = `uploads/field-${hash}`;
   const blobUrl = `/api/uploads/${objectName}`;
-  return executeWithCircuitBreaker(() => db.transaction(async tx => {
-    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${hash}))`);
-    const [existing] = await tx.select().from(jobPhotosTable).where(eq(jobPhotosTable.blobUrl, blobUrl)).limit(1);
-    if (existing) return existing;
-    await uploadToGCS(file.buffer, file.mimetype, file.originalname, objectName);
-    const [photo] = await tx.insert(jobPhotosTable).values({ ...values, blobUrl }).returning();
-    return photo;
-  }));
+  let uploaded = false;
+  try {
+    return await executeWithCircuitBreaker(() => db.transaction(async tx => {
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${hash}))`);
+      const [existing] = await tx.select().from(jobPhotosTable).where(eq(jobPhotosTable.blobUrl, blobUrl)).limit(1);
+      if (existing) return existing;
+      await uploadToGCS(file.buffer, file.mimetype, file.originalname, objectName);
+      uploaded = true;
+      const [photo] = await tx.insert(jobPhotosTable).values({ ...values, blobUrl }).returning();
+      return photo;
+    }));
+  } catch (error) {
+    if (uploaded) {
+      await reconcileUncommittedPhotoObject(objectName, route, () =>
+        executeWithCircuitBreaker(() => db.transaction(async tx => {
+          await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${hash}))`);
+          const [owner] = await tx.select({ id: jobPhotosTable.id }).from(jobPhotosTable)
+            .where(eq(jobPhotosTable.blobUrl, blobUrl)).limit(1);
+          if (!owner) await removeUncommittedPhotoObject(process.env["DEFAULT_OBJECT_STORAGE_BUCKET_ID"]!, objectName, route);
+        })),
+      );
+    }
+    throw error;
+  }
 }
 
 /** Resolve whether :id belongs to a regular job or a mulching record. */
@@ -174,7 +202,7 @@ router.post(
       ? { mulchingRecordId: id, uploadedBy: userId, caption }
       : { jobId: id, uploadedBy: userId, caption };
 
-    const photo = await saveJobPhotoIdempotently(req.file, values, `${kind}:${id}:${userId}`, idempotencyKey);
+    const photo = await saveJobPhotoIdempotently(req.file, values, `${kind}:${id}:${userId}`, idempotencyKey, "scheduled");
     res.status(201).json(photo);
   },
 );
@@ -229,6 +257,7 @@ router.post(
       { reactiveJobId: id, uploadedBy: userId, caption },
       `reactive-job:${id}:${userId}`,
       idempotencyKey,
+      "reactive",
     );
 
     res.status(201).json(photo);

@@ -32,3 +32,4 @@
 - [Durable native attachments](durable-native-attachments.md) — stage native files before queueing, rebuild multipart bodies per attempt, and commit queue removal before deleting files.
 - [Post-merge runtime validation](post-merge-runtime-validation.md) — restart affected services after task merges; static checks may miss malformed code in files excluded from type analysis.
 - [Queued photo storage read state](queued-photo-storage-read-state.md) — never turn unreadable AsyncStorage into an empty queue; warn and fail mutations closed.
+- [Photo cleanup after ambiguous writes](photo-cleanup-ambiguous-writes.md) — confirm no committed DB owner exists before deleting an upload after any failed photo-row write.

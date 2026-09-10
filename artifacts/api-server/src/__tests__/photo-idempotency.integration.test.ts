@@ -6,6 +6,12 @@ const state = vi.hoisted(() => ({
   rows: new Map<string, any[]>(),
   objects: new Set<string>(),
   saves: vi.fn(),
+  deletes: vi.fn(),
+  failNextInsertFor: new Set<string>(),
+  failNextCommitFor: new Set<string>(),
+  ambiguousCommitFailureFor: new Set<string>(),
+  ambiguousInsertFailureFor: new Set<string>(),
+  failDeletes: false,
   diagnostics: [] as any[],
   nextId: 1,
   transactionTail: Promise.resolve(),
@@ -49,8 +55,10 @@ function insertChain(table: any) {
   return {
     values: vi.fn((value: any) => ({
       returning: vi.fn(async () => {
+        if (state.failNextInsertFor.delete(table.name)) throw new Error("database insert failed");
         const row = { ...value, id: value.id ?? `photo-${state.nextId++}` };
         state.rows.set(table.name, [...rowsFor(table), row]);
+        if (state.ambiguousInsertFailureFor.delete(table.name)) throw new Error("insert outcome unknown");
         return [row];
       }),
       onConflictDoUpdate: vi.fn(() => ({ returning: vi.fn(async () => [rowFor(table, value)]) })),
@@ -82,7 +90,20 @@ vi.mock("@workspace/db", async importOriginal => {
         state.transactionTail = new Promise<void>(resolve => { release = resolve; });
         await previous;
         try {
-          return await fn(tx());
+          const before = new Map([...state.rows].map(([name, rows]) => [name, [...rows]]));
+          const result = await fn(tx());
+          const changedTable = [...state.rows].find(([name, rows]) =>
+            rows.length !== (before.get(name)?.length ?? 0)
+              && (state.failNextCommitFor.has(name) || state.ambiguousCommitFailureFor.has(name)),
+          )?.[0];
+          if (changedTable && state.failNextCommitFor.delete(changedTable)) {
+            state.rows = new Map([...before].map(([name, rows]) => [name, [...rows]]));
+            throw new Error("transaction commit failed");
+          }
+          if (changedTable && state.ambiguousCommitFailureFor.delete(changedTable)) {
+            throw new Error("transaction commit outcome unknown");
+          }
+          return result;
         } finally {
           release();
         }
@@ -125,6 +146,11 @@ vi.mock("../lib/objectStorage", () => ({
           state.objects.add(name);
           state.saves(name);
         }),
+        delete: vi.fn(async () => {
+          if (state.failDeletes) throw new Error("provider-token secret-object-name");
+          state.objects.delete(name);
+          state.deletes(name);
+        }),
       })),
     })),
   },
@@ -156,9 +182,9 @@ function app() {
   server.use("/api", stormRouter);
   return server;
 }
-function multipart(path: string, key: string, extra: Record<string, string> = {}, server = app()) {
+function multipart(path: string, key: string | undefined, extra: Record<string, string> = {}, server = app()) {
   let req = request(server).post(path).set("x-test", "multipart");
-  req = req.field("idempotencyKey", key);
+  if (key !== undefined) req = req.field("idempotencyKey", key);
   for (const [name, value] of Object.entries(extra)) req = req.field(name, value);
   return req.attach("photo", Buffer.from("real multipart bytes"), "photo.jpg");
 }
@@ -170,7 +196,11 @@ function photoRows() {
   ];
 }
 beforeEach(() => {
-  state.rows.clear(); state.objects.clear(); state.saves.mockClear(); state.diagnostics.length = 0; state.nextId = 1;
+  state.rows.clear(); state.objects.clear(); state.saves.mockClear(); state.deletes.mockClear();
+  state.failNextInsertFor.clear(); state.diagnostics.length = 0; state.nextId = 1;
+  state.failNextCommitFor.clear(); state.ambiguousCommitFailureFor.clear();
+  state.ambiguousInsertFailureFor.clear();
+  state.failDeletes = false;
   state.transactionTail = Promise.resolve();
   state.breakerFailures = 0;
   process.env.DEFAULT_OBJECT_STORAGE_BUCKET_ID = "test-bucket";
@@ -190,6 +220,8 @@ const cases = [
   ["Storm Patrol observation", "/api/storm-patrol/observations/photos", "stormPhotosTable", { observationIdempotencyKey: "observation-key" }],
 ] as const;
 
+const optionalKeyCases = cases.slice(0, 3);
+
 describe("photo routes: real multipart idempotency", () => {
   it.each(cases)("%s returns one row/object after timeout replay and concurrency", async (_label, path, table, extra) => {
     const replayKey = `replay-key-${_label}`;
@@ -206,6 +238,94 @@ describe("photo routes: real multipart idempotency", () => {
     expect(rowsFor(tables[table])).toHaveLength(2);
     expect(state.objects).toHaveLength(2);
     expect(state.saves).toHaveBeenCalledTimes(2);
+  });
+
+  it.each(cases)("%s removes a newly uploaded object when the database insert fails", async (_label, path, table, extra) => {
+    state.failNextInsertFor.add(table);
+
+    const response = await multipart(path, `failed-insert-${_label}`, extra);
+
+    expect([500, 503]).toContain(response.status);
+    expect(rowsFor(tables[table])).toHaveLength(0);
+    expect(state.objects).toHaveLength(0);
+    expect(state.deletes).toHaveBeenCalledTimes(1);
+  });
+
+  it.each(cases)("%s does not remove the object owned by a successful replay", async (_label, path, table, extra) => {
+    const key = `successful-replay-${_label}`;
+    const first = await multipart(path, key, extra);
+    state.failNextInsertFor.add(table);
+
+    const replay = await multipart(path, key, extra);
+
+    expect(first.status).toBe(201);
+    expect([200, 201]).toContain(replay.status);
+    expect(rowsFor(tables[table])).toHaveLength(1);
+    expect(state.objects).toHaveLength(1);
+    expect(state.deletes).not.toHaveBeenCalled();
+  });
+
+  it.each(cases)("%s reconciles a transaction commit failure before deleting", async (_label, path, table, extra) => {
+    state.failNextCommitFor.add(table);
+
+    const response = await multipart(path, `commit-failure-${_label}`, extra);
+
+    expect([500, 503]).toContain(response.status);
+    expect(rowsFor(tables[table])).toHaveLength(0);
+    expect(state.objects).toHaveLength(0);
+    expect(state.deletes).toHaveBeenCalledTimes(1);
+  });
+
+  it.each(cases)("%s preserves an object when an ambiguous commit produced its row", async (_label, path, table, extra) => {
+    const key = `ambiguous-commit-${_label}`;
+    state.ambiguousCommitFailureFor.add(table);
+
+    const failedResponse = await multipart(path, key, extra);
+    const replay = await multipart(path, key, extra);
+
+    expect([500, 503]).toContain(failedResponse.status);
+    expect([200, 201]).toContain(replay.status);
+    expect(rowsFor(tables[table])).toHaveLength(1);
+    expect(state.objects).toHaveLength(1);
+    expect(state.deletes).not.toHaveBeenCalled();
+  });
+
+  it.each(optionalKeyCases)("%s without a key removes the object after a rolled-back insert", async (_label, path, table, extra) => {
+    state.failNextInsertFor.add(table);
+
+    const response = await multipart(path, undefined, extra);
+
+    expect(response.status).toBe(500);
+    expect(rowsFor(tables[table])).toHaveLength(0);
+    expect(state.objects).toHaveLength(0);
+    expect(state.deletes).toHaveBeenCalledTimes(1);
+  });
+
+  it.each(optionalKeyCases)("%s without a key preserves the object after an ambiguous committed insert", async (_label, path, table, extra) => {
+    state.ambiguousInsertFailureFor.add(table);
+
+    const response = await multipart(path, undefined, extra);
+
+    expect(response.status).toBe(500);
+    expect(rowsFor(tables[table])).toHaveLength(1);
+    expect(state.objects).toHaveLength(1);
+    expect(state.deletes).not.toHaveBeenCalled();
+  });
+
+  it("logs cleanup failures without object names or provider details", async () => {
+    state.failNextInsertFor.add("jobPhotosTable");
+    state.failDeletes = true;
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+
+    await multipart(`/api/jobs/${ids.job}/photos`, "private-replay-key");
+
+    const log = JSON.stringify(consoleError.mock.calls);
+    const uploadedObjectName = String(state.saves.mock.calls[0]?.[0]);
+    expect(log).toContain("[photo-object-cleanup-failed]");
+    expect(log).not.toContain(uploadedObjectName);
+    expect(log).not.toContain("provider-token");
+    expect(log).not.toContain("secret-object-name");
+    consoleError.mockRestore();
   });
 });
 

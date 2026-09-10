@@ -14,6 +14,7 @@ import { validateBody, validateQuery } from "../middlewares/validate";
 import { auditLog } from "../lib/audit";
 import { notifyUsers } from "../lib/push-notifications";
 import { objectStorageClient } from "../lib/objectStorage";
+import { reconcileUncommittedPhotoObject, removeUncommittedPhotoObject } from "../lib/photo-object-cleanup";
 import { arePublishableStormwaterAssets, calculateStormChargeCents, escapeCsvCell, requiresStormVisualCheckComments } from "../lib/storm-patrol";
 import { deliverStormAlertEmail } from "../lib/storm-patrol-email";
 
@@ -77,31 +78,47 @@ async function saveStormPhotoIdempotently(
   const bucketId = process.env.DEFAULT_OBJECT_STORAGE_BUCKET_ID;
   if (!bucketId) throw new Error("Object storage is not configured.");
 
-  return executeWithCircuitBreaker(() => db.transaction(async tx => {
-    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${hash}))`);
-    const [existing] = await tx.select().from(stormPhotosTable)
-      .where(eq(stormPhotosTable.idempotencyKey, idempotencyKey)).limit(1);
-    if (existing) return { photo: existing, replayed: true };
+  let uploaded = false;
+  try {
+    return await executeWithCircuitBreaker(() => db.transaction(async tx => {
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${hash}))`);
+      const [existing] = await tx.select().from(stormPhotosTable)
+        .where(eq(stormPhotosTable.idempotencyKey, idempotencyKey)).limit(1);
+      if (existing) return { photo: existing, replayed: true };
 
-    try {
-      await objectStorageClient.bucket(bucketId).file(objectName).save(buffer, {
-        metadata: { contentType: mimetype },
-        resumable: false,
-      });
-    } catch (storageError) {
-      // Resolve the DB callback so a GCS/provider rejection is not counted as
-      // a PostgreSQL failure by executeWithCircuitBreaker. The transaction has
-      // made no data changes and may release its advisory lock normally.
-      return { storageError };
+      try {
+        await objectStorageClient.bucket(bucketId).file(objectName).save(buffer, {
+          metadata: { contentType: mimetype },
+          resumable: false,
+        });
+        uploaded = true;
+      } catch (storageError) {
+        // Resolve the DB callback so a GCS/provider rejection is not counted as
+        // a PostgreSQL failure by executeWithCircuitBreaker. The transaction has
+        // made no data changes and may release its advisory lock normally.
+        return { storageError };
+      }
+      const [photo] = await tx.insert(stormPhotosTable)
+        .values({ ...values, blobUrl, idempotencyKey })
+        .returning();
+      return { photo, replayed: false };
+    })).then(result => {
+      if ("storageError" in result) throw result.storageError;
+      return result;
+    });
+  } catch (error) {
+    if (uploaded) {
+      await reconcileUncommittedPhotoObject(objectName, "storm-patrol", () =>
+        executeWithCircuitBreaker(() => db.transaction(async tx => {
+          await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${hash}))`);
+          const [owner] = await tx.select({ id: stormPhotosTable.id }).from(stormPhotosTable)
+            .where(eq(stormPhotosTable.blobUrl, blobUrl)).limit(1);
+          if (!owner) await removeUncommittedPhotoObject(bucketId, objectName, "storm-patrol");
+        })),
+      );
     }
-    const [photo] = await tx.insert(stormPhotosTable)
-      .values({ ...values, blobUrl, idempotencyKey })
-      .returning();
-    return { photo, replayed: false };
-  })).then(result => {
-    if ("storageError" in result) throw result.storageError;
-    return result;
-  });
+    throw error;
+  }
 }
 
 type StormAssetImportRow = {
