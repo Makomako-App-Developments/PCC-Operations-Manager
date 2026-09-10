@@ -16,6 +16,7 @@ vi.mock("@react-native-async-storage/async-storage", () => ({
 }));
 
 vi.mock("react-native", () => ({ Platform: { OS: "ios" } }));
+vi.mock("@sentry/react-native", () => ({ captureMessage: vi.fn() }));
 
 vi.mock("../attachmentUpload", () => ({
   persistAttachment: vi.fn(async (source: any) => ({
@@ -31,9 +32,15 @@ vi.mock("../attachmentUpload", () => ({
 }));
 
 import { attemptUpload, enqueuePhoto, loadAllQueued, readQueuedPhotos, removeFromQueue } from "../photoQueue";
+import {
+  setPhotoQueueDiagnosticHandler,
+  type PhotoQueueReadDiagnostic,
+} from "../photoQueueDiagnostics";
 
 describe("photo queue durability", () => {
   beforeEach(() => {
+    vi.useRealTimers();
+    setPhotoQueueDiagnosticHandler();
     mocks.values.clear();
     mocks.getItem.mockReset().mockImplementation(async (key: string) => mocks.values.get(key) ?? null);
     mocks.removeManagedAttachment.mockClear();
@@ -41,6 +48,56 @@ describe("photo queue durability", () => {
     mocks.setItem.mockReset().mockImplementation(async (key: string, value: string) => {
       mocks.values.set(key, value);
     });
+  });
+
+  it("emits distinct safe diagnostics, rate-limits repeats, and records recovery", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-09-10T10:00:00.000Z"));
+    const diagnostics: PhotoQueueReadDiagnostic[] = [];
+    setPhotoQueueDiagnosticHandler(diagnostic => diagnostics.push(diagnostic));
+
+    mocks.getItem.mockRejectedValue(new Error("file:///private/photo.jpg queue payload"));
+    await readQueuedPhotos();
+    await readQueuedPhotos();
+
+    expect(diagnostics).toEqual([{
+      event: "photo_queue_read_unavailable",
+      state: "unavailable",
+      retryAttempt: 1,
+      suppressedCount: 0,
+    }]);
+
+    mocks.getItem.mockResolvedValue("{not-json");
+    await readQueuedPhotos();
+    expect(diagnostics[1]).toMatchObject({
+      event: "photo_queue_read_corrupt",
+      state: "corrupt",
+      retryAttempt: 3,
+      suppressedCount: 1,
+    });
+
+    await readQueuedPhotos();
+    vi.advanceTimersByTime(5 * 60 * 1000);
+    await readQueuedPhotos();
+    expect(diagnostics[2]).toMatchObject({
+      event: "photo_queue_read_corrupt",
+      retryAttempt: 5,
+      suppressedCount: 1,
+    });
+
+    mocks.getItem.mockResolvedValue(JSON.stringify([]));
+    await readQueuedPhotos();
+    expect(diagnostics[3]).toMatchObject({
+      event: "photo_queue_read_recovered",
+      state: "empty",
+      retryAttempt: 5,
+      recoveredFrom: "corrupt",
+    });
+
+    const serialized = JSON.stringify(diagnostics);
+    expect(serialized).not.toContain("file://");
+    expect(serialized).not.toContain("not-json");
+    expect(serialized).not.toContain("queue payload");
   });
 
   it("distinguishes empty, available, unavailable, and corrupt queue storage", async () => {

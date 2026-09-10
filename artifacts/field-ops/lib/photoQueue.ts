@@ -7,6 +7,7 @@ import {
   type AttachmentSource,
   type DurableAttachment,
 } from "@/lib/attachmentUpload";
+import { recordPhotoQueueReadState } from "@/lib/photoQueueDiagnostics";
 
 const QUEUE_KEY = "@photo_upload_queue_v1";
 let queueMutation = Promise.resolve();
@@ -63,22 +64,34 @@ export async function readQueuedPhotos(): Promise<QueueReadResult> {
   try {
     raw = await AsyncStorage.getItem(QUEUE_KEY);
   } catch {
-    return { state: "unavailable", items: [] };
+    const result: QueueReadResult = { state: "unavailable", items: [] };
+    recordPhotoQueueReadState(result.state);
+    return result;
   }
 
-  if (raw === null) return { state: "empty", items: [] };
+  if (raw === null) {
+    const result: QueueReadResult = { state: "empty", items: [] };
+    recordPhotoQueueReadState(result.state);
+    return result;
+  }
 
   try {
     const parsed: unknown = JSON.parse(raw);
     if (!Array.isArray(parsed) || !parsed.every(isQueuedPhoto)) {
-      return { state: "corrupt", items: [] };
+      const result: QueueReadResult = { state: "corrupt", items: [] };
+      recordPhotoQueueReadState(result.state);
+      return result;
     }
-    return {
+    const result: QueueReadResult = {
       state: parsed.length === 0 ? "empty" : "available",
       items: parsed,
     };
+    recordPhotoQueueReadState(result.state);
+    return result;
   } catch {
-    return { state: "corrupt", items: [] };
+    const result: QueueReadResult = { state: "corrupt", items: [] };
+    recordPhotoQueueReadState(result.state);
+    return result;
   }
 }
 
