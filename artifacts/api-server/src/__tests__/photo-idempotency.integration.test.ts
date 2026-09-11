@@ -664,6 +664,30 @@ describe("photo routes: real multipart idempotency", () => {
 });
 
 describe("Storm Patrol completed job edits", () => {
+  it("returns a stable code when a completion is rejected because the job state changed", async () => {
+    state.rows.set("stormJobsTable", [{
+      id: ids.stormJob,
+      eventId: "00000000-0000-0000-0000-000000000020",
+      assetId: "00000000-0000-0000-0000-000000000022",
+      teamId: null,
+      assignedUserId: null,
+      status: "pending",
+    }]);
+
+    const response = await request(app())
+      .post(`/api/storm-patrol/jobs/${ids.stormJob}/complete`)
+      .send({
+        outcome: "completed",
+        actualTimeMins: 12,
+        comments: "Checked",
+        workTypes: ["visual_check_only"],
+        idempotencyKey: "rejected-completion",
+      });
+
+    expect(response.status).toBe(409);
+    expect(response.body).toMatchObject({ code: "STORM_JOB_STATE_CONFLICT" });
+  });
+
   it("replaces saved details, retains photos, cancels an obsolete danger follow-up, and replays safely", async () => {
     const completedAt = new Date("2026-09-12T01:00:00.000Z");
     state.rows.set("stormJobsTable", [{

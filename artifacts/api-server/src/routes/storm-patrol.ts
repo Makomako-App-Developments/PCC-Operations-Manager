@@ -60,6 +60,8 @@ const workbookUpload = multer({
 });
 
 const STORM_PHOTO_IDEMPOTENCY_CONFLICT = "STORM_PHOTO_IDEMPOTENCY_CONFLICT";
+const STORM_JOB_OWNERSHIP_CONFLICT = "STORM_JOB_OWNERSHIP_CONFLICT";
+const STORM_JOB_STATE_CONFLICT = "STORM_JOB_STATE_CONFLICT";
 
 function isSameStormPhotoReplay(
   existing: typeof stormPhotosTable.$inferSelect,
@@ -510,7 +512,13 @@ const completion = z.object({ outcome: z.enum(["completed", "too_dangerous"]), a
 });
 router.post("/storm-patrol/jobs/:id/complete", requireAuth, validateBody(completion), async (req, res) => {
   const id = String(req.params.id); const body = req.body as z.infer<typeof completion>; const mine = await ownJob(id, req.auth!.userId, req.auth!.teamId, req.auth!.role, true);
-  if (mine.error) { res.status(mine.error).json({ error: mine.error === 404 ? "Storm job not found" : "Forbidden" }); return; }
+  if (mine.error) {
+    res.status(mine.error).json({
+      error: mine.error === 404 ? "Storm job not found" : "You no longer own this Storm Patrol job.",
+      ...(mine.error === 403 ? { code: STORM_JOB_OWNERSHIP_CONFLICT } : {}),
+    });
+    return;
+  }
   const result = await executeWithCircuitBreaker(() => db.transaction(async tx => {
     const prior = await tx.select().from(stormJobsTable).where(and(eq(stormJobsTable.id, id), eq(stormJobsTable.idempotencyKey, body.idempotencyKey))).limit(1); if (prior[0]) return { job: prior[0], replayed: true };
     const normalizedWorkTypes = body.outcome === "too_dangerous"
@@ -568,7 +576,13 @@ router.post("/storm-patrol/jobs/:id/complete", requireAuth, validateBody(complet
     }
     return { job, followUp, replayed: false };
   })).catch((error: any) => { if (error?.message === "NOT_CLAIMED") return null; throw error; });
-  if (!result) { res.status(409).json({ error: "Job must be assigned to you before it can be completed or edited." }); return; }
+  if (!result) {
+    res.status(409).json({
+      error: "This Storm Patrol job is no longer in a state that can be completed or edited.",
+      code: STORM_JOB_STATE_CONFLICT,
+    });
+    return;
+  }
   if (!result.replayed) await auditLog({ tableName: "storm_jobs", recordId: result.job.id, action: "UPDATE", changedById: req.auth!.userId, newData: result.job as any });
   const [enriched] = await enrichedStormJobs(eq(stormJobsTable.id, result.job.id));
   res.json({ ...result, job: enriched });

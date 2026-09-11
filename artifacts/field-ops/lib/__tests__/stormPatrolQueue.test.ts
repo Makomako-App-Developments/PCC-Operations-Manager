@@ -25,7 +25,7 @@ vi.mock("@react-native-async-storage/async-storage", () => ({
 vi.mock("@workspace/api-client-react", () => ({ customFetch }));
 vi.mock("../attachmentUpload", () => ({ persistAttachment, uploadAttachment, removeManagedAttachment }));
 
-import { clearQueuedStormPhotos, clearStormQueueItems, deserializeStormQueue, enqueueStormItem, enqueueStormObservationPhoto, flushStormQueue, getStormPatrolCompletionRequirements, isStormQueueItemReady, loadStormQueue, saveStormQueue, serializeStormQueue, validatePostStormConditions, validateStormCompletionComments, validateStormPhaseCompletion, type StormQueueItem } from "../stormPatrolQueue";
+import { clearQueuedStormPhotos, clearStormQueueItems, deserializeStormQueue, enqueueStormItem, enqueueStormObservationPhoto, flushStormQueue, getStormPatrolCompletionRequirements, isPermanentStormCompletionFailure, isStormQueueItemReady, loadStormQueue, saveStormQueue, serializeStormQueue, validatePostStormConditions, validateStormCompletionComments, validateStormPhaseCompletion, type StormQueueItem } from "../stormPatrolQueue";
 
 beforeEach(() => {
   values.clear();
@@ -121,6 +121,72 @@ describe("Storm Patrol offline queue", () => {
 
     expect(await clearStormQueueItems(["stale-one", "stale-two"])).toEqual([observation]);
     expect(await loadStormQueue()).toEqual([observation]);
+  });
+
+  it("classifies permanent completion failures by HTTP status and code, not wording", () => {
+    expect(isPermanentStormCompletionFailure({
+      status: 409,
+      data: {
+        code: "STORM_JOB_STATE_CONFLICT",
+        error: "Completely different human-readable wording.",
+      },
+    })).toBe(true);
+    expect(isPermanentStormCompletionFailure({
+      status: 403,
+      data: {
+        code: "STORM_JOB_OWNERSHIP_CONFLICT",
+        error: "Ownership conflict wording can also change.",
+      },
+    })).toBe(true);
+    expect(isPermanentStormCompletionFailure({
+      status: 409,
+      data: { code: "SOME_RETRYABLE_CONFLICT", error: "Job must be assigned to you." },
+    })).toBe(false);
+    expect(isPermanentStormCompletionFailure(new Error("HTTP 409: Job must be assigned to you."))).toBe(false);
+  });
+
+  it("removes a permanently rejected completion and its dependent photos", async () => {
+    const completion: StormQueueItem = {
+      ...item,
+      id: "rejected-completion",
+      payload: { jobId: "job", data: { idempotencyKey: "completion-one" } },
+    };
+    const photo: StormQueueItem = {
+      ...item,
+      id: "dependent-photo",
+      kind: "photo",
+      idempotencyKey: "dependent-photo",
+      dependsOn: completion.id,
+      payload: {
+        jobId: "job",
+        purpose: "after",
+        attachment: {
+          uri: "file:///dependent.jpg",
+          uploadId: "dependent-photo",
+          fileName: "dependent.jpg",
+          mimeType: "image/jpeg",
+          size: 100,
+          managed: true,
+        },
+      },
+    };
+    const unrelated = { ...item, id: "unrelated", kind: "observation" as const };
+    await saveStormQueue([completion, photo, unrelated]);
+    customFetch
+      .mockRejectedValueOnce({
+        status: 409,
+        data: {
+          code: "STORM_JOB_STATE_CONFLICT",
+          error: "This wording can change without affecting queue behavior.",
+        },
+      })
+      .mockResolvedValueOnce({ ok: true });
+
+    expect(await flushStormQueue()).toEqual([]);
+    expect(uploadAttachment).not.toHaveBeenCalled();
+    expect(removeManagedAttachment).toHaveBeenCalledWith(
+      expect.objectContaining({ uploadId: "dependent-photo" }),
+    );
   });
 
   it("keeps a managed photo when durable discard persistence fails", async () => {

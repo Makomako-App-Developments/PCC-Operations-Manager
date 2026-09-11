@@ -42,6 +42,39 @@ export interface StormQueueItem {
   payload: Record<string, unknown>;
 }
 
+const PERMANENT_COMPLETION_FAILURES = new Map([
+  [403, new Set(["STORM_JOB_OWNERSHIP_CONFLICT"])],
+  [409, new Set(["STORM_JOB_STATE_CONFLICT"])],
+]);
+
+type ApiFailure = {
+  status?: unknown;
+  data?: unknown;
+};
+
+export function isPermanentStormCompletionFailure(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const { status, data } = error as ApiFailure;
+  if (typeof status !== "number" || !data || typeof data !== "object") return false;
+  const code = (data as { code?: unknown }).code;
+  return typeof code === "string" && PERMANENT_COMPLETION_FAILURES.get(status)?.has(code) === true;
+}
+
+function idsWithDependents(items: readonly StormQueueItem[], parentId: string): Set<string> {
+  const removed = new Set([parentId]);
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const item of items) {
+      if (item.dependsOn && removed.has(item.dependsOn) && !removed.has(item.id)) {
+        removed.add(item.id);
+        changed = true;
+      }
+    }
+  }
+  return removed;
+}
+
 export const stormQueueId = () =>
   `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 
@@ -268,6 +301,7 @@ export async function flushStormQueue(): Promise<StormQueueItem[]> {
     let snapshot = await loadStormQueue();
     const completed = new Set<string>();
     for (const item of [...snapshot]) {
+      if (!snapshot.some(queued => queued.id === item.id)) continue;
       if (!isStormQueueItemReady(item, snapshot, completed)) continue;
       try {
         const sentAttachment = await send(item);
@@ -279,6 +313,23 @@ export async function flushStormQueue(): Promise<StormQueueItem[]> {
         });
         removeManagedAttachment(sentAttachment);
       } catch (error) {
+        if (item.kind === "completion" && isPermanentStormCompletionFailure(error)) {
+          const removedIds = idsWithDependents(snapshot, item.id);
+          snapshot = snapshot.filter(queued => !removedIds.has(queued.id));
+          let removed: StormQueueItem[] = [];
+          await withStorageMutation(async () => {
+            const latest = await rawLoadStormQueue();
+            const latestRemovedIds = idsWithDependents(latest, item.id);
+            removed = latest.filter(queued => latestRemovedIds.has(queued.id));
+            await rawSaveStormQueue(latest.filter(queued => !latestRemovedIds.has(queued.id)));
+          });
+          for (const queued of removed) {
+            if (queued.kind === "photo") {
+              removeManagedAttachment(queued.payload.attachment as DurableAttachment | undefined);
+            }
+          }
+          continue;
+        }
         await withStorageMutation(async () => {
           const latest = await rawLoadStormQueue();
           await rawSaveStormQueue(latest.map(q => q.id === item.id ? {
