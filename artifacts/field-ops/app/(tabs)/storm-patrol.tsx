@@ -5,7 +5,7 @@ import * as ImagePicker from "expo-image-picker";
 import * as Location from "expo-location";
 import { useFocusEffect } from "expo-router";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { ActivityIndicator, Alert, Image, Linking, Modal, Platform, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { ActivityIndicator, Alert, Image, Linking, Platform, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { PinMap } from "@/components/PinMap";
 import { requestCameraPermission, requestMediaLibraryPermission } from "@/hooks/usePhotoLibraryPermission";
@@ -52,7 +52,6 @@ export default function StormPatrolScreen() {
   const [slips, setSlips] = useState(false);
   const [slipDescription, setSlipDescription] = useState("");
   const [elapsedMinutes, setElapsedMinutes] = useState(0);
-  const [photoSourcePurpose, setPhotoSourcePurpose] = useState<StormPhotoPurpose | null>(null);
   const [jobMapType, setJobMapType] = useState<"map" | "aerial">("map");
   const patrol = ((current.data as unknown as { data?: Patrol } | undefined)?.data ?? cached) as Patrol | null;
 
@@ -95,9 +94,7 @@ export default function StormPatrolScreen() {
       else setPhotos(p => [...p, { source: result.assets[0], purpose }]);
     }
   };
-  const choosePhoto = (purpose: StormPhotoPurpose) => {
-    setPhotoSourcePurpose(purpose);
-  };
+  const choosePhoto = (purpose: StormPhotoPurpose) => { void take(purpose); };
   const location = async () => {
     const permission = await Location.requestForegroundPermissionsAsync();
     if (permission.status !== "granted") throw new Error("Location permission is required to submit a Storm Patrol record.");
@@ -317,45 +314,9 @@ export default function StormPatrolScreen() {
         <Button title="Send urgent alert" icon="alert-circle" onPress={urgent} color="#7f1d1d"/>
       </View>}
     </View>
-  </ScrollView>
-    {photoSourcePurpose && <Modal transparent animationType="fade" visible onRequestClose={() => setPhotoSourcePurpose(null)}>
-      <Pressable style={styles.photoSourceOverlay} onPress={() => setPhotoSourcePurpose(null)}>
-        <Pressable style={[styles.photoSourceCard, { backgroundColor: colors.card, borderColor: colors.border }]} onPress={(event) => event.stopPropagation()}>
-          <Text style={[styles.photoSourceTitle, { color: colors.foreground }]}>
-            {photoSourcePurpose === "before" ? "Add before photo" : photoSourcePurpose === "after" ? "Add after photo" : "Add observation photo"}
-          </Text>
-          <Text style={[styles.help, { color: colors.mutedForeground }]}>Choose where to get the photo.</Text>
-          <TouchableOpacity
-            style={[styles.photoSourceAction, { backgroundColor: colors.primary }]}
-            onPress={() => {
-              const purpose = photoSourcePurpose;
-              setPhotoSourcePurpose(null);
-              void take(purpose);
-            }}
-          >
-            <Feather name="camera" size={18} color="#fff"/>
-            <Text style={styles.photoSourceActionText}>Take photo</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.photoSourceAction, { backgroundColor: colors.secondary }]}
-            onPress={() => {
-              const purpose = photoSourcePurpose;
-              setPhotoSourcePurpose(null);
-              void library(purpose);
-            }}
-          >
-            <Feather name="image" size={18} color={colors.primary}/>
-            <Text style={[styles.photoSourceActionText, { color: colors.foreground }]}>Choose from library</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.photoSourceCancel} onPress={() => setPhotoSourcePurpose(null)}>
-            <Text style={[styles.photoSourceCancelText, { color: colors.mutedForeground }]}>Cancel</Text>
-          </TouchableOpacity>
-        </Pressable>
-      </Pressable>
-    </Modal>}
-  </>;
+  </ScrollView></>;
 
-  return <><View style={[styles.root, { backgroundColor: colors.background }]}><ScrollView contentContainerStyle={[styles.list, { paddingTop: insets.top + 16, paddingBottom: insets.bottom + 100 }]} refreshControl={<RefreshControl refreshing={current.isRefetching} onRefresh={() => { void sync().catch(refreshQueue); }} tintColor={colors.primary}/>}>
+  return <View style={[styles.root, { backgroundColor: colors.background }]}><ScrollView contentContainerStyle={[styles.list, { paddingTop: insets.top + 16, paddingBottom: insets.bottom + 100 }]} refreshControl={<RefreshControl refreshing={current.isRefetching} onRefresh={() => { void sync().catch(refreshQueue); }} tintColor={colors.primary}/>}>
     <Text style={[styles.title, { color: colors.foreground }]}>Storm Patrol</Text>
     {patrol ? <><Text style={[styles.sub, { color: colors.mutedForeground }]}>{patrol.event.name} · {patrol.summary.checkedCount}/{patrol.summary.selectedCount} checked</Text>
       {queue.length > 0 && <View style={[styles.sync, { backgroundColor: colors.secondary }]}>
@@ -382,23 +343,7 @@ export default function StormPatrolScreen() {
       {observationLocation && <Text style={[styles.locationStatus, { color: colors.success }]}>Location captured: {observationLocation.locationLat.toFixed(5)}, {observationLocation.locationLng.toFixed(5)}</Text>}
       <Button title="Send observation" icon="send" onPress={submitObservation} color={colors.success}/>
     </View>}
-  </ScrollView></View>
-    {photoSourcePurpose && !selected && <Modal transparent animationType="fade" visible onRequestClose={() => setPhotoSourcePurpose(null)}>
-      <Pressable style={styles.photoSourceOverlay} onPress={() => setPhotoSourcePurpose(null)}>
-        <Pressable style={[styles.photoSourceCard, { backgroundColor: colors.card, borderColor: colors.border }]} onPress={(event) => event.stopPropagation()}>
-          <Text style={[styles.photoSourceTitle, { color: colors.foreground }]}>Add observation photo</Text>
-          <Text style={[styles.help, { color: colors.mutedForeground }]}>Choose where to get the photo.</Text>
-          <TouchableOpacity style={[styles.photoSourceAction, { backgroundColor: colors.primary }]} onPress={() => { setPhotoSourcePurpose(null); void take("observation"); }}>
-            <Feather name="camera" size={18} color="#fff"/><Text style={styles.photoSourceActionText}>Take photo</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={[styles.photoSourceAction, { backgroundColor: colors.secondary }]} onPress={() => { setPhotoSourcePurpose(null); void library("observation"); }}>
-            <Feather name="image" size={18} color={colors.primary}/><Text style={[styles.photoSourceActionText, { color: colors.foreground }]}>Choose from library</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.photoSourceCancel} onPress={() => setPhotoSourcePurpose(null)}><Text style={[styles.photoSourceCancelText, { color: colors.mutedForeground }]}>Cancel</Text></TouchableOpacity>
-        </Pressable>
-      </Pressable>
-    </Modal>}
-  </>;
+  </ScrollView></View>;
 }
 function Button({ title, icon, onPress, color }: { title: string; icon: any; onPress: () => void; color: string }) { return <TouchableOpacity onPress={onPress} style={[styles.button, { backgroundColor: color }]}><Feather name={icon} size={16} color="#fff"/><Text style={styles.buttonText}>{title}</Text></TouchableOpacity>; }
 function BooleanQuestion({ title, value, onChange, color }: { title: string; value: boolean; onChange: (value: boolean) => void; color: string }) { return <View style={styles.question}><Text style={styles.questionText}>{title}</Text><Button title="Yes" icon={value ? "check-circle" : "circle"} onPress={() => onChange(true)} color={value ? color : "#64748b"}/><Button title="No" icon={!value ? "check-circle" : "circle"} onPress={() => onChange(false)} color={!value ? color : "#64748b"}/></View>; }
