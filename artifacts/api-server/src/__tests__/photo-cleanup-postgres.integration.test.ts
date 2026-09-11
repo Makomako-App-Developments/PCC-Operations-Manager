@@ -4,7 +4,9 @@ import { drizzle } from "drizzle-orm/node-postgres";
 import { pool } from "@workspace/db";
 import {
   PHOTO_CLEANUP_BASE_DELAY_MS,
+  PHOTO_CLEANUP_BATCH_SIZE,
   PHOTO_CLEANUP_LEASE_MS,
+  PHOTO_CLEANUP_MAX_BATCHES_PER_RUN,
   PHOTO_CLEANUP_MAX_ATTEMPTS,
   PHOTO_CLEANUP_MAX_DELAY_MS,
   type PhotoObjectCleanupWorkerDependencies,
@@ -838,6 +840,72 @@ describe.skipIf(!runWithPostgres)("photo cleanup queue: real PostgreSQL workers"
       }
       firstWorkerClient?.release();
       restartedWorkerClient?.release();
+    }
+  });
+
+  it("yields after a bounded run when due cleanup work is replenished", async () => {
+    const now = new Date();
+    const initialCount = PHOTO_CLEANUP_BATCH_SIZE * PHOTO_CLEANUP_MAX_BATCHES_PER_RUN;
+    const objectNames = Array.from(
+      { length: initialCount },
+      (_, index) => `uploads/photo-cleanup-replenished-${index}-${randomUUID()}.jpg`,
+    );
+    const replenishedObjectName = `uploads/photo-cleanup-replenished-during-run-${randomUUID()}.jpg`;
+    let firstWorkerClient: Awaited<ReturnType<typeof pool.connect>> | undefined;
+    const rowIds: string[] = [];
+    const providerAttempts = new Map<string, number>();
+    let replenished = false;
+
+    try {
+      firstWorkerClient = await pool.connect();
+      const firstWorkerDb = drizzle(firstWorkerClient);
+      for (const objectName of objectNames) {
+        rowIds.push(await insertQueueRow(objectName, {
+          nextAttemptAt: new Date(now.getTime() - 1),
+        }));
+      }
+
+      const deleteObject = async (_bucketId: string, objectName: string) => {
+        providerAttempts.set(objectName, (providerAttempts.get(objectName) ?? 0) + 1);
+        if (!replenished) {
+          replenished = true;
+          rowIds.push(await insertQueueRow(replenishedObjectName, {
+            nextAttemptAt: new Date(now.getTime() - 1),
+          }));
+        }
+      };
+
+      await processPhotoObjectCleanupQueue(now, worker(firstWorkerDb, deleteObject));
+
+      expect(providerAttempts.size).toBe(initialCount);
+      for (const objectName of objectNames) {
+        expect(providerAttempts.get(objectName)).toBe(1);
+      }
+      const afterYield = await firstWorkerClient.query<{ object_name: string }>(
+        "SELECT object_name FROM photo_object_cleanup_queue WHERE id = $1",
+        [rowIds.at(-1)],
+      );
+      expect(afterYield.rows).toEqual([{ object_name: replenishedObjectName }]);
+
+      await processPhotoObjectCleanupQueue(now, worker(firstWorkerDb, deleteObject));
+
+      expect(providerAttempts.size).toBe(initialCount + 1);
+      for (const objectName of [...objectNames, replenishedObjectName]) {
+        expect(providerAttempts.get(objectName)).toBe(1);
+      }
+      const remaining = await firstWorkerClient.query(
+        "SELECT id FROM photo_object_cleanup_queue WHERE id = ANY($1::uuid[])",
+        [rowIds],
+      );
+      expect(remaining.rows).toHaveLength(0);
+    } finally {
+      if (rowIds.length > 0) {
+        await (firstWorkerClient ?? workerClientA).query(
+          "DELETE FROM photo_object_cleanup_queue WHERE id = ANY($1::uuid[])",
+          [rowIds],
+        );
+      }
+      firstWorkerClient?.release();
     }
   });
 

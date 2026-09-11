@@ -17,7 +17,8 @@ export const PHOTO_CLEANUP_MAX_ATTEMPTS = 8;
 export const PHOTO_CLEANUP_BASE_DELAY_MS = 30_000;
 export const PHOTO_CLEANUP_MAX_DELAY_MS = 60 * 60 * 1000;
 export const PHOTO_CLEANUP_INTERVAL_MS = 30_000;
-const PHOTO_CLEANUP_BATCH_SIZE = 20;
+export const PHOTO_CLEANUP_BATCH_SIZE = 20;
+export const PHOTO_CLEANUP_MAX_BATCHES_PER_RUN = 10;
 export const PHOTO_CLEANUP_LEASE_MS = 5 * 60 * 1000;
 export const PHOTO_CLEANUP_PROVIDER_TIMEOUT_MS = PHOTO_CLEANUP_LEASE_MS - 30_000;
 
@@ -556,7 +557,7 @@ export async function processPhotoObjectCleanupQueue(
     Math.max(1, dependencies.providerTimeoutMs ?? PHOTO_CLEANUP_PROVIDER_TIMEOUT_MS),
     PHOTO_CLEANUP_PROVIDER_TIMEOUT_MS,
   );
-  while (true) {
+  for (let batchNumber = 0; batchNumber < PHOTO_CLEANUP_MAX_BATCHES_PER_RUN; batchNumber++) {
     const claimToken = randomUUID();
     let entries: PhotoObjectCleanupEntry[];
 
