@@ -4,6 +4,8 @@ import { drizzle } from "drizzle-orm/node-postgres";
 import { pool } from "@workspace/db";
 import {
   PHOTO_CLEANUP_BASE_DELAY_MS,
+  PHOTO_CLEANUP_MAX_ATTEMPTS,
+  PHOTO_CLEANUP_MAX_DELAY_MS,
   type PhotoObjectCleanupWorkerDependencies,
   processPhotoObjectCleanupQueue,
 } from "../lib/photo-object-cleanup";
@@ -59,8 +61,11 @@ describe.skipIf(!runWithPostgres)("photo cleanup queue: real PostgreSQL workers"
     await workerClientA.query("DELETE FROM photo_object_cleanup_queue WHERE id = $1", [id]);
   }
 
-  function worker(database: typeof workerDbA, deleteObject: () => Promise<void>): PhotoObjectCleanupWorkerDependencies {
-    return { database, deleteObject: async () => deleteObject() };
+  function worker(
+    database: typeof workerDbA,
+    deleteObject: NonNullable<PhotoObjectCleanupWorkerDependencies["deleteObject"]>,
+  ): PhotoObjectCleanupWorkerDependencies {
+    return { database, deleteObject };
   }
 
   it("allows only one independent worker to delete a due object", async () => {
@@ -191,6 +196,119 @@ describe.skipIf(!runWithPostgres)("photo cleanup queue: real PostgreSQL workers"
         [rowId],
       );
       expect(remaining.rows).toHaveLength(0);
+    } finally {
+      await removeQueueRow(rowId);
+    }
+  });
+
+  it("keeps retry attempts and bounded backoff across repeated independent worker failures", async () => {
+    const initialAttemptAt = new Date();
+    const objectName = `uploads/photo-cleanup-repeated-failure-${randomUUID()}.jpg`;
+    const rowId = await insertQueueRow(objectName, {
+      nextAttemptAt: new Date(initialAttemptAt.getTime() - 1),
+    });
+    const providerCalls: Array<{
+      worker: "A" | "B";
+      bucketId: string;
+      objectName: string;
+    }> = [];
+    let attemptAt = initialAttemptAt;
+
+    try {
+      for (let attempt = 1; attempt <= PHOTO_CLEANUP_MAX_ATTEMPTS; attempt++) {
+        const workerName = attempt % 2 === 1 ? "A" : "B";
+        const database = workerName === "A" ? workerDbA : workerDbB;
+        const currentAttemptAt = attemptAt;
+
+        await processPhotoObjectCleanupQueue(
+          currentAttemptAt,
+          worker(database, async (bucketId, attemptedObjectName) => {
+            providerCalls.push({
+              worker: workerName,
+              bucketId,
+              objectName: attemptedObjectName,
+            });
+            throw new Error("provider unavailable");
+          }),
+        );
+
+        const failed = await workerClientA.query<{
+          attempts: number;
+          last_attempt_at: Date | null;
+          next_attempt_at: Date;
+          claim_token: string | null;
+          lease_until: Date | null;
+          permanently_failed_at: Date | null;
+        }>(
+          `SELECT attempts, last_attempt_at, next_attempt_at,
+                  claim_token, lease_until, permanently_failed_at
+             FROM photo_object_cleanup_queue
+            WHERE id = $1`,
+          [rowId],
+        );
+        expect(failed.rows).toHaveLength(1);
+        expect(failed.rows[0]).toMatchObject({
+          attempts: attempt,
+          last_attempt_at: currentAttemptAt,
+          claim_token: null,
+          lease_until: null,
+          permanently_failed_at: attempt === PHOTO_CLEANUP_MAX_ATTEMPTS
+            ? currentAttemptAt
+            : null,
+        });
+
+        if (attempt < PHOTO_CLEANUP_MAX_ATTEMPTS) {
+          const expectedDelay = Math.min(
+            PHOTO_CLEANUP_MAX_DELAY_MS,
+            PHOTO_CLEANUP_BASE_DELAY_MS * (2 ** (attempt - 1)),
+          );
+          const retryAt = new Date(currentAttemptAt.getTime() + expectedDelay);
+          expect(failed.rows[0]!.next_attempt_at).toEqual(retryAt);
+          attemptAt = new Date(retryAt.getTime() + 1);
+        }
+      }
+
+      expect(providerCalls).toHaveLength(PHOTO_CLEANUP_MAX_ATTEMPTS);
+      expect(providerCalls.map(call => call.worker)).toEqual(
+        Array.from(
+          { length: PHOTO_CLEANUP_MAX_ATTEMPTS },
+          (_, index) => (index % 2 === 0 ? "A" : "B"),
+        ),
+      );
+      expect(new Set(providerCalls.map(call => call.bucketId))).toEqual(
+        new Set(["integration-test-bucket"]),
+      );
+      expect(new Set(providerCalls.map(call => call.objectName))).toEqual(
+        new Set([objectName]),
+      );
+
+      let postFailureProviderCalls = 0;
+      await processPhotoObjectCleanupQueue(
+        new Date(attemptAt.getTime() + 1),
+        worker(workerDbA, async () => {
+          postFailureProviderCalls++;
+        }),
+      );
+      expect(postFailureProviderCalls).toBe(0);
+
+      const permanentlyFailed = await workerClientA.query<{
+        attempts: number;
+        claim_token: string | null;
+        lease_until: Date | null;
+        permanently_failed_at: Date | null;
+      }>(
+        `SELECT attempts, claim_token, lease_until, permanently_failed_at
+           FROM photo_object_cleanup_queue
+          WHERE id = $1`,
+        [rowId],
+      );
+      expect(permanentlyFailed.rows).toHaveLength(1);
+      expect(permanentlyFailed.rows[0]).toMatchObject({
+        attempts: PHOTO_CLEANUP_MAX_ATTEMPTS,
+        claim_token: null,
+        lease_until: null,
+        permanently_failed_at: attemptAt,
+      });
     } finally {
       await removeQueueRow(rowId);
     }
