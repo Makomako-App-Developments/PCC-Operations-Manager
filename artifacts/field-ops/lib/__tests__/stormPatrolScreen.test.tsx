@@ -139,7 +139,7 @@ vi.mock("react-native-safe-area-context", () => ({
 vi.mock("@/components/PinMap", () => ({ PinMap: () => null }));
 vi.mock("@/hooks/usePhotoLibraryPermission", () => ({
   requestCameraPermission: vi.fn(),
-  requestMediaLibraryPermission: vi.fn(),
+  requestMediaLibraryPermission: vi.fn().mockResolvedValue(true),
 }));
 vi.mock("@/hooks/useColors", () => ({
   useColors: () => ({
@@ -168,6 +168,7 @@ vi.mock("@/lib/stormPatrolQueue", () => ({
 }));
 
 import StormPatrolScreen from "../../app/(tabs)/storm-patrol";
+import * as ImagePicker from "expo-image-picker";
 
 let root: Root | undefined;
 
@@ -180,6 +181,7 @@ async function settle() {
 
 beforeEach(() => {
   document.body.innerHTML = '<div id="root"></div>';
+  mocks.currentResult.data.data.jobs = [];
   mocks.alert.mockReset();
   mocks.refetch.mockReset().mockResolvedValue(undefined);
   mocks.currentResult.refetch = mocks.refetch;
@@ -227,5 +229,50 @@ describe("Storm Patrol blocked photo recovery", () => {
     expect(document.body.textContent).toContain("1 item waiting to sync");
     expect(document.body.textContent).not.toContain("queued photo");
     expect(document.querySelector('[data-testid="storm-sync-clear-photos"]')).toBeNull();
+  });
+});
+
+describe("Storm Patrol photo picker", () => {
+  it("opens the native picker directly without showing an app source menu", async () => {
+    mocks.currentResult.data.data.jobs = [{
+      id: "job-one",
+      eventId: "event-one",
+      assetId: "asset-one",
+      assetName: "Thompson Grove Reserve",
+      phase: "mid",
+      status: "in_progress",
+      routeOrder: 3,
+      lat: null,
+      lng: null,
+    }] as any;
+    vi.mocked(ImagePicker.launchImageLibraryAsync).mockResolvedValue({
+      canceled: true,
+      assets: null,
+    });
+
+    await act(async () => {
+      root = createRoot(document.getElementById("root")!);
+      root.render(<StormPatrolScreen />);
+    });
+    await settle();
+
+    const job = Array.from(document.querySelectorAll("button")).find(
+      button => button.textContent?.includes("Thompson Grove Reserve"),
+    );
+    expect(job).toBeDefined();
+    act(() => job!.click());
+
+    const beforePhoto = Array.from(document.querySelectorAll("button")).find(
+      button => button.textContent === "Before photo",
+    );
+    expect(beforePhoto).toBeDefined();
+
+    await act(async () => {
+      beforePhoto!.click();
+    });
+
+    expect(ImagePicker.launchImageLibraryAsync).toHaveBeenCalledOnce();
+    expect(document.body.textContent).not.toContain("Choose where to get the photo");
+    expect(document.body.textContent).not.toContain("Add before photo");
   });
 });
