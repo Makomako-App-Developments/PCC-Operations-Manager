@@ -108,6 +108,9 @@ jobs:
           psql "$DATABASE_URL" -v ON_ERROR_STOP=1 \
             -f lib/db/drizzle/0019_photo_object_cleanup_leases.sql
 
+      - name: Check photo cleanup schema matches runtime
+        run: pnpm --filter @workspace/db run check:photo-cleanup-schema
+
       - name: Run PostgreSQL photo cleanup integration test
         run: >-
           pnpm --filter @workspace/api-server exec vitest run

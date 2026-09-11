@@ -10,6 +10,7 @@
   "scripts": {
     "push": "drizzle-kit push --config ./drizzle.config.ts",
     "push-force": "drizzle-kit push --force --config ./drizzle.config.ts",
+    "check:photo-cleanup-schema": "tsx ./src/check-photo-cleanup-schema.ts",
     "seed": "node --import tsx/esm ./src/seed.ts",
     "test": "vitest run",
     "test:watch": "vitest"
