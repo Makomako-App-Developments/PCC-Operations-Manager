@@ -597,4 +597,104 @@ describe.skipIf(!runWithPostgres)("photo cleanup queue: real PostgreSQL workers"
     }
   });
 
+  it("drains multiple cleanup claim batches after a worker restart", async () => {
+    const now = new Date();
+    const objectNames = Array.from(
+      { length: 21 },
+      (_, index) => `uploads/photo-cleanup-restart-multi-batch-${index}-${randomUUID()}.jpg`,
+    );
+    let firstWorkerClient: Awaited<ReturnType<typeof pool.connect>> | undefined;
+    let restartedWorkerClient: Awaited<ReturnType<typeof pool.connect>> | undefined;
+    const rowIds: string[] = [];
+    const providerAttempts = new Map<string, number>();
+    const providerWorkers = new Map<string, string[]>();
+
+    try {
+      firstWorkerClient = await pool.connect();
+      const firstWorkerDb = drizzle(firstWorkerClient);
+      for (const objectName of objectNames) {
+        const inserted = await firstWorkerClient.query<{ id: string }>(
+          `INSERT INTO photo_object_cleanup_queue
+            (bucket_id, object_name, route, attempts, next_attempt_at, claim_token, lease_until)
+           VALUES ($1, $2, $3, $4, $5, $6, $7)
+           RETURNING id`,
+          [
+            "integration-test-bucket",
+            objectName,
+            "scheduled",
+            0,
+            new Date(now.getTime() - 1),
+            null,
+            null,
+          ],
+        );
+        rowIds.push(inserted.rows[0]!.id);
+      }
+
+      await processPhotoObjectCleanupQueue(
+        now,
+        worker(firstWorkerDb, async (_, objectName) => {
+          providerAttempts.set(objectName, (providerAttempts.get(objectName) ?? 0) + 1);
+          providerWorkers.set(objectName, [
+            ...(providerWorkers.get(objectName) ?? []),
+            "A",
+          ]);
+          throw new Error("provider unavailable");
+        }),
+      );
+
+      expect(providerAttempts.size).toBe(objectNames.length);
+      expect([...providerAttempts.values()]).toEqual(
+        expect.arrayContaining(objectNames.map(() => 1)),
+      );
+      const failed = await firstWorkerClient.query<{ attempts: number }>(
+        "SELECT attempts FROM photo_object_cleanup_queue WHERE id = ANY($1::uuid[])",
+        [rowIds],
+      );
+      expect(failed.rows).toHaveLength(objectNames.length);
+      expect(failed.rows.every(row => row.attempts === 1)).toBe(true);
+
+      // Model the API process exiting after every failure is durable, but before
+      // the shared retry time has arrived.
+      firstWorkerClient.release();
+      firstWorkerClient = undefined;
+
+      restartedWorkerClient = await pool.connect();
+      const restartedWorkerDb = drizzle(restartedWorkerClient);
+      const retryAt = new Date(now.getTime() + PHOTO_CLEANUP_BASE_DELAY_MS + 1);
+      await processPhotoObjectCleanupQueue(
+        retryAt,
+        worker(restartedWorkerDb, async (_, objectName) => {
+          providerAttempts.set(objectName, (providerAttempts.get(objectName) ?? 0) + 1);
+          providerWorkers.set(objectName, [
+            ...(providerWorkers.get(objectName) ?? []),
+            "B",
+          ]);
+        }),
+      );
+
+      expect([...providerAttempts.values()]).toEqual(
+        expect.arrayContaining(objectNames.map(() => 2)),
+      );
+      expect(
+        [...providerWorkers.values()].every(workers => workers.join(",") === "A,B"),
+      ).toBe(true);
+      const remaining = await restartedWorkerClient.query(
+        "SELECT id FROM photo_object_cleanup_queue WHERE id = ANY($1::uuid[])",
+        [rowIds],
+      );
+      expect(remaining.rows).toHaveLength(0);
+    } finally {
+      const cleanupClient = restartedWorkerClient ?? firstWorkerClient;
+      if (rowIds.length > 0) {
+        await (cleanupClient ?? workerClientA).query(
+          "DELETE FROM photo_object_cleanup_queue WHERE id = ANY($1::uuid[])",
+          [rowIds],
+        );
+      }
+      firstWorkerClient?.release();
+      restartedWorkerClient?.release();
+    }
+  });
+
 });

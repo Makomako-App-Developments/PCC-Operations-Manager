@@ -556,75 +556,79 @@ export async function processPhotoObjectCleanupQueue(
     Math.max(1, dependencies.providerTimeoutMs ?? PHOTO_CLEANUP_PROVIDER_TIMEOUT_MS),
     PHOTO_CLEANUP_PROVIDER_TIMEOUT_MS,
   );
-  const claimToken = randomUUID();
-  let entries: PhotoObjectCleanupEntry[];
+  while (true) {
+    const claimToken = randomUUID();
+    let entries: PhotoObjectCleanupEntry[];
 
-  try {
-    entries = await executeWithCircuitBreaker(() =>
-      claimPhotoObjectCleanupEntries(cleanupDb, now, claimToken),
-    );
-  } catch {
-    console.error("[photo-object-cleanup-worker] queue read failed");
-    return;
-  }
-
-  for (const entry of entries) {
-    const attempt = entry.attempts + 1;
     try {
-      const providerAbort = new AbortController();
-      let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
-      const deletion = Promise.resolve().then(() =>
-        deleteObject(entry.bucketId, entry.objectName, providerAbort.signal),
+      entries = await executeWithCircuitBreaker(() =>
+        claimPhotoObjectCleanupEntries(cleanupDb, now, claimToken),
       );
-      // A custom provider must not be able to keep the worker stuck forever
-      // after the lease deadline. Its rejection is observed even if the
-      // timeout wins the race, preventing an unhandled rejection later.
-      deletion.catch(() => undefined);
+    } catch {
+      console.error("[photo-object-cleanup-worker] queue read failed");
+      return;
+    }
+
+    if (entries.length === 0) return;
+
+    for (const entry of entries) {
+      const attempt = entry.attempts + 1;
       try {
-        await Promise.race([
-          deletion,
-          new Promise<never>((_, reject) => {
-            timeoutHandle = setTimeout(() => {
-              providerAbort.abort();
-              reject(new Error("Photo object provider deletion timed out"));
-            }, providerTimeoutMs);
-          }),
-        ]);
-      } finally {
-        if (timeoutHandle) clearTimeout(timeoutHandle);
-      }
-      await cleanupDb.delete(photoObjectCleanupTable)
-        .where(and(
+        const providerAbort = new AbortController();
+        let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
+        const deletion = Promise.resolve().then(() =>
+          deleteObject(entry.bucketId, entry.objectName, providerAbort.signal),
+        );
+        // A custom provider must not be able to keep the worker stuck forever
+        // after the lease deadline. Its rejection is observed even if the
+        // timeout wins the race, preventing an unhandled rejection later.
+        deletion.catch(() => undefined);
+        try {
+          await Promise.race([
+            deletion,
+            new Promise<never>((_, reject) => {
+              timeoutHandle = setTimeout(() => {
+                providerAbort.abort();
+                reject(new Error("Photo object provider deletion timed out"));
+              }, providerTimeoutMs);
+            }),
+          ]);
+        } finally {
+          if (timeoutHandle) clearTimeout(timeoutHandle);
+        }
+        await cleanupDb.delete(photoObjectCleanupTable)
+          .where(and(
+            eq(photoObjectCleanupTable.id, entry.id),
+            eq(photoObjectCleanupTable.claimToken, claimToken),
+          ));
+        console.info("[photo-object-cleanup-retried]", JSON.stringify({
+          route: entry.route,
+          objectId: objectFingerprint(entry.objectName),
+          attempts: attempt,
+        }));
+      } catch {
+        const permanentlyFailed = attempt >= PHOTO_CLEANUP_MAX_ATTEMPTS;
+        const attemptedAt = new Date(now);
+        await cleanupDb.update(photoObjectCleanupTable).set({
+          attempts: attempt,
+          lastAttemptAt: attemptedAt,
+          updatedAt: attemptedAt,
+          ...(permanentlyFailed
+            ? { permanentlyFailedAt: attemptedAt }
+            : { nextAttemptAt: new Date(now.getTime() + retryDelayMs(attempt)) }),
+          claimToken: null,
+          leaseUntil: null,
+        }).where(and(
           eq(photoObjectCleanupTable.id, entry.id),
           eq(photoObjectCleanupTable.claimToken, claimToken),
         ));
-      console.info("[photo-object-cleanup-retried]", JSON.stringify({
-        route: entry.route,
-        objectId: objectFingerprint(entry.objectName),
-        attempts: attempt,
-      }));
-    } catch {
-      const permanentlyFailed = attempt >= PHOTO_CLEANUP_MAX_ATTEMPTS;
-      const attemptedAt = new Date(now);
-      await cleanupDb.update(photoObjectCleanupTable).set({
-        attempts: attempt,
-        lastAttemptAt: attemptedAt,
-        updatedAt: attemptedAt,
-        ...(permanentlyFailed
-          ? { permanentlyFailedAt: attemptedAt }
-          : { nextAttemptAt: new Date(now.getTime() + retryDelayMs(attempt)) }),
-        claimToken: null,
-        leaseUntil: null,
-      }).where(and(
-        eq(photoObjectCleanupTable.id, entry.id),
-        eq(photoObjectCleanupTable.claimToken, claimToken),
-      ));
-      console.warn("[photo-object-cleanup-retry-failed]", JSON.stringify({
-        route: entry.route,
-        objectId: objectFingerprint(entry.objectName),
-        attempts: attempt,
-        permanentlyFailed,
-      }));
+        console.warn("[photo-object-cleanup-retry-failed]", JSON.stringify({
+          route: entry.route,
+          objectId: objectFingerprint(entry.objectName),
+          attempts: attempt,
+          permanentlyFailed,
+        }));
+      }
     }
   }
 }
