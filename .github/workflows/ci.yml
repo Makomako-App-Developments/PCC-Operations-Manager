@@ -63,13 +63,18 @@ jobs:
         run: pnpm --filter @workspace/api-server run build && pnpm --filter @workspace/web-app run build
 
   photo-cleanup-postgres:
-    name: Photo cleanup · PostgreSQL concurrency
+    name: Photo cleanup · PostgreSQL ${{ matrix.postgres-version }} concurrency
     runs-on: ubuntu-latest
     timeout-minutes: 10
 
+    strategy:
+      fail-fast: true
+      matrix:
+        postgres-version: ["16", "17"]
+
     services:
       postgres:
-        image: postgres:16-alpine
+        image: postgres:${{ matrix.postgres-version }}-alpine
         env:
           POSTGRES_USER: pcc
           POSTGRES_PASSWORD: pcc
@@ -100,6 +105,9 @@ jobs:
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+
+      - name: Report PostgreSQL version
+        run: psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c "SELECT version();"
 
       - name: Apply photo cleanup migrations
         run: |
