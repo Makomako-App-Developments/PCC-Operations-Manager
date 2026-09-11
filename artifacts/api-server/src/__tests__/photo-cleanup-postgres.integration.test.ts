@@ -4,6 +4,7 @@ import { drizzle } from "drizzle-orm/node-postgres";
 import { pool } from "@workspace/db";
 import {
   PHOTO_CLEANUP_BASE_DELAY_MS,
+  PHOTO_CLEANUP_LEASE_MS,
   PHOTO_CLEANUP_MAX_ATTEMPTS,
   PHOTO_CLEANUP_MAX_DELAY_MS,
   type PhotoObjectCleanupWorkerDependencies,
@@ -408,6 +409,149 @@ describe.skipIf(!runWithPostgres)("photo cleanup queue: real PostgreSQL workers"
       const cleanupClient = restartedWorkerClient ?? firstWorkerClient;
       if (rowId) {
         await (cleanupClient ?? workerClientA).query(
+          "DELETE FROM photo_object_cleanup_queue WHERE id = $1",
+          [rowId],
+        );
+      }
+      firstWorkerClient?.release();
+      restartedWorkerClient?.release();
+    }
+  });
+
+  it("fences an in-flight provider delete after a restart reclaims its expired lease", async () => {
+    const now = new Date();
+    const objectName = `uploads/photo-cleanup-in-flight-restart-${randomUUID()}.jpg`;
+    let firstWorkerClient: Awaited<ReturnType<typeof pool.connect>> | undefined;
+    let restartedWorkerClient: Awaited<ReturnType<typeof pool.connect>> | undefined;
+    let firstWorkerPromise: Promise<void> | undefined;
+    let restartedWorkerPromise: Promise<void> | undefined;
+    let releaseFreshProvider: (() => void) | undefined;
+    let rowId: string | undefined;
+    let stalledSignal: AbortSignal | undefined;
+    let resolveStalledProviderStarted!: () => void;
+    let resolveFreshProviderStarted!: () => void;
+    const stalledProviderStarted = new Promise<void>(resolve => {
+      resolveStalledProviderStarted = resolve;
+    });
+    const freshProviderStarted = new Promise<void>(resolve => {
+      resolveFreshProviderStarted = resolve;
+    });
+    const providerAttempts: string[] = [];
+    let successfulProviderDeletes = 0;
+
+    try {
+      firstWorkerClient = await pool.connect();
+      const firstWorkerDb = drizzle(firstWorkerClient);
+      const inserted = await firstWorkerClient.query<{ id: string }>(
+        `INSERT INTO photo_object_cleanup_queue
+          (bucket_id, object_name, route, attempts, next_attempt_at, claim_token, lease_until)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)
+         RETURNING id`,
+        [
+          "integration-test-bucket",
+          objectName,
+          "scheduled",
+          0,
+          new Date(now.getTime() - 1),
+          null,
+          null,
+        ],
+      );
+      rowId = inserted.rows[0]!.id;
+
+      firstWorkerPromise = processPhotoObjectCleanupQueue(now, {
+        database: firstWorkerDb,
+        providerTimeoutMs: 1_000,
+        deleteObject: async (_bucketId, attemptedObjectName, signal) => {
+          providerAttempts.push(`A:${attemptedObjectName}`);
+          stalledSignal = signal;
+          resolveStalledProviderStarted();
+          await new Promise<void>(resolve => {
+            signal.addEventListener("abort", () => resolve(), { once: true });
+          });
+          throw new Error("provider call cancelled after lease recovery");
+        },
+      });
+      await stalledProviderStarted;
+
+      const claimed = await firstWorkerClient.query<{
+        claim_token: string;
+        lease_until: Date;
+      }>(
+        `SELECT claim_token, lease_until
+           FROM photo_object_cleanup_queue
+          WHERE id = $1`,
+        [rowId],
+      );
+      expect(claimed.rows).toHaveLength(1);
+      const firstClaimToken = claimed.rows[0]!.claim_token;
+      expect(firstClaimToken).toBeTruthy();
+      expect(claimed.rows[0]!.lease_until.getTime()).toBeGreaterThan(now.getTime());
+
+      // Shorten the real claimed lease so the test can exercise expiry without
+      // waiting for the production five-minute lease.
+      const expiredLease = new Date(now.getTime() - 1);
+      const expired = await firstWorkerClient.query(
+        `UPDATE photo_object_cleanup_queue
+            SET lease_until = $1
+          WHERE id = $2
+            AND claim_token = $3`,
+        [expiredLease, rowId, firstClaimToken],
+      );
+      expect(expired.rowCount).toBe(1);
+
+      restartedWorkerClient = await pool.connect();
+      const restartedWorkerDb = drizzle(restartedWorkerClient);
+      const reclaimedAt = new Date(now.getTime() + PHOTO_CLEANUP_LEASE_MS + 1);
+      restartedWorkerPromise = processPhotoObjectCleanupQueue(reclaimedAt, {
+        database: restartedWorkerDb,
+        providerTimeoutMs: 1_000,
+        deleteObject: async (_bucketId, attemptedObjectName) => {
+          providerAttempts.push(`B:${attemptedObjectName}`);
+          resolveFreshProviderStarted();
+          await new Promise<void>(resolve => {
+            releaseFreshProvider = resolve;
+          });
+          successfulProviderDeletes++;
+        },
+      });
+      await freshProviderStarted;
+
+      const reclaimed = await restartedWorkerClient.query<{
+        claim_token: string;
+        lease_until: Date;
+      }>(
+        `SELECT claim_token, lease_until
+           FROM photo_object_cleanup_queue
+          WHERE id = $1`,
+        [rowId],
+      );
+      expect(reclaimed.rows).toHaveLength(1);
+      expect(reclaimed.rows[0]!.claim_token).toBeTruthy();
+      expect(reclaimed.rows[0]!.claim_token).not.toBe(firstClaimToken);
+      expect(reclaimed.rows[0]!.lease_until.getTime()).toBeGreaterThan(reclaimedAt.getTime());
+
+      // Worker B owns the fresh claim before Worker A's provider deadline.
+      releaseFreshProvider?.();
+      await restartedWorkerPromise;
+      await firstWorkerPromise;
+
+      expect(stalledSignal?.aborted).toBe(true);
+      expect(providerAttempts).toEqual([`A:${objectName}`, `B:${objectName}`]);
+      expect(successfulProviderDeletes).toBe(1);
+
+      const remaining = await restartedWorkerClient.query(
+        "SELECT id FROM photo_object_cleanup_queue WHERE id = $1",
+        [rowId],
+      );
+      expect(remaining.rows).toHaveLength(0);
+    } finally {
+      releaseFreshProvider?.();
+      await restartedWorkerPromise?.catch(() => undefined);
+      await firstWorkerPromise?.catch(() => undefined);
+      if (rowId) {
+        const cleanupClient = restartedWorkerClient ?? firstWorkerClient ?? workerClientA;
+        await cleanupClient.query(
           "DELETE FROM photo_object_cleanup_queue WHERE id = $1",
           [rowId],
         );
