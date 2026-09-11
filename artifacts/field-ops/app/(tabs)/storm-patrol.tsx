@@ -266,7 +266,7 @@ export default function StormPatrolScreen() {
   if (selected) return <><ScrollView style={[styles.root, { backgroundColor: colors.background }]} contentContainerStyle={[styles.detail, { paddingTop: insets.top + 16, paddingBottom: insets.bottom + 100 }]}>
     <TouchableOpacity onPress={() => setSelected(null)}><Text style={{ color: colors.primary, fontFamily: "Inter_600SemiBold" }}>‹ Patrol list</Text></TouchableOpacity>
     <Text style={[styles.title, { color: colors.foreground }]}>{selected.assetName ?? "Stormwater site"}</Text>
-    <Text style={[styles.sub, { color: colors.mutedForeground }]}>{label(selected.phase)} · Route {selected.routeOrder ?? "—"}</Text>
+    <Text style={[styles.sub, { color: colors.mutedForeground }]}>{label(selected.phase)}</Text>
     {hasSelectedCoordinates ? <View style={styles.assetMapSection}>
       <View style={[styles.mapToggle, { backgroundColor: colors.card, borderColor: colors.border }]}>
         <TouchableOpacity onPress={() => setJobMapType("map")} style={[styles.mapToggleButton, jobMapType === "map" && { backgroundColor: colors.primary }]}>
