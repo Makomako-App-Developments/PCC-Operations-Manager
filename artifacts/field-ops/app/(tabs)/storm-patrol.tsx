@@ -22,7 +22,10 @@ const WORK_TYPES = [
 ] as const;
 type Job = StormJob & { startedAt?: string | null };
 type Patrol = NonNullable<StormCurrentResponse["data"]>;
+const PHASES = ["pre", "mid", "post"] as const;
+const COMPLETED_STATUSES = new Set(["completed", "too_dangerous"]);
 const label = (phase: string) => ({ pre: "Before storm", mid: "During storm", post: "After storm" }[phase] ?? phase);
+const isCompletedJob = (job: Pick<Job, "status">) => COMPLETED_STATUSES.has(job.status);
 
 export default function StormPatrolScreen() {
   const colors = useColors();
@@ -53,6 +56,7 @@ export default function StormPatrolScreen() {
   const [slipDescription, setSlipDescription] = useState("");
   const [elapsedMinutes, setElapsedMinutes] = useState(0);
   const [jobMapType, setJobMapType] = useState<"map" | "aerial">("map");
+  const [collapsedPhases, setCollapsedPhases] = useState<Set<string>>(() => new Set());
   const patrol = ((current.data as unknown as { data?: Patrol } | undefined)?.data ?? cached) as Patrol | null;
 
   const refreshQueue = useCallback(() => loadStormQueue().then(setQueue).catch(() => {}), []);
@@ -65,12 +69,31 @@ export default function StormPatrolScreen() {
   }, [current.data]);
   useEffect(() => { AsyncStorage.getItem(CACHE_KEY).then(raw => raw && setCached(JSON.parse(raw))).catch(() => {}); }, []);
   useEffect(() => {
-    if (!selected?.startedAt) { setElapsedMinutes(0); return; }
+    if (!selected?.startedAt) { setElapsedMinutes(selected?.actualTimeMins ?? 0); return; }
+    if (isCompletedJob(selected)) { setElapsedMinutes(selected.actualTimeMins ?? 0); return; }
     const update = () => setElapsedMinutes(Math.max(0, Math.floor((Date.now() - new Date(selected.startedAt!).getTime()) / 60_000)));
     update(); const timer = setInterval(update, 15_000); return () => clearInterval(timer);
-  }, [selected?.id, selected?.startedAt]);
+  }, [selected?.id, selected?.startedAt, selected?.status, selected?.actualTimeMins]);
 
-  const grouped = useMemo(() => ["pre", "mid", "post"].map(phase => [phase, (patrol?.jobs ?? []).filter(j => j.phase === phase).sort((a, b) => (a.routeOrder ?? Number.MAX_SAFE_INTEGER) - (b.routeOrder ?? Number.MAX_SAFE_INTEGER))] as const), [patrol]);
+  const grouped = useMemo(() => PHASES.map(phase => [phase, (patrol?.jobs ?? []).filter(j => j.phase === phase).sort((a, b) => (a.routeOrder ?? Number.MAX_SAFE_INTEGER) - (b.routeOrder ?? Number.MAX_SAFE_INTEGER))] as const), [patrol]);
+  const automaticallyCollapsedPhases = useMemo(() => grouped
+    .filter(([phase, jobs]) => {
+      if (!jobs.length || !jobs.every(isCompletedJob)) return false;
+      const phaseIndex = PHASES.indexOf(phase);
+      return grouped.some(([laterPhase, laterJobs]) => PHASES.indexOf(laterPhase) > phaseIndex && laterJobs.length > 0);
+    })
+    .map(([phase]) => phase)
+    .join(","), [grouped]);
+  useEffect(() => {
+    setCollapsedPhases(new Set());
+  }, [patrol?.event.id]);
+  useEffect(() => {
+    if (!automaticallyCollapsedPhases) return;
+    setCollapsedPhases(currentPhases => new Set([
+      ...currentPhases,
+      ...automaticallyCollapsedPhases.split(","),
+    ]));
+  }, [automaticallyCollapsedPhases]);
   const queuedPhotoCount = queue.filter(item => item.kind === "photo").length;
   const photoQueueBlocked = queuedPhotoCount > 0 && queue.some(item => item.kind === "photo" && item.lastError?.includes("Photo is required"));
   const staleCompletionItems = queue.filter(item =>
@@ -157,8 +180,12 @@ export default function StormPatrolScreen() {
       Alert.alert("Urgent issue not sent", "Send or remove the urgent issue photo before completing this patrol check.");
       return;
     }
+    const existingPhotoPurposes = selected.photos?.map(photo => photo.purpose) ?? [];
+    const acceptedPhotoPurposes = selected.status === "completed"
+      ? [...existingPhotoPurposes, "before", "after", ...photos.map(photo => photo.purpose)]
+      : [...existingPhotoPurposes, ...photos.map(photo => photo.purpose)];
     const missing = getStormPatrolCompletionRequirements({
-      photoPurposes: photos.map(p => p.purpose),
+      photoPurposes: acceptedPhotoPurposes,
       workTypes,
       comments,
       tooDangerous: dangerous,
@@ -259,6 +286,29 @@ export default function StormPatrolScreen() {
     const destination = `${selectedLat},${selectedLng}`;
     void Linking.openURL(`https://www.google.com/maps/dir/?api=1&destination=${destination}&travelmode=driving&dir_action=navigate`);
   };
+  const openJob = (job: Job) => {
+    const dangerousFollowUp = (patrol?.followUps ?? []).find(
+      (followUp: any) => followUp?.stormSourceJobId === job.id && followUp?.origin === "storm_patrol",
+    ) as { description?: string } | undefined;
+    setPhotos([]);
+    setWorkTypes((job.workTypes ?? []).filter(type => type !== "site_too_dangerous"));
+    setComments(job.comments ?? "");
+    setDangerous(job.status === "too_dangerous");
+    setDangerReason(job.status === "too_dangerous" ? dangerousFollowUp?.description ?? "" : "");
+    setFlooding(false);
+    setSlips(false);
+    setFloodingDescription("");
+    setSlipDescription("");
+    setSelected(job);
+  };
+  const togglePhase = (phase: string) => {
+    setCollapsedPhases(currentPhases => {
+      const next = new Set(currentPhases);
+      if (next.has(phase)) next.delete(phase);
+      else next.add(phase);
+      return next;
+    });
+  };
 
   if (selected) return <><ScrollView style={[styles.root, { backgroundColor: colors.background }]} contentContainerStyle={[styles.detail, { paddingTop: insets.top + 16, paddingBottom: insets.bottom + 100 }]}>
     <TouchableOpacity onPress={() => setSelected(null)}><Text style={{ color: colors.primary, fontFamily: "Inter_600SemiBold" }}>‹ Patrol list</Text></TouchableOpacity>
@@ -286,7 +336,10 @@ export default function StormPatrolScreen() {
     <View style={[styles.sectionDivider, { backgroundColor: colors.border }]}/>
     <Text style={[styles.heading, { color: colors.foreground }]}>1. Before photo</Text>
     <Button title="Before photo" icon="camera" onPress={() => choosePhoto("before")} color={colors.primary}/>
-    {photos.length > 0 && <ScrollView horizontal contentContainerStyle={styles.photos}>{photos.map((p, i) => <View key={`${p.source.uri}-${i}`}><Image source={{ uri: p.source.uri }} style={styles.photo}/><Text style={[styles.caption, { color: colors.mutedForeground }]}>{p.purpose.replace("_", " ")}</Text></View>)}</ScrollView>}
+    {((selected.photos?.length ?? 0) > 0 || photos.length > 0) && <ScrollView horizontal contentContainerStyle={styles.photos}>
+      {(selected.photos ?? []).map(photo => <View key={photo.id}><Image source={{ uri: photo.blobUrl }} style={styles.photo}/><Text style={[styles.caption, { color: colors.mutedForeground }]}>{photo.purpose.replace("_", " ")}</Text></View>)}
+      {photos.map((p, i) => <View key={`${p.source.uri}-${i}`}><Image source={{ uri: p.source.uri }} style={styles.photo}/><Text style={[styles.caption, { color: colors.mutedForeground }]}>{p.purpose.replace("_", " ")}</Text></View>)}
+    </ScrollView>}
     <Text style={[styles.heading, { color: colors.foreground }]}>2. Work completed</Text>
     <Pressable onPress={() => setDangerous(x => !x)} style={styles.check}><Feather name={dangerous ? "check-square" : "square"} size={20} color={dangerous ? colors.primary : colors.mutedForeground}/><Text style={{ color: colors.foreground }}>Site is too dangerous to complete</Text></Pressable>
     {dangerous && <TextInput value={dangerReason} onChangeText={setDangerReason} multiline placeholder="Why is it unsafe?" placeholderTextColor={colors.mutedForeground} style={[styles.input, styles.note, { color: colors.foreground, borderColor: colors.border }]}/>}
@@ -295,7 +348,7 @@ export default function StormPatrolScreen() {
     <TextInput value={comments} onChangeText={setComments} multiline placeholder={workTypes.includes("visual_check_only") && !dangerous ? "Comments (required for visual check only)" : "Comments (optional)"} placeholderTextColor={colors.mutedForeground} style={[styles.input, styles.note, { color: colors.foreground, borderColor: colors.border }]}/>
     <Text style={[styles.heading, { color: colors.foreground }]}>3. After photo</Text>
     <Button title="After photo" icon="camera" onPress={() => choosePhoto("after")} color={colors.primary}/>
-    <Button title={dangerous ? "Report dangerous site" : "Complete patrol"} icon="check-circle" onPress={complete} color={dangerous ? colors.destructive : colors.success}/>
+    <Button title={isCompletedJob(selected) ? "Save changes" : dangerous ? "Report dangerous site" : "Complete patrol"} icon="check-circle" onPress={complete} color={dangerous ? colors.destructive : colors.success}/>
     <View style={[styles.sectionDivider, { backgroundColor: colors.border }]}/>
     <View style={[styles.urgentPanel, { backgroundColor: colors.destructive }]}>
       <Pressable
@@ -331,7 +384,36 @@ export default function StormPatrolScreen() {
           <Text style={[styles.clearPhotosText, { color: colors.destructive }]}>{discardingStaleItems ? "Removing stale items…" : `Remove ${staleCompletionItems.length} stale sync item${staleCompletionItems.length === 1 ? "" : "s"}`}</Text>
         </TouchableOpacity>}
       </View>}
-      {grouped.map(([phase, jobs]) => jobs.length ? <View key={phase}><Text style={[styles.phase, { color: colors.primary }]}>{label(phase)}</Text>{jobs.map((job, index) => <Pressable key={job.id} onPress={() => job.status === "pending" ? claim.mutate({ id: job.id }, { onSuccess: claimed => { const started = (claimed as Job).startedAt ?? new Date().toISOString(); setSelected({ ...job, ...claimed, startedAt: started }); current.refetch(); }, onError: () => Alert.alert("Unable to claim", "This patrol may have been claimed by another crew member.") }) : setSelected(job)} style={[styles.job, { backgroundColor: colors.card, borderColor: colors.border }]}><View style={[styles.jobSequence, { backgroundColor: colors.primary }]}><Text style={styles.jobSequenceText}>{index + 1}</Text></View><View style={{ flex: 1 }}><Text style={[styles.jobTitle, { color: colors.foreground }]}>{job.assetName ?? "Stormwater site"}</Text><Text style={[styles.sub, { color: colors.mutedForeground }]}>{job.status.replace("_", " ")}</Text></View><Text style={{ color: colors.primary, fontFamily: "Inter_600SemiBold" }}>{job.status === "pending" ? "Start" : "Open"}</Text></Pressable>)}</View> : null)}</>
+      {grouped.map(([phase, jobs]) => {
+        if (!jobs.length) return null;
+        const collapsed = collapsedPhases.has(phase);
+        return <View key={phase}>
+          <Pressable testID={`storm-phase-${phase}`} accessibilityRole="button" accessibilityState={{ expanded: !collapsed }} onPress={() => togglePhase(phase)} style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+            <Text style={[styles.phase, { color: colors.primary }]}>{label(phase)}</Text>
+            <Feather name={collapsed ? "chevron-down" : "chevron-up"} size={18} color={colors.primary}/>
+          </Pressable>
+          {!collapsed && jobs.map((job, index) => {
+            const completed = isCompletedJob(job);
+            return <Pressable
+              key={job.id}
+              testID={`storm-job-${job.id}`}
+              accessibilityRole="button"
+              accessibilityLabel={`${job.assetName ?? "Stormwater site"}, ${job.status.replace("_", " ")}`}
+              onPress={() => job.status === "pending"
+                ? claim.mutate({ id: job.id }, { onSuccess: claimed => { const started = (claimed as Job).startedAt ?? new Date().toISOString(); openJob({ ...job, ...claimed, startedAt: started }); current.refetch(); }, onError: () => Alert.alert("Unable to claim", "This patrol may have been claimed by another crew member.") })
+                : openJob(job)}
+              style={[styles.job, { backgroundColor: colors.card, borderColor: colors.border }]}
+            >
+              <View testID={`storm-job-number-${job.id}`} style={[styles.jobSequence, { backgroundColor: completed ? "#9ca3af" : colors.primary }]}><Text style={styles.jobSequenceText}>{index + 1}</Text></View>
+              <View style={{ flex: 1 }}>
+                <Text testID={`storm-job-title-${job.id}`} style={[styles.jobTitle, { color: completed ? "#9ca3af" : colors.foreground }]}>{job.assetName ?? "Stormwater site"}</Text>
+                <Text style={[styles.sub, { color: completed ? "#9ca3af" : colors.mutedForeground }]}>{job.status.replace("_", " ")}</Text>
+              </View>
+              {!completed && <Text style={{ color: colors.primary, fontFamily: "Inter_600SemiBold" }}>{job.status === "pending" ? "Start" : "Open"}</Text>}
+            </Pressable>;
+          })}
+        </View>;
+      })}</>
       : current.isLoading ? <ActivityIndicator color={colors.primary} style={{ marginTop: 50 }}/> : <Text style={[styles.empty, { color: colors.mutedForeground }]}>There is no active Storm Patrol for your team.</Text>}
     {patrol && <View style={[styles.observation, { borderColor: colors.border }]}>
       <Text style={[styles.heading, { color: colors.foreground }]}>General observation</Text>

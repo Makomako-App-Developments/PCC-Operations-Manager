@@ -2202,7 +2202,23 @@ export const GetCurrentStormPatrolResponse = zod.object({
           departmentDetails: zod.unknown().nullish(),
           teamName: zod.string().nullish(),
           workerName: zod.string().nullish(),
-          workTypes: zod.array(zod.string()).optional(),
+          workTypes: zod.array(zod.string()),
+          photos: zod.array(
+            zod.object({
+              id: zod.string().uuid(),
+              purpose: zod.enum([
+                "before",
+                "after",
+                "urgent_issue",
+                "new_flooding",
+                "new_slip",
+                "observation",
+              ]),
+              blobUrl: zod.string(),
+              caption: zod.string().nullish(),
+              createdAt: zod.date(),
+            }),
+          ),
         }),
       ),
       observations: zod
@@ -2337,7 +2353,23 @@ export const ListStormPatrolJobsResponse = zod.object({
       departmentDetails: zod.unknown().nullish(),
       teamName: zod.string().nullish(),
       workerName: zod.string().nullish(),
-      workTypes: zod.array(zod.string()).optional(),
+      workTypes: zod.array(zod.string()),
+      photos: zod.array(
+        zod.object({
+          id: zod.string().uuid(),
+          purpose: zod.enum([
+            "before",
+            "after",
+            "urgent_issue",
+            "new_flooding",
+            "new_slip",
+            "observation",
+          ]),
+          blobUrl: zod.string(),
+          caption: zod.string().nullish(),
+          createdAt: zod.date(),
+        }),
+      ),
     }),
   ),
 });
@@ -2367,7 +2399,23 @@ export const ClaimStormPatrolJobResponse = zod.object({
   departmentDetails: zod.unknown().nullish(),
   teamName: zod.string().nullish(),
   workerName: zod.string().nullish(),
-  workTypes: zod.array(zod.string()).optional(),
+  workTypes: zod.array(zod.string()),
+  photos: zod.array(
+    zod.object({
+      id: zod.string().uuid(),
+      purpose: zod.enum([
+        "before",
+        "after",
+        "urgent_issue",
+        "new_flooding",
+        "new_slip",
+        "observation",
+      ]),
+      blobUrl: zod.string(),
+      caption: zod.string().nullish(),
+      createdAt: zod.date(),
+    }),
+  ),
 });
 
 export const CompleteStormPatrolJobParams = zod.object({
@@ -2432,7 +2480,23 @@ export const CompleteStormPatrolJobResponse = zod.object({
     departmentDetails: zod.unknown().nullish(),
     teamName: zod.string().nullish(),
     workerName: zod.string().nullish(),
-    workTypes: zod.array(zod.string()).optional(),
+    workTypes: zod.array(zod.string()),
+    photos: zod.array(
+      zod.object({
+        id: zod.string().uuid(),
+        purpose: zod.enum([
+          "before",
+          "after",
+          "urgent_issue",
+          "new_flooding",
+          "new_slip",
+          "observation",
+        ]),
+        blobUrl: zod.string(),
+        caption: zod.string().nullish(),
+        createdAt: zod.date(),
+      }),
+    ),
   }),
   followUp: zod.record(zod.string(), zod.unknown()).nullish(),
   replayed: zod.boolean(),
@@ -2583,7 +2647,23 @@ export const GetStormPatrolReportResponse = zod.object({
       departmentDetails: zod.unknown().nullish(),
       teamName: zod.string().nullish(),
       workerName: zod.string().nullish(),
-      workTypes: zod.array(zod.string()).optional(),
+      workTypes: zod.array(zod.string()),
+      photos: zod.array(
+        zod.object({
+          id: zod.string().uuid(),
+          purpose: zod.enum([
+            "before",
+            "after",
+            "urgent_issue",
+            "new_flooding",
+            "new_slip",
+            "observation",
+          ]),
+          blobUrl: zod.string(),
+          caption: zod.string().nullish(),
+          createdAt: zod.date(),
+        }),
+      ),
     }),
   ),
 });

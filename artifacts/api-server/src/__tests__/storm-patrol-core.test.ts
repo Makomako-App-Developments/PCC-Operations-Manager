@@ -28,6 +28,14 @@ describe("Storm Patrol core invariants", () => {
     expect(source).toContain('idempotencyKey, body.idempotencyKey');
   });
 
+  it("replaces saved completion details without duplicating dangerous-site follow-ups", async () => {
+    const source = await readFile(fileURLToPath(new URL("../routes/storm-patrol.ts", import.meta.url)), "utf8");
+    expect(source).toContain('inArray(stormJobsTable.status, ["in_progress", "completed", "too_dangerous"])');
+    expect(source).toContain("tx.delete(stormCheckResultsTable)");
+    expect(source).toContain("existingFollowUp");
+    expect(source).toContain("tx.update(reactiveJobsTable)");
+  });
+
   it("escapes report CSV fields containing commas, quotes and newlines", () => {
     expect(escapeCsvCell("Plain site")).toBe("Plain site");
     expect(escapeCsvCell('A, "quoted"\nsite')).toBe('"A, ""quoted""\nsite"');

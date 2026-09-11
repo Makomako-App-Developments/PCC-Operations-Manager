@@ -7,6 +7,7 @@
  */
 import type { StormJobPhase } from "./stormJobPhase";
 import type { StormJobStatus } from "./stormJobStatus";
+import type { StormObservationPhoto } from "./stormObservationPhoto";
 
 export interface StormJob {
   id: string;
@@ -29,5 +30,6 @@ export interface StormJob {
   departmentDetails?: unknown | null;
   teamName?: string | null;
   workerName?: string | null;
-  workTypes?: string[];
+  workTypes: string[];
+  photos: StormObservationPhoto[];
 }

@@ -7,6 +7,7 @@ const mocks = vi.hoisted(() => ({
   clearQueuedStormPhotos: vi.fn(),
   flushStormQueue: vi.fn(),
   loadStormQueue: vi.fn(),
+  claimMutate: vi.fn(),
   refetch: vi.fn(),
   currentResult: {
     data: {
@@ -63,7 +64,7 @@ vi.mock("@react-native-async-storage/async-storage", () => ({
 
 vi.mock("@workspace/api-client-react", () => ({
   getGetCurrentStormPatrolQueryKey: () => ["storm-patrol"],
-  useClaimStormPatrolJob: () => ({ mutate: vi.fn() }),
+  useClaimStormPatrolJob: () => ({ mutate: mocks.claimMutate }),
   useGetCurrentStormPatrol: () => mocks.currentResult,
 }));
 
@@ -101,7 +102,7 @@ vi.mock("react-native", async () => {
   const element = (tag: string) =>
     ({
       children,
-      style: _style,
+      style,
       onPress,
       testID,
       refreshControl: _refreshControl,
@@ -112,7 +113,7 @@ vi.mock("react-native", async () => {
       onPress?: () => void;
       testID?: string;
       [key: string]: unknown;
-    }) => React.createElement(tag, { ...props, "data-testid": testID, onClick: onPress }, children);
+    }) => React.createElement(tag, { ...props, "data-testid": testID, "data-style": JSON.stringify(style), onClick: onPress }, children);
 
   return {
     ActivityIndicator: element("span"),
@@ -183,6 +184,7 @@ beforeEach(() => {
   document.body.innerHTML = '<div id="root"></div>';
   mocks.currentResult.data.data.jobs = [];
   mocks.alert.mockReset();
+  mocks.claimMutate.mockReset();
   mocks.refetch.mockReset().mockResolvedValue(undefined);
   mocks.currentResult.refetch = mocks.refetch;
   mocks.loadStormQueue.mockReset().mockResolvedValue(failedQueue);
@@ -274,5 +276,96 @@ describe("Storm Patrol photo picker", () => {
     expect(ImagePicker.launchImageLibraryAsync).toHaveBeenCalledOnce();
     expect(document.body.textContent).not.toContain("Choose where to get the photo");
     expect(document.body.textContent).not.toContain("Add before photo");
+  });
+});
+
+describe("Storm Patrol completed jobs", () => {
+  it("greys a completed row, removes Open, and opens saved details for editing", async () => {
+    mocks.currentResult.data.data.jobs = [{
+      id: "completed-job",
+      eventId: "event-one",
+      workPackageId: "package-one",
+      assetId: "asset-one",
+      teamId: "team-one",
+      assetName: "Rangituhi Crescent",
+      phase: "pre",
+      status: "completed",
+      routeOrder: 1,
+      actualTimeMins: 12,
+      comments: "Cleared leaves from the inlet",
+      workTypes: ["debris_clearance"],
+      photos: [
+        { id: "before-photo", purpose: "before", blobUrl: "/before.jpg", createdAt: "2026-09-12T00:00:00.000Z" },
+        { id: "after-photo", purpose: "after", blobUrl: "/after.jpg", createdAt: "2026-09-12T00:10:00.000Z" },
+      ],
+      lat: null,
+      lng: null,
+    }] as any;
+
+    await act(async () => {
+      root = createRoot(document.getElementById("root")!);
+      root.render(<StormPatrolScreen />);
+    });
+    await settle();
+
+    const row = document.querySelector('[data-testid="storm-job-completed-job"]') as HTMLButtonElement;
+    const number = document.querySelector('[data-testid="storm-job-number-completed-job"]');
+    const title = document.querySelector('[data-testid="storm-job-title-completed-job"]');
+    expect(row).not.toBeNull();
+    expect(row.textContent).not.toContain("Open");
+    expect(number?.getAttribute("data-style")).toContain("#9ca3af");
+    expect(title?.getAttribute("data-style")).toContain("#9ca3af");
+
+    act(() => row.click());
+
+    expect(document.body.textContent).toContain("Save changes");
+    const comments = document.querySelector('input[value="Cleared leaves from the inlet"]');
+    expect(comments).not.toBeNull();
+    expect(document.body.textContent).toContain("Debris clearance");
+  });
+
+  it("automatically collapses a completed earlier phase and lets the user reopen it", async () => {
+    mocks.currentResult.data.data.jobs = [
+      {
+        id: "pre-completed",
+        eventId: "event-one",
+        workPackageId: "package-pre",
+        assetId: "asset-pre",
+        teamId: "team-one",
+        assetName: "Completed before-storm site",
+        phase: "pre",
+        status: "completed",
+        routeOrder: 1,
+        workTypes: [],
+        photos: [],
+      },
+      {
+        id: "mid-pending",
+        eventId: "event-one",
+        workPackageId: "package-mid",
+        assetId: "asset-mid",
+        teamId: "team-one",
+        assetName: "Current during-storm site",
+        phase: "mid",
+        status: "pending",
+        routeOrder: 1,
+        workTypes: [],
+        photos: [],
+      },
+    ] as any;
+
+    await act(async () => {
+      root = createRoot(document.getElementById("root")!);
+      root.render(<StormPatrolScreen />);
+    });
+    await settle();
+
+    expect(document.body.textContent).not.toContain("Completed before-storm site");
+    expect(document.body.textContent).toContain("Current during-storm site");
+
+    const preHeader = document.querySelector('[data-testid="storm-phase-pre"]') as HTMLButtonElement;
+    act(() => preHeader.click());
+
+    expect(document.body.textContent).toContain("Completed before-storm site");
   });
 });

@@ -7,7 +7,7 @@ import {
   stormCheckResultsTable, stormObservationsTable, stormAlertsTable, stormPatrolSettingsTable,
   stormPhotosTable, reactiveJobsTable, assetsTable, teamsTable, usersTable,
 } from "@workspace/db";
-import { and, asc, desc, eq, inArray, isNull, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull, or, sql } from "drizzle-orm";
 import { z } from "zod";
 import { requireAuth, requireRole } from "../middlewares/auth";
 import { validateBody, validateQuery } from "../middlewares/validate";
@@ -241,10 +241,11 @@ async function activeEvent() {
   const [event] = await executeWithCircuitBreaker(() => db.select().from(stormEventsTable).where(eq(stormEventsTable.status, "active")).limit(1));
   return event;
 }
-async function ownJob(id: string, userId: string, teamId: string | null, role: string) {
+async function ownJob(id: string, userId: string, teamId: string | null, role: string, allowCompletedTeamEdit = false) {
   const [job] = await executeWithCircuitBreaker(() => db.select().from(stormJobsTable).where(eq(stormJobsTable.id, id)).limit(1));
   if (!job) return { error: 404, job: null };
-  if (!privileged(role) && (job.teamId !== teamId || (job.assignedUserId && job.assignedUserId !== userId))) return { error: 403, job: null };
+  const completedTeamEdit = allowCompletedTeamEdit && ["completed", "too_dangerous"].includes(job.status);
+  if (!privileged(role) && (job.teamId !== teamId || (!completedTeamEdit && job.assignedUserId && job.assignedUserId !== userId))) return { error: 403, job: null };
   return { job, error: null };
 }
 function cents(minutes: number, rate: number) { return calculateStormChargeCents(minutes, rate); }
@@ -262,11 +263,26 @@ async function enrichedStormJobs(where: any) {
     .leftJoin(teamsTable, eq(stormJobsTable.teamId, teamsTable.id))
     .leftJoin(usersTable, eq(stormJobsTable.assignedUserId, usersTable.id))
     .where(where).orderBy(asc(stormJobsTable.routeOrder), asc(stormJobsTable.createdAt)));
-  if (!jobs.length) return jobs.map(job => ({ ...job, workTypes: [] as string[] }));
-  const results = await executeWithCircuitBreaker(() => db.select().from(stormCheckResultsTable).where(inArray(stormCheckResultsTable.stormJobId, jobs.map(job => job.id))));
+  if (!jobs.length) return jobs.map(job => ({ ...job, workTypes: [] as string[], photos: [] }));
+  const [results, photos] = await Promise.all([
+    executeWithCircuitBreaker(() => db.select().from(stormCheckResultsTable).where(inArray(stormCheckResultsTable.stormJobId, jobs.map(job => job.id)))),
+    executeWithCircuitBreaker(() => db.select({
+      id: stormPhotosTable.id,
+      stormJobId: stormPhotosTable.stormJobId,
+      purpose: stormPhotosTable.purpose,
+      blobUrl: stormPhotosTable.blobUrl,
+      caption: stormPhotosTable.caption,
+      createdAt: stormPhotosTable.createdAt,
+    }).from(stormPhotosTable).where(inArray(stormPhotosTable.stormJobId, jobs.map(job => job.id)))),
+  ]);
   const types = new Map<string, string[]>();
   for (const result of results) types.set(result.stormJobId, [...(types.get(result.stormJobId) ?? []), result.workType]);
-  return jobs.map(job => ({ ...job, workTypes: types.get(job.id) ?? [] }));
+  const photosByJob = new Map<string, typeof photos>();
+  for (const photo of photos) {
+    if (!photo.stormJobId) continue;
+    photosByJob.set(photo.stormJobId, [...(photosByJob.get(photo.stormJobId) ?? []), photo]);
+  }
+  return jobs.map(job => ({ ...job, workTypes: types.get(job.id) ?? [], photos: photosByJob.get(job.id) ?? [] }));
 }
 
 router.post("/storm-patrol/assets/import/preview", requireAuth, requireRole("manager"), workbookUpload.single("workbook"), async (req, res) => {
@@ -482,28 +498,80 @@ router.post("/storm-patrol/jobs/:id/claim", requireAuth, async (req, res) => {
   const id = String(req.params.id); const mine = await ownJob(id, req.auth!.userId, req.auth!.teamId, req.auth!.role); if (mine.error) { res.status(mine.error).json({ error: mine.error === 404 ? "Storm job not found" : "Forbidden" }); return; }
   const [job] = await executeWithCircuitBreaker(() => db.update(stormJobsTable).set({ assignedUserId: req.auth!.userId, status: "in_progress", startedAt: new Date(), updatedAt: new Date() }).where(and(eq(stormJobsTable.id, id), eq(stormJobsTable.status, "pending"), isNull(stormJobsTable.assignedUserId))).returning());
   if (!job) { res.status(409).json({ error: "This job has already been claimed or started." }); return; }
-  await auditLog({ tableName: "storm_jobs", recordId: id, action: "UPDATE", changedById: req.auth!.userId, newData: job as any }); res.json(job);
+  await auditLog({ tableName: "storm_jobs", recordId: id, action: "UPDATE", changedById: req.auth!.userId, newData: job as any });
+  const [enriched] = await enrichedStormJobs(eq(stormJobsTable.id, id));
+  res.json(enriched);
 });
 
 const completion = z.object({ outcome: z.enum(["completed", "too_dangerous"]), actualTimeMins: z.number().int().min(0), comments: z.string().max(10000).optional(), workTypes: z.array(workTypes).default([]), idempotencyKey: z.string().min(1).max(200), dangerousReason: z.string().min(1).optional(), locationLat: z.number().optional(), locationLng: z.number().optional() }).superRefine((v, c) => {
   if (v.outcome === "too_dangerous" && !v.dangerousReason) c.addIssue({ code: "custom", message: "A dangerous reason is required.", path: ["dangerousReason"] });
   if (v.outcome === "completed" && requiresStormVisualCheckComments(v.workTypes, v.comments)) c.addIssue({ code: "custom", message: "Comments are required when Visual check only is selected.", path: ["comments"] });
+  if (v.outcome === "completed" && v.workTypes.filter(type => type !== "site_too_dangerous").length === 0) c.addIssue({ code: "custom", message: "Select at least one completed work type.", path: ["workTypes"] });
 });
 router.post("/storm-patrol/jobs/:id/complete", requireAuth, validateBody(completion), async (req, res) => {
-  const id = String(req.params.id); const body = req.body as z.infer<typeof completion>; const mine = await ownJob(id, req.auth!.userId, req.auth!.teamId, req.auth!.role);
+  const id = String(req.params.id); const body = req.body as z.infer<typeof completion>; const mine = await ownJob(id, req.auth!.userId, req.auth!.teamId, req.auth!.role, true);
   if (mine.error) { res.status(mine.error).json({ error: mine.error === 404 ? "Storm job not found" : "Forbidden" }); return; }
   const result = await executeWithCircuitBreaker(() => db.transaction(async tx => {
-    const prior = await tx.select().from(stormJobsTable).where(eq(stormJobsTable.idempotencyKey, body.idempotencyKey)).limit(1); if (prior[0]) return { job: prior[0], replayed: true };
-    const [job] = await tx.update(stormJobsTable).set({ status: body.outcome, actualTimeMins: body.actualTimeMins, comments: body.comments ?? null, completedAt: new Date(), syncedAt: new Date(), idempotencyKey: body.idempotencyKey, updatedAt: new Date() }).where(and(eq(stormJobsTable.id, id), eq(stormJobsTable.assignedUserId, req.auth!.userId), eq(stormJobsTable.status, "in_progress"))).returning();
+    const prior = await tx.select().from(stormJobsTable).where(and(eq(stormJobsTable.id, id), eq(stormJobsTable.idempotencyKey, body.idempotencyKey))).limit(1); if (prior[0]) return { job: prior[0], replayed: true };
+    const normalizedWorkTypes = body.outcome === "too_dangerous"
+      ? ["site_too_dangerous"]
+      : body.workTypes.filter(type => type !== "site_too_dangerous");
+    const editAccess = privileged(req.auth!.role)
+      ? undefined
+      : and(
+          eq(stormJobsTable.teamId, req.auth!.teamId ?? ""),
+          or(
+            eq(stormJobsTable.assignedUserId, req.auth!.userId),
+            inArray(stormJobsTable.status, ["completed", "too_dangerous"]),
+          ),
+        );
+    const [job] = await tx.update(stormJobsTable).set({
+      status: body.outcome,
+      actualTimeMins: body.actualTimeMins,
+      comments: body.comments ?? null,
+      completedAt: mine.job!.completedAt ?? new Date(),
+      syncedAt: new Date(),
+      idempotencyKey: body.idempotencyKey,
+      updatedAt: new Date(),
+    }).where(and(
+      eq(stormJobsTable.id, id),
+      inArray(stormJobsTable.status, ["in_progress", "completed", "too_dangerous"]),
+      editAccess,
+    )).returning();
     if (!job) throw new Error("NOT_CLAIMED");
-    if (body.workTypes.length) await tx.insert(stormCheckResultsTable).values([...new Set(body.workTypes)].map(workType => ({ stormJobId: job.id, workType })));
+    await tx.delete(stormCheckResultsTable).where(eq(stormCheckResultsTable.stormJobId, job.id));
+    if (normalizedWorkTypes.length) await tx.insert(stormCheckResultsTable).values([...new Set(normalizedWorkTypes)].map(workType => ({ stormJobId: job.id, workType }))).returning();
     let followUp = null;
-    if (body.outcome === "too_dangerous") [followUp] = await tx.insert(reactiveJobsTable).values({ assetId: job.assetId, raisedById: req.auth!.userId, issueType: "Storm Patrol site too dangerous", description: body.dangerousReason!, priority: "urgent", origin: "storm_patrol", stormEventId: job.eventId, stormSourceJobId: job.id, locationLat: body.locationLat ?? null, locationLng: body.locationLng ?? null, idempotencyKey: `storm-danger:${body.idempotencyKey}` }).returning();
+    if (body.outcome === "too_dangerous") {
+      const [existingFollowUp] = await tx.select().from(reactiveJobsTable).where(and(
+        eq(reactiveJobsTable.origin, "storm_patrol"),
+        eq(reactiveJobsTable.stormSourceJobId, job.id),
+        inArray(reactiveJobsTable.status, ["raised", "assigned", "in_progress", "cancelled"]),
+      )).limit(1);
+      if (existingFollowUp) {
+        [followUp] = await tx.update(reactiveJobsTable).set({
+          description: body.dangerousReason!,
+          status: "raised",
+          locationLat: body.locationLat ?? existingFollowUp.locationLat,
+          locationLng: body.locationLng ?? existingFollowUp.locationLng,
+          updatedAt: new Date(),
+        }).where(eq(reactiveJobsTable.id, existingFollowUp.id)).returning();
+      } else {
+        [followUp] = await tx.insert(reactiveJobsTable).values({ assetId: job.assetId, raisedById: req.auth!.userId, issueType: "Storm Patrol site too dangerous", description: body.dangerousReason!, priority: "urgent", origin: "storm_patrol", stormEventId: job.eventId, stormSourceJobId: job.id, locationLat: body.locationLat ?? null, locationLng: body.locationLng ?? null, idempotencyKey: `storm-danger:${body.idempotencyKey}` }).returning();
+      }
+    } else {
+      [followUp] = await tx.update(reactiveJobsTable).set({ status: "cancelled", updatedAt: new Date() }).where(and(
+        eq(reactiveJobsTable.origin, "storm_patrol"),
+        eq(reactiveJobsTable.stormSourceJobId, job.id),
+        inArray(reactiveJobsTable.status, ["raised", "assigned", "in_progress"]),
+      )).returning();
+    }
     return { job, followUp, replayed: false };
   })).catch((error: any) => { if (error?.message === "NOT_CLAIMED") return null; throw error; });
-  if (!result) { res.status(409).json({ error: "Job must be claimed and in progress before completion." }); return; }
+  if (!result) { res.status(409).json({ error: "Job must be assigned to you before it can be completed or edited." }); return; }
   if (!result.replayed) await auditLog({ tableName: "storm_jobs", recordId: result.job.id, action: "UPDATE", changedById: req.auth!.userId, newData: result.job as any });
-  res.json(result);
+  const [enriched] = await enrichedStormJobs(eq(stormJobsTable.id, result.job.id));
+  res.json({ ...result, job: enriched });
 });
 
 router.post("/storm-patrol/observations", requireAuth, validateBody(z.object({ eventId: z.string().uuid(), assetId: z.string().uuid().optional(), sourceJobId: z.string().uuid().optional(), description: z.string().min(1), notes: z.string().optional(), locationLat: z.number(), locationLng: z.number(), idempotencyKey: z.string().min(1).max(200) })), async (req, res) => {
@@ -584,7 +652,7 @@ router.post("/storm-patrol/jobs/:id/photos", requireAuth, stormPhotoUpload, asyn
     console.warn("[storm-photo-upload-missing]", JSON.stringify(safeUploadContext(req)));
     res.status(400).json({ error: "Photo is required." }); return;
   }
-  const mine = await ownJob(String(req.params.id), req.auth!.userId, req.auth!.teamId, req.auth!.role); if (mine.error) { res.status(mine.error).json({ error: "Forbidden" }); return; }
+  const mine = await ownJob(String(req.params.id), req.auth!.userId, req.auth!.teamId, req.auth!.role, true); if (mine.error) { res.status(mine.error).json({ error: "Forbidden" }); return; }
   const purpose = z.enum(["before", "after", "urgent_issue", "new_flooding", "new_slip", "observation"]).safeParse(req.body.purpose); if (!purpose.success) { res.status(400).json({ error: "Valid photo purpose is required." }); return; }
   const key = typeof req.body.idempotencyKey === "string" ? req.body.idempotencyKey : randomUUID();
   try {

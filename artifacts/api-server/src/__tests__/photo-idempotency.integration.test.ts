@@ -37,6 +37,11 @@ function matches(row: any, condition: any): boolean {
     return row[column!] === condition.right;
   }
   if (condition.op === "and") return condition.conditions.every((item: any) => matches(row, item));
+  if (condition.op === "or") return condition.conditions.some((item: any) => matches(row, item));
+  if (condition.op === "inArray") {
+    const column = String(condition.left).split(".").at(-1);
+    return condition.values.includes(row[column!]);
+  }
   return true;
 }
 function chain(table?: any) {
@@ -57,10 +62,13 @@ function insertChain(table: any) {
     values: vi.fn((value: any) => ({
       returning: vi.fn(async () => {
         if (state.failNextInsertFor.delete(table.name)) throw new Error("database insert failed");
-        const row = { ...value, id: value.id ?? `photo-${state.nextId++}` };
-        state.rows.set(table.name, [...rowsFor(table), row]);
+        const inserted = (Array.isArray(value) ? value : [value]).map(item => ({
+          ...item,
+          id: item.id ?? `photo-${state.nextId++}`,
+        }));
+        state.rows.set(table.name, [...rowsFor(table), ...inserted]);
         if (state.ambiguousInsertFailureFor.delete(table.name)) throw new Error("insert outcome unknown");
-        return [row];
+        return inserted;
       }),
       onConflictDoUpdate: vi.fn(() => ({ returning: vi.fn(async () => [rowFor(table, value)]) })),
     })),
@@ -106,6 +114,25 @@ function tx() {
     }),
     select: vi.fn(() => chain()),
     insert: vi.fn((table: any) => insertChain(table)),
+    delete: vi.fn((table: any) => ({
+      where: vi.fn(async (condition: any) => {
+        state.rows.set(table.name, rowsFor(table).filter(row => !matches(row, condition)));
+      }),
+    })),
+    update: vi.fn((table: any) => ({
+      set: vi.fn((values: any) => ({
+        where: vi.fn((condition: any) => {
+          const updated = rowsFor(table)
+            .filter(row => matches(row, condition))
+            .map(row => ({ ...row, ...values }));
+          state.rows.set(table.name, rowsFor(table).map(row => {
+            const replacement = updated.find(candidate => candidate.id === row.id);
+            return replacement ?? row;
+          }));
+          return { returning: vi.fn(async () => updated) };
+        }),
+      })),
+    })),
   };
 }
 
@@ -172,7 +199,9 @@ vi.mock("@workspace/db", async importOriginal => {
 });
 vi.mock("drizzle-orm", () => ({
   and: vi.fn((...conditions: any[]) => ({ op: "and", conditions })),
-  or: vi.fn(), asc: vi.fn(), desc: vi.fn(), inArray: vi.fn(),
+  or: vi.fn((...conditions: any[]) => ({ op: "or", conditions })),
+  asc: vi.fn(), desc: vi.fn(),
+  inArray: vi.fn((left: any, values: any[]) => ({ op: "inArray", left, values })),
   isNull: vi.fn(), lte: vi.fn((left: any, right: any) => ({ op: "lte", left, right })),
   eq: vi.fn((left: any, right: any) => ({ op: "eq", left, right })),
   sql: Object.assign((parts: TemplateStringsArray, ...values: any[]) => ({
@@ -631,6 +660,75 @@ describe("photo routes: real multipart idempotency", () => {
     // but the old worker has already timed out and cannot finalize it.
     releaseStalledProvider();
     expect(rowsFor(tables.photoObjectCleanupTable)).toHaveLength(0);
+  });
+});
+
+describe("Storm Patrol completed job edits", () => {
+  it("replaces saved details, retains photos, cancels an obsolete danger follow-up, and replays safely", async () => {
+    const completedAt = new Date("2026-09-12T01:00:00.000Z");
+    state.rows.set("stormJobsTable", [{
+      id: ids.stormJob,
+      eventId: "00000000-0000-0000-0000-000000000020",
+      workPackageId: "00000000-0000-0000-0000-000000000021",
+      phase: "pre",
+      assetId: "00000000-0000-0000-0000-000000000022",
+      teamId: "00000000-0000-0000-0000-000000000023",
+      assignedUserId: "00000000-0000-0000-0000-000000000099",
+      status: "too_dangerous",
+      actualTimeMins: 8,
+      comments: "Original note",
+      completedAt,
+      idempotencyKey: "original-completion",
+    }]);
+    state.rows.set("stormCheckResultsTable", [{
+      id: "old-result",
+      stormJobId: ids.stormJob,
+      workType: "site_too_dangerous",
+    }]);
+    state.rows.set("stormPhotosTable", [{
+      id: "existing-photo",
+      stormJobId: ids.stormJob,
+      purpose: "before",
+      blobUrl: "/api/photos/existing",
+      caption: null,
+      createdAt: completedAt,
+    }]);
+    state.rows.set("reactiveJobsTable", [{
+      id: "danger-follow-up",
+      origin: "storm_patrol",
+      stormSourceJobId: ids.stormJob,
+      status: "raised",
+      description: "Original danger",
+    }]);
+
+    const payload = {
+      outcome: "completed",
+      actualTimeMins: 12,
+      comments: "Added the missing clearance detail",
+      workTypes: ["debris_clearance"],
+      idempotencyKey: "edited-completion",
+    };
+    const first = await request(app()).post(`/api/storm-patrol/jobs/${ids.stormJob}/complete`).send(payload);
+    const replay = await request(app()).post(`/api/storm-patrol/jobs/${ids.stormJob}/complete`).send(payload);
+
+    expect(first.status).toBe(200);
+    expect(replay.status).toBe(200);
+    expect(rowsFor(tables.stormJobsTable)[0]).toMatchObject({
+      status: "completed",
+      actualTimeMins: 12,
+      comments: "Added the missing clearance detail",
+      completedAt,
+      idempotencyKey: "edited-completion",
+    });
+    expect(rowsFor(tables.stormCheckResultsTable)).toEqual([
+      expect.objectContaining({ stormJobId: ids.stormJob, workType: "debris_clearance" }),
+    ]);
+    expect(rowsFor(tables.reactiveJobsTable)[0]).toMatchObject({ status: "cancelled" });
+    expect(first.body.job.workTypes).toEqual(["debris_clearance"]);
+    expect(first.body.job.photos).toEqual([
+      expect.objectContaining({ id: "existing-photo", purpose: "before" }),
+    ]);
+    expect(replay.body.replayed).toBe(true);
   });
 });
 

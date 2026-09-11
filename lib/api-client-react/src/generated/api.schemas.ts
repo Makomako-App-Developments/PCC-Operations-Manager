@@ -64,6 +64,26 @@ export const StormJobStatus = {
   too_dangerous: "too_dangerous",
 } as const;
 
+export type StormObservationPhotoPurpose =
+  (typeof StormObservationPhotoPurpose)[keyof typeof StormObservationPhotoPurpose];
+
+export const StormObservationPhotoPurpose = {
+  before: "before",
+  after: "after",
+  urgent_issue: "urgent_issue",
+  new_flooding: "new_flooding",
+  new_slip: "new_slip",
+  observation: "observation",
+} as const;
+
+export interface StormObservationPhoto {
+  id: string;
+  purpose: StormObservationPhotoPurpose;
+  blobUrl: string;
+  caption?: string | null;
+  createdAt: string;
+}
+
 export interface StormJob {
   id: string;
   eventId: string;
@@ -85,27 +105,8 @@ export interface StormJob {
   departmentDetails?: unknown | null;
   teamName?: string | null;
   workerName?: string | null;
-  workTypes?: string[];
-}
-
-export type StormObservationPhotoPurpose =
-  (typeof StormObservationPhotoPurpose)[keyof typeof StormObservationPhotoPurpose];
-
-export const StormObservationPhotoPurpose = {
-  before: "before",
-  after: "after",
-  urgent_issue: "urgent_issue",
-  new_flooding: "new_flooding",
-  new_slip: "new_slip",
-  observation: "observation",
-} as const;
-
-export interface StormObservationPhoto {
-  id: string;
-  purpose: StormObservationPhotoPurpose;
-  blobUrl: string;
-  caption?: string | null;
-  createdAt: string;
+  workTypes: string[];
+  photos: StormObservationPhoto[];
 }
 
 export interface StormObservation {

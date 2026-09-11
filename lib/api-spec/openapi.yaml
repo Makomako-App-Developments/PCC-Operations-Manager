@@ -1679,7 +1679,7 @@ components:
         closedAt: { type: string, format: date-time, nullable: true }
     StormJob:
       type: object
-      required: [id, eventId, workPackageId, phase, assetId, teamId, status]
+      required: [id, eventId, workPackageId, phase, assetId, teamId, status, workTypes, photos]
       properties:
         id: { type: string, format: uuid }
         eventId: { type: string, format: uuid }
@@ -1706,6 +1706,9 @@ components:
         teamName: { type: string, nullable: true }
         workerName: { type: string, nullable: true }
         workTypes: { type: array, items: { type: string } }
+        photos:
+          type: array
+          items: { $ref: "#/components/schemas/StormObservationPhoto" }
     StormObservationPhoto:
       type: object
       required: [id, purpose, blobUrl, createdAt]
