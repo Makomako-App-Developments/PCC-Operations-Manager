@@ -417,4 +417,184 @@ describe.skipIf(!runWithPostgres)("photo cleanup queue: real PostgreSQL workers"
     }
   });
 
+  it("recovers multiple staggered provider retries after a worker restart", async () => {
+    const now = new Date();
+    const objectNames = [
+      `uploads/photo-cleanup-restart-batch-first-${randomUUID()}.jpg`,
+      `uploads/photo-cleanup-restart-batch-second-${randomUUID()}.jpg`,
+    ];
+    let firstWorkerClient: Awaited<ReturnType<typeof pool.connect>> | undefined;
+    let restartedWorkerClient: Awaited<ReturnType<typeof pool.connect>> | undefined;
+    const rowIds: string[] = [];
+    const providerCalls: Array<{
+      worker: "A" | "B";
+      bucketId: string;
+      objectName: string;
+    }> = [];
+
+    try {
+      firstWorkerClient = await pool.connect();
+      const firstWorkerDb = drizzle(firstWorkerClient);
+      for (const [index, objectName] of objectNames.entries()) {
+        const inserted = await firstWorkerClient.query<{ id: string }>(
+          `INSERT INTO photo_object_cleanup_queue
+            (bucket_id, object_name, route, attempts, next_attempt_at, claim_token, lease_until)
+           VALUES ($1, $2, $3, $4, $5, $6, $7)
+           RETURNING id`,
+          [
+            "integration-test-bucket",
+            objectName,
+            "scheduled",
+            index,
+            new Date(now.getTime() - 1),
+            null,
+            null,
+          ],
+        );
+        rowIds.push(inserted.rows[0]!.id);
+      }
+
+      await processPhotoObjectCleanupQueue(
+        now,
+        worker(firstWorkerDb, async (bucketId, objectName) => {
+          providerCalls.push({ worker: "A", bucketId, objectName });
+          throw new Error("provider unavailable");
+        }),
+      );
+
+      expect(providerCalls).toHaveLength(2);
+      expect(providerCalls.every(call => call.worker === "A")).toBe(true);
+      expect(new Set(providerCalls.map(call => call.bucketId))).toEqual(
+        new Set(["integration-test-bucket"]),
+      );
+      expect(new Set(providerCalls.map(call => call.objectName))).toEqual(
+        new Set(objectNames),
+      );
+
+      const firstRetryAt = new Date(now.getTime() + PHOTO_CLEANUP_BASE_DELAY_MS);
+      const secondRetryAt = new Date(
+        now.getTime() + PHOTO_CLEANUP_BASE_DELAY_MS * 2,
+      );
+      const failed = await firstWorkerClient.query<{
+        object_name: string;
+        attempts: number;
+        last_attempt_at: Date | null;
+        next_attempt_at: Date;
+        claim_token: string | null;
+        lease_until: Date | null;
+      }>(
+        `SELECT object_name, attempts, last_attempt_at, next_attempt_at,
+                claim_token, lease_until
+           FROM photo_object_cleanup_queue
+          WHERE id = $1 OR id = $2
+          ORDER BY object_name`,
+        rowIds,
+      );
+      expect(failed.rows).toHaveLength(2);
+      expect(failed.rows).toEqual([
+        {
+          object_name: objectNames[0],
+          attempts: 1,
+          last_attempt_at: now,
+          next_attempt_at: firstRetryAt,
+          claim_token: null,
+          lease_until: null,
+        },
+        {
+          object_name: objectNames[1],
+          attempts: 2,
+          last_attempt_at: now,
+          next_attempt_at: secondRetryAt,
+          claim_token: null,
+          lease_until: null,
+        },
+      ]);
+
+      // Model the API process exiting after all provider failures are durable,
+      // but before either persisted retry time has arrived.
+      firstWorkerClient.release();
+      firstWorkerClient = undefined;
+
+      restartedWorkerClient = await pool.connect();
+      const restartedWorkerDb = drizzle(restartedWorkerClient);
+      await processPhotoObjectCleanupQueue(
+        now,
+        worker(restartedWorkerDb, async (bucketId, objectName) => {
+          providerCalls.push({ worker: "B", bucketId, objectName });
+        }),
+      );
+      expect(providerCalls).toHaveLength(2);
+
+      await processPhotoObjectCleanupQueue(
+        new Date(firstRetryAt.getTime() + 1),
+        worker(restartedWorkerDb, async (bucketId, objectName) => {
+          providerCalls.push({ worker: "B", bucketId, objectName });
+        }),
+      );
+      expect(providerCalls).toHaveLength(3);
+      expect(providerCalls[2]).toMatchObject({
+        worker: "B",
+        bucketId: "integration-test-bucket",
+        objectName: objectNames[0],
+      });
+
+      const remainingAfterFirstRetry = await restartedWorkerClient.query<{
+        object_name: string;
+        attempts: number;
+        next_attempt_at: Date;
+        claim_token: string | null;
+        lease_until: Date | null;
+      }>(
+        `SELECT object_name, attempts, next_attempt_at, claim_token, lease_until
+           FROM photo_object_cleanup_queue
+          WHERE id = $1 OR id = $2`,
+        rowIds,
+      );
+      expect(remainingAfterFirstRetry.rows).toEqual([
+        {
+          object_name: objectNames[1],
+          attempts: 2,
+          next_attempt_at: secondRetryAt,
+          claim_token: null,
+          lease_until: null,
+        },
+      ]);
+
+      await processPhotoObjectCleanupQueue(
+        new Date(secondRetryAt.getTime() + 1),
+        worker(restartedWorkerDb, async (bucketId, objectName) => {
+          providerCalls.push({ worker: "B", bucketId, objectName });
+        }),
+      );
+      expect(providerCalls).toHaveLength(4);
+      expect(providerCalls[3]).toMatchObject({
+        worker: "B",
+        bucketId: "integration-test-bucket",
+        objectName: objectNames[1],
+      });
+      expect(providerCalls.map(call => `${call.worker}:${call.objectName}`).sort()).toEqual([
+        `A:${objectNames[0]}`,
+        `A:${objectNames[1]}`,
+        `B:${objectNames[0]}`,
+        `B:${objectNames[1]}`,
+      ].sort());
+
+      const remaining = await restartedWorkerClient.query(
+        "SELECT id FROM photo_object_cleanup_queue WHERE id = $1 OR id = $2",
+        rowIds,
+      );
+      expect(remaining.rows).toHaveLength(0);
+    } finally {
+      const cleanupClient = restartedWorkerClient ?? firstWorkerClient;
+      if (rowIds.length > 0) {
+        await (cleanupClient ?? workerClientA).query(
+          "DELETE FROM photo_object_cleanup_queue WHERE id = $1 OR id = $2",
+          rowIds,
+        );
+      }
+      firstWorkerClient?.release();
+      restartedWorkerClient?.release();
+    }
+  });
+
 });
