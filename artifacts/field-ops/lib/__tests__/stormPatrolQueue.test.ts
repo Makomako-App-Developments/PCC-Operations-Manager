@@ -143,6 +143,14 @@ describe("Storm Patrol offline queue", () => {
       data: { code: "SOME_RETRYABLE_CONFLICT", error: "Job must be assigned to you." },
     })).toBe(false);
     expect(isPermanentStormCompletionFailure(new Error("HTTP 409: Job must be assigned to you."))).toBe(false);
+    expect(isPermanentStormCompletionFailure({
+      status: 409,
+      data: { code: "STORM_OBSERVATION_STATE_CONFLICT", error: "Any observation wording." },
+    })).toBe(true);
+    expect(isPermanentStormCompletionFailure({
+      status: 403,
+      data: { code: "STORM_ALERT_OWNERSHIP_CONFLICT", error: "Any alert wording." },
+    })).toBe(true);
   });
 
   it("removes a permanently rejected completion and its dependent photos", async () => {
@@ -186,6 +194,50 @@ describe("Storm Patrol offline queue", () => {
     expect(uploadAttachment).not.toHaveBeenCalled();
     expect(removeManagedAttachment).toHaveBeenCalledWith(
       expect.objectContaining({ uploadId: "dependent-photo" }),
+    );
+  });
+
+  it.each([
+    ["observation", 409, "STORM_OBSERVATION_STATE_CONFLICT"],
+    ["alert", 403, "STORM_ALERT_OWNERSHIP_CONFLICT"],
+  ] as const)("removes a permanently rejected %s and its dependent photos", async (kind, status, code) => {
+    const parent: StormQueueItem = {
+      ...item,
+      id: `rejected-${kind}`,
+      kind,
+      idempotencyKey: `${kind}-one`,
+      payload: kind === "observation"
+        ? { data: { idempotencyKey: `${kind}-one` } }
+        : { eventId: "event", idempotencyKey: `${kind}-one` },
+    };
+    const photo: StormQueueItem = {
+      ...item,
+      id: `${kind}-photo`,
+      kind: "photo",
+      idempotencyKey: `${kind}-photo`,
+      dependsOn: parent.id,
+      payload: {
+        purpose: kind === "observation" ? "observation" : "urgent_issue",
+        attachment: {
+          uri: `file:///${kind}.jpg`,
+          uploadId: `${kind}-photo`,
+          fileName: `${kind}.jpg`,
+          mimeType: "image/jpeg",
+          size: 100,
+          managed: true,
+        },
+      },
+    };
+    await saveStormQueue([parent, photo]);
+    customFetch.mockRejectedValueOnce({
+      status,
+      data: { code, error: "Human-readable wording is not used for classification." },
+    });
+
+    expect(await flushStormQueue()).toEqual([]);
+    expect(uploadAttachment).not.toHaveBeenCalled();
+    expect(removeManagedAttachment).toHaveBeenCalledWith(
+      expect.objectContaining({ uploadId: `${kind}-photo` }),
     );
   });
 

@@ -62,6 +62,10 @@ const workbookUpload = multer({
 const STORM_PHOTO_IDEMPOTENCY_CONFLICT = "STORM_PHOTO_IDEMPOTENCY_CONFLICT";
 const STORM_JOB_OWNERSHIP_CONFLICT = "STORM_JOB_OWNERSHIP_CONFLICT";
 const STORM_JOB_STATE_CONFLICT = "STORM_JOB_STATE_CONFLICT";
+const STORM_OBSERVATION_OWNERSHIP_CONFLICT = "STORM_OBSERVATION_OWNERSHIP_CONFLICT";
+const STORM_OBSERVATION_STATE_CONFLICT = "STORM_OBSERVATION_STATE_CONFLICT";
+const STORM_ALERT_OWNERSHIP_CONFLICT = "STORM_ALERT_OWNERSHIP_CONFLICT";
+const STORM_ALERT_STATE_CONFLICT = "STORM_ALERT_STATE_CONFLICT";
 
 function isSameStormPhotoReplay(
   existing: typeof stormPhotosTable.$inferSelect,
@@ -249,6 +253,21 @@ async function ownJob(id: string, userId: string, teamId: string | null, role: s
   const completedTeamEdit = allowCompletedTeamEdit && ["completed", "too_dangerous"].includes(job.status);
   if (!privileged(role) && (job.teamId !== teamId || (!completedTeamEdit && job.assignedUserId && job.assignedUserId !== userId))) return { error: 403, job: null };
   return { job, error: null };
+}
+async function stormLinkedJobConflict(
+  eventId: string,
+  jobId: string | undefined,
+  userId: string,
+  teamId: string | null,
+  role: string,
+) {
+  const event = await activeEvent();
+  if (!event || event.id !== eventId) return "state" as const;
+  if (!jobId) return null;
+  const mine = await ownJob(jobId, userId, teamId, role, true);
+  if (mine.error === 403) return "ownership" as const;
+  if (mine.error === 404 || mine.job?.eventId !== eventId) return "state" as const;
+  return null;
 }
 function cents(minutes: number, rate: number) { return calculateStormChargeCents(minutes, rate); }
 async function enrichedStormJobs(where: any) {
@@ -591,6 +610,16 @@ router.post("/storm-patrol/jobs/:id/complete", requireAuth, validateBody(complet
 router.post("/storm-patrol/observations", requireAuth, validateBody(z.object({ eventId: z.string().uuid(), assetId: z.string().uuid().optional(), sourceJobId: z.string().uuid().optional(), description: z.string().min(1), notes: z.string().optional(), locationLat: z.number(), locationLng: z.number(), idempotencyKey: z.string().min(1).max(200) })), async (req, res) => {
   const b = req.body as any;
   try {
+    const [existing] = await executeWithCircuitBreaker(() => db.select().from(stormObservationsTable).where(eq(stormObservationsTable.idempotencyKey, b.idempotencyKey)).limit(1));
+    if (existing) { res.json({ observation: existing, replayed: true }); return; }
+    const conflict = await stormLinkedJobConflict(b.eventId, b.sourceJobId, req.auth!.userId, req.auth!.teamId, req.auth!.role);
+    if (conflict) {
+      res.status(conflict === "ownership" ? 403 : 409).json({
+        error: conflict === "ownership" ? "You no longer own the linked Storm Patrol job." : "The observation no longer belongs to an active Storm Patrol event and job.",
+        code: conflict === "ownership" ? STORM_OBSERVATION_OWNERSHIP_CONFLICT : STORM_OBSERVATION_STATE_CONFLICT,
+      });
+      return;
+    }
     const result = await executeWithCircuitBreaker(() => db.transaction(async tx => {
       const existing = await tx.select().from(stormObservationsTable).where(eq(stormObservationsTable.idempotencyKey, b.idempotencyKey)).limit(1); if (existing[0]) return { observation: existing[0], replayed: true };
       const [reactive] = await tx.insert(reactiveJobsTable).values({ assetId: b.assetId ?? null, raisedById: req.auth!.userId, issueType: "Storm Patrol observation", description: b.description, notes: b.notes ?? null, locationLat: b.locationLat, locationLng: b.locationLng, origin: "storm_patrol", stormEventId: b.eventId, stormSourceJobId: b.sourceJobId ?? null, idempotencyKey: `storm-observation:${b.idempotencyKey}` }).returning();
@@ -634,6 +663,14 @@ router.post("/storm-patrol/observations/photos", requireAuth, stormPhotoUpload, 
 router.post("/storm-patrol/alerts", requireAuth, validateBody(z.object({ eventId: z.string().uuid(), stormJobId: z.string().uuid().optional(), message: z.string().min(1), photoUrl: z.string().optional(), idempotencyKey: z.string().min(1).max(200) })), async (req, res) => {
   const b = req.body as any; const [existing] = await executeWithCircuitBreaker(() => db.select().from(stormAlertsTable).where(eq(stormAlertsTable.idempotencyKey, b.idempotencyKey)).limit(1));
   if (existing) { res.json(existing); return; }
+  const conflict = await stormLinkedJobConflict(b.eventId, b.stormJobId, req.auth!.userId, req.auth!.teamId, req.auth!.role);
+  if (conflict) {
+    res.status(conflict === "ownership" ? 403 : 409).json({
+      error: conflict === "ownership" ? "You no longer own the linked Storm Patrol job." : "The alert no longer belongs to an active Storm Patrol event and job.",
+      code: conflict === "ownership" ? STORM_ALERT_OWNERSHIP_CONFLICT : STORM_ALERT_STATE_CONFLICT,
+    });
+    return;
+  }
   const [alert] = await executeWithCircuitBreaker(() => db.insert(stormAlertsTable).values({ ...b, raisedById: req.auth!.userId }).returning());
   const recipients = await executeWithCircuitBreaker(() => db.select({ id: usersTable.id }).from(usersTable).where(inArray(usersTable.role, managers as any)));
   void notifyUsers(recipients.map(r => r.id), { title: "Urgent Storm Patrol issue", body: b.message, data: { eventId: b.eventId, alertId: alert.id } });

@@ -42,9 +42,17 @@ export interface StormQueueItem {
   payload: Record<string, unknown>;
 }
 
-const PERMANENT_COMPLETION_FAILURES = new Map([
-  [403, new Set(["STORM_JOB_OWNERSHIP_CONFLICT"])],
-  [409, new Set(["STORM_JOB_STATE_CONFLICT"])],
+const PERMANENT_PARENT_FAILURES = new Map([
+  [403, new Set([
+    "STORM_JOB_OWNERSHIP_CONFLICT",
+    "STORM_OBSERVATION_OWNERSHIP_CONFLICT",
+    "STORM_ALERT_OWNERSHIP_CONFLICT",
+  ])],
+  [409, new Set([
+    "STORM_JOB_STATE_CONFLICT",
+    "STORM_OBSERVATION_STATE_CONFLICT",
+    "STORM_ALERT_STATE_CONFLICT",
+  ])],
 ]);
 
 type ApiFailure = {
@@ -57,7 +65,11 @@ export function isPermanentStormCompletionFailure(error: unknown): boolean {
   const { status, data } = error as ApiFailure;
   if (typeof status !== "number" || !data || typeof data !== "object") return false;
   const code = (data as { code?: unknown }).code;
-  return typeof code === "string" && PERMANENT_COMPLETION_FAILURES.get(status)?.has(code) === true;
+  return typeof code === "string" && PERMANENT_PARENT_FAILURES.get(status)?.has(code) === true;
+}
+
+function isDiscardableStormParent(item: StormQueueItem): boolean {
+  return item.kind === "completion" || item.kind === "observation" || item.kind === "alert";
 }
 
 function idsWithDependents(items: readonly StormQueueItem[], parentId: string): Set<string> {
@@ -313,7 +325,7 @@ export async function flushStormQueue(): Promise<StormQueueItem[]> {
         });
         removeManagedAttachment(sentAttachment);
       } catch (error) {
-        if (item.kind === "completion" && isPermanentStormCompletionFailure(error)) {
+        if (isDiscardableStormParent(item) && isPermanentStormCompletionFailure(error)) {
           const removedIds = idsWithDependents(snapshot, item.id);
           snapshot = snapshot.filter(queued => !removedIds.has(queued.id));
           let removed: StormQueueItem[] = [];

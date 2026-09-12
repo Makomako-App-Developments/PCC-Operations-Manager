@@ -780,6 +780,38 @@ describe("Storm Patrol completed job edits", () => {
   });
 });
 
+describe("Storm Patrol queued parent conflicts", () => {
+  const inactiveEventId = "00000000-0000-0000-0000-000000000020";
+
+  it("returns a stable code when an observation belongs to an inactive event", async () => {
+    const response = await request(app())
+      .post("/api/storm-patrol/observations")
+      .send({
+        eventId: inactiveEventId,
+        description: "Flooding at inlet",
+        locationLat: -41.2865,
+        locationLng: 174.7762,
+        idempotencyKey: "rejected-observation",
+      });
+
+    expect(response.status).toBe(409);
+    expect(response.body).toMatchObject({ code: "STORM_OBSERVATION_STATE_CONFLICT" });
+  });
+
+  it("returns a stable code when an alert belongs to an inactive event", async () => {
+    const response = await request(app())
+      .post("/api/storm-patrol/alerts")
+      .send({
+        eventId: inactiveEventId,
+        message: "Urgent flooding",
+        idempotencyKey: "rejected-alert",
+      });
+
+    expect(response.status).toBe(409);
+    expect(response.body).toMatchObject({ code: "STORM_ALERT_STATE_CONFLICT" });
+  });
+});
+
 describe("photo diagnostics", () => {
   it("rejects multipart upload without exposing file/body data", async () => {
     const server = express();
