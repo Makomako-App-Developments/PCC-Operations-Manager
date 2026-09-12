@@ -51,6 +51,7 @@ function chain(table?: any) {
     leftJoin: vi.fn(() => result), innerJoin: vi.fn(() => result),
     where: vi.fn((condition: any) => { selected = selected.filter(row => matches(row, condition)); return result; }),
     limit: vi.fn((count: number) => { selected = selected.slice(0, count); return result; }),
+    for: vi.fn(() => result),
     orderBy: vi.fn(() => result),
     groupBy: vi.fn(() => result), offset: vi.fn(() => result),
     then: (resolve: any, reject?: any) => Promise.resolve(selected).then(resolve, reject),
@@ -269,6 +270,7 @@ const ids = {
   stormJob: "00000000-0000-0000-0000-000000000014",
   observation: "00000000-0000-0000-0000-000000000015",
   otherStormJob: "00000000-0000-0000-0000-000000000016",
+  stormEvent: "00000000-0000-0000-0000-000000000020",
 };
 
 function app() {
@@ -313,10 +315,59 @@ beforeEach(() => {
   state.rows.set("auditsTable", [{ id: ids.audit, teamId: null, auditorId: "manager" }]);
   state.rows.set("auditItemsTable", [{ id: ids.item, auditId: ids.audit }]);
   state.rows.set("stormJobsTable", [
-    { id: ids.stormJob, teamId: null, assignedUserId: null },
-    { id: ids.otherStormJob, teamId: null, assignedUserId: null },
+    { id: ids.stormJob, eventId: ids.stormEvent, teamId: null, assignedUserId: null },
+    { id: ids.otherStormJob, eventId: ids.stormEvent, teamId: null, assignedUserId: null },
   ]);
   state.rows.set("stormObservationsTable", [{ id: ids.observation, idempotencyKey: "observation-key", raisedById: "00000000-0000-0000-0000-000000000001", reactiveJobId: ids.reactive }]);
+});
+
+describe("Storm Patrol report event closure", () => {
+  beforeEach(() => {
+    state.rows.set("stormEventsTable", [{ id: ids.stormEvent, status: "active" }]);
+  });
+
+  const observation = {
+    eventId: ids.stormEvent,
+    sourceJobId: ids.stormJob,
+    description: "Blocked inlet",
+    locationLat: -41.28,
+    locationLng: 174.77,
+    idempotencyKey: "queued-observation",
+  };
+  const alert = {
+    eventId: ids.stormEvent,
+    stormJobId: ids.stormJob,
+    message: "Water rising quickly",
+    idempotencyKey: "queued-alert",
+  };
+
+  it.each([
+    ["observation", "/api/storm-patrol/observations", observation, "stormObservationsTable"],
+    ["alert", "/api/storm-patrol/alerts", alert, "stormAlertsTable"],
+  ])("does not let event closure race a new %s through", async (_label, path, body, table) => {
+    const closing = request(app()).post(`/api/storm-patrol/events/${ids.stormEvent}/close`);
+    const reporting = request(app()).post(path).send(body);
+
+    const [closed, rejected] = await Promise.all([closing, reporting]);
+
+    expect(closed.status).toBe(200);
+    expect(rejected.status).toBe(409);
+    expect(rejected.body.code).toMatch(/STATE_CONFLICT$/);
+    expect(rowsFor(tables[table]).filter(row => row.idempotencyKey === body.idempotencyKey)).toHaveLength(0);
+  });
+
+  it.each([
+    ["observation", "/api/storm-patrol/observations", observation],
+    ["alert", "/api/storm-patrol/alerts", alert],
+  ])("still accepts an idempotent %s replay after the event closes", async (_label, path, body) => {
+    const created = await request(app()).post(path).send(body);
+    const closed = await request(app()).post(`/api/storm-patrol/events/${ids.stormEvent}/close`);
+    const replay = await request(app()).post(path).send(body);
+
+    expect(created.status).toBe(201);
+    expect(closed.status).toBe(200);
+    expect(replay.status).toBe(200);
+  });
 });
 
 const cases = [
