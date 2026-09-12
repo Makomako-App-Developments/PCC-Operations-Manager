@@ -9,7 +9,7 @@ import { Card } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Checkbox } from "@/components/ui/checkbox";
-import { AuthenticatedImage } from "@/components/authenticated-image";
+import { AuthenticatedImage, AuthenticatedMediaLink } from "@/components/authenticated-image";
 
 // ─── types ───────────────────────────────────────────────────────────────────
 
@@ -254,12 +254,11 @@ function DetailPanel({ job, onClose }: { job: CompletedWork; onClose: () => void
           ) : (
             <div className="grid grid-cols-2 gap-2">
               {photos.map(photo => (
-                <a
+                <AuthenticatedMediaLink
                   key={photo.id}
-                  href={photo.blobUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="block group relative rounded-lg overflow-hidden border border-gray-200 aspect-square bg-gray-100"
+                  src={photo.blobUrl}
+                  unavailableMessage="Photo unavailable"
+                  className="block w-full group relative rounded-lg overflow-hidden border border-gray-200 aspect-square bg-gray-100"
                 >
                   <AuthenticatedImage
                     src={photo.blobUrl}
@@ -274,7 +273,7 @@ function DetailPanel({ job, onClose }: { job: CompletedWork; onClose: () => void
                   <div className="absolute top-1.5 right-1.5 bg-black/30 rounded p-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
                     <ChevronRight className="w-3 h-3 text-white" />
                   </div>
-                </a>
+                </AuthenticatedMediaLink>
               ))}
             </div>
           )}

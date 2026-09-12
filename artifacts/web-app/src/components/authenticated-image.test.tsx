@@ -1,6 +1,7 @@
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { AuthenticatedImage } from "./authenticated-image";
+import userEvent from "@testing-library/user-event";
+import { AuthenticatedImage, AuthenticatedMediaLink } from "./authenticated-image";
 
 const mocks = vi.hoisted(() => ({
   customFetch: vi.fn(),
@@ -22,7 +23,11 @@ beforeEach(() => {
   });
 });
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.useRealTimers();
+  vi.restoreAllMocks();
+});
 
 describe("AuthenticatedImage", () => {
   it("shows a loading state while the authenticated request, including token refresh, is pending", () => {
@@ -61,5 +66,44 @@ describe("AuthenticatedImage", () => {
 
     await waitFor(() => expect(mocks.customFetch).toHaveBeenCalledTimes(2));
     expect(URL.revokeObjectURL).toHaveBeenCalledWith("blob:protected-photo");
+  });
+});
+
+describe("AuthenticatedMediaLink", () => {
+  it("opens an authenticated blob and later revokes its temporary URL", async () => {
+    vi.useFakeTimers();
+    const replace = vi.fn();
+    vi.spyOn(window, "open").mockReturnValue({ location: { replace }, close: vi.fn() } as unknown as Window);
+    mocks.customFetch.mockResolvedValue(new Blob(["file"], { type: "application/pdf" }));
+
+    render(
+      <AuthenticatedMediaLink src="/api/uploads/file.pdf">
+        Open document
+      </AuthenticatedMediaLink>,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Open document" }));
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(replace).toHaveBeenCalledWith("blob:protected-photo");
+
+    await act(() => vi.advanceTimersByTimeAsync(60_000));
+    expect(URL.revokeObjectURL).toHaveBeenCalledWith("blob:protected-photo");
+  });
+
+  it("closes the blank tab and shows a clear message when authentication refresh fails", async () => {
+    const close = vi.fn();
+    vi.spyOn(window, "open").mockReturnValue({ location: { replace: vi.fn() }, close } as unknown as Window);
+    mocks.customFetch.mockRejectedValue(new Error("Unauthorized"));
+
+    render(
+      <AuthenticatedMediaLink src="/api/uploads/file.pdf">
+        Open document
+      </AuthenticatedMediaLink>,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Open document" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Attachment unavailable");
+    expect(close).toHaveBeenCalled();
   });
 });

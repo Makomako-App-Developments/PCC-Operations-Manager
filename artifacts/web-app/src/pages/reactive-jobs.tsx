@@ -23,7 +23,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { useSearch } from "wouter";
 import { useToast } from "@/hooks/use-toast";
-import { AuthenticatedImage } from "@/components/authenticated-image";
+import { AuthenticatedImage, AuthenticatedMediaLink } from "@/components/authenticated-image";
 import {
   ReactiveJobWizard,
   ReactiveJobReviewDrawer,
@@ -1193,26 +1193,24 @@ export default function ReactiveJobs() {
                       {photos.map(p => {
                         const isImage = /\.(jpe?g|png|webp|gif|heic)$/i.test(p.blobUrl);
                         return isImage ? (
-                          <a key={p.id} href={p.blobUrl} target="_blank" rel="noopener noreferrer">
+                          <AuthenticatedMediaLink key={p.id} src={p.blobUrl} unavailableMessage="Photo unavailable" className="block w-full">
                             <AuthenticatedImage
                               src={p.blobUrl}
                               alt={p.caption ?? "attachment"}
                               className="w-full h-24 object-cover rounded-xl border border-gray-100 hover:opacity-90 transition-opacity"
                             />
-                          </a>
+                          </AuthenticatedMediaLink>
                         ) : (
-                          <a
+                          <AuthenticatedMediaLink
                             key={p.id}
-                            href={p.blobUrl}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="flex flex-col items-center justify-center h-24 rounded-xl border border-gray-200 bg-gray-50 hover:bg-gray-100 transition-colors gap-1 px-2"
+                            src={p.blobUrl}
+                            className="flex w-full flex-col items-center justify-center h-24 rounded-xl border border-gray-200 bg-gray-50 hover:bg-gray-100 transition-colors gap-1 px-2"
                           >
                             <FileText className="w-6 h-6 text-gray-400" />
                             <span className="text-[10px] text-gray-500 text-center truncate w-full text-center">
                               {p.caption ?? "Document"}
                             </span>
-                          </a>
+                          </AuthenticatedMediaLink>
                         );
                       })}
                     </div>

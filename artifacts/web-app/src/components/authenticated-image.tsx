@@ -1,4 +1,4 @@
-import { useEffect, useState, type ImgHTMLAttributes } from "react";
+import { useEffect, useState, type ImgHTMLAttributes, type ReactNode } from "react";
 import { customFetch } from "@workspace/api-client-react";
 
 type AuthenticatedImageProps = Omit<ImgHTMLAttributes<HTMLImageElement>, "src"> & {
@@ -6,6 +6,68 @@ type AuthenticatedImageProps = Omit<ImgHTMLAttributes<HTMLImageElement>, "src"> 
   loadingClassName?: string;
   unavailableClassName?: string;
 };
+
+type AuthenticatedMediaLinkProps = {
+  src: string;
+  children: ReactNode;
+  className?: string;
+  unavailableMessage?: string;
+};
+
+const OBJECT_URL_REVOKE_DELAY_MS = 60_000;
+
+export function AuthenticatedMediaLink({
+  src,
+  children,
+  className,
+  unavailableMessage = "Attachment unavailable",
+}: AuthenticatedMediaLinkProps) {
+  const [opening, setOpening] = useState(false);
+  const [failed, setFailed] = useState(false);
+
+  const openMedia = async () => {
+    if (opening) return;
+
+    const newTab = window.open("", "_blank");
+    if (!newTab) {
+      setFailed(true);
+      return;
+    }
+
+    setOpening(true);
+    setFailed(false);
+    try {
+      const blob = await customFetch<Blob>(src, { responseType: "blob" });
+      const objectUrl = URL.createObjectURL(blob);
+      newTab.location.replace(objectUrl);
+      window.setTimeout(() => URL.revokeObjectURL(objectUrl), OBJECT_URL_REVOKE_DELAY_MS);
+    } catch {
+      newTab.close();
+      setFailed(true);
+    } finally {
+      setOpening(false);
+    }
+  };
+
+  return (
+    <div>
+      <button
+        type="button"
+        onClick={() => void openMedia()}
+        disabled={opening}
+        className={className}
+        aria-busy={opening}
+      >
+        {children}
+      </button>
+      {failed && (
+        <p role="alert" className="mt-1 text-xs text-red-600">
+          {unavailableMessage}
+        </p>
+      )}
+    </div>
+  );
+}
 
 export function AuthenticatedImage({
   src,

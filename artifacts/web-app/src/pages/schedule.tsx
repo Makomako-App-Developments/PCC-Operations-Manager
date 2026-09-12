@@ -33,7 +33,7 @@ import {
   Layers, Sprout, Printer, ArrowRight, Plus,
 } from "lucide-react";
 import { ReactiveJobWizard, STATUS_CONFIG as RJ_STATUS_CONFIG, PRIORITY_CONFIG as RJ_PRIORITY_CONFIG_WIZ } from "@/components/reactive-job-wizard";
-import { AuthenticatedImage } from "@/components/authenticated-image";
+import { AuthenticatedImage, AuthenticatedMediaLink } from "@/components/authenticated-image";
 import type { AssetStub, TeamStub, SchedulingPolicy } from "@/components/reactive-job-wizard";
 import { useToast } from "@/hooks/use-toast";
 import { UnresolvedWorkView } from "./schedule-unresolved";
@@ -2716,21 +2716,21 @@ export default function Schedule() {
                         {reactivePhotos.map(ph => {
                           const isImage = /\.(jpe?g|png|webp|gif|heic)$/i.test(ph.blobUrl ?? "");
                           return isImage ? (
-                            <a key={ph.id} href={ph.blobUrl} target="_blank" rel="noopener noreferrer">
+                            <AuthenticatedMediaLink key={ph.id} src={ph.blobUrl} unavailableMessage="Photo unavailable" className="block w-full">
                               <AuthenticatedImage
                                 src={ph.blobUrl}
                                 alt={ph.caption ?? "attachment"}
                                 className="w-full h-24 object-cover rounded-xl border border-gray-100 hover:opacity-90 transition-opacity"
                               />
-                            </a>
+                            </AuthenticatedMediaLink>
                           ) : (
-                            <a key={ph.id} href={ph.blobUrl} target="_blank" rel="noopener noreferrer"
-                              className="flex flex-col items-center justify-center h-24 rounded-xl border border-gray-200 bg-gray-50 hover:bg-gray-100 transition-colors gap-1 px-2">
+                            <AuthenticatedMediaLink key={ph.id} src={ph.blobUrl}
+                              className="flex w-full flex-col items-center justify-center h-24 rounded-xl border border-gray-200 bg-gray-50 hover:bg-gray-100 transition-colors gap-1 px-2">
                               <FileText className="w-6 h-6 text-gray-400" />
                               <span className="text-[10px] text-gray-500 text-center truncate w-full">
                                 {ph.caption ?? "Document"}
                               </span>
-                            </a>
+                            </AuthenticatedMediaLink>
                           );
                         })}
                       </div>
