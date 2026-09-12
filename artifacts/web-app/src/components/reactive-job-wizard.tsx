@@ -26,6 +26,7 @@ import {
   Paperclip, FileText, Image as ImageIcon, Loader2,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { LocalImagePreview } from "@/components/authenticated-image";
 
 export const BRAND = "#00AECD";
 export const NAVY = "#0f2a36";
@@ -1024,16 +1025,15 @@ export function ReactiveJobWizard({ teamsData, assetsData, onClose, onPublished 
                   <div className="mt-3 space-y-2">
                     {attachments.map((file, idx) => {
                       const isImage = file.type.startsWith("image/");
-                      const previewUrl = isImage ? URL.createObjectURL(file) : null;
                       const sizeMb = (file.size / 1024 / 1024).toFixed(1);
                       return (
                         <div
                           key={idx}
                           className="flex items-center gap-3 bg-gray-50 rounded-xl px-3 py-2.5 border border-gray-100"
                         >
-                          {previewUrl ? (
-                            <img
-                              src={previewUrl}
+                          {isImage ? (
+                            <LocalImagePreview
+                              file={file}
                               alt={file.name}
                               className="w-10 h-10 rounded-lg object-cover flex-shrink-0 border border-gray-200"
                             />
