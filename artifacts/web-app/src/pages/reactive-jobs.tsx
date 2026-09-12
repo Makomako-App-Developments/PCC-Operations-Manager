@@ -25,6 +25,50 @@ import { useSearch } from "wouter";
 import { useToast } from "@/hooks/use-toast";
 import { AuthenticatedImage, AuthenticatedMediaLink } from "@/components/authenticated-image";
 import { isImageAttachment } from "@/lib/attachment-media";
+
+export type ReactiveJobAttachment = {
+  id: string;
+  blobUrl: string;
+  contentType: string | null;
+  caption: string | null;
+};
+
+export function ReactiveJobAttachments({ attachments }: { attachments: ReactiveJobAttachment[] }) {
+  if (attachments.length === 0) return null;
+
+  return (
+    <div>
+      <p className="text-[10px] text-gray-400 uppercase tracking-wider mb-2 font-semibold">
+        Attachments ({attachments.length})
+      </p>
+      <div className="grid grid-cols-3 gap-2">
+        {attachments.map(p => {
+          const isImage = isImageAttachment(p.contentType);
+          return isImage ? (
+            <AuthenticatedMediaLink key={p.id} src={p.blobUrl} unavailableMessage="Photo unavailable" className="block w-full">
+              <AuthenticatedImage
+                src={p.blobUrl}
+                alt={p.caption ?? "attachment"}
+                className="w-full h-24 object-cover rounded-xl border border-gray-100 hover:opacity-90 transition-opacity"
+              />
+            </AuthenticatedMediaLink>
+          ) : (
+            <AuthenticatedMediaLink
+              key={p.id}
+              src={p.blobUrl}
+              className="flex w-full flex-col items-center justify-center h-24 rounded-xl border border-gray-200 bg-gray-50 hover:bg-gray-100 transition-colors gap-1 px-2"
+            >
+              <FileText className="w-6 h-6 text-gray-400" />
+              <span className="text-[10px] text-gray-500 text-center truncate w-full">
+                {p.caption ?? "Document"}
+              </span>
+            </AuthenticatedMediaLink>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
 import {
   ReactiveJobWizard,
   ReactiveJobReviewDrawer,
@@ -1185,38 +1229,7 @@ export default function ReactiveJobs() {
                 )}
 
                 {/* Attachments */}
-                {photos.length > 0 && (
-                  <div>
-                    <p className="text-[10px] text-gray-400 uppercase tracking-wider mb-2 font-semibold">
-                      Attachments ({photos.length})
-                    </p>
-                    <div className="grid grid-cols-3 gap-2">
-                      {photos.map(p => {
-                        const isImage = isImageAttachment(p.contentType);
-                        return isImage ? (
-                          <AuthenticatedMediaLink key={p.id} src={p.blobUrl} unavailableMessage="Photo unavailable" className="block w-full">
-                            <AuthenticatedImage
-                              src={p.blobUrl}
-                              alt={p.caption ?? "attachment"}
-                              className="w-full h-24 object-cover rounded-xl border border-gray-100 hover:opacity-90 transition-opacity"
-                            />
-                          </AuthenticatedMediaLink>
-                        ) : (
-                          <AuthenticatedMediaLink
-                            key={p.id}
-                            src={p.blobUrl}
-                            className="flex w-full flex-col items-center justify-center h-24 rounded-xl border border-gray-200 bg-gray-50 hover:bg-gray-100 transition-colors gap-1 px-2"
-                          >
-                            <FileText className="w-6 h-6 text-gray-400" />
-                            <span className="text-[10px] text-gray-500 text-center truncate w-full text-center">
-                              {p.caption ?? "Document"}
-                            </span>
-                          </AuthenticatedMediaLink>
-                        );
-                      })}
-                    </div>
-                  </div>
-                )}
+                <ReactiveJobAttachments attachments={photos} />
 
                 {/* Status update */}
                 <div>

@@ -104,6 +104,62 @@ function varianceMins(actual: number | null, estimated: number | null): number |
   return actual - estimated;
 }
 
+export function CompletedWorkPhotos({ photos }: { photos: Photo[] }) {
+  if (photos.length === 0) {
+    return <p className="text-sm text-gray-400 italic">No photos attached.</p>;
+  }
+
+  return (
+    <div className="grid grid-cols-2 gap-2">
+      {photos.map(photo => (
+        <AuthenticatedMediaLink
+          key={photo.id}
+          src={photo.blobUrl}
+          unavailableMessage="Photo unavailable"
+          className="block w-full group relative rounded-lg overflow-hidden border border-gray-200 aspect-square bg-gray-100"
+        >
+          <AuthenticatedImage
+            src={photo.blobUrl}
+            alt={photo.caption ?? "Job photo"}
+            className="w-full h-full object-cover group-hover:opacity-90 transition-opacity"
+          />
+          {photo.caption && (
+            <div className="absolute bottom-0 left-0 right-0 bg-black/50 px-2 py-1 text-white text-[10px] truncate">
+              {photo.caption}
+            </div>
+          )}
+          <div className="absolute top-1.5 right-1.5 bg-black/30 rounded p-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+            <ChevronRight className="w-3 h-3 text-white" />
+          </div>
+        </AuthenticatedMediaLink>
+      ))}
+    </div>
+  );
+}
+
+export function CompletedWorkPdfLink({
+  jobId,
+  compact = false,
+  onClick,
+}: {
+  jobId: string;
+  compact?: boolean;
+  onClick?: React.MouseEventHandler<HTMLButtonElement>;
+}) {
+  return (
+    <AuthenticatedMediaLink
+      src={`/api/jobs/${jobId}/pdf`}
+      onClick={onClick}
+      className={compact
+        ? "p-1 rounded hover:bg-gray-200 text-gray-400 hover:text-[#00AECD] transition-colors"
+        : "inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium border border-input bg-background hover:bg-accent hover:text-accent-foreground h-10 px-4 py-2 w-full gap-2"}
+    >
+      <Download className="w-4 h-4" />
+      {compact ? <span className="sr-only">Download PDF</span> : "Download PDF"}
+    </AuthenticatedMediaLink>
+  );
+}
+
 // ─── detail panel ────────────────────────────────────────────────────────────
 
 function DetailPanel({ job, onClose }: { job: CompletedWork; onClose: () => void }) {
@@ -249,46 +305,12 @@ function DetailPanel({ job, onClose }: { job: CompletedWork; onClose: () => void
               <span className="ml-auto text-xs font-normal text-gray-400 normal-case">{photos.length} photo{photos.length !== 1 ? "s" : ""}</span>
             )}
           </h3>
-          {photos.length === 0 ? (
-            <p className="text-sm text-gray-400 italic">No photos attached.</p>
-          ) : (
-            <div className="grid grid-cols-2 gap-2">
-              {photos.map(photo => (
-                <AuthenticatedMediaLink
-                  key={photo.id}
-                  src={photo.blobUrl}
-                  unavailableMessage="Photo unavailable"
-                  className="block w-full group relative rounded-lg overflow-hidden border border-gray-200 aspect-square bg-gray-100"
-                >
-                  <AuthenticatedImage
-                    src={photo.blobUrl}
-                    alt={photo.caption ?? "Job photo"}
-                    className="w-full h-full object-cover group-hover:opacity-90 transition-opacity"
-                  />
-                  {photo.caption && (
-                    <div className="absolute bottom-0 left-0 right-0 bg-black/50 px-2 py-1 text-white text-[10px] truncate">
-                      {photo.caption}
-                    </div>
-                  )}
-                  <div className="absolute top-1.5 right-1.5 bg-black/30 rounded p-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <ChevronRight className="w-3 h-3 text-white" />
-                  </div>
-                </AuthenticatedMediaLink>
-              ))}
-            </div>
-          )}
+          <CompletedWorkPhotos photos={photos} />
         </section>
 
         {/* Download PDF */}
         <div className="pt-1 pb-2">
-          <Button
-            variant="outline"
-            className="w-full gap-2"
-            onClick={() => window.open(`/api/jobs/${job.id}/pdf`, "_blank")}
-          >
-            <Download className="w-4 h-4" />
-            Download PDF
-          </Button>
+          <CompletedWorkPdfLink jobId={job.id} />
         </div>
       </div>
     </div>
@@ -799,13 +821,11 @@ export default function CompletedWorks() {
                         <td className="px-4 py-3">
                           <div className="flex items-center gap-1 justify-end">
                             {(row.notes || row.comments) && <FileText className="w-3 h-3 text-amber-400 flex-shrink-0" aria-label="Has notes" />}
-                            <button
-                              title="Download PDF"
-                              onClick={e => { e.stopPropagation(); window.open(`/api/jobs/${row.id}/pdf`, "_blank"); }}
-                              className="p-1 rounded hover:bg-gray-200 text-gray-400 hover:text-[#00AECD] transition-colors"
-                            >
-                              <Download className="w-3.5 h-3.5" />
-                            </button>
+                            <CompletedWorkPdfLink
+                              jobId={row.id}
+                              compact
+                              onClick={e => e.stopPropagation()}
+                            />
                           </div>
                         </td>
                       </tr>

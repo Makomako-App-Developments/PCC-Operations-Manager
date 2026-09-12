@@ -35,6 +35,47 @@ import {
 import { ReactiveJobWizard, STATUS_CONFIG as RJ_STATUS_CONFIG, PRIORITY_CONFIG as RJ_PRIORITY_CONFIG_WIZ } from "@/components/reactive-job-wizard";
 import { AuthenticatedImage, AuthenticatedMediaLink } from "@/components/authenticated-image";
 import { isImageAttachment } from "@/lib/attachment-media";
+
+export type ScheduleAttachment = {
+  id: string;
+  blobUrl: string;
+  contentType: string | null;
+  caption: string | null;
+};
+
+export function ScheduleAttachments({ attachments }: { attachments: ScheduleAttachment[] }) {
+  if (attachments.length === 0) return null;
+
+  return (
+    <div>
+      <p className="text-[10px] text-gray-400 uppercase tracking-wider mb-2 font-semibold">
+        Attachments ({attachments.length})
+      </p>
+      <div className="grid grid-cols-3 gap-2">
+        {attachments.map(ph => {
+          const isImage = isImageAttachment(ph.contentType);
+          return isImage ? (
+            <AuthenticatedMediaLink key={ph.id} src={ph.blobUrl} unavailableMessage="Photo unavailable" className="block w-full">
+              <AuthenticatedImage
+                src={ph.blobUrl}
+                alt={ph.caption ?? "attachment"}
+                className="w-full h-24 object-cover rounded-xl border border-gray-100 hover:opacity-90 transition-opacity"
+              />
+            </AuthenticatedMediaLink>
+          ) : (
+            <AuthenticatedMediaLink key={ph.id} src={ph.blobUrl}
+              className="flex w-full flex-col items-center justify-center h-24 rounded-xl border border-gray-200 bg-gray-50 hover:bg-gray-100 transition-colors gap-1 px-2">
+              <FileText className="w-6 h-6 text-gray-400" />
+              <span className="text-[10px] text-gray-500 text-center truncate w-full">
+                {ph.caption ?? "Document"}
+              </span>
+            </AuthenticatedMediaLink>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
 import type { AssetStub, TeamStub, SchedulingPolicy } from "@/components/reactive-job-wizard";
 import { useToast } from "@/hooks/use-toast";
 import { UnresolvedWorkView } from "./schedule-unresolved";
@@ -2708,35 +2749,7 @@ export default function Schedule() {
                   )}
 
                   {/* Attachments */}
-                  {reactivePhotos && reactivePhotos.length > 0 && (
-                    <div>
-                      <p className="text-[10px] text-gray-400 uppercase tracking-wider mb-2 font-semibold">
-                        Attachments ({reactivePhotos.length})
-                      </p>
-                      <div className="grid grid-cols-3 gap-2">
-                        {reactivePhotos.map(ph => {
-                          const isImage = isImageAttachment(ph.contentType);
-                          return isImage ? (
-                            <AuthenticatedMediaLink key={ph.id} src={ph.blobUrl} unavailableMessage="Photo unavailable" className="block w-full">
-                              <AuthenticatedImage
-                                src={ph.blobUrl}
-                                alt={ph.caption ?? "attachment"}
-                                className="w-full h-24 object-cover rounded-xl border border-gray-100 hover:opacity-90 transition-opacity"
-                              />
-                            </AuthenticatedMediaLink>
-                          ) : (
-                            <AuthenticatedMediaLink key={ph.id} src={ph.blobUrl}
-                              className="flex w-full flex-col items-center justify-center h-24 rounded-xl border border-gray-200 bg-gray-50 hover:bg-gray-100 transition-colors gap-1 px-2">
-                              <FileText className="w-6 h-6 text-gray-400" />
-                              <span className="text-[10px] text-gray-500 text-center truncate w-full">
-                                {ph.caption ?? "Document"}
-                              </span>
-                            </AuthenticatedMediaLink>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  )}
+                  {reactivePhotos && <ScheduleAttachments attachments={reactivePhotos} />}
 
                   {/* Status update — teal when active, no pill */}
                   <div className="space-y-2 pt-1">

@@ -1,4 +1,4 @@
-import { useEffect, useState, type ImgHTMLAttributes, type ReactNode } from "react";
+import { useEffect, useState, type ImgHTMLAttributes, type MouseEventHandler, type ReactNode } from "react";
 import { customFetch } from "@workspace/api-client-react";
 
 type AuthenticatedImageProps = Omit<ImgHTMLAttributes<HTMLImageElement>, "src"> & {
@@ -16,6 +16,7 @@ type AuthenticatedMediaLinkProps = {
   children: ReactNode;
   className?: string;
   unavailableMessage?: string;
+  onClick?: MouseEventHandler<HTMLButtonElement>;
 };
 
 const OBJECT_URL_REVOKE_DELAY_MS = 60_000;
@@ -40,6 +41,7 @@ export function AuthenticatedMediaLink({
   children,
   className,
   unavailableMessage = "Attachment unavailable",
+  onClick,
 }: AuthenticatedMediaLinkProps) {
   const [opening, setOpening] = useState(false);
   const [failed, setFailed] = useState(false);
@@ -72,7 +74,10 @@ export function AuthenticatedMediaLink({
     <div>
       <button
         type="button"
-        onClick={() => void openMedia()}
+        onClick={(event) => {
+          onClick?.(event);
+          if (!event.defaultPrevented) void openMedia();
+        }}
         disabled={opening}
         className={className}
         aria-busy={opening}
