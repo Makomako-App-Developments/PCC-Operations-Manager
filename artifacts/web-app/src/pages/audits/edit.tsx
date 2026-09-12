@@ -14,6 +14,7 @@ import { format } from "date-fns";
 import { MapContainer, TileLayer, Marker, useMapEvents, GeoJSON, useMap } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
+import { AuthenticatedImage } from "@/components/authenticated-image";
 
 delete (L.Icon.Default.prototype as any)._getIconUrl;
 L.Icon.Default.mergeOptions({ iconRetinaUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png", iconUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png", shadowUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png" });
@@ -227,7 +228,7 @@ function KpiCard({ kpi, state, onChange, showError, auditId, itemId, assetBounda
             <div className="flex flex-wrap gap-2">
               {state.existingPhotos.map((p) => (
                 <div key={p.id} className="relative w-16 h-16 rounded-lg overflow-hidden border border-gray-200 bg-gray-50">
-                  <img src={p.blobUrl} alt="" className="w-full h-full object-cover" />
+                  <AuthenticatedImage src={p.blobUrl} alt="" className="w-full h-full object-cover" />
                   <button type="button" onClick={() => { if (itemId) deletePhotoMutation.mutate({ id: auditId, itemId, photoId: p.id }); }}
                     className="absolute top-0.5 right-0.5 w-5 h-5 rounded-full bg-black/60 flex items-center justify-center">
                     <X className="w-3 h-3 text-white" />

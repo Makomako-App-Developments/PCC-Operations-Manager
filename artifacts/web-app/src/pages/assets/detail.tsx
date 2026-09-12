@@ -25,6 +25,7 @@ import { MapContainer, TileLayer, CircleMarker, Polygon, Tooltip as LeafletToolt
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import BoundaryEditor, { type GeoPolygon as EditorGeoPolygon } from "@/components/BoundaryEditor";
+import { AuthenticatedImage } from "@/components/authenticated-image";
 import { DEPARTMENTS, assetSpecification, departmentLabel, departmentRule, STORMWATER_OPTIONS } from "@workspace/asset-definitions";
 
 const BRAND = "#00AECD";
@@ -314,7 +315,7 @@ function PhotoPanel({ jobId }: { jobId: string }) {
           <button key={p.id} onClick={() => setLightbox(p)}
             className="rounded-lg overflow-hidden border border-gray-200 hover:border-teal-400 hover:shadow-sm transition-all text-left group">
             <div className="bg-gray-100">
-              <img src={p.blobUrl} alt={p.caption || "Photo"} className="w-full object-contain group-hover:opacity-90 transition-opacity" />
+              <AuthenticatedImage src={p.blobUrl} alt={p.caption || "Photo"} className="w-full object-contain group-hover:opacity-90 transition-opacity" />
             </div>
             {p.caption && <p className="px-1.5 py-1 text-[9px] text-gray-500 leading-tight truncate">{p.caption}</p>}
           </button>
@@ -329,7 +330,7 @@ function PhotoPanel({ jobId }: { jobId: string }) {
           onClick={() => setLightbox(null)}
         >
           <div className="max-w-lg w-full mx-4 rounded-2xl overflow-hidden shadow-2xl bg-white" onClick={e => e.stopPropagation()}>
-            <img src={lightbox.blobUrl} alt={lightbox.caption || "Photo"} className="w-full object-contain max-h-[80vh]" />
+            <AuthenticatedImage src={lightbox.blobUrl} alt={lightbox.caption || "Photo"} className="w-full object-contain max-h-[80vh]" />
             <div className="px-4 py-3 flex items-center justify-between">
               <p className="text-sm font-medium text-gray-700">{lightbox.caption || ""}</p>
               <button onClick={() => setLightbox(null)} className="text-gray-400 hover:text-gray-700" aria-label="Close photo">

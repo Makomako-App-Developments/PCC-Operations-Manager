@@ -9,6 +9,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, Download, Edit, Trash2, CheckCircle2, XCircle, MinusCircle, MapPin, Camera, ChevronLeft, ChevronRight, X } from "lucide-react";
 import { format } from "date-fns";
 import { KPI_SECTIONS, ALL_KPIS } from "./kpi-config";
+import { AuthenticatedImage } from "@/components/authenticated-image";
 
 const TYPE_COLORS: Record<string, string> = {
   roses_perennials:  "bg-pink-100 text-pink-700",
@@ -88,7 +89,7 @@ function PhotoLightbox({
       onClick={onClose}
     >
       <div className="relative flex max-h-full max-w-5xl items-center justify-center" onClick={(event) => event.stopPropagation()}>
-        <img
+        <AuthenticatedImage
           src={photo.blobUrl}
           alt={photo.caption || `Audit evidence photo ${index + 1} of ${photos.length}`}
           className="max-h-[calc(100vh-7rem)] max-w-[calc(100vw-3rem)] rounded-xl object-contain shadow-2xl"
@@ -326,7 +327,7 @@ export default function AuditDetail() {
                                aria-label={`Enlarge audit photo ${photoIndex + 1} of ${photos.length}`}
                                className="block h-16 w-16 overflow-hidden rounded-lg border border-gray-200 transition-opacity hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-[#00AECD] focus:ring-offset-2"
                              >
-                               <img src={p.blobUrl} alt="" className="h-full w-full object-cover" />
+                               <AuthenticatedImage src={p.blobUrl} alt="" className="h-full w-full object-cover" />
                              </button>
                           ))}
                         </div>

@@ -9,6 +9,7 @@ import { Card } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Checkbox } from "@/components/ui/checkbox";
+import { AuthenticatedImage } from "@/components/authenticated-image";
 
 // ─── types ───────────────────────────────────────────────────────────────────
 
@@ -260,7 +261,7 @@ function DetailPanel({ job, onClose }: { job: CompletedWork; onClose: () => void
                   rel="noopener noreferrer"
                   className="block group relative rounded-lg overflow-hidden border border-gray-200 aspect-square bg-gray-100"
                 >
-                  <img
+                  <AuthenticatedImage
                     src={photo.blobUrl}
                     alt={photo.caption ?? "Job photo"}
                     className="w-full h-full object-cover group-hover:opacity-90 transition-opacity"

@@ -33,6 +33,7 @@ import {
   Layers, Sprout, Printer, ArrowRight, Plus,
 } from "lucide-react";
 import { ReactiveJobWizard, STATUS_CONFIG as RJ_STATUS_CONFIG, PRIORITY_CONFIG as RJ_PRIORITY_CONFIG_WIZ } from "@/components/reactive-job-wizard";
+import { AuthenticatedImage } from "@/components/authenticated-image";
 import type { AssetStub, TeamStub, SchedulingPolicy } from "@/components/reactive-job-wizard";
 import { useToast } from "@/hooks/use-toast";
 import { UnresolvedWorkView } from "./schedule-unresolved";
@@ -2716,7 +2717,7 @@ export default function Schedule() {
                           const isImage = /\.(jpe?g|png|webp|gif|heic)$/i.test(ph.blobUrl ?? "");
                           return isImage ? (
                             <a key={ph.id} href={ph.blobUrl} target="_blank" rel="noopener noreferrer">
-                              <img
+                              <AuthenticatedImage
                                 src={ph.blobUrl}
                                 alt={ph.caption ?? "attachment"}
                                 className="w-full h-24 object-cover rounded-xl border border-gray-100 hover:opacity-90 transition-opacity"

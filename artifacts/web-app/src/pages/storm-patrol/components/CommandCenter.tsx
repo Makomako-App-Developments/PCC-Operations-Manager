@@ -14,7 +14,6 @@ import {
   getGetStormPatrolReportUrl,
   getGetCurrentStormPatrolQueryKey,
   getListStormPatrolEventsQueryKey,
-  customFetch,
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { 
@@ -28,6 +27,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
+import { AuthenticatedImage } from "@/components/authenticated-image";
 import StormwaterAssetImport from "./StormwaterAssetImport";
 import { format } from "date-fns";
 import { MapContainer, TileLayer, CircleMarker, Popup, useMap } from "react-leaflet";
@@ -56,41 +56,6 @@ type StormObservation = {
     caption?: string | null;
   }>;
 };
-
-function AuthenticatedPhoto({ url, alt, className }: { url: string; alt: string; className: string }) {
-  const [objectUrl, setObjectUrl] = useState<string | null>(null);
-  const [failed, setFailed] = useState(false);
-
-  useEffect(() => {
-    const controller = new AbortController();
-    let createdUrl: string | null = null;
-    setObjectUrl(null);
-    setFailed(false);
-
-    void customFetch<Blob>(url, { responseType: "blob", signal: controller.signal })
-      .then((blob) => {
-        if (controller.signal.aborted) return;
-        createdUrl = URL.createObjectURL(blob);
-        setObjectUrl(createdUrl);
-      })
-      .catch(() => {
-        if (!controller.signal.aborted) setFailed(true);
-      });
-
-    return () => {
-      controller.abort();
-      if (createdUrl) URL.revokeObjectURL(createdUrl);
-    };
-  }, [url]);
-
-  if (failed) {
-    return <div role="img" aria-label={alt} className={`${className} flex items-center justify-center bg-black/25 p-3 text-center text-xs text-white/45`}>Photo unavailable</div>;
-  }
-  if (!objectUrl) {
-    return <div aria-label={`Loading ${alt}`} className={`${className} animate-pulse bg-white/5`} />;
-  }
-  return <img src={objectUrl} alt={alt} className={className} />;
-}
 
 export function filterStormwaterAssets(
   assets: Asset[],
@@ -991,8 +956,8 @@ export default function CommandCenter({ data }: CommandCenterProps) {
                     <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
                       {selectedCompletedJob.photos.map((photo, index) => (
                         <figure key={photo.id} className="overflow-hidden rounded-lg border border-white/10 bg-black/20">
-                          <AuthenticatedPhoto
-                            url={photo.blobUrl}
+              <AuthenticatedImage
+                src={photo.blobUrl}
                             alt={`${photo.purpose === "after" ? "After" : "Before"} photo ${index + 1}`}
                             className="aspect-square w-full object-cover"
                           />
@@ -1070,8 +1035,8 @@ export default function CommandCenter({ data }: CommandCenterProps) {
                     <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
                       {selectedObservation.photos.map((photo, index) => (
                         <figure key={photo.id} className="overflow-hidden rounded-lg border border-white/10 bg-black/20">
-                          <AuthenticatedPhoto
-                            url={photo.blobUrl}
+                          <AuthenticatedImage
+                            src={photo.blobUrl}
                             alt={`Observation photo ${index + 1}`}
                             className="aspect-square w-full object-cover"
                           />

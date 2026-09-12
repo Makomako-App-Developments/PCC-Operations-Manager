@@ -23,6 +23,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { useSearch } from "wouter";
 import { useToast } from "@/hooks/use-toast";
+import { AuthenticatedImage } from "@/components/authenticated-image";
 import {
   ReactiveJobWizard,
   ReactiveJobReviewDrawer,
@@ -1193,7 +1194,7 @@ export default function ReactiveJobs() {
                         const isImage = /\.(jpe?g|png|webp|gif|heic)$/i.test(p.blobUrl);
                         return isImage ? (
                           <a key={p.id} href={p.blobUrl} target="_blank" rel="noopener noreferrer">
-                            <img
+                            <AuthenticatedImage
                               src={p.blobUrl}
                               alt={p.caption ?? "attachment"}
                               className="w-full h-24 object-cover rounded-xl border border-gray-100 hover:opacity-90 transition-opacity"
