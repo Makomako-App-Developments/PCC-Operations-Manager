@@ -119,7 +119,12 @@ vi.mock("react-leaflet", () => ({
   useMap: () => ({ fitBounds: vi.fn(), invalidateSize: vi.fn() }),
 }));
 
-function renderCommandCenter(jobs: any[] = [], observations: any[] = [], followUps: any[] = []) {
+function renderCommandCenter(
+  jobs: any[] = [],
+  observations: any[] = [],
+  followUps: any[] = [],
+  alerts: any[] = [],
+) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
@@ -136,7 +141,7 @@ function renderCommandCenter(jobs: any[] = [], observations: any[] = [], followU
             activatedAt: "2026-09-07T07:00:00.000Z",
           },
           jobs,
-          alerts: [],
+          alerts,
           observations,
           followUps,
           summary: {},
@@ -186,6 +191,19 @@ afterEach(() => {
 });
 
 describe("Storm Patrol work package asset filters", () => {
+  it("labels the active alert section as Urgent Issues", () => {
+    renderCommandCenter([], [], [], [{
+      id: "alert-1",
+      message: "Blocked drain",
+      emailStatus: "sent",
+      emailAttempts: 1,
+      acknowledgedAt: null,
+    }]);
+
+    expect(screen.getByRole("heading", { name: "Urgent Issues" })).toBeVisible();
+    expect(screen.queryByRole("heading", { name: "Active Alerts" })).not.toBeInTheDocument();
+  });
+
   it("shows the total actual minutes used by field workers", () => {
     renderCommandCenter([
       {

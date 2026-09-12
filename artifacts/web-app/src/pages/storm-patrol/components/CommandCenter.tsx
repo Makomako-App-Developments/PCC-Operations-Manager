@@ -458,11 +458,11 @@ export default function CommandCenter({ data }: CommandCenterProps) {
               </div>
 
               
-              {/* Active Alerts */}
+              {/* Urgent Issues */}
               {data?.alerts && data.alerts.length > 0 && (
                 <div className="bg-white/5 border border-white/10 rounded-2xl p-5">
                   <h3 className="text-sm font-semibold text-white/60 uppercase tracking-wider mb-4 flex items-center gap-2">
-                    <AlertTriangle className="w-4 h-4" /> Active Alerts
+                    <AlertTriangle className="w-4 h-4" /> Urgent Issues
                   </h3>
                   <div className="space-y-3 max-h-[300px] overflow-y-auto pr-1">
                     {data.alerts.map(alert => (
