@@ -32,6 +32,26 @@ const ALLOWED_MIME_TYPES = new Set([
   "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
 ]);
 
+const LEGACY_CONTENT_TYPES_BY_EXTENSION: Record<string, string> = {
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".png": "image/png",
+  ".webp": "image/webp",
+  ".gif": "image/gif",
+  ".heic": "image/heic",
+  ".heif": "image/heif",
+  ".pdf": "application/pdf",
+  ".doc": "application/msword",
+  ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  ".xls": "application/vnd.ms-excel",
+  ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+};
+
+export function inferLegacyAttachmentContentType(blobUrl: string): string | null {
+  const pathname = blobUrl.split(/[?#]/, 1)[0] ?? "";
+  return LEGACY_CONTENT_TYPES_BY_EXTENSION[path.extname(pathname).toLowerCase()] ?? null;
+}
+
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 20 * 1024 * 1024 },
@@ -67,16 +87,17 @@ async function uploadToGCS(
 
 async function saveJobPhotoIdempotently(
   file: Express.Multer.File,
-  values: Omit<typeof jobPhotosTable.$inferInsert, "blobUrl">,
+  values: Omit<typeof jobPhotosTable.$inferInsert, "blobUrl" | "contentType">,
   scope: string,
   idempotencyKey?: string,
   route: "scheduled" | "reactive" = "scheduled",
 ) {
+  const photoValues = { ...values, contentType: file.mimetype.trim().toLowerCase() };
   if (!idempotencyKey) {
     const blobUrl = await uploadToGCS(file.buffer, file.mimetype, file.originalname);
     const objectName = blobUrl.slice("/api/uploads/".length);
     try {
-      const [photo] = await executeWithCircuitBreaker(() => db.insert(jobPhotosTable).values({ ...values, blobUrl }).returning());
+      const [photo] = await executeWithCircuitBreaker(() => db.insert(jobPhotosTable).values({ ...photoValues, blobUrl }).returning());
       return photo;
     } catch (error) {
       await reconcileUncommittedPhotoObject(objectName, route, async () => {
@@ -98,7 +119,7 @@ async function saveJobPhotoIdempotently(
       if (existing) return existing;
       await uploadToGCS(file.buffer, file.mimetype, file.originalname, objectName);
       uploaded = true;
-      const [photo] = await tx.insert(jobPhotosTable).values({ ...values, blobUrl }).returning();
+      const [photo] = await tx.insert(jobPhotosTable).values({ ...photoValues, blobUrl }).returning();
       return photo;
     }));
   } catch (error) {
@@ -114,6 +135,29 @@ async function saveJobPhotoIdempotently(
     }
     throw error;
   }
+}
+
+async function withResolvedContentTypes(
+  photos: (typeof jobPhotosTable.$inferSelect)[],
+): Promise<(typeof jobPhotosTable.$inferSelect)[]> {
+  const bucketId = process.env["DEFAULT_OBJECT_STORAGE_BUCKET_ID"];
+  return Promise.all(photos.map(async photo => {
+    if (photo.contentType) return photo;
+    const legacyContentType = inferLegacyAttachmentContentType(photo.blobUrl);
+    if (!bucketId || !photo.blobUrl.startsWith("/api/uploads/")) {
+      return { ...photo, contentType: legacyContentType };
+    }
+    const objectName = photo.blobUrl.slice("/api/uploads/".length);
+    try {
+      const [metadata] = await objectStorageClient.bucket(bucketId).file(objectName).getMetadata();
+      const contentType = typeof metadata.contentType === "string"
+        ? metadata.contentType.trim().toLowerCase()
+        : null;
+      return { ...photo, contentType: contentType || legacyContentType };
+    } catch {
+      return { ...photo, contentType: legacyContentType };
+    }
+  }));
 }
 
 /** Resolve whether :id belongs to a regular job or a mulching record. */
@@ -158,7 +202,7 @@ router.get("/jobs/:id/photos", requireAuth, async (req, res) => {
     photos = await executeWithCircuitBreaker(() => db.select().from(jobPhotosTable).where(eq(jobPhotosTable.jobId, id)));
   }
 
-  res.json({ data: photos });
+  res.json({ data: await withResolvedContentTypes(photos) });
 });
 
 // POST /api/jobs/:id/photos
@@ -223,7 +267,7 @@ router.get("/reactive-jobs/:id/photos", requireAuth, async (req, res) => {
   }
 
   const photos = await executeWithCircuitBreaker(() => db.select().from(jobPhotosTable).where(eq(jobPhotosTable.reactiveJobId, id)));
-  res.json({ data: photos });
+  res.json({ data: await withResolvedContentTypes(photos) });
 });
 
 // POST /api/reactive-jobs/:id/photos

@@ -2113,6 +2113,7 @@ export const ListJobPhotosResponse = zod.object({
       reactiveJobId: zod.string().uuid().nullish(),
       uploadedBy: zod.string().uuid(),
       blobUrl: zod.string(),
+      contentType: zod.string().nullish(),
       caption: zod.string().nullish(),
       createdAt: zod.date(),
     }),

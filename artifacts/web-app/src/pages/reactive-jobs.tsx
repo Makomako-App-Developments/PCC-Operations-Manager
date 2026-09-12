@@ -24,6 +24,7 @@ import {
 import { useSearch } from "wouter";
 import { useToast } from "@/hooks/use-toast";
 import { AuthenticatedImage, AuthenticatedMediaLink } from "@/components/authenticated-image";
+import { isImageAttachment } from "@/lib/attachment-media";
 import {
   ReactiveJobWizard,
   ReactiveJobReviewDrawer,
@@ -96,7 +97,7 @@ export default function ReactiveJobs() {
     listSettingsData?.reactivePriorities?.length ? listSettingsData.reactivePriorities : DEFAULT_PRIORITIES;
 
   // Fetch attachments when a job is selected
-  const { data: attachmentsData } = useQuery<{ data: { id: string; blobUrl: string; caption: string | null }[] }>({
+  const { data: attachmentsData } = useQuery<{ data: { id: string; blobUrl: string; contentType: string | null; caption: string | null }[] }>({
     queryKey: ["reactive-job-photos", selectedJob?.id],
     queryFn: async () => {
       const r = await fetch(`/api/reactive-jobs/${selectedJob!.id}/photos`, { credentials: "include" });
@@ -1191,7 +1192,7 @@ export default function ReactiveJobs() {
                     </p>
                     <div className="grid grid-cols-3 gap-2">
                       {photos.map(p => {
-                        const isImage = /\.(jpe?g|png|webp|gif|heic)$/i.test(p.blobUrl);
+                        const isImage = isImageAttachment(p.contentType);
                         return isImage ? (
                           <AuthenticatedMediaLink key={p.id} src={p.blobUrl} unavailableMessage="Photo unavailable" className="block w-full">
                             <AuthenticatedImage

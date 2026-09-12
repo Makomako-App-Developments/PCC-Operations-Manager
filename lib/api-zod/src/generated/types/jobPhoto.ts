@@ -12,6 +12,7 @@ export interface JobPhoto {
   reactiveJobId?: string | null;
   uploadedBy: string;
   blobUrl: string;
+  contentType?: string | null;
   caption?: string | null;
   createdAt: Date;
 }

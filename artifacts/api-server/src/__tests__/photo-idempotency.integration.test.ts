@@ -381,6 +381,47 @@ const cases = [
 const optionalKeyCases = cases.slice(0, 3);
 
 describe("photo routes: real multipart idempotency", () => {
+  it("persists and returns the media type for an extensionless reactive upload", async () => {
+    const created = await multipart(
+      `/api/reactive-jobs/${ids.reactive}/photos`,
+      "extensionless-reactive-image",
+    );
+    const listed = await request(app()).get(`/api/reactive-jobs/${ids.reactive}/photos`);
+
+    expect(created.status).toBe(201);
+    expect(created.body.blobUrl).not.toMatch(/\.[a-z0-9]+$/i);
+    expect(created.body.contentType).toBe("image/jpeg");
+    expect(listed.status).toBe(200);
+    expect(listed.body.data).toEqual([
+      expect.objectContaining({
+        blobUrl: created.body.blobUrl,
+        contentType: "image/jpeg",
+      }),
+    ]);
+  });
+
+  it("returns a safe inferred media type for a legacy local image", async () => {
+    const legacyPhoto = {
+      id: "legacy-local-photo",
+      reactiveJobId: ids.reactive,
+      uploadedBy: "00000000-0000-0000-0000-000000000001",
+      blobUrl: "/api/uploads/legacy-reactive-photo.JPG",
+      contentType: null,
+      caption: null,
+    };
+    state.rows.set("jobPhotosTable", [legacyPhoto]);
+
+    const listed = await request(app()).get(`/api/reactive-jobs/${ids.reactive}/photos`);
+
+    expect(listed.status).toBe(200);
+    expect(listed.body.data).toEqual([
+      expect.objectContaining({
+        id: legacyPhoto.id,
+        contentType: "image/jpeg",
+      }),
+    ]);
+  });
+
   it.each(cases)("%s returns one row/object after timeout replay and concurrency", async (_label, path, table, extra) => {
     const replayKey = `replay-key-${_label}`;
     await multipart(path, replayKey, extra); // response is intentionally ignored, as if timed out

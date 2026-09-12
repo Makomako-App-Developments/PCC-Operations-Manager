@@ -135,6 +135,7 @@ export const jobPhotosTable = pgTable("job_photos", {
   mulchingRecordId: uuid("mulching_record_id").references(() => mulchingRecordsTable.id),
   uploadedBy:       uuid("uploaded_by").notNull().references(() => usersTable.id),
   blobUrl:          text("blob_url").notNull(),
+  contentType:      text("content_type"),
   caption:          text("caption"),
   createdAt:        timestamp("created_at").notNull().defaultNow(),
 });

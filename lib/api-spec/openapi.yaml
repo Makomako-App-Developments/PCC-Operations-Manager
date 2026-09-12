@@ -3124,6 +3124,7 @@ components:
         reactiveJobId: { type: string, format: uuid, nullable: true }
         uploadedBy: { type: string, format: uuid }
         blobUrl: { type: string }
+        contentType: { type: string, nullable: true }
         caption: { type: string, nullable: true }
         createdAt: { type: string, format: date-time }
       required: [id, uploadedBy, blobUrl, createdAt]

@@ -34,6 +34,7 @@ import {
 } from "lucide-react";
 import { ReactiveJobWizard, STATUS_CONFIG as RJ_STATUS_CONFIG, PRIORITY_CONFIG as RJ_PRIORITY_CONFIG_WIZ } from "@/components/reactive-job-wizard";
 import { AuthenticatedImage, AuthenticatedMediaLink } from "@/components/authenticated-image";
+import { isImageAttachment } from "@/lib/attachment-media";
 import type { AssetStub, TeamStub, SchedulingPolicy } from "@/components/reactive-job-wizard";
 import { useToast } from "@/hooks/use-toast";
 import { UnresolvedWorkView } from "./schedule-unresolved";
@@ -1266,7 +1267,7 @@ export default function Schedule() {
     enabled: isUnscheduledSelected && !!selectedJob?.id,
   });
 
-  const { data: reactivePhotos } = useQuery<{ id: string; blobUrl: string; caption: string | null }[]>({
+  const { data: reactivePhotos } = useQuery<{ id: string; blobUrl: string; contentType: string | null; caption: string | null }[]>({
     queryKey: ["/api/reactive-jobs", selectedJob?.id, "photos"],
     queryFn: async () => {
       const r = await fetch(`/api/reactive-jobs/${selectedJob!.id}/photos`, { credentials: "include" });
@@ -2714,7 +2715,7 @@ export default function Schedule() {
                       </p>
                       <div className="grid grid-cols-3 gap-2">
                         {reactivePhotos.map(ph => {
-                          const isImage = /\.(jpe?g|png|webp|gif|heic)$/i.test(ph.blobUrl ?? "");
+                          const isImage = isImageAttachment(ph.contentType);
                           return isImage ? (
                             <AuthenticatedMediaLink key={ph.id} src={ph.blobUrl} unavailableMessage="Photo unavailable" className="block w-full">
                               <AuthenticatedImage
