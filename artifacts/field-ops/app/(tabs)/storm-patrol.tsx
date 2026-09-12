@@ -154,7 +154,7 @@ export default function StormPatrolScreen() {
   const canAddPhoto = (purpose: StormPhotoPurpose) => {
     if (!["before", "after", "observation"].includes(purpose)) return true;
     if (photoCount(purpose) < MAX_PHOTOS_PER_SECTION) return true;
-    Alert.alert("Photo limit reached", `You can add up to ${MAX_PHOTOS_PER_SECTION} ${purpose === "observation" ? "general observation" : purpose} photos.`);
+    Alert.alert("Photo limit reached", `You can add up to ${MAX_PHOTOS_PER_SECTION} ${purpose === "observation" ? "new observation" : purpose} photos.`);
     return false;
   };
   const addPickedPhoto = async (source: AttachmentSource, purpose: StormPhotoPurpose) => {
@@ -749,7 +749,7 @@ export default function StormPatrolScreen() {
       })}</>
       : current.isLoading ? <ActivityIndicator color={colors.primary} style={{ marginTop: 50 }}/> : <Text style={[styles.empty, { color: colors.mutedForeground }]}>There is no active Storm Patrol for your team.</Text>}
     {patrol && <View style={[styles.observation, { borderColor: colors.border }]}>
-      <Text style={[styles.heading, { color: colors.foreground }]}>General observation</Text>
+      <Text style={[styles.heading, { color: colors.foreground }]}>New Observation</Text>
       <Text style={[styles.help, { color: colors.mutedForeground }]}>Record storm related issues on new, unregistered sites.</Text>
       <TextInput value={observation} onChangeText={setObservation} multiline placeholder="Describe what you see" placeholderTextColor={colors.mutedForeground} style={[styles.input, styles.note, { color: colors.foreground, borderColor: colors.border }]}/>
       <Button title={`Observation photo (${observationPhotos.length}/${MAX_PHOTOS_PER_SECTION})`} icon="camera" onPress={() => choosePhoto("observation")} color={colors.primary}/>

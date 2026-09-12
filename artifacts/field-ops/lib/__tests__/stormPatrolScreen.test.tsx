@@ -431,7 +431,7 @@ describe("Storm Patrol photo picker", () => {
     expect(ImagePicker.launchImageLibraryAsync).toHaveBeenCalledTimes(5);
   });
 
-  it("allows three photos on one general observation and blocks a fourth", async () => {
+  it("allows three photos on one new observation and blocks a fourth", async () => {
     let photoNumber = 0;
     vi.mocked(ImagePicker.launchImageLibraryAsync).mockImplementation(async () => ({
       canceled: false,
@@ -461,7 +461,7 @@ describe("Storm Patrol photo picker", () => {
 
     act(() => observationPhoto.click());
     expect(ImagePicker.launchImageLibraryAsync).toHaveBeenCalledTimes(4);
-    expect(mocks.alert).toHaveBeenCalledWith("Photo limit reached", "You can add up to 3 general observation photos.");
+    expect(mocks.alert).toHaveBeenCalledWith("Photo limit reached", "You can add up to 3 new observation photos.");
   });
 });
 
