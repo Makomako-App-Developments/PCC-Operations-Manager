@@ -185,12 +185,20 @@ export default function StormPatrolScreen() {
   const choosePhoto = (purpose: StormPhotoPurpose) => { void take(purpose); };
   const removePendingPhoto = (photo: { source: AttachmentSource; purpose: StormPhotoPurpose }) => {
     if (photoOperationRef.current) return;
-    setPhotos(current => current.filter(candidate => candidate !== photo));
+    setPhotos(current => {
+      const next = current.filter(candidate => candidate.source.uploadId !== photo.source.uploadId);
+      photosRef.current = next;
+      return next;
+    });
     void removeManagedAttachment(photo.source as DurableAttachment);
   };
   const removeObservationPhoto = (photo: AttachmentSource) => {
     if (photoOperationRef.current) return;
-    setObservationPhotos(current => current.filter(candidate => candidate !== photo));
+    setObservationPhotos(current => {
+      const next = current.filter(candidate => candidate.uploadId !== photo.uploadId);
+      observationPhotosRef.current = next;
+      return next;
+    });
     void removeManagedAttachment(photo as DurableAttachment);
   };
   const removePendingPhotosByPurpose = (purpose: StormPhotoPurpose) => {
