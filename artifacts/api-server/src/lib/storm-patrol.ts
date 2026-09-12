@@ -3,6 +3,12 @@ export function calculateStormChargeCents(totalActualMinutes: number, hourlyRate
   return Math.round(totalActualMinutes * hourlyRateCents / 60);
 }
 
+export function sumStormPatrolActualMinutes(
+  jobs: ReadonlyArray<{ actualTimeMins?: number | null }>,
+): number {
+  return jobs.reduce((total, job) => total + (job.actualTimeMins ?? 0), 0);
+}
+
 export function arePublishableStormwaterAssets(
   assets: Array<{ department: string; isActive: boolean }>,
   expectedCount: number,

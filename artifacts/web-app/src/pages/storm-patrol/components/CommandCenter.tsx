@@ -120,7 +120,7 @@ interface CommandCenterProps {
 
 export default function CommandCenter({ data }: CommandCenterProps) {
   const { event, jobs, summary } = data!;
-  const actualTimeMinutes = jobs.reduce((total, job) => total + (job.actualTimeMins ?? 0), 0);
+  const actualTimeMinutes = summary.actualMinutes ?? jobs.reduce((total, job) => total + (job.actualTimeMins ?? 0), 0);
   const queryClient = useQueryClient();
   const { toast } = useToast();
 

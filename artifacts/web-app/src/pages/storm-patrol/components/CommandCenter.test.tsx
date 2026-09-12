@@ -124,6 +124,9 @@ function renderCommandCenter(
   observations: any[] = [],
   followUps: any[] = [],
   alerts: any[] = [],
+  summary: Record<string, number> = {
+    actualMinutes: jobs.reduce((total, job) => total + (job.actualTimeMins ?? 0), 0),
+  },
 ) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
@@ -144,7 +147,7 @@ function renderCommandCenter(
           alerts,
           observations,
           followUps,
-          summary: {},
+          summary,
         }}
       />
     </QueryClientProvider>,
@@ -243,6 +246,18 @@ describe("Storm Patrol work package asset filters", () => {
     expect(screen.getByText("Actual Minutes")).toBeVisible();
     expect(screen.getByText("75")).toBeVisible();
     expect(screen.queryByText("Escalations")).not.toBeInTheDocument();
+  });
+
+  it("uses the report-aligned actual-minutes summary when it is provided", () => {
+    renderCommandCenter(
+      [{ actualTimeMins: 30, status: "completed", assetName: "Completed Site" }],
+      [],
+      [],
+      [],
+      { actualMinutes: 75 },
+    );
+
+    expect(screen.getByText("75")).toBeVisible();
   });
 
   it("confirms and cancels only pending live jobs", async () => {

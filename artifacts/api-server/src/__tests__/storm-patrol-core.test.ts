@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { arePublishableStormwaterAssets, calculateStormChargeCents, escapeCsvCell, requiresStormVisualCheckComments } from "../lib/storm-patrol";
+import { arePublishableStormwaterAssets, calculateStormChargeCents, escapeCsvCell, requiresStormVisualCheckComments, sumStormPatrolActualMinutes } from "../lib/storm-patrol";
 
 describe("Storm Patrol core invariants", () => {
   it("accepts only complete active Stormwater selections for atomic publication", () => {
@@ -18,6 +18,15 @@ describe("Storm Patrol core invariants", () => {
     // rounding must occur after aggregation rather than per-job.
     expect(calculateStormChargeCents(60, 1)).toBe(1);
     expect(calculateStormChargeCents(30, 1) + calculateStormChargeCents(30, 1)).toBe(2);
+  });
+
+  it("sums only recorded actual minutes for dashboard and report totals", () => {
+    expect(sumStormPatrolActualMinutes([
+      { actualTimeMins: 30 },
+      { actualTimeMins: null },
+      {},
+      { actualTimeMins: 45 },
+    ])).toBe(75);
   });
 
   it("keeps route-level atomic/idempotent safeguards present", async () => {

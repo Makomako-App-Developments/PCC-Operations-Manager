@@ -16,7 +16,7 @@ import { auditLog } from "../lib/audit";
 import { notifyUsers } from "../lib/push-notifications";
 import { objectStorageClient } from "../lib/objectStorage";
 import { reconcileUncommittedPhotoObject, removeUncommittedPhotoObject } from "../lib/photo-object-cleanup";
-import { arePublishableStormwaterAssets, calculateStormChargeCents, escapeCsvCell, requiresStormVisualCheckComments } from "../lib/storm-patrol";
+import { arePublishableStormwaterAssets, calculateStormChargeCents, escapeCsvCell, requiresStormVisualCheckComments, sumStormPatrolActualMinutes } from "../lib/storm-patrol";
 import { deliverStormAlertEmail } from "../lib/storm-patrol-email";
 
 const router = Router();
@@ -394,7 +394,7 @@ router.get("/storm-patrol/current", requireAuth, async (req, res) => {
   const where = !privileged(req.auth!.role) ? and(eq(stormJobsTable.eventId, event.id), eq(stormJobsTable.teamId, req.auth!.teamId ?? "")) : eq(stormJobsTable.eventId, event.id);
   const jobs = await enrichedStormJobs(where);
   const completed = jobs.filter(j => j.status === "completed" || j.status === "too_dangerous");
-  const minutes = completed.reduce((n, j) => n + (j.actualTimeMins ?? 0), 0);
+  const minutes = sumStormPatrolActualMinutes(jobs);
   const [observations, followUps, alerts] = await Promise.all([
     executeWithCircuitBreaker(() => db.select().from(stormObservationsTable).where(eq(stormObservationsTable.eventId, event.id)).orderBy(desc(stormObservationsTable.createdAt))),
     executeWithCircuitBreaker(() => db.select().from(reactiveJobsTable).where(and(eq(reactiveJobsTable.stormEventId, event.id), eq(reactiveJobsTable.origin, "storm_patrol"))).orderBy(desc(reactiveJobsTable.createdAt))),
@@ -427,7 +427,7 @@ router.get("/storm-patrol/current", requireAuth, async (req, res) => {
     ...observation,
     photos: observation.reactiveJobId ? photosByReactiveJobId.get(observation.reactiveJobId) ?? [] : [],
   }));
-  res.json({ data: { event, jobs, observations: observationsWithPhotos, followUps, alerts, summary: { selectedCount: jobs.length, checkedCount: completed.length, workMinutes: minutes, labourChargeCents: cents(minutes, event.hourlyRateCents), tooDangerousCount: jobs.filter(j => j.status === "too_dangerous").length } } });
+  res.json({ data: { event, jobs, observations: observationsWithPhotos, followUps, alerts, summary: { selectedCount: jobs.length, checkedCount: completed.length, actualMinutes: minutes, workMinutes: minutes, labourChargeCents: cents(minutes, event.hourlyRateCents), tooDangerousCount: jobs.filter(j => j.status === "too_dangerous").length } } });
 });
 
 router.get("/storm-patrol/events", requireAuth, requireRole("manager", "supervisor"), async (_req, res) => {
@@ -790,12 +790,30 @@ router.get("/storm-patrol/events/:id/report", requireAuth, requireRole("manager"
   const [event] = await executeWithCircuitBreaker(() => db.select().from(stormEventsTable).where(eq(stormEventsTable.id, String(req.params.id))).limit(1));
   if (!event) { res.status(404).json({ error: "Storm event not found" }); return; }
   const jobs = await enrichedStormJobs(eq(stormJobsTable.eventId, event.id));
-  const minutes = jobs.reduce((n, j) => n + (j.actualTimeMins ?? 0), 0);
+  const minutes = sumStormPatrolActualMinutes(jobs);
   const report = { event, selectedCount: jobs.length, checkedCount: jobs.filter(j => ["completed", "too_dangerous"].includes(j.status)).length, totalMinutes: minutes, totalHours: minutes / 60, labourChargeCents: cents(minutes, event.hourlyRateCents), jobs };
   if (req.query.format === "csv") {
     const headers = ["jobId", "storm", "phase", "status", "asset", "team", "worker", "workTypes", "comments", "minutes", "chargeCents"];
-    const rows = jobs.map(job => [job.id, event.name, job.phase, job.status, job.assetName, job.teamName, job.workerName, job.workTypes.join("; "), job.comments, job.actualTimeMins ?? 0, cents(job.actualTimeMins ?? 0, event.hourlyRateCents)].map(escapeCsvCell).join(","));
-    res.type("text/csv").attachment(`storm-patrol-${event.id}.csv`).send([headers.join(","), ...rows].join("\r\n")); return;
+    const rows = jobs.map(job => [
+      job.id,
+      event.name,
+      job.phase,
+      job.status,
+      job.assetName,
+      job.teamName,
+      job.workerName,
+      job.workTypes.join("; "),
+      job.comments,
+      job.actualTimeMins ?? "",
+      job.actualTimeMins == null ? "" : cents(job.actualTimeMins, event.hourlyRateCents),
+    ].map(escapeCsvCell).join(","));
+    const summaryRows = [
+      ["Report metric", "Value"],
+      ["Actual minutes total", report.totalMinutes],
+      ["Total hours", report.totalHours],
+      ["Labour charge cents", report.labourChargeCents],
+    ].map(row => row.map(escapeCsvCell).join(","));
+    res.type("text/csv").attachment(`storm-patrol-${event.id}.csv`).send([...summaryRows, "", headers.join(","), ...rows].join("\r\n")); return;
   }
   if (req.query.format === "pdf") {
     const PDFDocument = (await import("pdfkit")).default; const doc = new PDFDocument({ margin: 48 });
@@ -804,7 +822,10 @@ router.get("/storm-patrol/events/:id/report", requireAuth, requireRole("manager"
     doc.fontSize(10).text(`Selected sites: ${report.selectedCount}   Checked: ${report.checkedCount}`);
     doc.text(`Actual minutes: ${minutes}   Labour charge: $${(report.labourChargeCents / 100).toFixed(2)}`);
     doc.moveDown().fontSize(11).text("Checks");
-    for (const job of jobs) doc.fontSize(9).text(`${job.phase.toUpperCase()} — ${job.assetName} — ${job.teamName ?? "Unassigned"} — ${job.workerName ?? "Unclaimed"} — ${job.workTypes.join(", ") || "No work type"} — ${job.actualTimeMins ?? 0} minutes`);
+    for (const job of jobs) {
+      const actualTime = job.actualTimeMins == null ? "No actual time recorded" : `${job.actualTimeMins} minutes`;
+      doc.fontSize(9).text(`${job.phase.toUpperCase()} — ${job.assetName} — ${job.teamName ?? "Unassigned"} — ${job.workerName ?? "Unclaimed"} — ${job.workTypes.join(", ") || "No work type"} — ${actualTime}`);
+    }
     doc.end(); return;
   }
   res.json(report);
