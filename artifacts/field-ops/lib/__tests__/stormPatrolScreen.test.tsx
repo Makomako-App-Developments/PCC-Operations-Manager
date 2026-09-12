@@ -67,6 +67,7 @@ vi.mock("@react-native-async-storage/async-storage", () => ({
   default: {
     getItem: vi.fn().mockResolvedValue(null),
     setItem: vi.fn().mockResolvedValue(undefined),
+    removeItem: vi.fn().mockResolvedValue(undefined),
   },
 }));
 
@@ -112,13 +113,14 @@ vi.mock("react-native", async () => {
       testID,
       refreshControl: _refreshControl,
       contentContainerStyle: _contentContainerStyle,
+      editable,
       ...props
     }: {
       children?: React.ReactNode;
       onPress?: () => void;
       testID?: string;
       [key: string]: unknown;
-    }) => React.createElement(tag, { ...props, "data-testid": testID, "data-style": JSON.stringify(style), onClick: onPress }, children);
+    }) => React.createElement(tag, { ...props, "data-testid": testID, "data-editable": editable, "data-style": JSON.stringify(style), onClick: onPress }, children);
 
   return {
     ActivityIndicator: element("span"),
@@ -196,6 +198,14 @@ async function settle() {
   });
 }
 
+async function renderStormScreen() {
+  await act(async () => {
+    if (!root) root = createRoot(document.getElementById("root")!);
+    root.render(<StormPatrolScreen />);
+  });
+  await settle();
+}
+
 async function chooseGallery(trigger: HTMLButtonElement) {
   act(() => trigger.click());
   await act(async () => {
@@ -207,6 +217,14 @@ beforeEach(() => {
   document.body.innerHTML = '<div id="root"></div>';
   Object.defineProperty(URL, "createObjectURL", { configurable: true, value: vi.fn(() => "blob:authenticated-photo") });
   Object.defineProperty(URL, "revokeObjectURL", { configurable: true, value: vi.fn() });
+  mocks.currentResult.data = {
+    data: {
+      event: { id: "event-one", name: "Storm Alpha" },
+      jobs: [],
+      summary: { checkedCount: 0, selectedCount: 0 },
+    },
+  };
+  mocks.currentResult.isLoading = false;
   mocks.currentResult.data.data.jobs = [];
   mocks.customFetch.mockReset().mockResolvedValue(new Blob(["photo"], { type: "image/jpeg" }));
   mocks.alert.mockReset();
@@ -307,6 +325,62 @@ describe("Storm Patrol blocked photo recovery", () => {
       .toContain("Safari storage is unavailable");
     expect(document.body.textContent).toContain("3 items waiting to sync");
     expect(document.body.textContent).toContain("Discard queued photos?");
+  });
+});
+
+describe("Storm Patrol without an active event", () => {
+  it("keeps New Observation visible but blocks inputs, permissions, and queue writes", async () => {
+    mocks.currentResult.data = { data: null } as any;
+
+    await act(async () => {
+      root = createRoot(document.getElementById("root")!);
+      root.render(<StormPatrolScreen />);
+    });
+    await settle();
+
+    expect(document.body.textContent).toContain("There is no active Storm Patrol for your team.");
+    expect(document.body.textContent).toContain("New observations will be enabled when an event becomes active.");
+    expect(document.querySelector('[data-testid="storm-observation"]')).not.toBeNull();
+    expect((document.querySelector('[data-testid="storm-observation-input"]') as HTMLInputElement).getAttribute("data-editable")).toBe("false");
+    expect((document.querySelector('[data-testid="storm-observation-photo"]') as HTMLButtonElement).disabled).toBe(true);
+    expect((document.querySelector('[data-testid="storm-observation-location"]') as HTMLButtonElement).disabled).toBe(true);
+    expect((document.querySelector('[data-testid="storm-observation-submit"]') as HTMLButtonElement).disabled).toBe(true);
+
+    act(() => {
+      (document.querySelector('[data-testid="storm-observation-photo"]') as HTMLButtonElement).click();
+      (document.querySelector('[data-testid="storm-observation-location"]') as HTMLButtonElement).click();
+      (document.querySelector('[data-testid="storm-observation-submit"]') as HTMLButtonElement).click();
+    });
+    await settle();
+
+    expect(mocks.requestLocation).not.toHaveBeenCalled();
+    expect(mocks.pickWebCameraPhoto).not.toHaveBeenCalled();
+    expect(mocks.enqueueStormItems).not.toHaveBeenCalled();
+    expect(document.querySelector('[data-testid="photo-source-library"]')).toBeNull();
+  });
+
+  it("enables New Observation when the current query changes to an active event", async () => {
+    mocks.currentResult.data = { data: null } as any;
+
+    await renderStormScreen();
+    expect((document.querySelector('[data-testid="storm-observation-photo"]') as HTMLButtonElement).disabled).toBe(true);
+
+    mocks.currentResult.data = {
+      data: {
+        event: { id: "event-one", name: "Storm Alpha" },
+        jobs: [],
+        summary: { checkedCount: 0, selectedCount: 0 },
+      },
+    };
+    await act(async () => {
+      root!.render(<StormPatrolScreen />);
+    });
+    await settle();
+
+    expect(document.body.textContent).toContain("Storm Alpha");
+    expect((document.querySelector('[data-testid="storm-observation-photo"]') as HTMLButtonElement).disabled).toBe(false);
+    expect((document.querySelector('[data-testid="storm-observation-location"]') as HTMLButtonElement).disabled).toBe(false);
+    expect((document.querySelector('[data-testid="storm-observation-submit"]') as HTMLButtonElement).disabled).toBe(false);
   });
 });
 

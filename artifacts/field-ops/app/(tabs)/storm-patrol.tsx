@@ -101,17 +101,34 @@ export default function StormPatrolScreen() {
   const [removedSavedPhotoIds, setRemovedSavedPhotoIds] = useState<Set<string>>(() => new Set());
   const [savedPhotoPendingDeleteId, setSavedPhotoPendingDeleteId] = useState<string | null>(null);
   const [savedPhotoDeleteError, setSavedPhotoDeleteError] = useState<string | null>(null);
-  const patrol = ((current.data as unknown as { data?: Patrol } | undefined)?.data ?? cached) as Patrol | null;
+  const livePatrol = (current.data as unknown as { data?: Patrol | null } | undefined)?.data;
+  // A successful null response means the event has ended. Do not let an older
+  // cached event keep observation controls enabled after that response.
+  const patrol = (livePatrol === null ? null : livePatrol ?? cached) as Patrol | null;
 
   const refreshQueue = useCallback(() => user ? loadStormQueue(user.id).then(setQueue).catch(() => {}) : Promise.resolve(), [user]);
   useFocusEffect(useCallback(() => {
     if (user) void flushStormQueue(user.id).then(setQueue).catch(refreshQueue);
   }, [refreshQueue, user]));
   useEffect(() => {
-    const live = (current.data as unknown as { data?: Patrol } | undefined)?.data;
-    if (live) { setCached(live); AsyncStorage.setItem(CACHE_KEY, JSON.stringify(live)).catch(() => {}); }
-  }, [current.data]);
-  useEffect(() => { AsyncStorage.getItem(CACHE_KEY).then(raw => raw && setCached(JSON.parse(raw))).catch(() => {}); }, []);
+    let cancelled = false;
+    if (livePatrol === null) {
+      setCached(null);
+      void AsyncStorage.removeItem(CACHE_KEY);
+      return () => { cancelled = true; };
+    }
+    if (livePatrol) {
+      setCached(livePatrol);
+      void AsyncStorage.setItem(CACHE_KEY, JSON.stringify(livePatrol));
+      return () => { cancelled = true; };
+    }
+    void AsyncStorage.getItem(CACHE_KEY)
+      .then(raw => {
+        if (!cancelled && raw) setCached(JSON.parse(raw));
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [livePatrol]);
   useEffect(() => {
     if (!selected?.startedAt) { setElapsedMinutes(selected?.actualTimeMins ?? 0); return; }
     if (isCompletedJob(selected)) { setElapsedMinutes(selected.actualTimeMins ?? 0); return; }
@@ -153,12 +170,14 @@ export default function StormPatrolScreen() {
       + photos.filter(photo => photo.purpose === purpose).length;
   };
   const canAddPhoto = (purpose: StormPhotoPurpose) => {
+    if (purpose === "observation" && !patrol) return false;
     if (!["before", "after", "observation"].includes(purpose)) return true;
     if (photoCount(purpose) < MAX_PHOTOS_PER_SECTION) return true;
     Alert.alert("Photo limit reached", `You can add up to ${MAX_PHOTOS_PER_SECTION} ${purpose === "observation" ? "new observation" : purpose} photos.`);
     return false;
   };
   const addPickedPhoto = async (source: AttachmentSource, purpose: StormPhotoPurpose) => {
+    if (purpose === "observation" && !patrol) return;
     let preservedSource: AttachmentSource = source;
     if (Platform.OS === "web") {
       try {
@@ -205,6 +224,7 @@ export default function StormPatrolScreen() {
     }
   };
   const choosePhoto = (purpose: StormPhotoPurpose) => {
+    if (purpose === "observation" && !patrol) return;
     if (Platform.OS === "web") {
       if (canAddPhoto(purpose)) setPhotoSourcePurpose(purpose);
       return;
@@ -212,7 +232,7 @@ export default function StormPatrolScreen() {
     void take(purpose);
   };
   const photoSourceModal = <PhotoSourceModal
-    visible={photoSourcePurpose != null}
+    visible={photoSourcePurpose != null && Boolean(patrol)}
     onCancel={() => setPhotoSourcePurpose(null)}
     onTakePhoto={() => {
       const purpose = photoSourcePurpose;
@@ -235,7 +255,7 @@ export default function StormPatrolScreen() {
     void removeManagedAttachment(photo.source as DurableAttachment);
   };
   const removeObservationPhoto = (photo: AttachmentSource) => {
-    if (photoOperationRef.current) return;
+    if (photoOperationRef.current || !patrol) return;
     setObservationPhotos(current => {
       const next = current.filter(candidate => candidate.uploadId !== photo.uploadId);
       observationPhotosRef.current = next;
@@ -528,6 +548,7 @@ export default function StormPatrolScreen() {
     }
   };
   const captureObservationLocation = async () => {
+    if (!patrol) return;
     setCapturingLocation(true);
     try {
       setObservationLocation(await location());
@@ -749,18 +770,53 @@ export default function StormPatrolScreen() {
         </View>;
       })}</>
       : current.isLoading ? <ActivityIndicator color={colors.primary} style={{ marginTop: 50 }}/> : <Text style={[styles.empty, { color: colors.mutedForeground }]}>There is no active Storm Patrol for your team.</Text>}
-    {patrol && <View style={[styles.observation, { borderColor: colors.border }]}>
+    <View
+      testID="storm-observation"
+      style={[styles.observation, { borderColor: colors.border, opacity: patrol ? 1 : 0.6 }]}
+    >
       <Text style={[styles.heading, { color: colors.foreground }]}>New Observation</Text>
-      <Text style={[styles.help, { color: colors.mutedForeground }]}>Record storm related issues on new, unregistered sites.</Text>
-      <TextInput value={observation} onChangeText={setObservation} multiline placeholder="Describe what you see" placeholderTextColor={colors.mutedForeground} style={[styles.input, styles.note, { color: colors.foreground, borderColor: colors.border }]}/>
-      <Button title={`Observation photo (${observationPhotos.length}/${MAX_PHOTOS_PER_SECTION})`} icon="camera" onPress={() => choosePhoto("observation")} color={colors.primary}/>
+      <Text style={[styles.help, { color: colors.mutedForeground }]}>
+        {patrol ? "Record storm related issues on new, unregistered sites." : "There is no active Storm Patrol event. New observations will be enabled when an event becomes active."}
+      </Text>
+      <TextInput
+        testID="storm-observation-input"
+        value={observation}
+        editable={Boolean(patrol)}
+        onChangeText={value => { if (patrol) setObservation(value); }}
+        multiline
+        placeholder="Describe what you see"
+        placeholderTextColor={colors.mutedForeground}
+        style={[styles.input, styles.note, { color: colors.foreground, borderColor: colors.border }]}
+      />
+      <Button
+        testID="storm-observation-photo"
+        title={`Observation photo (${observationPhotos.length}/${MAX_PHOTOS_PER_SECTION})`}
+        icon="camera"
+        disabled={!patrol}
+        onPress={() => choosePhoto("observation")}
+        color={colors.primary}
+      />
       {observationPhotos.length > 0 && <View style={styles.photos}>
         {observationPhotos.map((photo, index) => <PhotoThumbnail key={`${photo.uri}-${index}`} uri={photo.uri} large testID={`remove-observation-photo-${index}`} onRemove={() => removeObservationPhoto(photo)} colors={colors}/>)}
       </View>}
-      <Button title={capturingLocation ? "Capturing location…" : "Capture location"} icon="map-pin" onPress={() => { if (!capturingLocation) void captureObservationLocation(); }} color={colors.primary}/>
+      <Button
+        testID="storm-observation-location"
+        title={capturingLocation ? "Capturing location…" : "Capture location"}
+        icon="map-pin"
+        disabled={!patrol || capturingLocation}
+        onPress={() => { if (!capturingLocation) void captureObservationLocation(); }}
+        color={colors.primary}
+      />
       {observationLocation && <Text style={[styles.locationStatus, { color: colors.success }]}>Location captured: {observationLocation.locationLat.toFixed(5)}, {observationLocation.locationLng.toFixed(5)}</Text>}
-      <Button title={photoOperationInProgress ? "Sending…" : "Send observation"} icon="send" onPress={() => { void runPhotoOperation(submitObservation); }} color={colors.success}/>
-    </View>}
+      <Button
+        testID="storm-observation-submit"
+        title={photoOperationInProgress ? "Sending…" : "Send observation"}
+        icon="send"
+        disabled={!patrol || photoOperationInProgress}
+        onPress={() => { void runPhotoOperation(submitObservation); }}
+        color={colors.success}
+      />
+    </View>
   </ScrollView>
     {photoSourceModal}
     {showDiscardConfirmation && <Modal visible transparent animationType="fade" onRequestClose={() => { if (!discardingPhotos) setShowDiscardConfirmation(false); }}>
@@ -784,7 +840,17 @@ export default function StormPatrolScreen() {
     </Modal>}
   </View>;
 }
-function Button({ title, icon, onPress, color }: { title: string; icon: any; onPress: () => void; color: string }) { return <TouchableOpacity onPress={onPress} style={[styles.button, { backgroundColor: color }]}><Feather name={icon} size={16} color="#fff"/><Text style={styles.buttonText}>{title}</Text></TouchableOpacity>; }
+function Button({ title, icon, onPress, color, disabled = false, testID }: { title: string; icon: any; onPress: () => void; color: string; disabled?: boolean; testID?: string }) {
+  return <TouchableOpacity
+    testID={testID}
+    disabled={disabled}
+    accessibilityState={{ disabled }}
+    onPress={disabled ? undefined : onPress}
+    style={[styles.button, { backgroundColor: color }, disabled && { opacity: 0.55 }]}
+  >
+    <Feather name={icon} size={16} color="#fff"/><Text style={styles.buttonText}>{title}</Text>
+  </TouchableOpacity>;
+}
 function AuthenticatedPhoto({ uri, token, style, colors }: { uri: string; token: string | null; style: object; colors: ReturnType<typeof useColors> }) {
   const [webUri, setWebUri] = useState<string | null>(Platform.OS === "web" ? null : uri);
   const [failed, setFailed] = useState(false);
