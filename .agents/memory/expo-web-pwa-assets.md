@@ -7,4 +7,4 @@ Expo web export does not automatically include custom files from the app's publi
 
 **Why:** A valid manifest and service worker existed in the source tree but were absent from the production export; forwarding their development URLs to Metro also returned application fallback responses instead of install assets.
 
-**How to apply:** When adding or changing custom Expo web files outside Metro's bundle, verify both the built output and the live preview URLs. Keep service-worker scope, manifest scope/start URL, HTML links, and the artifact base path aligned.
+**How to apply:** When adding or changing custom Expo web files outside Metro's bundle, verify both the built output and the live preview URLs. Keep service-worker scope, manifest scope/start URL, HTML links, and the artifact base path aligned. Always handle the promise returned by service-worker registration; Android Chrome may reject it, and an uncaught rejection becomes a false application-error alert.

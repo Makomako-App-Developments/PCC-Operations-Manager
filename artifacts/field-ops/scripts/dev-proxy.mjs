@@ -25,9 +25,11 @@ import { spawn } from "child_process";
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
+import serviceWorkerRegistration from "./service-worker-registration.js";
 
 const PORT = parseInt(process.env.PORT ?? "21340", 10);
 const INTERNAL_PORT = PORT + 1;
+const { createServiceWorkerRegistration } = serviceWorkerRegistration;
 const PUBLIC_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "public");
 const PWA_FILES = new Map([
   ["/manifest.json", ["manifest.json", "application/manifest+json; charset=utf-8"]],
@@ -125,7 +127,7 @@ function rewriteHtml(html) {
   if (!rewritten.includes("navigator.serviceWorker.register")) {
     rewritten = rewritten.replace(
       "</body>",
-      '  <script>if ("serviceWorker" in navigator) window.addEventListener("load", function () { navigator.serviceWorker.register("/field-ops/service-worker.js", { scope: "/field-ops/" }); });</script>\n</body>',
+      `  ${createServiceWorkerRegistration("/field-ops")}\n</body>`,
     );
   }
   return rewritten;

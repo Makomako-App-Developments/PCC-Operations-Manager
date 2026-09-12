@@ -2,6 +2,7 @@ const { execSync } = require("child_process");
 const fs = require("fs");
 const path = require("path");
 const { assertNoRouteTests } = require("./check-route-tests");
+const { createServiceWorkerRegistration } = require("./service-worker-registration");
 
 const projectRoot = path.resolve(__dirname, "..");
 const basePath = "/field-ops";
@@ -61,13 +62,7 @@ try {
     `<meta name="theme-color" content="#166534">`,
     `<link rel="apple-touch-icon" href="${basePath}/icons/icon-192.png">`,
   ].join("\n    ");
-  const serviceWorkerRegistration = `<script>
-      if ("serviceWorker" in navigator) {
-        window.addEventListener("load", function () {
-          navigator.serviceWorker.register("${basePath}/service-worker.js", { scope: "${basePath}/" });
-        });
-      }
-    </script>`;
+  const serviceWorkerRegistration = createServiceWorkerRegistration(basePath);
 
   if (!html.includes('rel="manifest"')) {
     html = html.replace("</head>", `    ${pwaHead}\n  </head>`);
