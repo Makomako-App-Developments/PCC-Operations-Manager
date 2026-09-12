@@ -136,6 +136,9 @@ export default function CommandCenter({ data }: CommandCenterProps) {
   const [isAlerting, setIsAlerting] = useState(false);
   const [selectedCompletedJob, setSelectedCompletedJob] = useState<StormJob | null>(null);
   const [selectedObservation, setSelectedObservation] = useState<StormObservation | null>(null);
+  const [observationTilesFailed, setObservationTilesFailed] = useState(false);
+  const [observationTileAttempt, setObservationTileAttempt] = useState(0);
+  const observationTileAttemptHadError = useRef(false);
   const [pendingCancelJob, setPendingCancelJob] = useState<StormJob | null>(null);
 
   const teams = teamsData || [];
@@ -165,6 +168,22 @@ export default function CommandCenter({ data }: CommandCenterProps) {
     hasInitializedPackageView.current = true;
     if (jobs.length > 0) setIsPackageCollapsed(true);
   }, [jobs.length]);
+
+  useEffect(() => {
+    setObservationTilesFailed(false);
+    observationTileAttemptHadError.current = false;
+  }, [selectedObservation?.id]);
+
+  useEffect(() => {
+    if (!observationTilesFailed) return;
+
+    const retryTimer = window.setInterval(() => {
+      observationTileAttemptHadError.current = false;
+      setObservationTileAttempt(attempt => attempt + 1);
+    }, 10_000);
+
+    return () => window.clearInterval(retryTimer);
+  }, [observationTilesFailed]);
 
   const visibleLiveJobs = useMemo(() => {
     const filtered = livePhaseFilter === "all" ? jobs : jobs.filter(job => job.phase === livePhaseFilter);
@@ -1152,7 +1171,7 @@ export default function CommandCenter({ data }: CommandCenterProps) {
 
                 <section>
                   <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-white/45">Recorded location</h3>
-                  <div className="h-52 w-full overflow-hidden rounded-lg border border-white/10 bg-black/20 sm:h-60">
+                  <div className="relative h-52 w-full overflow-hidden rounded-lg border border-white/10 bg-black/20 sm:h-60">
                     <MapContainer
                       center={[selectedObservation.locationLat, selectedObservation.locationLng]}
                       zoom={17}
@@ -1161,8 +1180,20 @@ export default function CommandCenter({ data }: CommandCenterProps) {
                       aria-label="New Observation recorded location"
                     >
                       <TileLayer
+                        key={observationTileAttempt}
                         attribution="&copy; OpenStreetMap contributors"
                         url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                        eventHandlers={{
+                          tileerror: () => {
+                            observationTileAttemptHadError.current = true;
+                            setObservationTilesFailed(true);
+                          },
+                          load: () => {
+                            if (!observationTileAttemptHadError.current) {
+                              setObservationTilesFailed(false);
+                            }
+                          },
+                        }}
                       />
                       <CircleMarker
                         center={[selectedObservation.locationLat, selectedObservation.locationLng]}
@@ -1173,6 +1204,20 @@ export default function CommandCenter({ data }: CommandCenterProps) {
                       </CircleMarker>
                       <ResizeObservationMap />
                     </MapContainer>
+                    {observationTilesFailed && (
+                      <div
+                        role="status"
+                        className="absolute inset-0 z-[500] flex items-center justify-center bg-[#102d38]/95 p-6 text-center"
+                      >
+                        <div className="max-w-sm">
+                          <MapPin className="mx-auto mb-3 h-7 w-7 text-[#65d8e8]" />
+                          <p className="font-semibold text-white">Map tiles are unavailable</p>
+                          <p className="mt-1 text-sm leading-relaxed text-white/65">
+                            The recorded coordinates are still available below. The map will return automatically when tile access recovers.
+                          </p>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </section>
 

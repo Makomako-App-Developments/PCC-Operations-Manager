@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import CommandCenter, { filterStormwaterAssets } from "./CommandCenter";
@@ -9,6 +9,8 @@ const mocks = vi.hoisted(() => ({
   cancelJob: vi.fn(),
   toast: vi.fn(),
   customFetch: vi.fn(),
+  tileLayerHandlers: { current: undefined as any },
+  tileLayerRenderCount: { current: 0 },
 }));
 
 const assets = [
@@ -98,7 +100,11 @@ vi.mock("react-leaflet", () => ({
       {children}
     </div>
   ),
-  TileLayer: () => null,
+  TileLayer: ({ eventHandlers }: any) => {
+    mocks.tileLayerHandlers.current = eventHandlers;
+    mocks.tileLayerRenderCount.current += 1;
+    return null;
+  },
   CircleMarker: (props: any) => (
     <div
       data-testid="storm-marker"
@@ -165,6 +171,8 @@ beforeEach(() => {
   mocks.cancelJob.mockReset().mockResolvedValue(undefined);
   mocks.toast.mockReset();
   mocks.customFetch.mockReset();
+  mocks.tileLayerHandlers.current = undefined;
+  mocks.tileLayerRenderCount.current = 0;
   mocks.customFetch.mockResolvedValue(new Blob(["photo"], { type: "image/jpeg" }));
   Object.defineProperty(URL, "createObjectURL", { configurable: true, value: vi.fn(() => "blob:authenticated-photo") });
   Object.defineProperty(URL, "revokeObjectURL", { configurable: true, value: vi.fn() });
@@ -173,6 +181,7 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  vi.useRealTimers();
   vi.unstubAllGlobals();
 });
 
@@ -365,6 +374,53 @@ describe("Storm Patrol work package asset filters", () => {
 
     await user.click(within(dialog).getByRole("button", { name: "Close New Observation" }));
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("keeps observation details available while map tiles fail and restores the map on recovery", async () => {
+    const user = userEvent.setup();
+    renderCommandCenter([], [{
+      id: "observation-1",
+      eventId: "event-1",
+      description: "Blocked culvert",
+      notes: "Water is rising.",
+      locationLat: -41.12345,
+      locationLng: 174.98765,
+      createdAt: "2026-09-10T04:30:00.000Z",
+      reactiveJobId: null,
+      photos: [{
+        id: "photo-1",
+        blobUrl: "/api/uploads/observation-1.jpg",
+        caption: "Culvert entrance",
+      }],
+    }]);
+
+    await user.click(screen.getByRole("button", { name: "Open New Observation: Blocked culvert" }));
+    const dialog = screen.getByRole("dialog");
+    await waitFor(() => expect(within(dialog).getByRole("img", { name: "Observation photo 1" })).toBeVisible());
+
+    vi.useFakeTimers();
+    act(() => mocks.tileLayerHandlers.current.tileerror());
+
+    expect(within(dialog).getByRole("status")).toHaveTextContent("Map tiles are unavailable");
+    expect(within(dialog).getByText(/recorded coordinates are still available below/i)).toBeVisible();
+    expect(within(dialog).getByText("Water is rising.")).toBeVisible();
+    expect(within(dialog).getByText("-41.12345")).toBeVisible();
+    expect(within(dialog).getByText("174.98765")).toBeVisible();
+    expect(within(dialog).getByRole("img", { name: "Observation photo 1" })).toBeVisible();
+    expect(within(dialog).getByText("Culvert entrance")).toBeVisible();
+    expect(within(dialog).getByRole("button", { name: "Close New Observation" })).toBeVisible();
+
+    const failedRenderCount = mocks.tileLayerRenderCount.current;
+    await act(async () => {
+      vi.advanceTimersByTime(10_000);
+    });
+    expect(mocks.tileLayerRenderCount.current).toBeGreaterThan(failedRenderCount);
+
+    act(() => mocks.tileLayerHandlers.current.load());
+
+    expect(within(dialog).queryByRole("status")).not.toBeInTheDocument();
+    expect(within(dialog).getByLabelText("New Observation recorded location")).toBeVisible();
+    expect(within(dialog).getByTestId("storm-marker")).toBeVisible();
   });
 
   it("shows uploaded before and after photos in completed work", async () => {
