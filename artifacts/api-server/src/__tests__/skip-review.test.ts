@@ -242,11 +242,12 @@ function getJobPhotos(
 }
 
 function getKnownUpload(
-  { role = "manager" }: { role?: string } = {},
+  { role = "manager", teamId }: { role?: string; teamId?: string } = {},
 ) {
-  return request(app)
+  const req = request(app)
     .get("/api/uploads/uploads/known-draft-photo.jpg")
     .set("x-test-role", role);
+  return teamId ? req.set("x-test-team-id", teamId) : req;
 }
 
 function postTeamComplete(
@@ -483,6 +484,28 @@ describe("POST /api/jobs/:id/skip-review", () => {
     expect(res.body.skipReviewOutcome).toBe("accepted");
     expect(res.body.skipReviewedById).toBe("manager-1");
     expect(res.body.skipReviewNotes).toBe("Approved");
+  });
+});
+
+describe("GET /api/uploads/* Storm Patrol authorization", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    selectImpl = null;
+    selectQueue = [];
+  });
+
+  it("recognizes Storm Patrol photos and denies a worker from another team", async () => {
+    selectQueue = [
+      [], // job_photos
+      [], // audit_photos
+      [{ stormJobId: "storm-job-1", reactiveJobId: null }],
+      [{ teamId: "storm-team-1" }],
+    ];
+
+    const res = await getKnownUpload({ role: "field_worker", teamId: "different-team" });
+
+    expect(res.status).toBe(403);
+    expect(res.body).toEqual({ error: "Forbidden" });
   });
 });
 

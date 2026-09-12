@@ -28,6 +28,7 @@ const mocks = vi.hoisted(() => ({
     isRefetching: false,
     refetch: vi.fn(),
   },
+  customFetch: vi.fn(),
 }));
 
 const failedQueue = [
@@ -70,6 +71,7 @@ vi.mock("@react-native-async-storage/async-storage", () => ({
 }));
 
 vi.mock("@workspace/api-client-react", () => ({
+  customFetch: mocks.customFetch,
   getGetCurrentStormPatrolQueryKey: () => ["storm-patrol"],
   useClaimStormPatrolJob: () => ({ mutate: mocks.claimMutate }),
   useDeleteStormPatrolJobPhoto: () => ({ mutate: mocks.deletePhotoMutate, isPending: false }),
@@ -160,7 +162,7 @@ vi.mock("@/hooks/useColors", () => ({
   }),
 }));
 vi.mock("@/context/auth", () => ({
-  useAuth: () => ({ user: { id: "user-one" }, isLoading: false }),
+  useAuth: () => ({ user: { id: "user-one" }, token: "field-token", isLoading: false }),
 }));
 vi.mock("@/lib/stormPatrolQueue", () => ({
   clearStormQueueItems: mocks.clearStormQueueItems,
@@ -203,7 +205,10 @@ async function chooseGallery(trigger: HTMLButtonElement) {
 
 beforeEach(() => {
   document.body.innerHTML = '<div id="root"></div>';
+  Object.defineProperty(URL, "createObjectURL", { configurable: true, value: vi.fn(() => "blob:authenticated-photo") });
+  Object.defineProperty(URL, "revokeObjectURL", { configurable: true, value: vi.fn() });
   mocks.currentResult.data.data.jobs = [];
+  mocks.customFetch.mockReset().mockResolvedValue(new Blob(["photo"], { type: "image/jpeg" }));
   mocks.alert.mockReset();
   mocks.claimMutate.mockReset();
   mocks.deletePhotoMutate.mockReset();
@@ -498,6 +503,7 @@ describe("Storm Patrol completed jobs", () => {
     expect(title?.getAttribute("data-style")).toContain("#9ca3af");
 
     act(() => row.click());
+    await settle();
 
     expect(document.body.textContent).toContain("Save changes");
     const comments = document.querySelector('input[value="Cleared leaves from the inlet"]');
@@ -516,7 +522,10 @@ describe("Storm Patrol completed jobs", () => {
     expect(document.body.textContent).toContain("Before photo (0/3)");
     expect(document.querySelector('[data-testid="remove-saved-photo-before-photo"]')).toBeNull();
     expect(document.body.textContent).not.toContain("This photo will be permanently removed.");
-    expect(document.querySelectorAll("img")[0]?.getAttribute("src")).toBe(`${window.location.origin}/after.jpg`);
+    expect(document.querySelectorAll("img")[0]?.getAttribute("src")).toBe("blob:authenticated-photo");
+    expect(mocks.customFetch).toHaveBeenCalledWith(`${window.location.origin}/before.jpg`, expect.objectContaining({ responseType: "blob" }));
+    expect(mocks.customFetch).toHaveBeenCalledWith(`${window.location.origin}/after.jpg`, expect.objectContaining({ responseType: "blob" }));
+    expect(URL.revokeObjectURL).toHaveBeenCalledWith("blob:authenticated-photo");
   });
 
   it("queues replacement photos for a completed job without a second completion", async () => {

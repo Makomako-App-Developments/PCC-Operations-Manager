@@ -20,6 +20,8 @@ import {
   auditPhotosTable,
   auditItemsTable,
   auditsTable,
+  stormPhotosTable,
+  stormJobsTable,
   isTransientDatabaseRestartError,
 } from "@workspace/db";
 import { eq } from "drizzle-orm";
@@ -246,8 +248,46 @@ app.get("/api/uploads/*splat", requireAuth, async (req: Request, res: Response) 
         }
         // administrator / manager / supervisor: access granted — fall through to serve the file
       } else {
-        // File not registered in any known table — deny
-        res.status(404).json({ error: "Photo not found" }); return;
+        // 3. Check storm_photos (Storm Patrol jobs and observations)
+        const [stormPhoto] = await db
+          .select({
+            stormJobId: stormPhotosTable.stormJobId,
+            reactiveJobId: stormPhotosTable.reactiveJobId,
+          })
+          .from(stormPhotosTable)
+          .where(eq(stormPhotosTable.blobUrl, blobUrl))
+          .limit(1);
+
+        if (!stormPhoto) {
+          // File not registered in any known table — deny
+          res.status(404).json({ error: "Photo not found" }); return;
+        }
+
+        if (!isPrivileged) {
+          if (stormPhoto.stormJobId) {
+            const [stormJob] = await db
+              .select({ teamId: stormJobsTable.teamId })
+              .from(stormJobsTable)
+              .where(eq(stormJobsTable.id, stormPhoto.stormJobId))
+              .limit(1);
+            if (!stormJob) { res.status(404).json({ error: "Photo not found" }); return; }
+            if (stormJob.teamId !== callerTeamId) {
+              res.status(403).json({ error: "Forbidden" }); return;
+            }
+          } else if (stormPhoto.reactiveJobId) {
+            const [reactiveJob] = await db
+              .select({ assignedTeamId: reactiveJobsTable.assignedTeamId })
+              .from(reactiveJobsTable)
+              .where(eq(reactiveJobsTable.id, stormPhoto.reactiveJobId))
+              .limit(1);
+            if (!reactiveJob) { res.status(404).json({ error: "Photo not found" }); return; }
+            if (reactiveJob.assignedTeamId !== callerTeamId) {
+              res.status(403).json({ error: "Forbidden" }); return;
+            }
+          } else {
+            res.status(404).json({ error: "Photo not found" }); return;
+          }
+        }
       }
     }
 

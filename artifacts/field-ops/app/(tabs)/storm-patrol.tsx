@@ -1,6 +1,6 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Feather } from "@expo/vector-icons";
-import { getGetCurrentStormPatrolQueryKey, useClaimStormPatrolJob, useDeleteStormPatrolJobPhoto, useGetCurrentStormPatrol, type StormCurrentResponse, type StormJob } from "@workspace/api-client-react";
+import { customFetch, getGetCurrentStormPatrolQueryKey, useClaimStormPatrolJob, useDeleteStormPatrolJobPhoto, useGetCurrentStormPatrol, type StormCurrentResponse, type StormJob } from "@workspace/api-client-react";
 import * as ImagePicker from "expo-image-picker";
 import * as Location from "expo-location";
 import { useFocusEffect } from "expo-router";
@@ -61,7 +61,7 @@ async function stageAttachments(sources: readonly AttachmentSource[]): Promise<{
 
 export default function StormPatrolScreen() {
   const colors = useColors();
-  const { user } = useAuth();
+  const { user, token } = useAuth();
   const insets = useSafeAreaInsets();
   const current = useGetCurrentStormPatrol({
     query: { queryKey: getGetCurrentStormPatrolQueryKey(), refetchInterval: 30_000 },
@@ -649,7 +649,7 @@ export default function StormPatrolScreen() {
     <Text style={[styles.heading, { color: colors.foreground }]}>1. Before photo</Text>
     <Button title={`Before photo (${photoCount("before")}/${MAX_PHOTOS_PER_SECTION})`} icon="camera" onPress={() => choosePhoto("before")} color={colors.primary}/>
     {photoCount("before") > 0 && <View style={styles.photos}>
-      {(selected.photos ?? []).filter(photo => photo.purpose === "before" && !removedSavedPhotoIds.has(photo.id)).map(photo => <PhotoThumbnail key={photo.id} uri={resolveSavedPhotoUri(photo.blobUrl)} label="before" testID={`remove-saved-photo-${photo.id}`} onRemove={() => removeSavedPhoto(photo.id)} colors={colors}/>)}
+      {(selected.photos ?? []).filter(photo => photo.purpose === "before" && !removedSavedPhotoIds.has(photo.id)).map(photo => <PhotoThumbnail key={photo.id} uri={resolveSavedPhotoUri(photo.blobUrl)} authenticated token={token} label="before" testID={`remove-saved-photo-${photo.id}`} onRemove={() => removeSavedPhoto(photo.id)} colors={colors}/>)}
       {photos.filter(photo => photo.purpose === "before").map((photo, i) => <PhotoThumbnail key={`${photo.source.uri}-${i}`} uri={photo.source.uri} label="before" testID={`remove-before-photo-${i}`} onRemove={() => removePendingPhoto(photo)} colors={colors}/>)}
     </View>}
     <Text style={[styles.heading, { color: colors.foreground }]}>2. Work completed</Text>
@@ -661,7 +661,7 @@ export default function StormPatrolScreen() {
     <Text style={[styles.heading, { color: colors.foreground }]}>3. After photo</Text>
     <Button title={`After photo (${photoCount("after")}/${MAX_PHOTOS_PER_SECTION})`} icon="camera" onPress={() => choosePhoto("after")} color={colors.primary}/>
     {photoCount("after") > 0 && <View style={styles.photos}>
-      {(selected.photos ?? []).filter(photo => photo.purpose === "after" && !removedSavedPhotoIds.has(photo.id)).map(photo => <PhotoThumbnail key={photo.id} uri={resolveSavedPhotoUri(photo.blobUrl)} label="after" testID={`remove-saved-photo-${photo.id}`} onRemove={() => removeSavedPhoto(photo.id)} colors={colors}/>)}
+      {(selected.photos ?? []).filter(photo => photo.purpose === "after" && !removedSavedPhotoIds.has(photo.id)).map(photo => <PhotoThumbnail key={photo.id} uri={resolveSavedPhotoUri(photo.blobUrl)} authenticated token={token} label="after" testID={`remove-saved-photo-${photo.id}`} onRemove={() => removeSavedPhoto(photo.id)} colors={colors}/>)}
       {photos.filter(photo => photo.purpose === "after").map((photo, i) => <PhotoThumbnail key={`${photo.source.uri}-${i}`} uri={photo.source.uri} label="after" testID={`remove-after-photo-${i}`} onRemove={() => removePendingPhoto(photo)} colors={colors}/>)}
     </View>}
     <Button title={photoOperationInProgress ? "Saving…" : isCompletedJob(selected) ? "Save changes" : dangerous ? "Report dangerous site" : "Complete patrol"} icon="check-circle" onPress={() => { void runPhotoOperation(complete); }} color={dangerous ? colors.destructive : colors.success}/>
@@ -784,9 +784,42 @@ export default function StormPatrolScreen() {
   </View>;
 }
 function Button({ title, icon, onPress, color }: { title: string; icon: any; onPress: () => void; color: string }) { return <TouchableOpacity onPress={onPress} style={[styles.button, { backgroundColor: color }]}><Feather name={icon} size={16} color="#fff"/><Text style={styles.buttonText}>{title}</Text></TouchableOpacity>; }
-function PhotoThumbnail({ uri, label, large = false, testID, onRemove, colors }: { uri: string; label?: string; large?: boolean; testID: string; onRemove: () => void; colors: ReturnType<typeof useColors> }) {
+function AuthenticatedPhoto({ uri, token, style, colors }: { uri: string; token: string | null; style: object; colors: ReturnType<typeof useColors> }) {
+  const [webUri, setWebUri] = useState<string | null>(Platform.OS === "web" ? null : uri);
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    if (Platform.OS !== "web") {
+      setWebUri(uri);
+      return;
+    }
+    const controller = new AbortController();
+    let objectUrl: string | null = null;
+    setWebUri(null);
+    setFailed(false);
+    void customFetch<Blob>(uri, { responseType: "blob", signal: controller.signal })
+      .then(blob => {
+        if (controller.signal.aborted) return;
+        objectUrl = URL.createObjectURL(blob);
+        setWebUri(objectUrl);
+      })
+      .catch(() => {
+        if (!controller.signal.aborted) setFailed(true);
+      });
+    return () => {
+      controller.abort();
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [uri]);
+
+  if (failed) return <View accessibilityLabel="Photo unavailable" style={[style, { alignItems: "center", justifyContent: "center", backgroundColor: colors.card }]}><Feather name="image" size={20} color={colors.mutedForeground}/></View>;
+  if (!webUri) return <View accessibilityLabel="Loading photo" style={[style, { backgroundColor: colors.card }]}/>;
+  return <Image source={{ uri: webUri, ...(Platform.OS !== "web" && token ? { headers: { Authorization: `Bearer ${token}` } } : {}) }} style={style}/>;
+}
+function PhotoThumbnail({ uri, authenticated = false, token = null, label, large = false, testID, onRemove, colors }: { uri: string; authenticated?: boolean; token?: string | null; label?: string; large?: boolean; testID: string; onRemove: () => void; colors: ReturnType<typeof useColors> }) {
+  const imageStyle = large ? styles.observationPhoto : styles.photo;
   return <View style={styles.photoContainer}>
-    <Image source={{ uri }} style={large ? styles.observationPhoto : styles.photo}/>
+    {authenticated ? <AuthenticatedPhoto uri={uri} token={token} style={imageStyle} colors={colors}/> : <Image source={{ uri }} style={imageStyle}/>}
     <PhotoRemoveButton testID={testID} accessibilityLabel={`Remove ${label ?? "observation"} photo`} onRemove={onRemove} iconSize={14} style={[styles.photoRemove, { backgroundColor: colors.destructive, borderColor: colors.card }]}/>
     {label && <Text style={[styles.caption, { color: colors.mutedForeground }]}>{label}</Text>}
   </View>;
