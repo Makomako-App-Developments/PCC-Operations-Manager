@@ -136,7 +136,7 @@ export async function enqueuePhoto(
       return item;
     });
   } catch (error) {
-    removeManagedAttachment(attachment);
+    await removeManagedAttachment(attachment);
     throw error;
   }
 }
@@ -148,7 +148,7 @@ export async function removeFromQueue(id: string): Promise<void> {
     await saveAllQueued(current.filter(queued => queued.id !== id));
     return item;
   });
-  removeManagedAttachment(removed?.attachment);
+  await removeManagedAttachment(removed?.attachment);
 }
 
 export async function attemptUpload(item: QueuedPhoto): Promise<boolean> {

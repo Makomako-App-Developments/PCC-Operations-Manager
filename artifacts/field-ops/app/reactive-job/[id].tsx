@@ -27,7 +27,7 @@ import { PhotoQueueActions } from "@/components/PhotoQueueActions";
 import { PinMap } from "@/components/PinMap";
 import { useAuth } from "@/context/auth";
 import { useGetReactiveJob, useUpdateReactiveJob } from "@workspace/api-client-react";
-import { persistAttachment, removeManagedAttachment, uploadAttachment, type AttachmentSource, type DurableAttachment } from "@/lib/attachmentUpload";
+import { persistAttachment, removeManagedAttachment, uploadAttachment, uploadImmediateWebAttachment, type AttachmentSource, type DurableAttachment } from "@/lib/attachmentUpload";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -79,10 +79,10 @@ function useUploadReactivePhoto(jobId: string) {
       try {
         if (Platform.OS === "web") {
           const browserFile = file ?? new File([await fetch(source.uri).then(r => r.blob())], attachment.fileName, { type: attachment.mimeType });
-          return uploadAttachment<JobPhoto>(`/api/reactive-jobs/${jobId}/photos`, attachment, {}, browserFile);
+          return uploadImmediateWebAttachment<JobPhoto>(`/api/reactive-jobs/${jobId}/photos`, attachment, {}, browserFile);
         }
         const photo = await uploadAttachment<JobPhoto>(`/api/reactive-jobs/${jobId}/photos`, attachment);
-        removeManagedAttachment(attachment);
+        await removeManagedAttachment(attachment);
         qc.invalidateQueries({ queryKey: ["reactive-job-photos", jobId] });
         return photo;
       } catch (err) {

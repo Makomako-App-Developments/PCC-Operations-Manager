@@ -26,7 +26,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 
 import { useAuth } from "@/context/auth";
 import { useColors } from "@/hooks/useColors";
-import { persistAttachment, removeManagedAttachment, uploadAttachment } from "@/lib/attachmentUpload";
+import { persistAttachment, removeManagedAttachment, uploadAttachment, uploadImmediateWebAttachment } from "@/lib/attachmentUpload";
 import { enqueuePhoto } from "@/lib/photoQueue";
 import { getApiUrl } from "@/lib/api";
 
@@ -746,11 +746,11 @@ ${userMarker}
           if (Platform.OS === "web") {
             const blob = await (await fetch(photo.uri)).blob();
             const browserFile = new File([blob], attachment.fileName, { type: attachment.mimeType });
-            await uploadAttachment(`/api/audits/${auditId}/items/${item.id}/photos`, attachment, {}, browserFile);
+            await uploadImmediateWebAttachment(`/api/audits/${auditId}/items/${item.id}/photos`, attachment, {}, browserFile);
           } else {
             try {
               await uploadAttachment(`/api/audits/${auditId}/items/${item.id}/photos`, attachment);
-              removeManagedAttachment(attachment);
+              await removeManagedAttachment(attachment);
             } catch {
               await enqueuePhoto("audit-item", item.id, attachment, undefined, auditId);
               queuedPhotoCount += 1;

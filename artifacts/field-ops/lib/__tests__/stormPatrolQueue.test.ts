@@ -23,9 +23,16 @@ vi.mock("@react-native-async-storage/async-storage", () => ({
   },
 }));
 vi.mock("@workspace/api-client-react", () => ({ customFetch }));
-vi.mock("../attachmentUpload", () => ({ persistAttachment, uploadAttachment, removeManagedAttachment }));
+vi.mock("../attachmentUpload", () => ({
+  persistAttachment,
+  uploadAttachment,
+  removeManagedAttachment,
+  WEB_ATTACHMENT_MISSING_MESSAGE: "This queued browser photo is no longer available. Discard it and select the photo again.",
+  attachmentFailureCode: (error: unknown) =>
+    typeof error === "object" && error && "stage" in error ? (error as { stage: string }).stage : undefined,
+}));
 
-import { clearQueuedStormPhotos, clearStormQueueItems, deserializeStormQueue, enqueueStormItem, enqueueStormObservationPhoto, flushStormQueue, getStormPatrolCompletionRequirements, isPermanentStormCompletionFailure, isStormQueueItemReady, loadStormQueue, saveStormQueue, serializeStormQueue, validatePostStormConditions, validateStormCompletionComments, validateStormPhaseCompletion, type StormQueueItem } from "../stormPatrolQueue";
+import { clearQueuedStormPhotos, clearStormQueueItems, createStormQueueItem, deserializeStormQueue, enqueueStormItem, enqueueStormItems, enqueueStormObservationPhoto, flushStormQueue, getStormPatrolCompletionRequirements, isPermanentStormCompletionFailure, isStormQueueItemReady, isUnrecoverableQueuedStormPhoto, loadStormQueue, saveStormQueue, serializeStormQueue, validatePostStormConditions, validateStormCompletionComments, validateStormPhaseCompletion, type StormQueueItem } from "../stormPatrolQueue";
 
 beforeEach(() => {
   values.clear();
@@ -111,6 +118,67 @@ describe("Storm Patrol offline queue", () => {
 
     expect(await clearQueuedStormPhotos()).toEqual([completion, observation]);
     expect(await loadStormQueue()).toEqual([completion, observation]);
+  });
+
+  it("classifies legacy web photos without durable bytes for reselection", () => {
+    const legacyPhoto: StormQueueItem = {
+      ...item,
+      id: "legacy-web-photo",
+      kind: "photo",
+      payload: {
+        attachment: {
+          uri: "blob:expired",
+          uploadId: "legacy-web-photo",
+          fileName: "photo.jpg",
+          mimeType: "image/jpeg",
+          size: 100,
+          managed: false,
+        },
+      },
+    };
+    const retryablePhoto: StormQueueItem = {
+      ...legacyPhoto,
+      id: "durable-web-photo",
+      payload: {
+        attachment: {
+          ...(legacyPhoto.payload.attachment as object),
+          managed: true,
+          webStorageKey: "durable-web-photo",
+        },
+      },
+    };
+
+    expect(isUnrecoverableQueuedStormPhoto(legacyPhoto)).toBe(true);
+    expect(isUnrecoverableQueuedStormPhoto(retryablePhoto)).toBe(false);
+    expect(isUnrecoverableQueuedStormPhoto(item)).toBe(false);
+  });
+
+  it("classifies URI-only legacy photos after durable browser staging fails", () => {
+    expect(isUnrecoverableQueuedStormPhoto({
+      ...item,
+      kind: "photo",
+      lastError: "GardenOps could not preserve the selected browser photo.",
+      lastErrorCode: "attachment-web-file-missing",
+      payload: { uri: "blob:expired", purpose: "before" },
+    })).toBe(true);
+  });
+
+  it("writes a parent and all dependent photo metadata atomically", async () => {
+    const parent = createStormQueueItem({
+      kind: "completion",
+      idempotencyKey: "atomic-parent",
+      payload: { jobId: "job", data: { idempotencyKey: "atomic-parent" } },
+    });
+    const child = createStormQueueItem({
+      kind: "photo",
+      idempotencyKey: "atomic-photo",
+      dependsOn: parent.id,
+      payload: { jobId: "job", purpose: "before" },
+    });
+    setItem.mockRejectedValueOnce(new Error("AsyncStorage unavailable"));
+
+    await expect(enqueueStormItems([parent, child])).rejects.toThrow("AsyncStorage unavailable");
+    expect(await loadStormQueue()).toEqual([]);
   });
 
   it("removes only the selected stale queue records", async () => {

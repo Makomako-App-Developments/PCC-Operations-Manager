@@ -39,7 +39,7 @@ import { useAuth } from "@/context/auth";
 import { useColors } from "@/hooks/useColors";
 import { getApiUrl, trackedFetch } from "@/lib/api";
 import { useOfflinePhotoQueue } from "@/hooks/useOfflinePhotoQueue";
-import { persistAttachment, removeManagedAttachment, uploadAttachment, type AttachmentSource, type DurableAttachment } from "@/lib/attachmentUpload";
+import { persistAttachment, removeManagedAttachment, uploadAttachment, uploadImmediateWebAttachment, type AttachmentSource, type DurableAttachment } from "@/lib/attachmentUpload";
 import { loadCachedAsset, loadCachedCoreJob, saveCachedAsset, saveCachedCoreJob } from "@/lib/jobDetailCache";
 
 // ─── Task definitions ────────────────────────────────────────────────────────
@@ -120,11 +120,11 @@ function useUploadPhoto(jobId: string) {
       try {
         if (Platform.OS === "web") {
           const browserFile = file ?? new File([await fetch(source.uri).then(r => r.blob())], attachment.fileName, { type: attachment.mimeType });
-          const photo = await uploadAttachment<JobPhoto>(`/api/jobs/${jobId}/photos`, attachment, { caption }, browserFile);
+          const photo = await uploadImmediateWebAttachment<JobPhoto>(`/api/jobs/${jobId}/photos`, attachment, { caption }, browserFile);
           return photo;
         }
         const photo = await uploadAttachment<JobPhoto>(`/api/jobs/${jobId}/photos`, attachment, { caption });
-        removeManagedAttachment(attachment);
+        await removeManagedAttachment(attachment);
         qc.invalidateQueries({ queryKey: ["job-photos", jobId] });
         return photo;
       } catch (err) {

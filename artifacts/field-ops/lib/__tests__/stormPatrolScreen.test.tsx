@@ -4,11 +4,16 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   alert: vi.fn(),
-  clearQueuedStormPhotos: vi.fn(),
+  clearStormQueueItems: vi.fn(),
   flushStormQueue: vi.fn(),
   loadStormQueue: vi.fn(),
   claimMutate: vi.fn(),
   deletePhotoMutate: vi.fn(),
+  enqueueStormItems: vi.fn(),
+  persistAttachment: vi.fn(),
+  removeManagedAttachment: vi.fn(),
+  requestLocation: vi.fn(),
+  getLocation: vi.fn(),
   refetch: vi.fn(),
   currentResult: {
     data: {
@@ -71,13 +76,8 @@ vi.mock("@workspace/api-client-react", () => ({
 }));
 
 vi.mock("../attachmentUpload", () => ({
-  persistAttachment: vi.fn(async (source: any) => ({
-    uri: source.uri,
-    fileName: source.fileName ?? "photo.jpg",
-    mimeType: source.mimeType ?? "image/jpeg",
-    size: source.fileSize ?? source.size ?? 100,
-    managed: true,
-  })),
+  persistAttachment: mocks.persistAttachment,
+  removeManagedAttachment: mocks.removeManagedAttachment,
 }));
 
 vi.mock("expo-router", () => ({
@@ -95,8 +95,8 @@ vi.mock("expo-image-picker", () => ({
 
 vi.mock("expo-location", () => ({
   Accuracy: { High: "high" },
-  requestForegroundPermissionsAsync: vi.fn(),
-  getCurrentPositionAsync: vi.fn(),
+  requestForegroundPermissionsAsync: mocks.requestLocation,
+  getCurrentPositionAsync: mocks.getLocation,
 }));
 
 vi.mock("react-native", async () => {
@@ -158,14 +158,18 @@ vi.mock("@/hooks/useColors", () => ({
   }),
 }));
 vi.mock("@/lib/stormPatrolQueue", () => ({
-  clearQueuedStormPhotos: mocks.clearQueuedStormPhotos,
-  enqueueStormAlert: vi.fn(),
-  enqueueStormCompletion: vi.fn(),
-  enqueueStormObservation: vi.fn(),
-  enqueueStormObservationPhoto: vi.fn(),
-  enqueueStormPhoto: vi.fn(),
+  clearStormQueueItems: mocks.clearStormQueueItems,
+  createStormQueueItem: (item: any) => ({
+    ...item,
+    id: `${item.kind}-${item.idempotencyKey}`,
+    createdAt: "2026-09-12T00:00:00.000Z",
+    attempts: 0,
+  }),
+  enqueueStormItems: mocks.enqueueStormItems,
   flushStormQueue: mocks.flushStormQueue,
   getStormPatrolCompletionRequirements: vi.fn(() => []),
+  isUnrecoverableQueuedStormPhoto: (item: { kind: string; lastError?: string }) =>
+    item.kind === "photo" && Boolean(item.lastError?.includes("Photo is required")),
   loadStormQueue: mocks.loadStormQueue,
   stormQueueId: vi.fn(() => "queue-id"),
 }));
@@ -188,6 +192,18 @@ beforeEach(() => {
   mocks.alert.mockReset();
   mocks.claimMutate.mockReset();
   mocks.deletePhotoMutate.mockReset();
+  mocks.enqueueStormItems.mockReset().mockImplementation(async items => items);
+  mocks.persistAttachment.mockReset().mockImplementation(async (source: any) => ({
+    uri: source.uri,
+    uploadId: source.uploadId ?? source.uri,
+    fileName: source.fileName ?? "photo.jpg",
+    mimeType: source.mimeType ?? "image/jpeg",
+    size: source.fileSize ?? source.size ?? 100,
+    managed: true,
+  }));
+  mocks.removeManagedAttachment.mockReset().mockResolvedValue(undefined);
+  mocks.requestLocation.mockReset().mockResolvedValue({ status: "granted" });
+  mocks.getLocation.mockReset().mockResolvedValue({ coords: { latitude: -41.1, longitude: 174.8 } });
   mocks.refetch.mockReset().mockResolvedValue(undefined);
   mocks.currentResult.refetch = mocks.refetch;
   mocks.loadStormQueue.mockReset().mockResolvedValue(failedQueue);
@@ -195,7 +211,7 @@ beforeEach(() => {
     .mockReset()
     .mockResolvedValueOnce(failedQueue)
     .mockResolvedValueOnce(remainingQueue);
-  mocks.clearQueuedStormPhotos.mockReset().mockResolvedValue(remainingQueue);
+  mocks.clearStormQueueItems.mockReset().mockResolvedValue(remainingQueue);
 });
 
 afterEach(() => {
@@ -216,7 +232,7 @@ describe("Storm Patrol blocked photo recovery", () => {
     expect(document.body.textContent).toContain("3 items waiting to sync");
     const discard = document.querySelector('[data-testid="storm-sync-clear-photos"]') as HTMLButtonElement;
     expect(discard).not.toBeNull();
-    expect(discard.textContent).toContain("Discard 2 queued photos");
+    expect(discard.textContent).toContain("Discard 2 unavailable photos and reselect");
 
     act(() => discard.click());
     const destructiveAction = mocks.alert.mock.calls[0]?.[2]?.find(
@@ -229,10 +245,10 @@ describe("Storm Patrol blocked photo recovery", () => {
     });
     await settle();
 
-    expect(mocks.clearQueuedStormPhotos).toHaveBeenCalledOnce();
+    expect(mocks.clearStormQueueItems).toHaveBeenCalledWith(["photo-before", "photo-after"]);
     expect(mocks.flushStormQueue).toHaveBeenCalledOnce();
     expect(document.body.textContent).toContain("1 item waiting to sync");
-    expect(document.body.textContent).not.toContain("queued photo");
+    expect(document.body.textContent).not.toContain("unavailable photo");
     expect(document.querySelector('[data-testid="storm-sync-clear-photos"]')).toBeNull();
   });
 });
@@ -421,6 +437,100 @@ describe("Storm Patrol completed jobs", () => {
     );
     expect(document.body.textContent).toContain("Before photo (0/3)");
     expect(document.querySelector('[data-testid="remove-saved-photo-before-photo"]')).toBeNull();
+  });
+
+  it("queues replacement photos for a completed job without a second completion", async () => {
+    mocks.currentResult.data.data.jobs = [{
+      id: "completed-job",
+      eventId: "event-one",
+      assetId: "asset-one",
+      assetName: "Thompson Grove Reserve",
+      phase: "mid",
+      status: "completed",
+      routeOrder: 1,
+      actualTimeMins: 12,
+      comments: "",
+      workTypes: [],
+      photos: [
+        { id: "before-saved", purpose: "before", blobUrl: "/before.jpg", createdAt: "2026-09-12T00:00:00.000Z" },
+        { id: "after-saved", purpose: "after", blobUrl: "/after.jpg", createdAt: "2026-09-12T00:10:00.000Z" },
+      ],
+      lat: null,
+      lng: null,
+    }] as any;
+    mocks.loadStormQueue.mockResolvedValue([]);
+    mocks.flushStormQueue.mockReset().mockResolvedValue([]);
+    mocks.requestLocation.mockResolvedValue({ status: "denied" });
+    vi.mocked(ImagePicker.launchImageLibraryAsync).mockResolvedValue({
+      canceled: false,
+      assets: [{ uri: "blob:replacement", fileName: "replacement.jpg", mimeType: "image/jpeg", fileSize: 100 }],
+    } as any);
+
+    await act(async () => {
+      root = createRoot(document.getElementById("root")!);
+      root.render(<StormPatrolScreen />);
+    });
+    await settle();
+    act(() => (document.querySelector('[data-testid="storm-job-completed-job"]') as HTMLButtonElement).click());
+    const before = Array.from(document.querySelectorAll("button")).find(button => button.textContent?.startsWith("Before photo"))!;
+    await act(async () => before.click());
+    const save = Array.from(document.querySelectorAll("button")).find(button => button.textContent?.includes("Save changes"))!;
+    await act(async () => save.click());
+    await settle();
+
+    expect(mocks.enqueueStormItems).toHaveBeenCalledOnce();
+    expect(mocks.requestLocation).not.toHaveBeenCalled();
+    expect(mocks.getLocation).not.toHaveBeenCalled();
+    const queuedItems = mocks.enqueueStormItems.mock.calls[0][0];
+    expect(queuedItems).not.toContainEqual(expect.objectContaining({ kind: "completion" }));
+    expect(queuedItems).toContainEqual(expect.objectContaining({
+      kind: "photo",
+      payload: expect.objectContaining({
+        jobId: "completed-job",
+        attachment: expect.objectContaining({ uri: "blob:replacement" }),
+        purpose: "before",
+      }),
+    }));
+  });
+
+  it("does not claim a patrol was queued when browser byte staging fails", async () => {
+    mocks.currentResult.data.data.jobs = [{
+      id: "completed-job",
+      eventId: "event-one",
+      assetId: "asset-one",
+      assetName: "Thompson Grove Reserve",
+      phase: "mid",
+      status: "completed",
+      routeOrder: 1,
+      actualTimeMins: 12,
+      comments: "Initial check",
+      workTypes: ["visual_check_only"],
+      photos: [
+        { id: "before-saved", purpose: "before", blobUrl: "/before.jpg", createdAt: "2026-09-12T00:00:00.000Z" },
+        { id: "after-saved", purpose: "after", blobUrl: "/after.jpg", createdAt: "2026-09-12T00:10:00.000Z" },
+      ],
+      lat: null,
+      lng: null,
+    }] as any;
+    mocks.loadStormQueue.mockResolvedValue([]);
+    mocks.flushStormQueue.mockReset().mockResolvedValue([]);
+    mocks.persistAttachment.mockRejectedValueOnce(new Error("This browser does not have enough storage to safely queue the photo."));
+    vi.mocked(ImagePicker.launchImageLibraryAsync).mockResolvedValue({
+      canceled: false,
+      assets: [{ uri: "blob:quota-photo", fileName: "quota.jpg", mimeType: "image/jpeg", fileSize: 100 }],
+    } as any);
+
+    await act(async () => {
+      root = createRoot(document.getElementById("root")!);
+      root.render(<StormPatrolScreen />);
+    });
+    await settle();
+    act(() => (document.querySelector('[data-testid="storm-job-completed-job"]') as HTMLButtonElement).click());
+    await act(async () => Array.from(document.querySelectorAll("button")).find(button => button.textContent?.startsWith("Before photo"))!.click());
+    await act(async () => Array.from(document.querySelectorAll("button")).find(button => button.textContent?.includes("Save changes"))!.click());
+
+    expect(mocks.enqueueStormItems).not.toHaveBeenCalled();
+    expect(mocks.alert).toHaveBeenCalledWith("Photos not saved", expect.stringContaining("not have enough storage"));
   });
 
   it("automatically collapses a completed earlier phase and lets the user reopen it", async () => {

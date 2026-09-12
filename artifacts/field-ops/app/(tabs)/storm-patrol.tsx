@@ -10,8 +10,8 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { PinMap } from "@/components/PinMap";
 import { requestCameraPermission, requestMediaLibraryPermission } from "@/hooks/usePhotoLibraryPermission";
 import { useColors } from "@/hooks/useColors";
-import { clearQueuedStormPhotos, enqueueStormAlert, enqueueStormCompletion, enqueueStormObservation, enqueueStormObservationPhoto, enqueueStormPhoto, flushStormQueue, getStormPatrolCompletionRequirements, loadStormQueue, stormQueueId, type StormPhotoPurpose, type StormQueueItem } from "@/lib/stormPatrolQueue";
-import { persistAttachment, type AttachmentSource } from "@/lib/attachmentUpload";
+import { clearStormQueueItems, createStormQueueItem, enqueueStormItems, flushStormQueue, getStormPatrolCompletionRequirements, isUnrecoverableQueuedStormPhoto, loadStormQueue, stormQueueId, type StormPhotoPurpose, type StormQueueItem } from "@/lib/stormPatrolQueue";
+import { persistAttachment, removeManagedAttachment, type AttachmentSource, type DurableAttachment } from "@/lib/attachmentUpload";
 
 const CACHE_KEY = "@storm_patrol_current_v1";
 const MAX_PHOTOS_PER_SECTION = 3;
@@ -27,6 +27,17 @@ const PHASES = ["pre", "mid", "post"] as const;
 const COMPLETED_STATUSES = new Set(["completed", "too_dangerous"]);
 const label = (phase: string) => ({ pre: "Before storm", mid: "During storm", post: "After storm" }[phase] ?? phase);
 const isCompletedJob = (job: Pick<Job, "status">) => COMPLETED_STATUSES.has(job.status);
+
+async function stageAttachments(sources: readonly AttachmentSource[]): Promise<DurableAttachment[]> {
+  const staged: DurableAttachment[] = [];
+  try {
+    for (const source of sources) staged.push(await persistAttachment(source));
+    return staged;
+  } catch (error) {
+    await Promise.all(staged.map(attachment => removeManagedAttachment(attachment)));
+    throw error;
+  }
+}
 
 export default function StormPatrolScreen() {
   const colors = useColors();
@@ -96,8 +107,8 @@ export default function StormPatrolScreen() {
       ...automaticallyCollapsedPhases.split(","),
     ]));
   }, [automaticallyCollapsedPhases]);
-  const queuedPhotoCount = queue.filter(item => item.kind === "photo").length;
-  const photoQueueBlocked = queuedPhotoCount > 0 && queue.some(item => item.kind === "photo" && item.lastError?.includes("Photo is required"));
+  const unrecoverablePhotos = queue.filter(isUnrecoverableQueuedStormPhoto);
+  const photoQueueBlocked = unrecoverablePhotos.length > 0;
   const photoCount = (purpose: StormPhotoPurpose) => {
     if (purpose === "observation" && !selected) return observationPhotos.length;
     return (selected?.photos ?? []).filter(photo => photo.purpose === purpose && !removedSavedPhotoIds.has(photo.id)).length
@@ -177,7 +188,7 @@ export default function StormPatrolScreen() {
     if (discardingPhotos) return;
     Alert.alert(
       "Discard queued photos?",
-      `This will permanently remove ${queuedPhotoCount} local Storm Patrol photo${queuedPhotoCount === 1 ? "" : "s"} that could not upload. Completed patrol records, observations, and alerts will not be removed.`,
+      `This will permanently remove ${unrecoverablePhotos.length} unavailable local Storm Patrol photo${unrecoverablePhotos.length === 1 ? "" : "s"}. Completed patrol records, observations, alerts, and other retryable photos will not be removed. Select these photos again from the completed job after clearing them.`,
       [
         { text: "Cancel", style: "cancel" },
         {
@@ -185,8 +196,9 @@ export default function StormPatrolScreen() {
           style: "destructive",
           onPress: () => {
             setDiscardingPhotos(true);
-            setQueue(current => current.filter(item => item.kind !== "photo"));
-            void clearQueuedStormPhotos()
+            const unavailableIds = unrecoverablePhotos.map(item => item.id);
+            setQueue(current => current.filter(item => !unavailableIds.includes(item.id)));
+            void clearStormQueueItems(unavailableIds)
               .then(setQueue)
               .catch(error => {
                 Alert.alert("Unable to discard photos", error instanceof Error ? error.message : "Try again.");
@@ -204,10 +216,47 @@ export default function StormPatrolScreen() {
       Alert.alert("Urgent issue not sent", "Send or remove the urgent issue photo before completing this patrol check.");
       return;
     }
+    if (isCompletedJob(selected)) {
+      const replacementPhotos = photos.filter(photo => photo.purpose === "before" || photo.purpose === "after");
+      if (!replacementPhotos.length) {
+        Alert.alert("No new photos", "Select a before or after photo to add to this completed patrol.");
+        return;
+      }
+      let stagedPhotos: DurableAttachment[] = [];
+      let durablyQueued = false;
+      try {
+        stagedPhotos = await stageAttachments(replacementPhotos.map(photo => photo.source));
+        const pendingItems = stagedPhotos.map((attachment, index) => {
+          const idempotencyKey = `storm-photo-${stormQueueId()}`;
+          return createStormQueueItem({
+            kind: "photo",
+            idempotencyKey,
+            payload: {
+              jobId: selected.id,
+              attachment,
+              purpose: replacementPhotos[index].purpose,
+              idempotencyKey,
+            },
+          });
+        });
+        const queuedItems = await enqueueStormItems(pendingItems);
+        durablyQueued = true;
+        const remaining = await sync();
+        if (remaining.some(item => queuedItems.some(queued => queued.id === item.id))) {
+          Alert.alert("Photos saved for sync", "The photos are safe in this browser. GardenOps will keep retrying until they are sent.");
+        }
+        setSelected(null);
+        setPhotos([]);
+        return;
+      } catch (error) {
+        if (!durablyQueued) await Promise.all(stagedPhotos.map(removeManagedAttachment));
+        Alert.alert("Photos not saved", error instanceof Error ? error.message : "GardenOps could not safely queue these replacement photos.");
+        refreshQueue();
+        return;
+      }
+    }
     const existingPhotoPurposes = selected.photos?.map(photo => photo.purpose) ?? [];
-    const acceptedPhotoPurposes = selected.status === "completed"
-      ? [...existingPhotoPurposes, "before", "after", ...photos.map(photo => photo.purpose)]
-      : [...existingPhotoPurposes, ...photos.map(photo => photo.purpose)];
+    const acceptedPhotoPurposes = [...existingPhotoPurposes, ...photos.map(photo => photo.purpose)];
     const missing = getStormPatrolCompletionRequirements({
       photoPurposes: acceptedPhotoPurposes,
       workTypes,
@@ -221,56 +270,106 @@ export default function StormPatrolScreen() {
       Alert.alert("Complete these items", missing.map(item => `• ${item}`).join("\n"));
       return;
     }
+    let stagedPhotos: Array<{ source: DurableAttachment; purpose: StormPhotoPurpose }> = [];
+    const queuedAttachmentIds = new Set<string>();
     try {
       const point = await location();
-      const stagedPhotos = await Promise.all(photos.map(async photo => ({
-        ...photo,
-        source: await persistAttachment(photo.source),
-      })));
-      const observationItems: StormQueueItem[] = [];
-      const submittedItemIds: string[] = [];
+      const stagedAttachments = await stageAttachments(photos.map(photo => photo.source));
+      stagedPhotos = photos.map((photo, index) => ({ ...photo, source: stagedAttachments[index] }));
+      const pendingItems: StormQueueItem[] = [];
       if (selected.phase === "post") {
-        if (flooding) observationItems.push(await enqueueStormObservation({ eventId: selected.eventId, assetId: selected.assetId, sourceJobId: selected.id, description: "New flooding", notes: floodingDescription.trim(), idempotencyKey: `storm-flooding-${stormQueueId()}`, ...point }));
-        if (slips) observationItems.push(await enqueueStormObservation({ eventId: selected.eventId, assetId: selected.assetId, sourceJobId: selected.id, description: "New slip", notes: slipDescription.trim(), idempotencyKey: `storm-slip-${stormQueueId()}`, ...point }));
-      }
-      submittedItemIds.push(...observationItems.map(item => item.id));
-      for (const photo of stagedPhotos.filter(p => p.purpose === "new_flooding" || p.purpose === "new_slip")) {
-        const parent = photo.purpose === "new_flooding" ? observationItems.find(x => (x.payload.data as any)?.description === "New flooding") : observationItems.find(x => (x.payload.data as any)?.description === "New slip");
-        const observationKey = (parent?.payload.data as { idempotencyKey?: string } | undefined)?.idempotencyKey;
-        if (parent && observationKey) {
-          const queued = await enqueueStormObservationPhoto(photo.source, observationKey, parent.id);
-          submittedItemIds.push(queued.id);
+        for (const observation of [
+          flooding ? { purpose: "new_flooding" as const, description: "New flooding", notes: floodingDescription.trim(), key: `storm-flooding-${stormQueueId()}` } : undefined,
+          slips ? { purpose: "new_slip" as const, description: "New slip", notes: slipDescription.trim(), key: `storm-slip-${stormQueueId()}` } : undefined,
+        ].filter(Boolean)) {
+          if (!observation) continue;
+          const parent = createStormQueueItem({
+            kind: "observation",
+            idempotencyKey: observation.key,
+            payload: { data: { eventId: selected.eventId, assetId: selected.assetId, sourceJobId: selected.id, description: observation.description, notes: observation.notes, idempotencyKey: observation.key, ...point } },
+          });
+          pendingItems.push(parent);
+          for (const photo of stagedPhotos.filter(candidate => candidate.purpose === observation.purpose)) {
+            const idempotencyKey = `storm-photo-${stormQueueId()}`;
+            pendingItems.push(createStormQueueItem({
+              kind: "photo",
+              idempotencyKey,
+              dependsOn: parent.id,
+              payload: { attachment: photo.source, purpose: "observation", observationIdempotencyKey: observation.key, idempotencyKey },
+            }));
+          }
         }
       }
-      const completionKey = `storm-completion-${stormQueueId()}`;
-      const result = await enqueueStormCompletion(selected.id, { outcome: dangerous ? "too_dangerous" : "completed", actualTimeMins: elapsedMinutes, comments: comments.trim() || undefined, workTypes: (dangerous ? ["site_too_dangerous"] : workTypes) as any, dangerousReason: dangerous ? dangerReason.trim() : undefined, idempotencyKey: completionKey, ...point });
-      submittedItemIds.push(result.id);
-      for (const photo of stagedPhotos.filter(p => p.purpose === "before" || p.purpose === "after")) {
-        const queued = await enqueueStormPhoto(selected.id, photo.source, photo.purpose, result.id);
-        submittedItemIds.push(queued.id);
+      let completionItemId: string | undefined;
+      if (!isCompletedJob(selected)) {
+        const completionKey = `storm-completion-${stormQueueId()}`;
+        const completion = createStormQueueItem({
+          kind: "completion",
+          idempotencyKey: completionKey,
+          payload: { jobId: selected.id, data: { outcome: dangerous ? "too_dangerous" : "completed", actualTimeMins: elapsedMinutes, comments: comments.trim() || undefined, workTypes: (dangerous ? ["site_too_dangerous"] : workTypes) as any, dangerousReason: dangerous ? dangerReason.trim() : undefined, idempotencyKey: completionKey, ...point } },
+        });
+        completionItemId = completion.id;
+        pendingItems.push(completion);
       }
+      for (const photo of stagedPhotos.filter(p => p.purpose === "before" || p.purpose === "after")) {
+        const idempotencyKey = `storm-photo-${stormQueueId()}`;
+        pendingItems.push(createStormQueueItem({
+          kind: "photo",
+          idempotencyKey,
+          dependsOn: completionItemId,
+          payload: { jobId: selected.id, attachment: photo.source, purpose: photo.purpose, idempotencyKey },
+        }));
+      }
+      const queuedItems = await enqueueStormItems(pendingItems);
+      stagedPhotos.forEach(photo => queuedAttachmentIds.add(photo.source.uploadId));
+      const submittedItemIds = queuedItems.map(item => item.id);
       const remaining = await sync();
       if (remaining.some(item => submittedItemIds.includes(item.id))) {
         Alert.alert("Saved for sync", "The patrol details are safe on this device. GardenOps will keep retrying any attachments that have not sent yet.");
       }
       setSelected(null); setPhotos([]); setComments(""); setWorkTypes([]); setDangerous(false); setDangerReason(""); setFlooding(false); setSlips(false); setFloodingDescription(""); setSlipDescription("");
-    } catch (error) { Alert.alert("Saved for sync", error instanceof Error ? error.message : "Your patrol record will retry when online."); refreshQueue(); }
+    } catch (error) {
+      await Promise.all(stagedPhotos
+        .filter(photo => !queuedAttachmentIds.has(photo.source.uploadId))
+        .map(photo => removeManagedAttachment(photo.source)));
+      Alert.alert("Patrol not saved", error instanceof Error ? error.message : "GardenOps could not safely queue this patrol and its photos.");
+      refreshQueue();
+    }
   };
   const submitObservation = async () => {
     if (!patrol) return;
     if (!observation.trim()) { Alert.alert("Description required", "Describe what you observed before sending."); return; }
     if (!observationLocation) { Alert.alert("Location required", "Capture your current location before sending the observation."); return; }
+    let stagedPhotos: DurableAttachment[] = [];
+    const queuedAttachmentIds = new Set<string>();
     try {
       const idempotencyKey = `storm-observation-${stormQueueId()}`;
-      const stagedPhotos = await Promise.all(observationPhotos.map(photo => persistAttachment(photo)));
-      const item = await enqueueStormObservation({ eventId: patrol.event.id, description: observation.trim(), idempotencyKey, ...observationLocation });
-      const photoItems = await Promise.all(stagedPhotos.map(photo => enqueueStormObservationPhoto(photo, idempotencyKey, item.id)));
+      stagedPhotos = await stageAttachments(observationPhotos);
+      const item = createStormQueueItem({ kind: "observation", idempotencyKey, payload: { data: { eventId: patrol.event.id, description: observation.trim(), idempotencyKey, ...observationLocation } } });
+      const pendingItems = [item];
+      for (const photo of stagedPhotos) {
+        const photoIdempotencyKey = `storm-photo-${stormQueueId()}`;
+        pendingItems.push(createStormQueueItem({
+          kind: "photo",
+          idempotencyKey: photoIdempotencyKey,
+          dependsOn: item.id,
+          payload: { attachment: photo, purpose: "observation", observationIdempotencyKey: idempotencyKey, idempotencyKey: photoIdempotencyKey },
+        }));
+      }
+      const queuedItems = await enqueueStormItems(pendingItems);
+      stagedPhotos.forEach(photo => queuedAttachmentIds.add(photo.uploadId));
       const remaining = await sync();
       setObservation(""); setObservationPhotos([]); setObservationLocation(null);
-      if (remaining.some(queued => queued.id === item.id || photoItems.some(photo => photo.id === queued.id))) {
+      if (remaining.some(queued => queuedItems.some(item => item.id === queued.id))) {
         Alert.alert("Observation saved for sync", "The observation is safe on this device. GardenOps will keep retrying until its attachment is sent.");
       }
-    } catch (error) { Alert.alert("Observation queued", error instanceof Error ? error.message : "It will retry when online."); refreshQueue(); }
+    } catch (error) {
+      await Promise.all(stagedPhotos
+        .filter(photo => !queuedAttachmentIds.has(photo.uploadId))
+        .map(removeManagedAttachment));
+      Alert.alert("Observation not queued", error instanceof Error ? error.message : "GardenOps could not safely queue this observation and its photos.");
+      refreshQueue();
+    }
   };
   const captureObservationLocation = async () => {
     setCapturingLocation(true);
@@ -286,17 +385,36 @@ export default function StormPatrolScreen() {
     if (!patrol || !selected || !issue.trim()) return;
     const urgentPhotos = photos.filter(p => p.purpose === "urgent_issue");
     if (!urgentPhotos.length) { Alert.alert("Urgent photo required", "Capture an urgent issue photo before sending the alert."); return; }
-    const stagedUrgentPhotos = await Promise.all(urgentPhotos.map(async photo => ({
-      ...photo,
-      source: await persistAttachment(photo.source),
-    })));
-    const alert = await enqueueStormAlert(patrol.event.id, issue.trim(), selected.id);
-    const photoItems: StormQueueItem[] = [];
-    for (const photo of stagedUrgentPhotos) photoItems.push(await enqueueStormPhoto(selected.id, photo.source, "urgent_issue", alert.id));
-    setIssue(""); setUrgentExpanded(false); setPhotos(currentPhotos => currentPhotos.filter(photo => photo.purpose !== "urgent_issue"));
-    const remaining = await sync().catch(async () => { await refreshQueue(); return loadStormQueue(); });
-    if (remaining.some(item => item.id === alert.id || photoItems.some(photo => photo.id === item.id))) {
-      Alert.alert("Urgent issue saved for sync", "The alert is safe on this device. GardenOps will keep retrying its attachment.");
+    let stagedUrgentPhotos: DurableAttachment[] = [];
+    let durablyQueued = false;
+    try {
+      stagedUrgentPhotos = await stageAttachments(urgentPhotos.map(photo => photo.source));
+      const alertIdempotencyKey = `storm-alert-${stormQueueId()}`;
+      const alert = createStormQueueItem({
+        kind: "alert",
+        idempotencyKey: alertIdempotencyKey,
+        payload: { eventId: patrol.event.id, message: issue.trim(), stormJobId: selected.id, idempotencyKey: alertIdempotencyKey },
+      });
+      const pendingItems = [alert, ...stagedUrgentPhotos.map(photo => {
+        const idempotencyKey = `storm-photo-${stormQueueId()}`;
+        return createStormQueueItem({
+          kind: "photo",
+          idempotencyKey,
+          dependsOn: alert.id,
+          payload: { jobId: selected.id, attachment: photo, purpose: "urgent_issue", idempotencyKey },
+        });
+      })];
+      const queuedItems = await enqueueStormItems(pendingItems);
+      durablyQueued = true;
+      setIssue(""); setUrgentExpanded(false); setPhotos(currentPhotos => currentPhotos.filter(photo => photo.purpose !== "urgent_issue"));
+      const remaining = await sync().catch(async () => { await refreshQueue(); return loadStormQueue(); });
+      if (remaining.some(item => queuedItems.some(queued => queued.id === item.id))) {
+        Alert.alert("Urgent issue saved for sync", "The alert is safe on this device. GardenOps will keep retrying its attachment.");
+      }
+    } catch (error) {
+      if (!durablyQueued) await Promise.all(stagedUrgentPhotos.map(removeManagedAttachment));
+      Alert.alert("Urgent issue not queued", error instanceof Error ? error.message : "GardenOps could not safely queue the alert and its photo.");
+      refreshQueue();
     }
   };
   const selectedLat = selected?.lat == null ? null : Number(selected.lat);
@@ -369,7 +487,7 @@ export default function StormPatrolScreen() {
     <Pressable onPress={() => setDangerous(x => !x)} style={styles.check}><Feather name={dangerous ? "check-square" : "square"} size={20} color={dangerous ? colors.primary : colors.mutedForeground}/><Text style={{ color: colors.foreground }}>Site is too dangerous to complete</Text></Pressable>
     {dangerous && <TextInput value={dangerReason} onChangeText={setDangerReason} multiline placeholder="Why is it unsafe?" placeholderTextColor={colors.mutedForeground} style={[styles.input, styles.note, { color: colors.foreground, borderColor: colors.border }]}/>}
     <View style={styles.chips}>{WORK_TYPES.map(([value, text]) => <Pressable key={value} onPress={() => setWorkTypes(w => w.includes(value) ? w.filter(x => x !== value) : [...w, value])} style={[styles.chip, { borderColor: workTypes.includes(value) ? colors.primary : colors.border, backgroundColor: workTypes.includes(value) ? colors.secondary : colors.card }]}><Text style={{ color: colors.foreground }}>{text}</Text></Pressable>)}</View>
-    {selected.phase === "post" && <><Text style={[styles.heading, { color: colors.foreground }]}>Post-storm conditions</Text><BooleanQuestion title="New flooding?" value={flooding} onChange={setFlooding} color={colors.primary}/>{flooding && <><TextInput value={floodingDescription} onChangeText={setFloodingDescription} multiline placeholder="Describe the flooding" placeholderTextColor={colors.mutedForeground} style={[styles.input, styles.note, { color: colors.foreground, borderColor: colors.border }]}/><Button title="Flooding photo" icon="camera" onPress={() => take("new_flooding")} color={colors.primary}/></>}<BooleanQuestion title="New slips?" value={slips} onChange={setSlips} color={colors.primary}/>{slips && <><TextInput value={slipDescription} onChangeText={setSlipDescription} multiline placeholder="Describe the slip" placeholderTextColor={colors.mutedForeground} style={[styles.input, styles.note, { color: colors.foreground, borderColor: colors.border }]}/><Button title="Slip photo" icon="camera" onPress={() => take("new_slip")} color={colors.primary}/></>}</>}
+    {selected.phase === "post" && <><Text style={[styles.heading, { color: colors.foreground }]}>Post-storm conditions</Text><BooleanQuestion title="New flooding?" value={flooding} onChange={value => { setFlooding(value); if (!value) { setFloodingDescription(""); setPhotos(currentPhotos => currentPhotos.filter(photo => photo.purpose !== "new_flooding")); } }} color={colors.primary}/>{flooding && <><TextInput value={floodingDescription} onChangeText={setFloodingDescription} multiline placeholder="Describe the flooding" placeholderTextColor={colors.mutedForeground} style={[styles.input, styles.note, { color: colors.foreground, borderColor: colors.border }]}/><Button title="Flooding photo" icon="camera" onPress={() => take("new_flooding")} color={colors.primary}/></>}<BooleanQuestion title="New slips?" value={slips} onChange={value => { setSlips(value); if (!value) { setSlipDescription(""); setPhotos(currentPhotos => currentPhotos.filter(photo => photo.purpose !== "new_slip")); } }} color={colors.primary}/>{slips && <><TextInput value={slipDescription} onChangeText={setSlipDescription} multiline placeholder="Describe the slip" placeholderTextColor={colors.mutedForeground} style={[styles.input, styles.note, { color: colors.foreground, borderColor: colors.border }]}/><Button title="Slip photo" icon="camera" onPress={() => take("new_slip")} color={colors.primary}/></>}</>}
     <TextInput value={comments} onChangeText={setComments} multiline placeholder={workTypes.includes("visual_check_only") && !dangerous ? "Comments (required for visual check only)" : "Comments (optional)"} placeholderTextColor={colors.mutedForeground} style={[styles.input, styles.note, { color: colors.foreground, borderColor: colors.border }]}/>
     <Text style={[styles.heading, { color: colors.foreground }]}>3. After photo</Text>
     <Button title={`After photo (${photoCount("after")}/${MAX_PHOTOS_PER_SECTION})`} icon="camera" onPress={() => choosePhoto("after")} color={colors.primary}/>
@@ -407,7 +525,7 @@ export default function StormPatrolScreen() {
           <View style={{ flex: 1 }}><Text style={{ color: colors.foreground }}>{queue.length} item{queue.length === 1 ? "" : "s"} waiting to sync — Retry</Text>{queue[0].lastError ? <Text style={[styles.syncError, { color: colors.mutedForeground }]} numberOfLines={2}>{queue[0].lastError}</Text> : null}</View>
         </Pressable>
         {photoQueueBlocked && <TouchableOpacity testID="storm-sync-clear-photos" disabled={discardingPhotos} onPress={discardQueuedPhotos} style={[styles.clearPhotos, { borderColor: colors.destructive, opacity: discardingPhotos ? 0.6 : 1 }]}>
-          <Text style={[styles.clearPhotosText, { color: colors.destructive }]}>{discardingPhotos ? "Discarding queued photos…" : `Discard ${queuedPhotoCount} queued photo${queuedPhotoCount === 1 ? "" : "s"}`}</Text>
+          <Text style={[styles.clearPhotosText, { color: colors.destructive }]}>{discardingPhotos ? "Discarding unavailable photos…" : `Discard ${unrecoverablePhotos.length} unavailable photo${unrecoverablePhotos.length === 1 ? "" : "s"} and reselect`}</Text>
         </TouchableOpacity>}
       </View>}
       {grouped.map(([phase, jobs]) => {

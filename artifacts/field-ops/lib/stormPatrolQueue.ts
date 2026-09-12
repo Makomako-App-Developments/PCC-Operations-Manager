@@ -6,6 +6,8 @@ import {
   persistAttachment,
   removeManagedAttachment,
   uploadAttachment,
+  WEB_ATTACHMENT_MISSING_MESSAGE,
+  attachmentFailureCode,
   type AttachmentSource,
   type DurableAttachment,
 } from "./attachmentUpload";
@@ -38,9 +40,21 @@ export interface StormQueueItem {
   createdAt: string;
   attempts: number;
   lastError?: string;
+  lastErrorCode?: string;
   /** A photo is only sent after its result/metadata item succeeds. */
   dependsOn?: string;
   payload: Record<string, unknown>;
+}
+
+export function isUnrecoverableQueuedStormPhoto(item: StormQueueItem): boolean {
+  if (item.kind !== "photo") return false;
+  const attachment = item.payload.attachment as DurableAttachment | undefined;
+  return item.lastErrorCode === "attachment-web-bytes-missing"
+    || item.lastErrorCode === "attachment-web-legacy-missing"
+    || item.lastErrorCode === "attachment-web-file-missing"
+    || item.lastError?.includes(WEB_ATTACHMENT_MISSING_MESSAGE) === true
+    || item.lastError?.includes("Photo is required") === true
+    || Boolean(attachment && !attachment.webStorageKey && attachment.managed === false);
 }
 
 type ApiFailure = {
@@ -184,7 +198,7 @@ export async function clearQueuedStormPhotos(): Promise<StormQueueItem[]> {
       const remaining = queued.filter(item => item.kind !== "photo");
       await rawSaveStormQueue(remaining);
       for (const item of removed) {
-        removeManagedAttachment(item.payload.attachment as DurableAttachment | undefined);
+        await removeManagedAttachment(item.payload.attachment as DurableAttachment | undefined);
       }
       return remaining;
     });
@@ -203,7 +217,7 @@ export async function clearStormQueueItems(itemIds: readonly string[]): Promise<
     await rawSaveStormQueue(remaining);
     for (const item of removed) {
       if (item.kind === "photo") {
-        removeManagedAttachment(item.payload.attachment as DurableAttachment | undefined);
+        await removeManagedAttachment(item.payload.attachment as DurableAttachment | undefined);
       }
     }
     return remaining;
@@ -214,15 +228,29 @@ export async function clearStormQueueItems(itemIds: readonly string[]): Promise<
 }
 
 /** De-duplicates by idempotency key, so a retry or app restart cannot add a second result. */
-export async function enqueueStormItem(item: Omit<StormQueueItem, "id" | "createdAt" | "attempts">): Promise<StormQueueItem> {
+export function createStormQueueItem(item: Omit<StormQueueItem, "id" | "createdAt" | "attempts">): StormQueueItem {
+  return { ...item, id: stormQueueId(), createdAt: new Date().toISOString(), attempts: 0 };
+}
+
+export async function enqueueStormItems(items: readonly StormQueueItem[]): Promise<StormQueueItem[]> {
   return withStorageMutation(async () => {
     const all = await rawLoadStormQueue();
-    const existing = all.find(q => q.idempotencyKey === item.idempotencyKey);
-    if (existing) return existing;
-    const queued: StormQueueItem = { ...item, id: stormQueueId(), createdAt: new Date().toISOString(), attempts: 0 };
-    await rawSaveStormQueue([...all, queued]);
-    return queued;
+    const byKey = new Map(all.map(item => [item.idempotencyKey, item]));
+    const additions: StormQueueItem[] = [];
+    const resolved = items.map(item => {
+      const existing = byKey.get(item.idempotencyKey);
+      if (existing) return existing;
+      byKey.set(item.idempotencyKey, item);
+      additions.push(item);
+      return item;
+    });
+    await rawSaveStormQueue([...all, ...additions]);
+    return resolved;
   });
+}
+
+export async function enqueueStormItem(item: Omit<StormQueueItem, "id" | "createdAt" | "attempts">): Promise<StormQueueItem> {
+  return (await enqueueStormItems([createStormQueueItem(item)]))[0];
 }
 
 export async function enqueueStormCompletion(jobId: string, data: StormCompletion, dependsOn?: string): Promise<StormQueueItem> {
@@ -244,7 +272,7 @@ export async function enqueueStormPhoto(jobId: string, source: string | Attachme
   try {
     return await enqueueStormItem({ kind: "photo", idempotencyKey, dependsOn, payload: { jobId, attachment, purpose, idempotencyKey } });
   } catch (error) {
-    removeManagedAttachment(attachment);
+    await removeManagedAttachment(attachment);
     throw error;
   }
 }
@@ -255,7 +283,7 @@ export async function enqueueStormObservationPhoto(source: string | AttachmentSo
   try {
     return await enqueueStormItem({ kind: "photo", idempotencyKey, dependsOn, payload: { attachment, purpose: "observation", observationIdempotencyKey, idempotencyKey } });
   } catch (error) {
-    removeManagedAttachment(attachment);
+    await removeManagedAttachment(attachment);
     throw error;
   }
 }
@@ -313,7 +341,7 @@ export async function flushStormQueue(): Promise<StormQueueItem[]> {
           const latest = await rawLoadStormQueue();
           await rawSaveStormQueue(latest.filter(q => q.id !== item.id));
         });
-        removeManagedAttachment(sentAttachment);
+        await removeManagedAttachment(sentAttachment);
       } catch (error) {
         if (isDiscardableStormParent(item) && isPermanentStormCompletionFailure(error)) {
           const removedIds = idsWithDependents(snapshot, item.id);
@@ -327,7 +355,7 @@ export async function flushStormQueue(): Promise<StormQueueItem[]> {
           });
           for (const queued of removed) {
             if (queued.kind === "photo") {
-              removeManagedAttachment(queued.payload.attachment as DurableAttachment | undefined);
+              await removeManagedAttachment(queued.payload.attachment as DurableAttachment | undefined);
             }
           }
           continue;
@@ -335,7 +363,10 @@ export async function flushStormQueue(): Promise<StormQueueItem[]> {
         await withStorageMutation(async () => {
           const latest = await rawLoadStormQueue();
           await rawSaveStormQueue(latest.map(q => q.id === item.id ? {
-            ...q, attempts: q.attempts + 1, lastError: error instanceof Error ? error.message : "Unable to sync",
+            ...q,
+            attempts: q.attempts + 1,
+            lastError: error instanceof Error ? error.message : "Unable to sync",
+            lastErrorCode: attachmentFailureCode(error),
           } : q));
         });
       }

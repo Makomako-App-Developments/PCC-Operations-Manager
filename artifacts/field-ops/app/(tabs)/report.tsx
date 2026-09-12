@@ -24,7 +24,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useAuth } from "@/context/auth";
 import { useColors } from "@/hooks/useColors";
-import { persistAttachment, removeManagedAttachment, uploadAttachment, type AttachmentSource } from "@/lib/attachmentUpload";
+import { persistAttachment, removeManagedAttachment, uploadAttachment, uploadImmediateWebAttachment, type AttachmentSource } from "@/lib/attachmentUpload";
 import { getApiUrl } from "@/lib/api";
 
 const REPORT_DRAFT_KEY = "@report_draft_v1";
@@ -625,10 +625,10 @@ export default function ReportScreen() {
       try {
         if (Platform.OS === "web") {
           const browserFile = photo.file ?? new File([await fetch(photo.uri).then(r => r.blob())], attachment.fileName, { type: attachment.mimeType });
-          await uploadAttachment(`/api/reactive-jobs/${jobId}/photos`, attachment, {}, browserFile);
+          await uploadImmediateWebAttachment(`/api/reactive-jobs/${jobId}/photos`, attachment, {}, browserFile);
         } else {
           await uploadAttachment(`/api/reactive-jobs/${jobId}/photos`, attachment);
-          removeManagedAttachment(attachment);
+          await removeManagedAttachment(attachment);
         }
       } catch {
         if (Platform.OS !== "web") {
