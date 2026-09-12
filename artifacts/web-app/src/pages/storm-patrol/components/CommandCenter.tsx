@@ -946,6 +946,33 @@ export default function CommandCenter({ data }: CommandCenterProps) {
                   </div>
                 </section>
 
+                <section>
+                  <h3 className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-white/45">
+                    <Eye className="h-3.5 w-3.5" />
+                    Before and after photos
+                  </h3>
+                  {selectedCompletedJob.photos && selectedCompletedJob.photos.length > 0 ? (
+                    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                      {selectedCompletedJob.photos.map((photo, index) => (
+                        <figure key={photo.id} className="overflow-hidden rounded-lg border border-white/10 bg-black/20">
+                          <img
+                            src={photo.blobUrl}
+                            alt={`${photo.purpose === "after" ? "After" : "Before"} photo ${index + 1}`}
+                            className="aspect-square w-full object-cover"
+                          />
+                          <figcaption className="p-2 text-xs capitalize text-white/60">
+                            {photo.caption || photo.purpose}
+                          </figcaption>
+                        </figure>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="rounded-lg border border-dashed border-white/10 bg-black/15 p-4 text-sm text-white/45">
+                      No before or after photos were attached.
+                    </div>
+                  )}
+                </section>
+
                 <div className="flex justify-end border-t border-white/10 pt-4">
                   <Button
                     type="button"

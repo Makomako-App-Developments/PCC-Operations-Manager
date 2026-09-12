@@ -241,6 +241,32 @@ describe("Storm Patrol work package asset filters", () => {
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 
+  it("shows uploaded before and after photos in completed work", async () => {
+    const user = userEvent.setup();
+    renderCommandCenter([{
+      id: "completed-job",
+      eventId: "event-1",
+      workPackageId: "package-1",
+      phase: "mid",
+      assetId: "asset-high-hotspot",
+      teamId: "team-1",
+      status: "completed",
+      routeOrder: 1,
+      assetName: "Thompson Grove",
+      photos: [
+        { id: "before-1", purpose: "before", blobUrl: "/api/uploads/before-1.jpg", caption: null },
+        { id: "after-1", purpose: "after", blobUrl: "/api/uploads/after-1.jpg", caption: "Cleared" },
+      ],
+    }]);
+
+    await user.click(screen.getByRole("row", { name: "Open completed work for Thompson Grove" }));
+
+    const dialog = screen.getByRole("dialog");
+    expect(within(dialog).getByRole("img", { name: "Before photo 1" })).toHaveAttribute("src", "/api/uploads/before-1.jpg");
+    expect(within(dialog).getByRole("img", { name: "After photo 2" })).toHaveAttribute("src", "/api/uploads/after-1.jpg");
+    expect(within(dialog).getByText("Cleared")).toBeVisible();
+  });
+
   it("combines search, priority, and hotspot classifications", () => {
     expect(
       filterStormwaterAssets(assets as any, "bay", "Low", "Yes").map(asset => asset.id),

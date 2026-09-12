@@ -72,7 +72,7 @@ vi.mock("@react-native-async-storage/async-storage", () => ({
 vi.mock("@workspace/api-client-react", () => ({
   getGetCurrentStormPatrolQueryKey: () => ["storm-patrol"],
   useClaimStormPatrolJob: () => ({ mutate: mocks.claimMutate }),
-  useDeleteStormPatrolJobPhoto: () => ({ mutate: mocks.deletePhotoMutate }),
+  useDeleteStormPatrolJobPhoto: () => ({ mutate: mocks.deletePhotoMutate, isPending: false }),
   useGetCurrentStormPatrol: () => mocks.currentResult,
 }));
 
@@ -121,7 +121,8 @@ vi.mock("react-native", async () => {
   return {
     ActivityIndicator: element("span"),
     Alert: { alert: mocks.alert },
-    Image: element("img"),
+    Image: ({ source, style, testID, ...props }: { source: { uri: string }; style?: unknown; testID?: string }) =>
+      React.createElement("img", { ...props, src: source.uri, "data-testid": testID, "data-style": JSON.stringify(style) }),
     Linking: { openURL: vi.fn() },
     Modal: element("div"),
     Platform: { OS: "web" },
@@ -505,9 +506,8 @@ describe("Storm Patrol completed jobs", () => {
 
     mocks.deletePhotoMutate.mockImplementation((_variables, options) => options.onSuccess());
     act(() => (document.querySelector('[data-testid="remove-saved-photo-before-photo"]') as HTMLButtonElement).click());
-    const deleteAction = mocks.alert.mock.calls.at(-1)?.[2]?.find((action: { text?: string }) => action.text === "Delete");
-    expect(deleteAction).toBeDefined();
-    act(() => deleteAction.onPress());
+    expect(document.body.textContent).toContain("This photo will be permanently removed.");
+    act(() => (document.querySelector('[data-testid="saved-photo-delete-confirm"]') as HTMLButtonElement).click());
 
     expect(mocks.deletePhotoMutate).toHaveBeenCalledWith(
       { id: "completed-job", photoId: "before-photo" },
@@ -515,6 +515,8 @@ describe("Storm Patrol completed jobs", () => {
     );
     expect(document.body.textContent).toContain("Before photo (0/3)");
     expect(document.querySelector('[data-testid="remove-saved-photo-before-photo"]')).toBeNull();
+    expect(document.body.textContent).not.toContain("This photo will be permanently removed.");
+    expect(document.querySelectorAll("img")[0]?.getAttribute("src")).toBe(`${window.location.origin}/after.jpg`);
   });
 
   it("queues replacement photos for a completed job without a second completion", async () => {

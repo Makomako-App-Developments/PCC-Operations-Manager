@@ -31,6 +31,13 @@ const PHASES = ["pre", "mid", "post"] as const;
 const COMPLETED_STATUSES = new Set(["completed", "too_dangerous"]);
 const label = (phase: string) => ({ pre: "Before storm", mid: "During storm", post: "After storm" }[phase] ?? phase);
 const isCompletedJob = (job: Pick<Job, "status">) => COMPLETED_STATUSES.has(job.status);
+const resolveSavedPhotoUri = (uri: string) => {
+  if (/^(blob:|data:|https?:)/i.test(uri)) return uri;
+  if (Platform.OS === "web" && typeof window !== "undefined") return new URL(uri, window.location.origin).toString();
+  const domain = process.env["EXPO_PUBLIC_DOMAIN"];
+  const clean = uri.startsWith("/") ? uri : `/${uri}`;
+  return domain ? `https://${domain}${clean}` : clean;
+};
 
 async function stageAttachments(sources: readonly AttachmentSource[]): Promise<{
   attachments: DurableAttachment[];
@@ -91,6 +98,8 @@ export default function StormPatrolScreen() {
   const [jobMapType, setJobMapType] = useState<"map" | "aerial">("map");
   const [collapsedPhases, setCollapsedPhases] = useState<Set<string>>(() => new Set());
   const [removedSavedPhotoIds, setRemovedSavedPhotoIds] = useState<Set<string>>(() => new Set());
+  const [savedPhotoPendingDeleteId, setSavedPhotoPendingDeleteId] = useState<string | null>(null);
+  const [savedPhotoDeleteError, setSavedPhotoDeleteError] = useState<string | null>(null);
   const patrol = ((current.data as unknown as { data?: Patrol } | undefined)?.data ?? cached) as Patrol | null;
 
   const refreshQueue = useCallback(() => user ? loadStormQueue(user.id).then(setQueue).catch(() => {}) : Promise.resolve(), [user]);
@@ -243,24 +252,24 @@ export default function StormPatrolScreen() {
     });
   };
   const removeSavedPhoto = (photoId: string) => {
-    if (!selected) return;
-    Alert.alert("Delete photo?", "This photo will be permanently removed.", [
-      { text: "Cancel", style: "cancel" },
+    setSavedPhotoDeleteError(null);
+    setSavedPhotoPendingDeleteId(photoId);
+  };
+  const confirmRemoveSavedPhoto = () => {
+    if (!selected || !savedPhotoPendingDeleteId || deleteSavedPhoto.isPending) return;
+    const photoId = savedPhotoPendingDeleteId;
+    deleteSavedPhoto.mutate(
+      { id: selected.id, photoId },
       {
-        text: "Delete",
-        style: "destructive",
-        onPress: () => deleteSavedPhoto.mutate(
-          { id: selected.id, photoId },
-          {
-            onSuccess: () => {
-              setRemovedSavedPhotoIds(current => new Set([...current, photoId]));
-              void current.refetch();
-            },
-            onError: () => Alert.alert("Unable to delete photo", "The photo was not removed. Check your connection and try again."),
-          },
-        ),
+        onSuccess: () => {
+          setRemovedSavedPhotoIds(existing => new Set([...existing, photoId]));
+          setSavedPhotoPendingDeleteId(null);
+          setSavedPhotoDeleteError(null);
+          void current.refetch();
+        },
+        onError: () => setSavedPhotoDeleteError("The photo was not removed. Check your connection and try again."),
       },
-    ]);
+    );
   };
   const location = async () => {
     const permission = await Location.requestForegroundPermissionsAsync();
@@ -640,7 +649,7 @@ export default function StormPatrolScreen() {
     <Text style={[styles.heading, { color: colors.foreground }]}>1. Before photo</Text>
     <Button title={`Before photo (${photoCount("before")}/${MAX_PHOTOS_PER_SECTION})`} icon="camera" onPress={() => choosePhoto("before")} color={colors.primary}/>
     {photoCount("before") > 0 && <View style={styles.photos}>
-      {(selected.photos ?? []).filter(photo => photo.purpose === "before" && !removedSavedPhotoIds.has(photo.id)).map(photo => <PhotoThumbnail key={photo.id} uri={photo.blobUrl} label="before" testID={`remove-saved-photo-${photo.id}`} onRemove={() => removeSavedPhoto(photo.id)} colors={colors}/>)}
+      {(selected.photos ?? []).filter(photo => photo.purpose === "before" && !removedSavedPhotoIds.has(photo.id)).map(photo => <PhotoThumbnail key={photo.id} uri={resolveSavedPhotoUri(photo.blobUrl)} label="before" testID={`remove-saved-photo-${photo.id}`} onRemove={() => removeSavedPhoto(photo.id)} colors={colors}/>)}
       {photos.filter(photo => photo.purpose === "before").map((photo, i) => <PhotoThumbnail key={`${photo.source.uri}-${i}`} uri={photo.source.uri} label="before" testID={`remove-before-photo-${i}`} onRemove={() => removePendingPhoto(photo)} colors={colors}/>)}
     </View>}
     <Text style={[styles.heading, { color: colors.foreground }]}>2. Work completed</Text>
@@ -652,7 +661,7 @@ export default function StormPatrolScreen() {
     <Text style={[styles.heading, { color: colors.foreground }]}>3. After photo</Text>
     <Button title={`After photo (${photoCount("after")}/${MAX_PHOTOS_PER_SECTION})`} icon="camera" onPress={() => choosePhoto("after")} color={colors.primary}/>
     {photoCount("after") > 0 && <View style={styles.photos}>
-      {(selected.photos ?? []).filter(photo => photo.purpose === "after" && !removedSavedPhotoIds.has(photo.id)).map(photo => <PhotoThumbnail key={photo.id} uri={photo.blobUrl} label="after" testID={`remove-saved-photo-${photo.id}`} onRemove={() => removeSavedPhoto(photo.id)} colors={colors}/>)}
+      {(selected.photos ?? []).filter(photo => photo.purpose === "after" && !removedSavedPhotoIds.has(photo.id)).map(photo => <PhotoThumbnail key={photo.id} uri={resolveSavedPhotoUri(photo.blobUrl)} label="after" testID={`remove-saved-photo-${photo.id}`} onRemove={() => removeSavedPhoto(photo.id)} colors={colors}/>)}
       {photos.filter(photo => photo.purpose === "after").map((photo, i) => <PhotoThumbnail key={`${photo.source.uri}-${i}`} uri={photo.source.uri} label="after" testID={`remove-after-photo-${i}`} onRemove={() => removePendingPhoto(photo)} colors={colors}/>)}
     </View>}
     <Button title={photoOperationInProgress ? "Saving…" : isCompletedJob(selected) ? "Save changes" : dangerous ? "Report dangerous site" : "Complete patrol"} icon="check-circle" onPress={() => { void runPhotoOperation(complete); }} color={dangerous ? colors.destructive : colors.success}/>
@@ -674,7 +683,27 @@ export default function StormPatrolScreen() {
         <Button title={photoOperationInProgress ? "Sending…" : "Send urgent alert"} icon="alert-circle" onPress={() => { void runPhotoOperation(urgent); }} color="#7f1d1d"/>
       </View>}
     </View>
-  </ScrollView>{photoSourceModal}</>;
+  </ScrollView>{photoSourceModal}
+    {savedPhotoPendingDeleteId && <Modal visible transparent animationType="fade" onRequestClose={() => {
+      if (!deleteSavedPhoto.isPending) setSavedPhotoPendingDeleteId(null);
+    }}>
+      <View style={styles.confirmOverlay}>
+        <View accessibilityViewIsModal style={[styles.confirmCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+          <Text style={[styles.confirmTitle, { color: colors.foreground }]}>Delete photo?</Text>
+          <Text style={[styles.confirmMessage, { color: colors.mutedForeground }]}>This photo will be permanently removed.</Text>
+          {savedPhotoDeleteError && <Text accessibilityRole="alert" style={[styles.confirmError, { color: colors.destructive }]}>{savedPhotoDeleteError}</Text>}
+          <View style={styles.confirmActions}>
+            <TouchableOpacity testID="saved-photo-delete-cancel" disabled={deleteSavedPhoto.isPending} accessibilityRole="button" onPress={() => setSavedPhotoPendingDeleteId(null)} style={[styles.confirmButton, { borderColor: colors.border }]}>
+              <Text style={[styles.confirmButtonText, { color: colors.foreground }]}>Cancel</Text>
+            </TouchableOpacity>
+            <TouchableOpacity testID="saved-photo-delete-confirm" disabled={deleteSavedPhoto.isPending} accessibilityRole="button" onPress={confirmRemoveSavedPhoto} style={[styles.confirmButton, { backgroundColor: colors.destructive, borderColor: colors.destructive }]}>
+              <Text style={[styles.confirmButtonText, { color: "#fff" }]}>{deleteSavedPhoto.isPending ? "Deleting…" : "Delete"}</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
+    </Modal>}
+  </>;
 
   return <View style={[styles.root, { backgroundColor: colors.background }]}><ScrollView contentContainerStyle={[styles.list, { paddingTop: insets.top + 16, paddingBottom: insets.bottom + 100 }]} refreshControl={<RefreshControl refreshing={current.isRefetching} onRefresh={() => { void sync().catch(refreshQueue); }} tintColor={colors.primary}/>}>
     <Text style={[styles.title, { color: colors.foreground }]}>Storm Patrol</Text>
