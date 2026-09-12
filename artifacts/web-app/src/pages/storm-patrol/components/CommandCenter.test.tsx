@@ -7,6 +7,7 @@ import CommandCenter, { filterStormwaterAssets } from "./CommandCenter";
 const mocks = vi.hoisted(() => ({
   publish: vi.fn(),
   toast: vi.fn(),
+  customFetch: vi.fn(),
 }));
 
 const assets = [
@@ -77,6 +78,7 @@ vi.mock("@workspace/api-client-react", () => ({
   getGetStormPatrolReportUrl: () => "/api/storm-patrol/report",
   getGetCurrentStormPatrolQueryKey: () => ["/api/storm-patrol/current"],
   getListStormPatrolEventsQueryKey: () => ["/api/storm-patrol/events"],
+  customFetch: mocks.customFetch,
 }));
 
 vi.mock("@/hooks/use-toast", () => ({
@@ -149,6 +151,10 @@ beforeEach(() => {
   mocks.publish.mockReset();
   mocks.publish.mockResolvedValue({ package: {}, jobs: [] });
   mocks.toast.mockReset();
+  mocks.customFetch.mockReset();
+  mocks.customFetch.mockResolvedValue(new Blob(["photo"], { type: "image/jpeg" }));
+  Object.defineProperty(URL, "createObjectURL", { configurable: true, value: vi.fn(() => "blob:authenticated-photo") });
+  Object.defineProperty(URL, "revokeObjectURL", { configurable: true, value: vi.fn() });
   vi.stubGlobal("crypto", { randomUUID: () => "package-key" });
 });
 
@@ -234,7 +240,8 @@ describe("Storm Patrol work package asset filters", () => {
     expect(within(dialog).getByText("Needs urgent clearance.")).toBeVisible();
     expect(within(dialog).getByText("-41.12345")).toBeVisible();
     expect(within(dialog).getByText("174.98765")).toBeVisible();
-    expect(within(dialog).getByRole("img", { name: "Observation photo 1" })).toHaveAttribute("src", "/api/uploads/observation-1.jpg");
+    await waitFor(() => expect(within(dialog).getByRole("img", { name: "Observation photo 1" })).toHaveAttribute("src", "blob:authenticated-photo"));
+    expect(mocks.customFetch).toHaveBeenCalledWith("/api/uploads/observation-1.jpg", expect.objectContaining({ responseType: "blob" }));
     expect(within(dialog).getByText("Blocked inlet")).toBeVisible();
 
     await user.click(within(dialog).getByRole("button", { name: "Close field observation" }));
@@ -262,8 +269,10 @@ describe("Storm Patrol work package asset filters", () => {
     await user.click(screen.getByRole("row", { name: "Open completed work for Thompson Grove" }));
 
     const dialog = screen.getByRole("dialog");
-    expect(within(dialog).getByRole("img", { name: "Before photo 1" })).toHaveAttribute("src", "/api/uploads/before-1.jpg");
-    expect(within(dialog).getByRole("img", { name: "After photo 2" })).toHaveAttribute("src", "/api/uploads/after-1.jpg");
+    await waitFor(() => expect(within(dialog).getByRole("img", { name: "Before photo 1" })).toHaveAttribute("src", "blob:authenticated-photo"));
+    expect(within(dialog).getByRole("img", { name: "After photo 2" })).toHaveAttribute("src", "blob:authenticated-photo");
+    expect(mocks.customFetch).toHaveBeenCalledWith("/api/uploads/before-1.jpg", expect.objectContaining({ responseType: "blob" }));
+    expect(mocks.customFetch).toHaveBeenCalledWith("/api/uploads/after-1.jpg", expect.objectContaining({ responseType: "blob" }));
     expect(within(dialog).getByText("Cleared")).toBeVisible();
   });
 
@@ -302,7 +311,7 @@ describe("Storm Patrol work package asset filters", () => {
     expect(within(dialog).getByText("Needs urgent clearance.")).toBeVisible();
     expect(within(dialog).getByText("-41.12345")).toBeVisible();
     expect(within(dialog).getByText("174.98765")).toBeVisible();
-    expect(within(dialog).getByRole("img", { name: "Observation photo 1" })).toHaveAttribute("src", "/api/uploads/observation-1.jpg");
+    await waitFor(() => expect(within(dialog).getByRole("img", { name: "Observation photo 1" })).toHaveAttribute("src", "blob:authenticated-photo"));
     expect(within(dialog).getByText("Blocked inlet")).toBeVisible();
 
     await user.click(within(dialog).getByRole("button", { name: "Close field observation" }));
