@@ -15,7 +15,10 @@ vi.mock("react-native", () => {
     Modal: element("Modal"),
     Platform: { OS: "web" },
     Pressable: element("Pressable"),
-    StyleSheet: { create: (styles: unknown) => styles },
+    StyleSheet: {
+      create: (styles: unknown) => styles,
+      flatten: (style: unknown) => Array.isArray(style) ? Object.assign({}, ...style.filter(Boolean)) : style,
+    },
     Text: element("Text"),
     TouchableOpacity: element("TouchableOpacity"),
     View: element("View"),
@@ -23,7 +26,7 @@ vi.mock("react-native", () => {
 });
 
 import { PhotoQueueActions } from "@/components/PhotoQueueActions";
-import { PhotoRemoveButton } from "@/components/PhotoRemoveButton";
+import { PhotoRemoveButton } from "@/components/PhotoRemoveButton.web";
 import { pickWebCameraPhoto } from "@/lib/webPhotoPicker";
 
 afterEach(() => {
@@ -32,7 +35,7 @@ afterEach(() => {
 });
 
 describe("web PWA photo source picker", () => {
-  it("removes a photo on Safari pointer-up without double-running the following press", () => {
+  it("uses a real web button that removes a photo with one browser click", () => {
     const onRemove = vi.fn();
     let renderer!: ReactTestRenderer;
     act(() => {
@@ -43,10 +46,9 @@ describe("web PWA photo source picker", () => {
         />,
       );
     });
-    const button = renderer.root.findByType("TouchableOpacity" as never);
+    const button = renderer.root.findByType("button");
     act(() => {
-      button.props.onPointerUp({ stopPropagation: vi.fn() });
-      button.props.onPress();
+      button.props.onClick({ preventDefault: vi.fn(), stopPropagation: vi.fn() });
     });
     expect(onRemove).toHaveBeenCalledOnce();
   });
