@@ -2,7 +2,10 @@ import { cp, mkdir, mkdtemp, readdir, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, relative, resolve } from "node:path";
 import { spawn } from "node:child_process";
-import { DEPARTMENTS } from "../lib/asset-definitions/src/index.ts";
+import {
+  DEPARTMENTS,
+  STORM_PATROL_ERROR_CODES,
+} from "../lib/asset-definitions/src/index.ts";
 
 const root = resolve(import.meta.dirname, "..");
 const generatedDirectories = [
@@ -170,10 +173,46 @@ async function checkDepartmentContract() {
   );
 }
 
+async function checkStormPatrolErrorCodeContract() {
+  const consumers = [
+    "artifacts/api-server/src/routes/storm-patrol.ts",
+    "artifacts/field-ops/lib/stormPatrolQueue.ts",
+  ];
+  const sources = await Promise.all(
+    consumers.map(async (file) => ({
+      file,
+      source: await readFile(join(root, file), "utf8"),
+    })),
+  );
+  const violations = [];
+
+  for (const { file, source } of sources) {
+    if (!source.includes("@workspace/asset-definitions")) {
+      violations.push(`${file} does not import the shared Storm Patrol definitions.`);
+    }
+    for (const code of Object.values(STORM_PATROL_ERROR_CODES)) {
+      if (source.includes(`"${code}"`) || source.includes(`'${code}'`)) {
+        violations.push(`${file} declares shared code ${code} locally.`);
+      }
+    }
+  }
+
+  if (violations.length) {
+    throw new Error(
+      `Storm Patrol error-code contract drift detected.\n${violations.map((detail) => `  - ${detail}`).join("\n")}`,
+    );
+  }
+
+  console.log(
+    `Storm Patrol error-code consumers use the shared contract (${Object.keys(STORM_PATROL_ERROR_CODES).length} stable codes).`,
+  );
+}
+
 const temporaryDirectory = await mkdtemp(join(tmpdir(), "pcc-api-codegen-"));
 
 try {
   await checkDepartmentContract();
+  await checkStormPatrolErrorCodeContract();
   const temporaryMutator = join(
     temporaryDirectory,
     "lib/api-client-react/src/custom-fetch.ts",

@@ -1,6 +1,7 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { customFetch } from "@workspace/api-client-react";
 import type { StormCompletion, StormObservationCreate } from "@workspace/api-client-react";
+import { STORM_PATROL_PERMANENT_PARENT_FAILURES } from "@workspace/asset-definitions";
 import {
   persistAttachment,
   removeManagedAttachment,
@@ -42,19 +43,6 @@ export interface StormQueueItem {
   payload: Record<string, unknown>;
 }
 
-const PERMANENT_PARENT_FAILURES = new Map([
-  [403, new Set([
-    "STORM_JOB_OWNERSHIP_CONFLICT",
-    "STORM_OBSERVATION_OWNERSHIP_CONFLICT",
-    "STORM_ALERT_OWNERSHIP_CONFLICT",
-  ])],
-  [409, new Set([
-    "STORM_JOB_STATE_CONFLICT",
-    "STORM_OBSERVATION_STATE_CONFLICT",
-    "STORM_ALERT_STATE_CONFLICT",
-  ])],
-]);
-
 type ApiFailure = {
   status?: unknown;
   data?: unknown;
@@ -65,7 +53,9 @@ export function isPermanentStormCompletionFailure(error: unknown): boolean {
   const { status, data } = error as ApiFailure;
   if (typeof status !== "number" || !data || typeof data !== "object") return false;
   const code = (data as { code?: unknown }).code;
-  return typeof code === "string" && PERMANENT_PARENT_FAILURES.get(status)?.has(code) === true;
+  return typeof code === "string" && STORM_PATROL_PERMANENT_PARENT_FAILURES.some(
+    failure => failure.status === status && failure.code === code,
+  );
 }
 
 function isDiscardableStormParent(item: StormQueueItem): boolean {

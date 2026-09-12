@@ -9,6 +9,7 @@ import {
 } from "@workspace/db";
 import { and, asc, desc, eq, inArray, isNull, or, sql } from "drizzle-orm";
 import { z } from "zod";
+import { STORM_PATROL_ERROR_CODES } from "@workspace/asset-definitions";
 import { requireAuth, requireRole } from "../middlewares/auth";
 import { validateBody, validateQuery } from "../middlewares/validate";
 import { auditLog } from "../lib/audit";
@@ -58,14 +59,6 @@ const workbookUpload = multer({
   limits: { fileSize: 5 * 1024 * 1024 },
   fileFilter: (_req, file, cb) => cb(null, file.originalname.toLowerCase().endsWith(".xlsx")),
 });
-
-const STORM_PHOTO_IDEMPOTENCY_CONFLICT = "STORM_PHOTO_IDEMPOTENCY_CONFLICT";
-const STORM_JOB_OWNERSHIP_CONFLICT = "STORM_JOB_OWNERSHIP_CONFLICT";
-const STORM_JOB_STATE_CONFLICT = "STORM_JOB_STATE_CONFLICT";
-const STORM_OBSERVATION_OWNERSHIP_CONFLICT = "STORM_OBSERVATION_OWNERSHIP_CONFLICT";
-const STORM_OBSERVATION_STATE_CONFLICT = "STORM_OBSERVATION_STATE_CONFLICT";
-const STORM_ALERT_OWNERSHIP_CONFLICT = "STORM_ALERT_OWNERSHIP_CONFLICT";
-const STORM_ALERT_STATE_CONFLICT = "STORM_ALERT_STATE_CONFLICT";
 
 function isSameStormPhotoReplay(
   existing: typeof stormPhotosTable.$inferSelect,
@@ -133,7 +126,7 @@ async function saveStormPhotoIdempotently(
       return { photo, replayed: false };
     })).then(result => {
       if ("storageError" in result) throw result.storageError;
-      if ("conflict" in result) throw new Error(STORM_PHOTO_IDEMPOTENCY_CONFLICT);
+      if ("conflict" in result) throw new Error(STORM_PATROL_ERROR_CODES.photoIdempotencyConflict);
       return result;
     });
   } catch (error) {
@@ -534,7 +527,7 @@ router.post("/storm-patrol/jobs/:id/complete", requireAuth, validateBody(complet
   if (mine.error) {
     res.status(mine.error).json({
       error: mine.error === 404 ? "Storm job not found" : "You no longer own this Storm Patrol job.",
-      ...(mine.error === 403 ? { code: STORM_JOB_OWNERSHIP_CONFLICT } : {}),
+      ...(mine.error === 403 ? { code: STORM_PATROL_ERROR_CODES.jobOwnershipConflict } : {}),
     });
     return;
   }
@@ -598,7 +591,7 @@ router.post("/storm-patrol/jobs/:id/complete", requireAuth, validateBody(complet
   if (!result) {
     res.status(409).json({
       error: "This Storm Patrol job is no longer in a state that can be completed or edited.",
-      code: STORM_JOB_STATE_CONFLICT,
+      code: STORM_PATROL_ERROR_CODES.jobStateConflict,
     });
     return;
   }
@@ -616,7 +609,9 @@ router.post("/storm-patrol/observations", requireAuth, validateBody(z.object({ e
     if (conflict) {
       res.status(conflict === "ownership" ? 403 : 409).json({
         error: conflict === "ownership" ? "You no longer own the linked Storm Patrol job." : "The observation no longer belongs to an active Storm Patrol event and job.",
-        code: conflict === "ownership" ? STORM_OBSERVATION_OWNERSHIP_CONFLICT : STORM_OBSERVATION_STATE_CONFLICT,
+        code: conflict === "ownership"
+          ? STORM_PATROL_ERROR_CODES.observationOwnershipConflict
+          : STORM_PATROL_ERROR_CODES.observationStateConflict,
       });
       return;
     }
@@ -645,7 +640,7 @@ router.post("/storm-patrol/observations/photos", requireAuth, stormPhotoUpload, 
     );
     res.status(result.replayed ? 200 : 201).json(result.photo);
   } catch (error) {
-    if (error instanceof Error && error.message === STORM_PHOTO_IDEMPOTENCY_CONFLICT) {
+    if (error instanceof Error && error.message === STORM_PATROL_ERROR_CODES.photoIdempotencyConflict) {
       res.status(409).json({ error: "Photo idempotency key conflicts with an existing attachment." });
       return;
     }
@@ -667,7 +662,9 @@ router.post("/storm-patrol/alerts", requireAuth, validateBody(z.object({ eventId
   if (conflict) {
     res.status(conflict === "ownership" ? 403 : 409).json({
       error: conflict === "ownership" ? "You no longer own the linked Storm Patrol job." : "The alert no longer belongs to an active Storm Patrol event and job.",
-      code: conflict === "ownership" ? STORM_ALERT_OWNERSHIP_CONFLICT : STORM_ALERT_STATE_CONFLICT,
+      code: conflict === "ownership"
+        ? STORM_PATROL_ERROR_CODES.alertOwnershipConflict
+        : STORM_PATROL_ERROR_CODES.alertStateConflict,
     });
     return;
   }
@@ -720,7 +717,7 @@ router.post("/storm-patrol/jobs/:id/photos", requireAuth, stormPhotoUpload, asyn
     );
     res.status(result.replayed ? 200 : 201).json(result.photo);
   } catch (error) {
-    if (error instanceof Error && error.message === STORM_PHOTO_IDEMPOTENCY_CONFLICT) {
+    if (error instanceof Error && error.message === STORM_PATROL_ERROR_CODES.photoIdempotencyConflict) {
       res.status(409).json({ error: "Photo idempotency key conflicts with an existing attachment." });
       return;
     }

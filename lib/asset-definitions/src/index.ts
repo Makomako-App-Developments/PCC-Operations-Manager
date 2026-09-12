@@ -78,6 +78,25 @@ export const STORMWATER_DETAIL_FIELDS = [
   { key: "hotspot", label: "Hotspot" },
 ] as const;
 
+export const STORM_PATROL_ERROR_CODES = {
+  photoIdempotencyConflict: "STORM_PHOTO_IDEMPOTENCY_CONFLICT",
+  jobOwnershipConflict: "STORM_JOB_OWNERSHIP_CONFLICT",
+  jobStateConflict: "STORM_JOB_STATE_CONFLICT",
+  observationOwnershipConflict: "STORM_OBSERVATION_OWNERSHIP_CONFLICT",
+  observationStateConflict: "STORM_OBSERVATION_STATE_CONFLICT",
+  alertOwnershipConflict: "STORM_ALERT_OWNERSHIP_CONFLICT",
+  alertStateConflict: "STORM_ALERT_STATE_CONFLICT",
+} as const;
+
+export const STORM_PATROL_PERMANENT_PARENT_FAILURES = [
+  { status: 403, code: STORM_PATROL_ERROR_CODES.jobOwnershipConflict },
+  { status: 403, code: STORM_PATROL_ERROR_CODES.observationOwnershipConflict },
+  { status: 403, code: STORM_PATROL_ERROR_CODES.alertOwnershipConflict },
+  { status: 409, code: STORM_PATROL_ERROR_CODES.jobStateConflict },
+  { status: 409, code: STORM_PATROL_ERROR_CODES.observationStateConflict },
+  { status: 409, code: STORM_PATROL_ERROR_CODES.alertStateConflict },
+] as const;
+
 const genericRule = (departmentName: string): DepartmentRule => ({
   specificationLabel: `${departmentName} Asset Type`,
   specificationKey: "assetType",
