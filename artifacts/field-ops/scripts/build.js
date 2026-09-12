@@ -4,6 +4,7 @@ const path = require("path");
 const { assertNoRouteTests } = require("./check-route-tests");
 
 const projectRoot = path.resolve(__dirname, "..");
+const basePath = "/field-ops";
 
 if (!assertNoRouteTests()) {
   process.exit(1);
@@ -33,7 +34,7 @@ function getProductionDomain() {
 
 const domain = getProductionDomain();
 console.log(`Building Expo web export for domain: ${domain}`);
-console.log("Base URL: /field-ops (configured in app.json)");
+console.log(`Base URL: ${basePath} (configured in app.json)`);
 
 const env = {
   ...process.env,
@@ -48,9 +49,32 @@ try {
   });
   console.log("Build complete! Output written to dist/");
 
-  // Patch dist/index.html: viewport-fit=cover + full overflow lock for iOS Safari
-  const indexPath = path.join(projectRoot, "dist", "index.html");
+  const distRoot = path.join(projectRoot, "dist");
+  fs.cpSync(path.join(projectRoot, "public"), distRoot, { recursive: true });
+
+  // Patch dist/index.html: PWA metadata + browser layout fixes
+  const indexPath = path.join(distRoot, "index.html");
   let html = fs.readFileSync(indexPath, "utf8");
+
+  const pwaHead = [
+    `<link rel="manifest" href="${basePath}/manifest.json">`,
+    `<meta name="theme-color" content="#166534">`,
+    `<link rel="apple-touch-icon" href="${basePath}/icons/icon-192.png">`,
+  ].join("\n    ");
+  const serviceWorkerRegistration = `<script>
+      if ("serviceWorker" in navigator) {
+        window.addEventListener("load", function () {
+          navigator.serviceWorker.register("${basePath}/service-worker.js", { scope: "${basePath}/" });
+        });
+      }
+    </script>`;
+
+  if (!html.includes('rel="manifest"')) {
+    html = html.replace("</head>", `    ${pwaHead}\n  </head>`);
+  }
+  if (!html.includes("navigator.serviceWorker.register")) {
+    html = html.replace("</body>", `    ${serviceWorkerRegistration}\n  </body>`);
+  }
 
   // Add viewport-fit=cover to the viewport meta tag
   html = html.replace(
@@ -95,7 +119,7 @@ try {
   );
 
   fs.writeFileSync(indexPath, html, "utf8");
-  console.log("Patched dist/index.html with viewport-fit=cover and iOS Safari overflow fix.");
+  console.log("Patched dist/index.html with PWA metadata and browser layout fixes.");
 } catch (error) {
   console.error("Build failed:", error.message);
   process.exit(1);

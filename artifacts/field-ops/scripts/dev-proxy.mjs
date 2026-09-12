@@ -22,9 +22,19 @@
 import http from "http";
 import net from "net";
 import { spawn } from "child_process";
+import fs from "fs";
+import path from "path";
+import { fileURLToPath } from "url";
 
 const PORT = parseInt(process.env.PORT ?? "21340", 10);
 const INTERNAL_PORT = PORT + 1;
+const PUBLIC_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "public");
+const PWA_FILES = new Map([
+  ["/manifest.json", ["manifest.json", "application/manifest+json; charset=utf-8"]],
+  ["/service-worker.js", ["service-worker.js", "application/javascript; charset=utf-8"]],
+  ["/icons/icon-192.png", ["icons/icon-192.png", "image/png"]],
+  ["/icons/icon-512.png", ["icons/icon-512.png", "image/png"]],
+]);
 
 // Paths that Metro serves its HTML shell from
 const HTML_PATHS = new Set(["/", "/field-ops", "/field-ops/"]);
@@ -95,13 +105,30 @@ async function waitForMetro(maxWaitMs = 120_000) {
 function rewriteHtml(html) {
   // Rewrite absolute paths that Metro embeds in the HTML shell so the browser
   // requests them through /field-ops/ (which the Replit proxy routes here).
-  return html
+  let rewritten = html
     .replace(/src="\/node_modules\//g, 'src="/field-ops/node_modules/')
     .replace(/href="\/node_modules\//g, 'href="/field-ops/node_modules/')
     .replace(/src="\/\/_expo\//g, 'src="/field-ops/_expo/')
     .replace(/href="\/\/_expo\//g, 'href="/field-ops/_expo/')
     .replace(/src="\/_expo\//g, 'src="/field-ops/_expo/')
     .replace(/href="\/_expo\//g, 'href="/field-ops/_expo/');
+
+  if (!rewritten.includes('rel="manifest"')) {
+    rewritten = rewritten.replace(
+      "</head>",
+      '  <link rel="manifest" href="/field-ops/manifest.json">\n' +
+        '  <meta name="theme-color" content="#166534">\n' +
+        '  <link rel="apple-touch-icon" href="/field-ops/icons/icon-192.png">\n' +
+        "</head>",
+    );
+  }
+  if (!rewritten.includes("navigator.serviceWorker.register")) {
+    rewritten = rewritten.replace(
+      "</body>",
+      '  <script>if ("serviceWorker" in navigator) window.addEventListener("load", function () { navigator.serviceWorker.register("/field-ops/service-worker.js", { scope: "/field-ops/" }); });</script>\n</body>',
+    );
+  }
+  return rewritten;
 }
 
 // ── Generic reverse-proxy helper ────────────────────────────────────────────
@@ -165,16 +192,27 @@ function targetPath(reqUrl) {
 // ── HTTP server ─────────────────────────────────────────────────────────────
 
 const server = http.createServer((req, clientRes) => {
-  const path = targetPath(req.url);
+  const requestPath = targetPath(req.url);
+  const pathname = new URL(requestPath, "http://localhost").pathname;
+  const pwaFile = PWA_FILES.get(pathname);
+
+  if (pwaFile) {
+    const [relativePath, contentType] = pwaFile;
+    const headers = { "content-type": contentType };
+    if (pathname === "/service-worker.js") headers["cache-control"] = "no-cache";
+    clientRes.writeHead(200, headers);
+    clientRes.end(fs.readFileSync(path.join(PUBLIC_ROOT, relativePath)));
+    return;
+  }
 
   // Always serve Metro HTML for the entry points (even without prefix) and
   // the raw Metro root (which may redirect to the HTML shell)
-  if (HTML_PATHS.has(req.url ?? "/") || HTML_PATHS.has(path)) {
+  if (HTML_PATHS.has(req.url ?? "/") || HTML_PATHS.has(requestPath)) {
     proxyRequest(req, clientRes, "/");
     return;
   }
 
-  proxyRequest(req, clientRes, path);
+  proxyRequest(req, clientRes, requestPath);
 });
 
 // ── WebSocket proxy (Metro HMR) ──────────────────────────────────────────────

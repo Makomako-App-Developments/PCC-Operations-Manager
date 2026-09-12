@@ -40,3 +40,4 @@
 - [React Native Web confirmations](rnweb-confirmations.md) — do not rely on multi-button Alert callbacks for required web actions; use an in-app confirmation dialog and exercise real rendered controls.
 - [Safari photo remove controls](safari-photo-remove-controls.md) — photo-overlay remove buttons inside scroll views need direct web pointer-up handling plus duplicate-press suppression.
 - [Storm Patrol photo visibility](storm-patrol-photo-visibility.md) — accepted uploads are not enough: reopened Field Ops jobs and desktop completed-work details must both render persisted before/after photos.
+- [Expo web PWA assets](expo-web-pwa-assets.md) — Expo web exports do not carry custom public PWA files in this setup; copy them into the export and serve them explicitly in development.

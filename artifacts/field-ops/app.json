@@ -39,7 +39,11 @@
       ]
     },
     "web": {
-      "favicon": "./assets/images/icon.png"
+      "favicon": "./assets/images/icon.png",
+      "name": "GardenOps Field",
+      "shortName": "GardenOps",
+      "themeColor": "#166534",
+      "backgroundColor": "#ffffff"
     },
     "plugins": [
       [

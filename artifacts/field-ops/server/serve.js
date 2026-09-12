@@ -66,7 +66,15 @@ const server = http.createServer((req, res) => {
 
   if (fs.existsSync(filePath) && fs.statSync(filePath).isFile()) {
     const content = fs.readFileSync(filePath);
-    res.writeHead(200, { "content-type": getMime(filePath) });
+    const headers = { "content-type": getMime(filePath) };
+    if (path.basename(filePath) === "manifest.json") {
+      headers["content-type"] = "application/manifest+json; charset=utf-8";
+    }
+    if (path.basename(filePath) === "service-worker.js") {
+      headers["cache-control"] = "no-cache";
+      headers["service-worker-allowed"] = `${basePath || ""}/`;
+    }
+    res.writeHead(200, headers);
     res.end(content);
     return;
   }
