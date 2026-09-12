@@ -238,13 +238,11 @@ describe("Storm Patrol blocked photo recovery", () => {
     expect(discard.textContent).toContain("Discard 2 unavailable photos and reselect");
 
     act(() => discard.click());
-    const destructiveAction = mocks.alert.mock.calls[0]?.[2]?.find(
-      (action: { text?: string }) => action.text === "Discard photos",
-    );
-    expect(destructiveAction).toBeDefined();
+    expect(document.body.textContent).toContain("Discard queued photos?");
+    expect(mocks.clearStormQueueItems).not.toHaveBeenCalled();
 
     await act(async () => {
-      destructiveAction.onPress();
+      (document.querySelector('[data-testid="storm-discard-confirm"]') as HTMLButtonElement).click();
     });
     await settle();
 
@@ -253,6 +251,44 @@ describe("Storm Patrol blocked photo recovery", () => {
     expect(document.body.textContent).toContain("1 item waiting to sync");
     expect(document.body.textContent).not.toContain("unavailable photo");
     expect(document.querySelector('[data-testid="storm-sync-clear-photos"]')).toBeNull();
+  });
+
+  it("leaves the queue unchanged when the in-app confirmation is cancelled", async () => {
+    await act(async () => {
+      root = createRoot(document.getElementById("root")!);
+      root.render(<StormPatrolScreen />);
+    });
+    await settle();
+
+    act(() => (document.querySelector('[data-testid="storm-sync-clear-photos"]') as HTMLButtonElement).click());
+    expect(document.body.textContent).toContain("Discard queued photos?");
+
+    act(() => (document.querySelector('[data-testid="storm-discard-cancel"]') as HTMLButtonElement).click());
+
+    expect(mocks.clearStormQueueItems).not.toHaveBeenCalled();
+    expect(document.body.textContent).not.toContain("Discard queued photos?");
+    expect(document.body.textContent).toContain("3 items waiting to sync");
+  });
+
+  it("shows a useful error and restores the queue when durable cleanup fails", async () => {
+    mocks.clearStormQueueItems.mockRejectedValueOnce(new Error("Safari storage is unavailable"));
+
+    await act(async () => {
+      root = createRoot(document.getElementById("root")!);
+      root.render(<StormPatrolScreen />);
+    });
+    await settle();
+
+    act(() => (document.querySelector('[data-testid="storm-sync-clear-photos"]') as HTMLButtonElement).click());
+    await act(async () => {
+      (document.querySelector('[data-testid="storm-discard-confirm"]') as HTMLButtonElement).click();
+    });
+    await settle();
+
+    expect(document.querySelector('[data-testid="storm-discard-error"]')?.textContent)
+      .toContain("Safari storage is unavailable");
+    expect(document.body.textContent).toContain("3 items waiting to sync");
+    expect(document.body.textContent).toContain("Discard queued photos?");
   });
 });
 

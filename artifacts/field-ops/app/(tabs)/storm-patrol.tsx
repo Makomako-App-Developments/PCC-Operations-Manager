@@ -5,7 +5,7 @@ import * as ImagePicker from "expo-image-picker";
 import * as Location from "expo-location";
 import { useFocusEffect } from "expo-router";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { ActivityIndicator, Alert, Image, Linking, Platform, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { ActivityIndicator, Alert, Image, Linking, Modal, Platform, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { PinMap } from "@/components/PinMap";
 import { requestCameraPermission, requestMediaLibraryPermission } from "@/hooks/usePhotoLibraryPermission";
@@ -64,6 +64,8 @@ export default function StormPatrolScreen() {
   const [observationLocation, setObservationLocation] = useState<{ locationLat: number; locationLng: number } | null>(null);
   const [capturingLocation, setCapturingLocation] = useState(false);
   const [discardingPhotos, setDiscardingPhotos] = useState(false);
+  const [showDiscardConfirmation, setShowDiscardConfirmation] = useState(false);
+  const [discardError, setDiscardError] = useState<string | null>(null);
   const [flooding, setFlooding] = useState(false);
   const [floodingDescription, setFloodingDescription] = useState("");
   const [slips, setSlips] = useState(false);
@@ -189,29 +191,24 @@ export default function StormPatrolScreen() {
   };
   const discardQueuedPhotos = () => {
     if (discardingPhotos) return;
-    Alert.alert(
-      "Discard queued photos?",
-      `This will permanently remove ${unrecoverablePhotos.length} unavailable local Storm Patrol photo${unrecoverablePhotos.length === 1 ? "" : "s"}. Completed patrol records, observations, alerts, and other retryable photos will not be removed. Select these photos again from the completed job after clearing them.`,
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Discard photos",
-          style: "destructive",
-          onPress: () => {
-            setDiscardingPhotos(true);
-            const unavailableIds = unrecoverablePhotos.map(item => item.id);
-            setQueue(current => current.filter(item => !unavailableIds.includes(item.id)));
-            void clearStormQueueItems(unavailableIds)
-              .then(setQueue)
-              .catch(error => {
-                Alert.alert("Unable to discard photos", error instanceof Error ? error.message : "Try again.");
-                return refreshQueue();
-              })
-              .finally(() => setDiscardingPhotos(false));
-          },
-        },
-      ],
-    );
+    setDiscardError(null);
+    setShowDiscardConfirmation(true);
+  };
+  const confirmDiscardQueuedPhotos = () => {
+    if (discardingPhotos) return;
+    setDiscardingPhotos(true);
+    setDiscardError(null);
+    const unavailableIds = unrecoverablePhotos.map(item => item.id);
+    void clearStormQueueItems(unavailableIds)
+      .then(remaining => {
+        setQueue(remaining);
+        setShowDiscardConfirmation(false);
+      })
+      .catch(async error => {
+        setDiscardError(error instanceof Error ? error.message : "Try again.");
+        await refreshQueue();
+      })
+      .finally(() => setDiscardingPhotos(false));
   };
   const complete = async () => {
     if (!selected || !user) return;
@@ -582,7 +579,27 @@ export default function StormPatrolScreen() {
       {observationLocation && <Text style={[styles.locationStatus, { color: colors.success }]}>Location captured: {observationLocation.locationLat.toFixed(5)}, {observationLocation.locationLng.toFixed(5)}</Text>}
       <Button title="Send observation" icon="send" onPress={submitObservation} color={colors.success}/>
     </View>}
-  </ScrollView></View>;
+  </ScrollView>
+    {showDiscardConfirmation && <Modal visible transparent animationType="fade" onRequestClose={() => { if (!discardingPhotos) setShowDiscardConfirmation(false); }}>
+      <View style={styles.confirmOverlay}>
+        <View accessibilityViewIsModal style={[styles.confirmCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+          <Text style={[styles.confirmTitle, { color: colors.foreground }]}>Discard queued photos?</Text>
+          <Text style={[styles.confirmMessage, { color: colors.mutedForeground }]}>
+            This will permanently remove {unrecoverablePhotos.length} unavailable local Storm Patrol photo{unrecoverablePhotos.length === 1 ? "" : "s"}. Completed patrol records, observations, alerts, and other retryable photos will not be removed. Select these photos again from the completed job after clearing them.
+          </Text>
+          {discardError && <Text accessibilityRole="alert" testID="storm-discard-error" style={[styles.confirmError, { color: colors.destructive }]}>Unable to discard photos: {discardError}</Text>}
+          <View style={styles.confirmActions}>
+            <TouchableOpacity testID="storm-discard-cancel" disabled={discardingPhotos} accessibilityRole="button" onPress={() => setShowDiscardConfirmation(false)} style={[styles.confirmButton, { borderColor: colors.border }]}>
+              <Text style={[styles.confirmButtonText, { color: colors.foreground }]}>Cancel</Text>
+            </TouchableOpacity>
+            <TouchableOpacity testID="storm-discard-confirm" disabled={discardingPhotos} accessibilityRole="button" onPress={confirmDiscardQueuedPhotos} style={[styles.confirmButton, { backgroundColor: colors.destructive, borderColor: colors.destructive }]}>
+              <Text style={[styles.confirmButtonText, { color: "#fff" }]}>{discardingPhotos ? "Discarding…" : "Discard photos"}</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
+    </Modal>}
+  </View>;
 }
 function Button({ title, icon, onPress, color }: { title: string; icon: any; onPress: () => void; color: string }) { return <TouchableOpacity onPress={onPress} style={[styles.button, { backgroundColor: color }]}><Feather name={icon} size={16} color="#fff"/><Text style={styles.buttonText}>{title}</Text></TouchableOpacity>; }
 function PhotoThumbnail({ uri, label, large = false, testID, onRemove, colors }: { uri: string; label?: string; large?: boolean; testID: string; onRemove: () => void; colors: ReturnType<typeof useColors> }) {
@@ -595,4 +612,4 @@ function PhotoThumbnail({ uri, label, large = false, testID, onRemove, colors }:
   </View>;
 }
 function BooleanQuestion({ title, value, onChange, color }: { title: string; value: boolean; onChange: (value: boolean) => void; color: string }) { return <View style={styles.question}><Text style={styles.questionText}>{title}</Text><Button title="Yes" icon={value ? "check-circle" : "circle"} onPress={() => onChange(true)} color={value ? color : "#64748b"}/><Button title="No" icon={!value ? "check-circle" : "circle"} onPress={() => onChange(false)} color={!value ? color : "#64748b"}/></View>; }
-const styles = StyleSheet.create({ root:{flex:1}, list:{padding:16,gap:14}, detail:{padding:16,gap:12}, title:{fontFamily:"Inter_700Bold",fontSize:26}, sub:{fontFamily:"Inter_400Regular",fontSize:13},assetMapSection:{gap:10},mapToggle:{alignSelf:"flex-end",flexDirection:"row",borderWidth:1,borderRadius:10,padding:3},mapToggleButton:{minHeight:34,paddingHorizontal:12,borderRadius:7,flexDirection:"row",alignItems:"center",gap:6},mapToggleText:{fontFamily:"Inter_600SemiBold",fontSize:13},assetMapFrame:{height:212,borderWidth:1,borderRadius:12,overflow:"hidden"},mapUnavailable:{borderWidth:1,borderRadius:12,padding:14,flexDirection:"row",alignItems:"center",gap:8},phase:{fontFamily:"Inter_700Bold",fontSize:13,textTransform:"uppercase",marginTop:12,marginBottom:6}, job:{borderWidth:StyleSheet.hairlineWidth,borderRadius:12,padding:14,flexDirection:"row",alignItems:"center",marginBottom:8,gap:10},jobSequence:{width:28,height:28,borderRadius:14,alignItems:"center",justifyContent:"center"},jobSequenceText:{fontFamily:"Inter_700Bold",fontSize:13,color:"#fff"}, jobTitle:{fontFamily:"Inter_600SemiBold",fontSize:16}, sync:{padding:12,borderRadius:10,gap:8},syncRetry:{flexDirection:"row",gap:8,alignItems:"center"},syncError:{fontFamily:"Inter_400Regular",fontSize:11,marginTop:3},clearPhotos:{borderTopWidth:StyleSheet.hairlineWidth,paddingTop:9,alignItems:"center"},clearPhotosText:{fontFamily:"Inter_600SemiBold",fontSize:13},empty:{textAlign:"center",marginTop:60,fontFamily:"Inter_400Regular"}, heading:{fontFamily:"Inter_700Bold",fontSize:18,marginTop:10}, help:{fontFamily:"Inter_400Regular",fontSize:13,lineHeight:19}, actions:{flexDirection:"row",gap:8}, button:{padding:12,borderRadius:10,flexDirection:"row",alignItems:"center",justifyContent:"center",gap:7,flex:1}, buttonText:{fontFamily:"Inter_600SemiBold",color:"#fff",fontSize:13}, photos:{gap:8},photoContainer:{position:"relative"},photoRemove:{position:"absolute",top:4,right:4,width:24,height:24,borderRadius:12,borderWidth:2,alignItems:"center",justifyContent:"center",zIndex:2}, photo:{width:72,height:72,borderRadius:8},observationPhoto:{width:96,height:96,borderRadius:10},locationStatus:{fontFamily:"Inter_600SemiBold",fontSize:12},caption:{fontFamily:"Inter_400Regular",fontSize:10,textAlign:"center",width:72}, chips:{flexDirection:"row",flexWrap:"wrap",gap:7}, chip:{borderWidth:1,borderRadius:18,paddingHorizontal:10,paddingVertical:7}, input:{borderWidth:1,borderRadius:10,padding:12,fontFamily:"Inter_400Regular",fontSize:14}, note:{minHeight:88,textAlignVertical:"top"}, check:{flexDirection:"row",alignItems:"center",gap:8,paddingVertical:5},sectionDivider:{height:StyleSheet.hairlineWidth,width:"100%",marginTop:6},urgentPanel:{borderRadius:12,padding:14,gap:12},urgentHeader:{minHeight:32,flexDirection:"row",alignItems:"center",justifyContent:"space-between"},urgentTitle:{fontFamily:"Inter_700Bold",fontSize:18,color:"#000"},urgentContent:{gap:10},urgentInput:{minHeight:48},observation:{borderTopWidth:StyleSheet.hairlineWidth,paddingTop:14,gap:8,marginTop:10},question:{flexDirection:"row",alignItems:"center",gap:6},questionText:{flex:1,fontFamily:"Inter_600SemiBold"},photoSourceOverlay:{flex:1,justifyContent:"flex-end",backgroundColor:"rgba(0,0,0,0.45)",padding:16},photoSourceCard:{borderWidth:1,borderRadius:18,padding:18,gap:12},photoSourceTitle:{fontFamily:"Inter_700Bold",fontSize:20},photoSourceAction:{minHeight:50,borderRadius:12,flexDirection:"row",alignItems:"center",justifyContent:"center",gap:9},photoSourceActionText:{fontFamily:"Inter_600SemiBold",fontSize:15,color:"#fff"},photoSourceCancel:{paddingVertical:10,alignItems:"center"},photoSourceCancelText:{fontFamily:"Inter_600SemiBold",fontSize:14} });
+const styles = StyleSheet.create({ root:{flex:1}, list:{padding:16,gap:14}, detail:{padding:16,gap:12}, title:{fontFamily:"Inter_700Bold",fontSize:26}, sub:{fontFamily:"Inter_400Regular",fontSize:13},assetMapSection:{gap:10},mapToggle:{alignSelf:"flex-end",flexDirection:"row",borderWidth:1,borderRadius:10,padding:3},mapToggleButton:{minHeight:34,paddingHorizontal:12,borderRadius:7,flexDirection:"row",alignItems:"center",gap:6},mapToggleText:{fontFamily:"Inter_600SemiBold",fontSize:13},assetMapFrame:{height:212,borderWidth:1,borderRadius:12,overflow:"hidden"},mapUnavailable:{borderWidth:1,borderRadius:12,padding:14,flexDirection:"row",alignItems:"center",gap:8},phase:{fontFamily:"Inter_700Bold",fontSize:13,textTransform:"uppercase",marginTop:12,marginBottom:6}, job:{borderWidth:StyleSheet.hairlineWidth,borderRadius:12,padding:14,flexDirection:"row",alignItems:"center",marginBottom:8,gap:10},jobSequence:{width:28,height:28,borderRadius:14,alignItems:"center",justifyContent:"center"},jobSequenceText:{fontFamily:"Inter_700Bold",fontSize:13,color:"#fff"}, jobTitle:{fontFamily:"Inter_600SemiBold",fontSize:16}, sync:{padding:12,borderRadius:10,gap:8},syncRetry:{flexDirection:"row",gap:8,alignItems:"center"},syncError:{fontFamily:"Inter_400Regular",fontSize:11,marginTop:3},clearPhotos:{borderTopWidth:StyleSheet.hairlineWidth,paddingTop:9,alignItems:"center"},clearPhotosText:{fontFamily:"Inter_600SemiBold",fontSize:13},empty:{textAlign:"center",marginTop:60,fontFamily:"Inter_400Regular"}, heading:{fontFamily:"Inter_700Bold",fontSize:18,marginTop:10}, help:{fontFamily:"Inter_400Regular",fontSize:13,lineHeight:19}, actions:{flexDirection:"row",gap:8}, button:{padding:12,borderRadius:10,flexDirection:"row",alignItems:"center",justifyContent:"center",gap:7,flex:1}, buttonText:{fontFamily:"Inter_600SemiBold",color:"#fff",fontSize:13}, photos:{gap:8},photoContainer:{position:"relative"},photoRemove:{position:"absolute",top:4,right:4,width:24,height:24,borderRadius:12,borderWidth:2,alignItems:"center",justifyContent:"center",zIndex:2}, photo:{width:72,height:72,borderRadius:8},observationPhoto:{width:96,height:96,borderRadius:10},locationStatus:{fontFamily:"Inter_600SemiBold",fontSize:12},caption:{fontFamily:"Inter_400Regular",fontSize:10,textAlign:"center",width:72}, chips:{flexDirection:"row",flexWrap:"wrap",gap:7}, chip:{borderWidth:1,borderRadius:18,paddingHorizontal:10,paddingVertical:7}, input:{borderWidth:1,borderRadius:10,padding:12,fontFamily:"Inter_400Regular",fontSize:14}, note:{minHeight:88,textAlignVertical:"top"}, check:{flexDirection:"row",alignItems:"center",gap:8,paddingVertical:5},sectionDivider:{height:StyleSheet.hairlineWidth,width:"100%",marginTop:6},urgentPanel:{borderRadius:12,padding:14,gap:12},urgentHeader:{minHeight:32,flexDirection:"row",alignItems:"center",justifyContent:"space-between"},urgentTitle:{fontFamily:"Inter_700Bold",fontSize:18,color:"#000"},urgentContent:{gap:10},urgentInput:{minHeight:48},observation:{borderTopWidth:StyleSheet.hairlineWidth,paddingTop:14,gap:8,marginTop:10},question:{flexDirection:"row",alignItems:"center",gap:6},questionText:{flex:1,fontFamily:"Inter_600SemiBold"},photoSourceOverlay:{flex:1,justifyContent:"flex-end",backgroundColor:"rgba(0,0,0,0.45)",padding:16},photoSourceCard:{borderWidth:1,borderRadius:18,padding:18,gap:12},photoSourceTitle:{fontFamily:"Inter_700Bold",fontSize:20},photoSourceAction:{minHeight:50,borderRadius:12,flexDirection:"row",alignItems:"center",justifyContent:"center",gap:9},photoSourceActionText:{fontFamily:"Inter_600SemiBold",fontSize:15,color:"#fff"},photoSourceCancel:{paddingVertical:10,alignItems:"center"},photoSourceCancelText:{fontFamily:"Inter_600SemiBold",fontSize:14},confirmOverlay:{flex:1,justifyContent:"center",alignItems:"center",backgroundColor:"rgba(15,23,42,0.55)",padding:24},confirmCard:{width:"100%",maxWidth:440,borderWidth:1,borderRadius:16,padding:20,gap:14},confirmTitle:{fontFamily:"Inter_700Bold",fontSize:20},confirmMessage:{fontFamily:"Inter_400Regular",fontSize:14,lineHeight:21},confirmError:{fontFamily:"Inter_600SemiBold",fontSize:13,lineHeight:19},confirmActions:{flexDirection:"row",gap:10,justifyContent:"flex-end"},confirmButton:{minHeight:46,borderWidth:1,borderRadius:10,paddingHorizontal:16,alignItems:"center",justifyContent:"center"},confirmButtonText:{fontFamily:"Inter_600SemiBold",fontSize:14} });
