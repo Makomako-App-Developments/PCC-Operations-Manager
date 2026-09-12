@@ -5657,6 +5657,88 @@ export const useUploadStormPatrolJobPhoto = <
   return useMutation(getUploadStormPatrolJobPhotoMutationOptions(options));
 };
 
+export const getDeleteStormPatrolJobPhotoUrl = (
+  id: string,
+  photoId: string,
+) => {
+  return `/api/storm-patrol/jobs/${id}/photos/${photoId}`;
+};
+
+export const deleteStormPatrolJobPhoto = async (
+  id: string,
+  photoId: string,
+  options?: RequestInit,
+): Promise<void> => {
+  return customFetch<void>(getDeleteStormPatrolJobPhotoUrl(id, photoId), {
+    ...options,
+    method: "DELETE",
+  });
+};
+
+export const getDeleteStormPatrolJobPhotoMutationOptions = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof deleteStormPatrolJobPhoto>>,
+    TError,
+    { id: string; photoId: string },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof deleteStormPatrolJobPhoto>>,
+  TError,
+  { id: string; photoId: string },
+  TContext
+> => {
+  const mutationKey = ["deleteStormPatrolJobPhoto"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof deleteStormPatrolJobPhoto>>,
+    { id: string; photoId: string }
+  > = (props) => {
+    const { id, photoId } = props ?? {};
+
+    return deleteStormPatrolJobPhoto(id, photoId, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type DeleteStormPatrolJobPhotoMutationResult = NonNullable<
+  Awaited<ReturnType<typeof deleteStormPatrolJobPhoto>>
+>;
+
+export type DeleteStormPatrolJobPhotoMutationError = ErrorType<void>;
+
+export const useDeleteStormPatrolJobPhoto = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof deleteStormPatrolJobPhoto>>,
+    TError,
+    { id: string; photoId: string },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof deleteStormPatrolJobPhoto>>,
+  TError,
+  { id: string; photoId: string },
+  TContext
+> => {
+  return useMutation(getDeleteStormPatrolJobPhotoMutationOptions(options));
+};
+
 export const getCreateStormPatrolObservationUrl = () => {
   return `/api/storm-patrol/observations`;
 };

@@ -145,8 +145,10 @@ vi.mock("@workspace/db", async importOriginal => {
       select: vi.fn(() => chain()),
       insert: vi.fn((table: any) => insertChain(table)),
         delete: vi.fn((table: any) => ({
-          where: vi.fn(async (condition: any) => {
+          where: vi.fn((condition: any) => {
+            const deleted = rowsFor(table).filter(row => matches(row, condition));
             state.rows.set(table.name, rowsFor(table).filter(row => !matches(row, condition)));
+            return { returning: vi.fn(async () => deleted) };
           }),
         })),
         update: vi.fn((table: any) => ({
@@ -660,6 +662,28 @@ describe("photo routes: real multipart idempotency", () => {
     // but the old worker has already timed out and cannot finalize it.
     releaseStalledProvider();
     expect(rowsFor(tables.photoObjectCleanupTable)).toHaveLength(0);
+  });
+});
+
+describe("Storm Patrol saved photo deletion", () => {
+  it("removes the photo row and its stored object", async () => {
+    const photoId = "00000000-0000-0000-0000-000000000018";
+    const objectName = "uploads/storm-patrol/saved-photo";
+    state.rows.set("stormPhotosTable", [{
+      id: photoId,
+      stormJobId: ids.stormJob,
+      purpose: "before",
+      blobUrl: `/api/uploads/${objectName}`,
+      uploadedById: "00000000-0000-0000-0000-000000000001",
+    }]);
+    state.objects.add(objectName);
+
+    const response = await request(app()).delete(`/api/storm-patrol/jobs/${ids.stormJob}/photos/${photoId}`);
+
+    expect(response.status).toBe(204);
+    expect(rowsFor(tables.stormPhotosTable)).toEqual([]);
+    expect(state.objects.has(objectName)).toBe(false);
+    expect(state.deletes).toHaveBeenCalledWith(objectName);
   });
 });
 

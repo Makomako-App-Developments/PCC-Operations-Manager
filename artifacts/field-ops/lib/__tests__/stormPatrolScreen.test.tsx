@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
   flushStormQueue: vi.fn(),
   loadStormQueue: vi.fn(),
   claimMutate: vi.fn(),
+  deletePhotoMutate: vi.fn(),
   refetch: vi.fn(),
   currentResult: {
     data: {
@@ -65,6 +66,7 @@ vi.mock("@react-native-async-storage/async-storage", () => ({
 vi.mock("@workspace/api-client-react", () => ({
   getGetCurrentStormPatrolQueryKey: () => ["storm-patrol"],
   useClaimStormPatrolJob: () => ({ mutate: mocks.claimMutate }),
+  useDeleteStormPatrolJobPhoto: () => ({ mutate: mocks.deletePhotoMutate }),
   useGetCurrentStormPatrol: () => mocks.currentResult,
 }));
 
@@ -185,6 +187,7 @@ beforeEach(() => {
   mocks.currentResult.data.data.jobs = [];
   mocks.alert.mockReset();
   mocks.claimMutate.mockReset();
+  mocks.deletePhotoMutate.mockReset();
   mocks.refetch.mockReset().mockResolvedValue(undefined);
   mocks.currentResult.refetch = mocks.refetch;
   mocks.loadStormQueue.mockReset().mockResolvedValue(failedQueue);
@@ -265,7 +268,7 @@ describe("Storm Patrol photo picker", () => {
     act(() => job!.click());
 
     const beforePhoto = Array.from(document.querySelectorAll("button")).find(
-      button => button.textContent === "Before photo",
+      button => button.textContent?.startsWith("Before photo"),
     );
     expect(beforePhoto).toBeDefined();
 
@@ -276,6 +279,89 @@ describe("Storm Patrol photo picker", () => {
     expect(ImagePicker.launchImageLibraryAsync).toHaveBeenCalledOnce();
     expect(document.body.textContent).not.toContain("Choose where to get the photo");
     expect(document.body.textContent).not.toContain("Add before photo");
+  });
+
+  it("allows three before photos while keeping the after-photo limit independent", async () => {
+    mocks.currentResult.data.data.jobs = [{
+      id: "job-one",
+      eventId: "event-one",
+      assetId: "asset-one",
+      assetName: "Thompson Grove Reserve",
+      phase: "mid",
+      status: "in_progress",
+      routeOrder: 3,
+      photos: [],
+      workTypes: [],
+      lat: null,
+      lng: null,
+    }] as any;
+    let photoNumber = 0;
+    vi.mocked(ImagePicker.launchImageLibraryAsync).mockImplementation(async () => ({
+      canceled: false,
+      assets: [{ uri: `file:///photo-${++photoNumber}.jpg` }],
+    }) as any);
+
+    await act(async () => {
+      root = createRoot(document.getElementById("root")!);
+      root.render(<StormPatrolScreen />);
+    });
+    await settle();
+    act(() => Array.from(document.querySelectorAll("button")).find(button => button.textContent?.includes("Thompson Grove Reserve"))!.click());
+
+    const before = Array.from(document.querySelectorAll("button")).find(button => button.textContent?.startsWith("Before photo"))!;
+    for (let index = 0; index < 3; index++) {
+      await act(async () => before.click());
+    }
+    expect(before.textContent).toBe("Before photo (3/3)");
+
+    act(() => (document.querySelector('[data-testid="remove-before-photo-1"]') as HTMLButtonElement).click());
+    expect(before.textContent).toBe("Before photo (2/3)");
+
+    await act(async () => before.click());
+    expect(before.textContent).toBe("Before photo (3/3)");
+    expect(ImagePicker.launchImageLibraryAsync).toHaveBeenCalledTimes(4);
+
+    await act(async () => before.click());
+    expect(ImagePicker.launchImageLibraryAsync).toHaveBeenCalledTimes(4);
+    expect(mocks.alert).toHaveBeenCalledWith("Photo limit reached", "You can add up to 3 before photos.");
+
+    const after = Array.from(document.querySelectorAll("button")).find(button => button.textContent?.startsWith("After photo"))!;
+    await act(async () => after.click());
+    expect(after.textContent).toBe("After photo (1/3)");
+    expect(ImagePicker.launchImageLibraryAsync).toHaveBeenCalledTimes(5);
+  });
+
+  it("allows three photos on one general observation and blocks a fourth", async () => {
+    let photoNumber = 0;
+    vi.mocked(ImagePicker.launchImageLibraryAsync).mockImplementation(async () => ({
+      canceled: false,
+      assets: [{ uri: `file:///observation-${++photoNumber}.jpg` }],
+    }) as any);
+
+    await act(async () => {
+      root = createRoot(document.getElementById("root")!);
+      root.render(<StormPatrolScreen />);
+    });
+    await settle();
+
+    const observationPhoto = Array.from(document.querySelectorAll("button")).find(button => button.textContent?.startsWith("Observation photo"))!;
+    for (let index = 0; index < 3; index++) {
+      await act(async () => observationPhoto.click());
+    }
+    expect(observationPhoto.textContent).toBe("Observation photo (3/3)");
+    expect(document.querySelectorAll("img")).toHaveLength(3);
+
+    act(() => (document.querySelector('[data-testid="remove-observation-photo-0"]') as HTMLButtonElement).click());
+    expect(observationPhoto.textContent).toBe("Observation photo (2/3)");
+    expect(document.querySelectorAll("img")).toHaveLength(2);
+
+    await act(async () => observationPhoto.click());
+    expect(observationPhoto.textContent).toBe("Observation photo (3/3)");
+    expect(ImagePicker.launchImageLibraryAsync).toHaveBeenCalledTimes(4);
+
+    await act(async () => observationPhoto.click());
+    expect(ImagePicker.launchImageLibraryAsync).toHaveBeenCalledTimes(4);
+    expect(mocks.alert).toHaveBeenCalledWith("Photo limit reached", "You can add up to 3 general observation photos.");
   });
 });
 
@@ -322,6 +408,19 @@ describe("Storm Patrol completed jobs", () => {
     const comments = document.querySelector('input[value="Cleared leaves from the inlet"]');
     expect(comments).not.toBeNull();
     expect(document.body.textContent).toContain("Debris clearance");
+
+    mocks.deletePhotoMutate.mockImplementation((_variables, options) => options.onSuccess());
+    act(() => (document.querySelector('[data-testid="remove-saved-photo-before-photo"]') as HTMLButtonElement).click());
+    const deleteAction = mocks.alert.mock.calls.at(-1)?.[2]?.find((action: { text?: string }) => action.text === "Delete");
+    expect(deleteAction).toBeDefined();
+    act(() => deleteAction.onPress());
+
+    expect(mocks.deletePhotoMutate).toHaveBeenCalledWith(
+      { id: "completed-job", photoId: "before-photo" },
+      expect.objectContaining({ onSuccess: expect.any(Function), onError: expect.any(Function) }),
+    );
+    expect(document.body.textContent).toContain("Before photo (0/3)");
+    expect(document.querySelector('[data-testid="remove-saved-photo-before-photo"]')).toBeNull();
   });
 
   it("automatically collapses a completed earlier phase and lets the user reopen it", async () => {

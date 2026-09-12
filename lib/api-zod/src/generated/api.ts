@@ -2520,6 +2520,11 @@ export const UploadStormPatrolJobPhotoBody = zod.object({
   idempotencyKey: zod.string(),
 });
 
+export const DeleteStormPatrolJobPhotoParams = zod.object({
+  id: zod.coerce.string().uuid(),
+  photoId: zod.coerce.string().uuid(),
+});
+
 export const CreateStormPatrolObservationBody = zod.object({
   eventId: zod.string().uuid(),
   assetId: zod.string().uuid().optional(),

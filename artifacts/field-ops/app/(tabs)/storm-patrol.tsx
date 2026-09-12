@@ -1,6 +1,6 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Feather } from "@expo/vector-icons";
-import { getGetCurrentStormPatrolQueryKey, useClaimStormPatrolJob, useGetCurrentStormPatrol, type StormCurrentResponse, type StormJob } from "@workspace/api-client-react";
+import { getGetCurrentStormPatrolQueryKey, useClaimStormPatrolJob, useDeleteStormPatrolJobPhoto, useGetCurrentStormPatrol, type StormCurrentResponse, type StormJob } from "@workspace/api-client-react";
 import * as ImagePicker from "expo-image-picker";
 import * as Location from "expo-location";
 import { useFocusEffect } from "expo-router";
@@ -14,6 +14,7 @@ import { clearQueuedStormPhotos, enqueueStormAlert, enqueueStormCompletion, enqu
 import { persistAttachment, type AttachmentSource } from "@/lib/attachmentUpload";
 
 const CACHE_KEY = "@storm_patrol_current_v1";
+const MAX_PHOTOS_PER_SECTION = 3;
 const WORK_TYPES = [
   ["silt_clearance", "Silt clearance"], ["litter_clearance", "Litter clearance"],
   ["debris_clearance", "Debris clearance"], ["visual_check_only", "Visual check only"],
@@ -34,6 +35,7 @@ export default function StormPatrolScreen() {
     query: { queryKey: getGetCurrentStormPatrolQueryKey(), refetchInterval: 30_000 },
   });
   const claim = useClaimStormPatrolJob();
+  const deleteSavedPhoto = useDeleteStormPatrolJobPhoto();
   const [cached, setCached] = useState<Patrol | null>(null);
   const [queue, setQueue] = useState<StormQueueItem[]>([]);
   const [selected, setSelected] = useState<Job | null>(null);
@@ -45,7 +47,7 @@ export default function StormPatrolScreen() {
   const [issue, setIssue] = useState("");
   const [urgentExpanded, setUrgentExpanded] = useState(false);
   const [observation, setObservation] = useState("");
-  const [observationPhoto, setObservationPhoto] = useState<AttachmentSource | null>(null);
+  const [observationPhotos, setObservationPhotos] = useState<AttachmentSource[]>([]);
   const [observationLocation, setObservationLocation] = useState<{ locationLat: number; locationLng: number } | null>(null);
   const [capturingLocation, setCapturingLocation] = useState(false);
   const [discardingPhotos, setDiscardingPhotos] = useState(false);
@@ -56,6 +58,7 @@ export default function StormPatrolScreen() {
   const [elapsedMinutes, setElapsedMinutes] = useState(0);
   const [jobMapType, setJobMapType] = useState<"map" | "aerial">("map");
   const [collapsedPhases, setCollapsedPhases] = useState<Set<string>>(() => new Set());
+  const [removedSavedPhotoIds, setRemovedSavedPhotoIds] = useState<Set<string>>(() => new Set());
   const patrol = ((current.data as unknown as { data?: Patrol } | undefined)?.data ?? cached) as Patrol | null;
 
   const refreshQueue = useCallback(() => loadStormQueue().then(setQueue).catch(() => {}), []);
@@ -95,24 +98,63 @@ export default function StormPatrolScreen() {
   }, [automaticallyCollapsedPhases]);
   const queuedPhotoCount = queue.filter(item => item.kind === "photo").length;
   const photoQueueBlocked = queuedPhotoCount > 0 && queue.some(item => item.kind === "photo" && item.lastError?.includes("Photo is required"));
+  const photoCount = (purpose: StormPhotoPurpose) => {
+    if (purpose === "observation" && !selected) return observationPhotos.length;
+    return (selected?.photos ?? []).filter(photo => photo.purpose === purpose && !removedSavedPhotoIds.has(photo.id)).length
+      + photos.filter(photo => photo.purpose === purpose).length;
+  };
+  const canAddPhoto = (purpose: StormPhotoPurpose) => {
+    if (!["before", "after", "observation"].includes(purpose)) return true;
+    if (photoCount(purpose) < MAX_PHOTOS_PER_SECTION) return true;
+    Alert.alert("Photo limit reached", `You can add up to ${MAX_PHOTOS_PER_SECTION} ${purpose === "observation" ? "general observation" : purpose} photos.`);
+    return false;
+  };
   const take = async (purpose: StormPhotoPurpose) => {
+    if (!canAddPhoto(purpose)) return;
     if (Platform.OS === "web") { await library(purpose); return; }
     if (!(await requestCameraPermission())) return;
     const result = await ImagePicker.launchCameraAsync({ mediaTypes: ["images"], quality: 0.75 });
     if (!result.canceled && result.assets[0]) {
-      if (purpose === "observation" && !selected) setObservationPhoto(result.assets[0]);
+      if (purpose === "observation" && !selected) setObservationPhotos(current => [...current, result.assets[0]]);
       else setPhotos(p => [...p, { source: result.assets[0], purpose }]);
     }
   };
   const library = async (purpose: StormPhotoPurpose) => {
+    if (!canAddPhoto(purpose)) return;
     if (!(await requestMediaLibraryPermission())) return;
     const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ["images"], quality: 0.75 });
     if (!result.canceled && result.assets[0]) {
-      if (purpose === "observation" && !selected) setObservationPhoto(result.assets[0]);
+      if (purpose === "observation" && !selected) setObservationPhotos(current => [...current, result.assets[0]]);
       else setPhotos(p => [...p, { source: result.assets[0], purpose }]);
     }
   };
   const choosePhoto = (purpose: StormPhotoPurpose) => { void take(purpose); };
+  const removePendingPhoto = (photo: { source: AttachmentSource; purpose: StormPhotoPurpose }) => {
+    setPhotos(current => current.filter(candidate => candidate !== photo));
+  };
+  const removeObservationPhoto = (photo: AttachmentSource) => {
+    setObservationPhotos(current => current.filter(candidate => candidate !== photo));
+  };
+  const removeSavedPhoto = (photoId: string) => {
+    if (!selected) return;
+    Alert.alert("Delete photo?", "This photo will be permanently removed.", [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Delete",
+        style: "destructive",
+        onPress: () => deleteSavedPhoto.mutate(
+          { id: selected.id, photoId },
+          {
+            onSuccess: () => {
+              setRemovedSavedPhotoIds(current => new Set([...current, photoId]));
+              void current.refetch();
+            },
+            onError: () => Alert.alert("Unable to delete photo", "The photo was not removed. Check your connection and try again."),
+          },
+        ),
+      },
+    ]);
+  };
   const location = async () => {
     const permission = await Location.requestForegroundPermissionsAsync();
     if (permission.status !== "granted") throw new Error("Location permission is required to submit a Storm Patrol record.");
@@ -220,12 +262,12 @@ export default function StormPatrolScreen() {
     if (!observationLocation) { Alert.alert("Location required", "Capture your current location before sending the observation."); return; }
     try {
       const idempotencyKey = `storm-observation-${stormQueueId()}`;
-      const stagedPhoto = observationPhoto ? await persistAttachment(observationPhoto) : null;
+      const stagedPhotos = await Promise.all(observationPhotos.map(photo => persistAttachment(photo)));
       const item = await enqueueStormObservation({ eventId: patrol.event.id, description: observation.trim(), idempotencyKey, ...observationLocation });
-      const photoItem = stagedPhoto ? await enqueueStormObservationPhoto(stagedPhoto, idempotencyKey, item.id) : null;
+      const photoItems = await Promise.all(stagedPhotos.map(photo => enqueueStormObservationPhoto(photo, idempotencyKey, item.id)));
       const remaining = await sync();
-      setObservation(""); setObservationPhoto(null); setObservationLocation(null);
-      if (remaining.some(queued => queued.id === item.id || queued.id === photoItem?.id)) {
+      setObservation(""); setObservationPhotos([]); setObservationLocation(null);
+      if (remaining.some(queued => queued.id === item.id || photoItems.some(photo => photo.id === queued.id))) {
         Alert.alert("Observation saved for sync", "The observation is safe on this device. GardenOps will keep retrying until its attachment is sent.");
       }
     } catch (error) { Alert.alert("Observation queued", error instanceof Error ? error.message : "It will retry when online."); refreshQueue(); }
@@ -273,6 +315,7 @@ export default function StormPatrolScreen() {
       (followUp: any) => followUp?.stormSourceJobId === job.id && followUp?.origin === "storm_patrol",
     ) as { description?: string } | undefined;
     setPhotos([]);
+    setRemovedSavedPhotoIds(new Set());
     setWorkTypes((job.workTypes ?? []).filter(type => type !== "site_too_dangerous"));
     setComments(job.comments ?? "");
     setDangerous(job.status === "too_dangerous");
@@ -317,10 +360,10 @@ export default function StormPatrolScreen() {
     </View>}
     <View style={[styles.sectionDivider, { backgroundColor: colors.border }]}/>
     <Text style={[styles.heading, { color: colors.foreground }]}>1. Before photo</Text>
-    <Button title="Before photo" icon="camera" onPress={() => choosePhoto("before")} color={colors.primary}/>
-    {((selected.photos?.length ?? 0) > 0 || photos.length > 0) && <ScrollView horizontal contentContainerStyle={styles.photos}>
-      {(selected.photos ?? []).map(photo => <View key={photo.id}><Image source={{ uri: photo.blobUrl }} style={styles.photo}/><Text style={[styles.caption, { color: colors.mutedForeground }]}>{photo.purpose.replace("_", " ")}</Text></View>)}
-      {photos.map((p, i) => <View key={`${p.source.uri}-${i}`}><Image source={{ uri: p.source.uri }} style={styles.photo}/><Text style={[styles.caption, { color: colors.mutedForeground }]}>{p.purpose.replace("_", " ")}</Text></View>)}
+    <Button title={`Before photo (${photoCount("before")}/${MAX_PHOTOS_PER_SECTION})`} icon="camera" onPress={() => choosePhoto("before")} color={colors.primary}/>
+    {photoCount("before") > 0 && <ScrollView horizontal contentContainerStyle={styles.photos}>
+      {(selected.photos ?? []).filter(photo => photo.purpose === "before" && !removedSavedPhotoIds.has(photo.id)).map(photo => <PhotoThumbnail key={photo.id} uri={photo.blobUrl} label="before" testID={`remove-saved-photo-${photo.id}`} onRemove={() => removeSavedPhoto(photo.id)} colors={colors}/>)}
+      {photos.filter(photo => photo.purpose === "before").map((photo, i) => <PhotoThumbnail key={`${photo.source.uri}-${i}`} uri={photo.source.uri} label="before" testID={`remove-before-photo-${i}`} onRemove={() => removePendingPhoto(photo)} colors={colors}/>)}
     </ScrollView>}
     <Text style={[styles.heading, { color: colors.foreground }]}>2. Work completed</Text>
     <Pressable onPress={() => setDangerous(x => !x)} style={styles.check}><Feather name={dangerous ? "check-square" : "square"} size={20} color={dangerous ? colors.primary : colors.mutedForeground}/><Text style={{ color: colors.foreground }}>Site is too dangerous to complete</Text></Pressable>
@@ -329,7 +372,11 @@ export default function StormPatrolScreen() {
     {selected.phase === "post" && <><Text style={[styles.heading, { color: colors.foreground }]}>Post-storm conditions</Text><BooleanQuestion title="New flooding?" value={flooding} onChange={setFlooding} color={colors.primary}/>{flooding && <><TextInput value={floodingDescription} onChangeText={setFloodingDescription} multiline placeholder="Describe the flooding" placeholderTextColor={colors.mutedForeground} style={[styles.input, styles.note, { color: colors.foreground, borderColor: colors.border }]}/><Button title="Flooding photo" icon="camera" onPress={() => take("new_flooding")} color={colors.primary}/></>}<BooleanQuestion title="New slips?" value={slips} onChange={setSlips} color={colors.primary}/>{slips && <><TextInput value={slipDescription} onChangeText={setSlipDescription} multiline placeholder="Describe the slip" placeholderTextColor={colors.mutedForeground} style={[styles.input, styles.note, { color: colors.foreground, borderColor: colors.border }]}/><Button title="Slip photo" icon="camera" onPress={() => take("new_slip")} color={colors.primary}/></>}</>}
     <TextInput value={comments} onChangeText={setComments} multiline placeholder={workTypes.includes("visual_check_only") && !dangerous ? "Comments (required for visual check only)" : "Comments (optional)"} placeholderTextColor={colors.mutedForeground} style={[styles.input, styles.note, { color: colors.foreground, borderColor: colors.border }]}/>
     <Text style={[styles.heading, { color: colors.foreground }]}>3. After photo</Text>
-    <Button title="After photo" icon="camera" onPress={() => choosePhoto("after")} color={colors.primary}/>
+    <Button title={`After photo (${photoCount("after")}/${MAX_PHOTOS_PER_SECTION})`} icon="camera" onPress={() => choosePhoto("after")} color={colors.primary}/>
+    {photoCount("after") > 0 && <ScrollView horizontal contentContainerStyle={styles.photos}>
+      {(selected.photos ?? []).filter(photo => photo.purpose === "after" && !removedSavedPhotoIds.has(photo.id)).map(photo => <PhotoThumbnail key={photo.id} uri={photo.blobUrl} label="after" testID={`remove-saved-photo-${photo.id}`} onRemove={() => removeSavedPhoto(photo.id)} colors={colors}/>)}
+      {photos.filter(photo => photo.purpose === "after").map((photo, i) => <PhotoThumbnail key={`${photo.source.uri}-${i}`} uri={photo.source.uri} label="after" testID={`remove-after-photo-${i}`} onRemove={() => removePendingPhoto(photo)} colors={colors}/>)}
+    </ScrollView>}
     <Button title={isCompletedJob(selected) ? "Save changes" : dangerous ? "Report dangerous site" : "Complete patrol"} icon="check-circle" onPress={complete} color={dangerous ? colors.destructive : colors.success}/>
     <View style={[styles.sectionDivider, { backgroundColor: colors.border }]}/>
     <View style={[styles.urgentPanel, { backgroundColor: colors.destructive }]}>
@@ -398,8 +445,10 @@ export default function StormPatrolScreen() {
       <Text style={[styles.heading, { color: colors.foreground }]}>General observation</Text>
       <Text style={[styles.help, { color: colors.mutedForeground }]}>Record storm related issues on new, unregistered sites.</Text>
       <TextInput value={observation} onChangeText={setObservation} multiline placeholder="Describe what you see" placeholderTextColor={colors.mutedForeground} style={[styles.input, styles.note, { color: colors.foreground, borderColor: colors.border }]}/>
-      <Button title={observationPhoto ? "Change observation photo" : "Observation photo"} icon="camera" onPress={() => choosePhoto("observation")} color={colors.primary}/>
-      {observationPhoto && <Image source={{ uri: observationPhoto.uri }} style={styles.observationPhoto}/>}
+      <Button title={`Observation photo (${observationPhotos.length}/${MAX_PHOTOS_PER_SECTION})`} icon="camera" onPress={() => choosePhoto("observation")} color={colors.primary}/>
+      {observationPhotos.length > 0 && <ScrollView horizontal contentContainerStyle={styles.photos}>
+        {observationPhotos.map((photo, index) => <PhotoThumbnail key={`${photo.uri}-${index}`} uri={photo.uri} large testID={`remove-observation-photo-${index}`} onRemove={() => removeObservationPhoto(photo)} colors={colors}/>)}
+      </ScrollView>}
       <Button title={capturingLocation ? "Capturing location…" : "Capture location"} icon="map-pin" onPress={() => { if (!capturingLocation) void captureObservationLocation(); }} color={colors.primary}/>
       {observationLocation && <Text style={[styles.locationStatus, { color: colors.success }]}>Location captured: {observationLocation.locationLat.toFixed(5)}, {observationLocation.locationLng.toFixed(5)}</Text>}
       <Button title="Send observation" icon="send" onPress={submitObservation} color={colors.success}/>
@@ -407,5 +456,14 @@ export default function StormPatrolScreen() {
   </ScrollView></View>;
 }
 function Button({ title, icon, onPress, color }: { title: string; icon: any; onPress: () => void; color: string }) { return <TouchableOpacity onPress={onPress} style={[styles.button, { backgroundColor: color }]}><Feather name={icon} size={16} color="#fff"/><Text style={styles.buttonText}>{title}</Text></TouchableOpacity>; }
+function PhotoThumbnail({ uri, label, large = false, testID, onRemove, colors }: { uri: string; label?: string; large?: boolean; testID: string; onRemove: () => void; colors: ReturnType<typeof useColors> }) {
+  return <View style={styles.photoContainer}>
+    <Image source={{ uri }} style={large ? styles.observationPhoto : styles.photo}/>
+    <TouchableOpacity testID={testID} accessibilityRole="button" accessibilityLabel={`Remove ${label ?? "observation"} photo`} onPress={onRemove} style={[styles.photoRemove, { backgroundColor: colors.destructive, borderColor: colors.card }]}>
+      <Feather name="x" size={14} color="#fff"/>
+    </TouchableOpacity>
+    {label && <Text style={[styles.caption, { color: colors.mutedForeground }]}>{label}</Text>}
+  </View>;
+}
 function BooleanQuestion({ title, value, onChange, color }: { title: string; value: boolean; onChange: (value: boolean) => void; color: string }) { return <View style={styles.question}><Text style={styles.questionText}>{title}</Text><Button title="Yes" icon={value ? "check-circle" : "circle"} onPress={() => onChange(true)} color={value ? color : "#64748b"}/><Button title="No" icon={!value ? "check-circle" : "circle"} onPress={() => onChange(false)} color={!value ? color : "#64748b"}/></View>; }
-const styles = StyleSheet.create({ root:{flex:1}, list:{padding:16,gap:14}, detail:{padding:16,gap:12}, title:{fontFamily:"Inter_700Bold",fontSize:26}, sub:{fontFamily:"Inter_400Regular",fontSize:13},assetMapSection:{gap:10},mapToggle:{alignSelf:"flex-end",flexDirection:"row",borderWidth:1,borderRadius:10,padding:3},mapToggleButton:{minHeight:34,paddingHorizontal:12,borderRadius:7,flexDirection:"row",alignItems:"center",gap:6},mapToggleText:{fontFamily:"Inter_600SemiBold",fontSize:13},assetMapFrame:{height:212,borderWidth:1,borderRadius:12,overflow:"hidden"},mapUnavailable:{borderWidth:1,borderRadius:12,padding:14,flexDirection:"row",alignItems:"center",gap:8},phase:{fontFamily:"Inter_700Bold",fontSize:13,textTransform:"uppercase",marginTop:12,marginBottom:6}, job:{borderWidth:StyleSheet.hairlineWidth,borderRadius:12,padding:14,flexDirection:"row",alignItems:"center",marginBottom:8,gap:10},jobSequence:{width:28,height:28,borderRadius:14,alignItems:"center",justifyContent:"center"},jobSequenceText:{fontFamily:"Inter_700Bold",fontSize:13,color:"#fff"}, jobTitle:{fontFamily:"Inter_600SemiBold",fontSize:16}, sync:{padding:12,borderRadius:10,gap:8},syncRetry:{flexDirection:"row",gap:8,alignItems:"center"},syncError:{fontFamily:"Inter_400Regular",fontSize:11,marginTop:3},clearPhotos:{borderTopWidth:StyleSheet.hairlineWidth,paddingTop:9,alignItems:"center"},clearPhotosText:{fontFamily:"Inter_600SemiBold",fontSize:13},empty:{textAlign:"center",marginTop:60,fontFamily:"Inter_400Regular"}, heading:{fontFamily:"Inter_700Bold",fontSize:18,marginTop:10}, help:{fontFamily:"Inter_400Regular",fontSize:13,lineHeight:19}, actions:{flexDirection:"row",gap:8}, button:{padding:12,borderRadius:10,flexDirection:"row",alignItems:"center",justifyContent:"center",gap:7,flex:1}, buttonText:{fontFamily:"Inter_600SemiBold",color:"#fff",fontSize:13}, photos:{gap:8}, photo:{width:72,height:72,borderRadius:8},observationPhoto:{width:96,height:96,borderRadius:10},locationStatus:{fontFamily:"Inter_600SemiBold",fontSize:12},caption:{fontFamily:"Inter_400Regular",fontSize:10,textAlign:"center",width:72}, chips:{flexDirection:"row",flexWrap:"wrap",gap:7}, chip:{borderWidth:1,borderRadius:18,paddingHorizontal:10,paddingVertical:7}, input:{borderWidth:1,borderRadius:10,padding:12,fontFamily:"Inter_400Regular",fontSize:14}, note:{minHeight:88,textAlignVertical:"top"}, check:{flexDirection:"row",alignItems:"center",gap:8,paddingVertical:5},sectionDivider:{height:StyleSheet.hairlineWidth,width:"100%",marginTop:6},urgentPanel:{borderRadius:12,padding:14,gap:12},urgentHeader:{minHeight:32,flexDirection:"row",alignItems:"center",justifyContent:"space-between"},urgentTitle:{fontFamily:"Inter_700Bold",fontSize:18,color:"#000"},urgentContent:{gap:10},urgentInput:{minHeight:48},observation:{borderTopWidth:StyleSheet.hairlineWidth,paddingTop:14,gap:8,marginTop:10},question:{flexDirection:"row",alignItems:"center",gap:6},questionText:{flex:1,fontFamily:"Inter_600SemiBold"},photoSourceOverlay:{flex:1,justifyContent:"flex-end",backgroundColor:"rgba(0,0,0,0.45)",padding:16},photoSourceCard:{borderWidth:1,borderRadius:18,padding:18,gap:12},photoSourceTitle:{fontFamily:"Inter_700Bold",fontSize:20},photoSourceAction:{minHeight:50,borderRadius:12,flexDirection:"row",alignItems:"center",justifyContent:"center",gap:9},photoSourceActionText:{fontFamily:"Inter_600SemiBold",fontSize:15,color:"#fff"},photoSourceCancel:{paddingVertical:10,alignItems:"center"},photoSourceCancelText:{fontFamily:"Inter_600SemiBold",fontSize:14} });
+const styles = StyleSheet.create({ root:{flex:1}, list:{padding:16,gap:14}, detail:{padding:16,gap:12}, title:{fontFamily:"Inter_700Bold",fontSize:26}, sub:{fontFamily:"Inter_400Regular",fontSize:13},assetMapSection:{gap:10},mapToggle:{alignSelf:"flex-end",flexDirection:"row",borderWidth:1,borderRadius:10,padding:3},mapToggleButton:{minHeight:34,paddingHorizontal:12,borderRadius:7,flexDirection:"row",alignItems:"center",gap:6},mapToggleText:{fontFamily:"Inter_600SemiBold",fontSize:13},assetMapFrame:{height:212,borderWidth:1,borderRadius:12,overflow:"hidden"},mapUnavailable:{borderWidth:1,borderRadius:12,padding:14,flexDirection:"row",alignItems:"center",gap:8},phase:{fontFamily:"Inter_700Bold",fontSize:13,textTransform:"uppercase",marginTop:12,marginBottom:6}, job:{borderWidth:StyleSheet.hairlineWidth,borderRadius:12,padding:14,flexDirection:"row",alignItems:"center",marginBottom:8,gap:10},jobSequence:{width:28,height:28,borderRadius:14,alignItems:"center",justifyContent:"center"},jobSequenceText:{fontFamily:"Inter_700Bold",fontSize:13,color:"#fff"}, jobTitle:{fontFamily:"Inter_600SemiBold",fontSize:16}, sync:{padding:12,borderRadius:10,gap:8},syncRetry:{flexDirection:"row",gap:8,alignItems:"center"},syncError:{fontFamily:"Inter_400Regular",fontSize:11,marginTop:3},clearPhotos:{borderTopWidth:StyleSheet.hairlineWidth,paddingTop:9,alignItems:"center"},clearPhotosText:{fontFamily:"Inter_600SemiBold",fontSize:13},empty:{textAlign:"center",marginTop:60,fontFamily:"Inter_400Regular"}, heading:{fontFamily:"Inter_700Bold",fontSize:18,marginTop:10}, help:{fontFamily:"Inter_400Regular",fontSize:13,lineHeight:19}, actions:{flexDirection:"row",gap:8}, button:{padding:12,borderRadius:10,flexDirection:"row",alignItems:"center",justifyContent:"center",gap:7,flex:1}, buttonText:{fontFamily:"Inter_600SemiBold",color:"#fff",fontSize:13}, photos:{gap:8},photoContainer:{position:"relative"},photoRemove:{position:"absolute",top:4,right:4,width:24,height:24,borderRadius:12,borderWidth:2,alignItems:"center",justifyContent:"center",zIndex:2}, photo:{width:72,height:72,borderRadius:8},observationPhoto:{width:96,height:96,borderRadius:10},locationStatus:{fontFamily:"Inter_600SemiBold",fontSize:12},caption:{fontFamily:"Inter_400Regular",fontSize:10,textAlign:"center",width:72}, chips:{flexDirection:"row",flexWrap:"wrap",gap:7}, chip:{borderWidth:1,borderRadius:18,paddingHorizontal:10,paddingVertical:7}, input:{borderWidth:1,borderRadius:10,padding:12,fontFamily:"Inter_400Regular",fontSize:14}, note:{minHeight:88,textAlignVertical:"top"}, check:{flexDirection:"row",alignItems:"center",gap:8,paddingVertical:5},sectionDivider:{height:StyleSheet.hairlineWidth,width:"100%",marginTop:6},urgentPanel:{borderRadius:12,padding:14,gap:12},urgentHeader:{minHeight:32,flexDirection:"row",alignItems:"center",justifyContent:"space-between"},urgentTitle:{fontFamily:"Inter_700Bold",fontSize:18,color:"#000"},urgentContent:{gap:10},urgentInput:{minHeight:48},observation:{borderTopWidth:StyleSheet.hairlineWidth,paddingTop:14,gap:8,marginTop:10},question:{flexDirection:"row",alignItems:"center",gap:6},questionText:{flex:1,fontFamily:"Inter_600SemiBold"},photoSourceOverlay:{flex:1,justifyContent:"flex-end",backgroundColor:"rgba(0,0,0,0.45)",padding:16},photoSourceCard:{borderWidth:1,borderRadius:18,padding:18,gap:12},photoSourceTitle:{fontFamily:"Inter_700Bold",fontSize:20},photoSourceAction:{minHeight:50,borderRadius:12,flexDirection:"row",alignItems:"center",justifyContent:"center",gap:9},photoSourceActionText:{fontFamily:"Inter_600SemiBold",fontSize:15,color:"#fff"},photoSourceCancel:{paddingVertical:10,alignItems:"center"},photoSourceCancelText:{fontFamily:"Inter_600SemiBold",fontSize:14} });

@@ -695,6 +695,25 @@ router.post("/storm-patrol/jobs/:id/photos", requireAuth, stormPhotoUpload, asyn
   }
 });
 
+router.delete("/storm-patrol/jobs/:id/photos/:photoId", requireAuth, async (req, res) => {
+  const jobId = String(req.params.id);
+  const photoId = String(req.params.photoId);
+  const mine = await ownJob(jobId, req.auth!.userId, req.auth!.teamId, req.auth!.role, true);
+  if (mine.error) { res.status(mine.error).json({ error: mine.error === 404 ? "Storm job not found" : "Forbidden" }); return; }
+
+  const [photo] = await executeWithCircuitBreaker(() => db.delete(stormPhotosTable)
+    .where(and(eq(stormPhotosTable.id, photoId), eq(stormPhotosTable.stormJobId, jobId)))
+    .returning());
+  if (!photo) { res.status(404).json({ error: "Photo not found" }); return; }
+
+  await auditLog({ tableName: "storm_photos", recordId: photo.id, action: "DELETE", changedById: req.auth!.userId, oldData: photo as any });
+  if (photo.blobUrl.startsWith("/api/uploads/") && process.env.DEFAULT_OBJECT_STORAGE_BUCKET_ID) {
+    const objectName = photo.blobUrl.slice("/api/uploads/".length);
+    await removeUncommittedPhotoObject(process.env.DEFAULT_OBJECT_STORAGE_BUCKET_ID, objectName, "storm-patrol");
+  }
+  res.status(204).send();
+});
+
 router.get("/storm-patrol/events/:id/report", requireAuth, requireRole("manager", "supervisor"), async (req, res) => {
   const [event] = await executeWithCircuitBreaker(() => db.select().from(stormEventsTable).where(eq(stormEventsTable.id, String(req.params.id))).limit(1));
   if (!event) { res.status(404).json({ error: "Storm event not found" }); return; }

@@ -1445,6 +1445,24 @@ paths:
           content:
             application/json:
               schema: { type: object, additionalProperties: true }
+  /storm-patrol/jobs/{id}/photos/{photoId}:
+    delete:
+      operationId: deleteStormPatrolJobPhoto
+      tags: [storm-patrol]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - name: photoId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "204":
+          description: Storm Patrol job photo deleted
+        "404":
+          description: Photo not found
   /storm-patrol/observations:
     post:
       operationId: createStormPatrolObservation
