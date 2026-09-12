@@ -164,6 +164,65 @@ afterEach(() => {
 });
 
 describe("Storm Patrol work package asset filters", () => {
+  it("filters live operations by phase and sorts table columns in both directions", async () => {
+    const user = userEvent.setup();
+    renderCommandCenter([
+      {
+        id: "job-zulu",
+        eventId: "event-1",
+        workPackageId: "package-1",
+        phase: "mid",
+        assetId: "asset-1",
+        teamId: "team-1",
+        status: "completed",
+        assetName: "Zulu Site",
+        teamName: "Bravo Team",
+        comments: "Second",
+      },
+      {
+        id: "job-alpha",
+        eventId: "event-1",
+        workPackageId: "package-1",
+        phase: "mid",
+        assetId: "asset-2",
+        teamId: "team-2",
+        status: "pending",
+        assetName: "Alpha Site",
+        teamName: "Alpha Team",
+        comments: "First",
+      },
+      {
+        id: "job-pre",
+        eventId: "event-1",
+        workPackageId: "package-2",
+        phase: "pre",
+        assetId: "asset-3",
+        teamId: "team-1",
+        status: "completed",
+        assetName: "Pre Site",
+        teamName: "Alpha Team",
+        comments: "Pre",
+      },
+    ]);
+
+    await chooseSelect(user, "Filter live jobs by phase", "Mid");
+    expect(screen.queryByText("Pre Site")).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Sort by Site" }));
+    let rows = within(screen.getByText("Live Field Operations").closest("div[class*='rounded-2xl']")!).getAllByRole("row").slice(1);
+    expect(rows.map(row => row.textContent)).toEqual([
+      expect.stringContaining("Alpha Site"),
+      expect.stringContaining("Zulu Site"),
+    ]);
+
+    await user.click(screen.getByRole("button", { name: "Sort by Site" }));
+    rows = within(screen.getByText("Live Field Operations").closest("div[class*='rounded-2xl']")!).getAllByRole("row").slice(1);
+    expect(rows.map(row => row.textContent)).toEqual([
+      expect.stringContaining("Zulu Site"),
+      expect.stringContaining("Alpha Site"),
+    ]);
+  });
+
   it("collapses the package creator when returning to an event with issued jobs", () => {
     renderCommandCenter([{
       id: "job-issued",

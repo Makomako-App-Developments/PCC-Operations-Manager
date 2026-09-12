@@ -41,6 +41,7 @@ const GREEN = "#22c55e";
 
 type PriorityFilter = "all" | StormwaterAssetDetails["priority"];
 type HotspotFilter = "all" | StormwaterAssetDetails["hotspot"];
+type LiveJobSortKey = "phase" | "site" | "team" | "status" | "comments";
 type StormObservation = {
   id: string;
   eventId: string;
@@ -138,6 +139,11 @@ export default function CommandCenter({ data }: CommandCenterProps) {
   const [selectedAssets, setSelectedAssets] = useState<Set<string>>(new Set());
   const [isPackageCollapsed, setIsPackageCollapsed] = useState(false);
   const [lastPublishedSiteCount, setLastPublishedSiteCount] = useState(0);
+  const [livePhaseFilter, setLivePhaseFilter] = useState<"all" | "pre" | "mid" | "post">("all");
+  const [liveJobSort, setLiveJobSort] = useState<{ key: LiveJobSortKey; direction: "asc" | "desc" }>({
+    key: "phase",
+    direction: "asc",
+  });
   const hasInitializedPackageView = useRef(false);
 
   useEffect(() => {
@@ -145,6 +151,30 @@ export default function CommandCenter({ data }: CommandCenterProps) {
     hasInitializedPackageView.current = true;
     if (jobs.length > 0) setIsPackageCollapsed(true);
   }, [jobs.length]);
+
+  const visibleLiveJobs = useMemo(() => {
+    const filtered = livePhaseFilter === "all" ? jobs : jobs.filter(job => job.phase === livePhaseFilter);
+    const valueFor = (job: StormJob, key: LiveJobSortKey) => {
+      if (key === "site") return job.assetName ?? "";
+      if (key === "team") return job.teamName ?? "";
+      if (key === "comments") return job.comments ?? "";
+      return job[key] ?? "";
+    };
+    return [...filtered].sort((a, b) => {
+      const comparison = String(valueFor(a, liveJobSort.key)).localeCompare(
+        String(valueFor(b, liveJobSort.key)),
+        undefined,
+        { numeric: true, sensitivity: "base" },
+      );
+      return liveJobSort.direction === "asc" ? comparison : -comparison;
+    });
+  }, [jobs, liveJobSort, livePhaseFilter]);
+
+  const toggleLiveJobSort = (key: LiveJobSortKey) => {
+    setLiveJobSort(current => current.key === key
+      ? { key, direction: current.direction === "asc" ? "desc" : "asc" }
+      : { key, direction: "asc" });
+  };
 
   // Alerts & Observations State
   const [alertMessage, setAlertMessage] = useState("");
@@ -350,7 +380,7 @@ export default function CommandCenter({ data }: CommandCenterProps) {
         {/* Main Content Area */}
         <main className="flex-1 overflow-y-auto p-6 space-y-6">
           
-          <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+          <div className="grid min-h-full grid-cols-1 gap-6 lg:grid-cols-4">
             
             {/* Left Column: Stats & Alerts */}
             <div className="lg:col-span-1 space-y-6">
@@ -500,7 +530,7 @@ export default function CommandCenter({ data }: CommandCenterProps) {
             </div>
 
             {/* Right Column: Work Packages & Jobs */}
-            <div className="lg:col-span-3 space-y-6">
+            <div className="flex min-h-0 flex-col gap-6 lg:col-span-3">
               
               {/* Package Creator */}
               <div className={`bg-white/5 border border-white/10 rounded-2xl p-6 ${isPackageCollapsed ? "" : "lg:h-[calc(100dvh-9rem)] lg:max-h-[calc(100dvh-9rem)] lg:min-h-0 flex flex-col"}`}>
@@ -793,10 +823,21 @@ export default function CommandCenter({ data }: CommandCenterProps) {
               </div>
 
               {/* Live Jobs Table */}
-              <div className="bg-white/5 border border-white/10 rounded-2xl overflow-hidden flex flex-col h-[400px]">
+              <div className="flex min-h-[400px] flex-1 flex-col overflow-hidden rounded-2xl border border-white/10 bg-white/5">
                 <div className="p-4 border-b border-white/10 bg-white/5 flex items-center justify-between">
                   <h2 className="text-base font-semibold text-white">Live Field Operations</h2>
                   <div className="flex items-center gap-2">
+                    <Select value={livePhaseFilter} onValueChange={(value: "all" | "pre" | "mid" | "post") => setLivePhaseFilter(value)}>
+                      <SelectTrigger aria-label="Filter live jobs by phase" className="h-8 w-[130px] border-white/10 bg-black/20 text-xs text-white">
+                        <SelectValue placeholder="All phases" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All phases</SelectItem>
+                        <SelectItem value="pre">Pre</SelectItem>
+                        <SelectItem value="mid">Mid</SelectItem>
+                        <SelectItem value="post">Post</SelectItem>
+                      </SelectContent>
+                    </Select>
                     <span className="flex items-center gap-1.5 text-xs text-white/60">
                       <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span>
                       Auto-syncing
@@ -807,20 +848,38 @@ export default function CommandCenter({ data }: CommandCenterProps) {
                   <table className="w-full text-left text-sm whitespace-nowrap">
                     <thead className="bg-black/20 text-white/50 sticky top-0 z-10">
                       <tr>
-                        <th className="px-4 py-3 font-medium">Phase</th>
-                        <th className="px-4 py-3 font-medium">Site</th>
-                        <th className="px-4 py-3 font-medium">Team</th>
-                        <th className="px-4 py-3 font-medium">Status</th>
-                        <th className="px-4 py-3 font-medium">Comments</th>
+                        {([
+                          ["phase", "Phase"],
+                          ["site", "Site"],
+                          ["team", "Team"],
+                          ["status", "Status"],
+                          ["comments", "Comments"],
+                        ] as const).map(([key, title]) => (
+                          <th key={key} className="px-4 py-3 font-medium" aria-sort={liveJobSort.key === key ? (liveJobSort.direction === "asc" ? "ascending" : "descending") : "none"}>
+                            <button
+                              type="button"
+                              className="flex items-center gap-1 rounded text-left hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00AECD]"
+                              onClick={() => toggleLiveJobSort(key)}
+                              aria-label={`Sort by ${title}`}
+                            >
+                              {title}
+                              {liveJobSort.key === key && (liveJobSort.direction === "asc"
+                                ? <ChevronUp className="h-3.5 w-3.5" />
+                                : <ChevronDown className="h-3.5 w-3.5" />)}
+                            </button>
+                          </th>
+                        ))}
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-white/5">
-                      {jobs.length === 0 ? (
+                      {visibleLiveJobs.length === 0 ? (
                         <tr>
-                          <td colSpan={5} className="px-4 py-8 text-center text-white/40">No jobs dispatched yet.</td>
+                          <td colSpan={5} className="px-4 py-8 text-center text-white/40">
+                            {jobs.length === 0 ? "No jobs dispatched yet." : "No jobs match this phase."}
+                          </td>
                         </tr>
                       ) : (
-                        jobs.map(job => {
+                        visibleLiveJobs.map(job => {
                           return (
                             <tr
                               key={job.id}
