@@ -1,6 +1,6 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Feather } from "@expo/vector-icons";
-import { customFetch, getGetCurrentStormPatrolQueryKey, useClaimStormPatrolJob, useDeleteStormPatrolJobPhoto, useGetCurrentStormPatrol, type StormCurrentResponse, type StormJob } from "@workspace/api-client-react";
+import { customFetch, useClaimStormPatrolJob, useDeleteStormPatrolJobPhoto, useGetCurrentStormPatrol, type StormCurrentResponse, type StormJob } from "@workspace/api-client-react";
 import * as ImagePicker from "expo-image-picker";
 import * as Location from "expo-location";
 import { useFocusEffect } from "expo-router";
@@ -16,6 +16,7 @@ import { clearStormQueueItems, createStormQueueItem, enqueueStormItems, flushSto
 import { persistAttachment, removeManagedAttachment, type AttachmentSource, type DurableAttachment } from "@/lib/attachmentUpload";
 import { pickWebCameraPhoto } from "@/lib/webPhotoPicker";
 import { useAuth } from "@/context/auth";
+import { stormPatrolCurrentQueryKey } from "@/lib/stormPatrolBadgeState";
 
 const CACHE_KEY = "@storm_patrol_current_v1";
 const MAX_PHOTOS_PER_SECTION = 3;
@@ -64,7 +65,7 @@ export default function StormPatrolScreen() {
   const { user, token } = useAuth();
   const insets = useSafeAreaInsets();
   const current = useGetCurrentStormPatrol({
-    query: { queryKey: getGetCurrentStormPatrolQueryKey(), refetchInterval: 30_000 },
+    query: { queryKey: stormPatrolCurrentQueryKey(user?.id ?? null), refetchInterval: 30_000 },
   });
   const claim = useClaimStormPatrolJob();
   const deleteSavedPhoto = useDeleteStormPatrolJobPhoto();

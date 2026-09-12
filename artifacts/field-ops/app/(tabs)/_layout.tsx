@@ -7,6 +7,8 @@ import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/context/auth";
 import { useColors } from "@/hooks/useColors";
 import { getApiUrl } from "@/lib/api";
+import { useStormPatrolBadge } from "@/lib/stormPatrolBadge";
+import { isStormPatrolPath, stormPatrolTabBadgePresentation } from "@/lib/stormPatrolTabBadge";
 
 const PRIVILEGED_ROLES = ["administrator", "manager", "supervisor"];
 
@@ -26,16 +28,28 @@ function useAuditBadge(token: string | null, isPrivileged: boolean) {
   });
 }
 
-function NativeTabLayout({
+export function NativeTabLayout({
   isPrivileged,
   isManager,
   auditBadge,
+  stormBadgeEnabled,
+  userId,
 }: {
   isPrivileged: boolean;
   isManager: boolean;
   auditBadge: number;
+  stormBadgeEnabled: boolean;
+  userId: string | null;
 }) {
-  const { Icon, Label, NativeTabs } = require("expo-router/unstable-native-tabs") as typeof import("expo-router/unstable-native-tabs");
+  const { usePathname } = require("expo-router") as typeof import("expo-router");
+  const { Badge, Icon, Label, NativeTabs } = require("expo-router/unstable-native-tabs") as typeof import("expo-router/unstable-native-tabs");
+  const pathname = usePathname();
+  const { hasUnseenJobs: stormBadge } = useStormPatrolBadge({
+    userId,
+    enabled: stormBadgeEnabled,
+    stormTabActive: isStormPatrolPath(pathname),
+  });
+  const stormPresentation = stormPatrolTabBadgePresentation(stormBadge);
   return (
     <NativeTabs>
       {!isManager && (
@@ -76,6 +90,7 @@ function NativeTabLayout({
         <NativeTabs.Trigger name="storm-patrol">
           <Icon sf={{ default: "cloud.rain", selected: "cloud.rain.fill" }} />
           <Label>Storm</Label>
+          <Badge hidden={stormPresentation.nativeBadge.hidden}>{stormPresentation.nativeBadge.children}</Badge>
         </NativeTabs.Trigger>
       )}
       <NativeTabs.Trigger name="me">
@@ -90,15 +105,25 @@ function ClassicTabLayout({
   isPrivileged,
   isManager,
   auditBadge,
+  stormBadgeEnabled,
+  userId,
 }: {
   isPrivileged: boolean;
   isManager: boolean;
   auditBadge: number;
+  stormBadgeEnabled: boolean;
+  userId: string | null;
 }) {
-  const { Tabs } = require("expo-router") as typeof import("expo-router");
+  const { Tabs, usePathname } = require("expo-router") as typeof import("expo-router");
   const { BlurView } = require("expo-blur") as typeof import("expo-blur");
   const { SymbolView } = require("expo-symbols") as typeof import("expo-symbols");
-
+  const pathname = usePathname();
+  const { hasUnseenJobs: stormBadge } = useStormPatrolBadge({
+    userId,
+    enabled: stormBadgeEnabled,
+    stormTabActive: isStormPatrolPath(pathname),
+  });
+  const stormPresentation = stormPatrolTabBadgePresentation(stormBadge);
   const colors = useColors();
   const colorScheme = useColorScheme();
   const isDark = colorScheme === "dark";
@@ -211,6 +236,17 @@ function ClassicTabLayout({
         name="storm-patrol"
         options={isManager ? { href: null } : {
           title: "Storm",
+          tabBarAccessibilityLabel: stormPresentation.accessibilityLabel,
+          tabBarBadge: stormPresentation.classicBadge,
+          tabBarBadgeStyle: {
+            minWidth: 10,
+            width: 10,
+            height: 10,
+            borderRadius: 5,
+            paddingHorizontal: 0,
+            fontSize: 0,
+            backgroundColor: colors.destructive,
+          },
           tabBarIcon: ({ color }) =>
             isIOS ? <SymbolView name="cloud.rain" tintColor={color} size={24} /> : <Feather name="cloud-rain" size={22} color={color} />,
         }}
@@ -235,15 +271,15 @@ export default function TabLayout() {
   const { user, token } = useAuth();
   const isPrivileged = PRIVILEGED_ROLES.includes(user?.role ?? "");
   const isManager = user?.role === "manager";
+  const isFieldWorker = Boolean(user) && !isManager && !isPrivileged;
 
   const { data: badgeData } = useAuditBadge(token, isPrivileged);
   const auditBadge = badgeData?.outstanding ?? 0;
-
   if (Platform.OS !== "web") {
     const { isLiquidGlassAvailable } = require("expo-glass-effect") as typeof import("expo-glass-effect");
     if (isLiquidGlassAvailable()) {
-      return <NativeTabLayout isPrivileged={isPrivileged} isManager={isManager} auditBadge={auditBadge} />;
+      return <NativeTabLayout isPrivileged={isPrivileged} isManager={isManager} auditBadge={auditBadge} stormBadgeEnabled={isFieldWorker} userId={user?.id ?? null} />;
     }
   }
-  return <ClassicTabLayout isPrivileged={isPrivileged} isManager={isManager} auditBadge={auditBadge} />;
+  return <ClassicTabLayout isPrivileged={isPrivileged} isManager={isManager} auditBadge={auditBadge} stormBadgeEnabled={isFieldWorker} userId={user?.id ?? null} />;
 }

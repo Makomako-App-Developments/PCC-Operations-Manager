@@ -13,12 +13,10 @@ description: Two bugs that caused {} is not iterable for supervisors on login �
 
 **File:** `artifacts/api-server/src/routes/schedule.ts` — the early-return near the top of `GET /schedule/week`.
 
-## Bug 2 — `Badge` imported from `expo-router/unstable-native-tabs` (doesn't exist in 6.0.23)
+## Native-tab module initialization and badges
 
-**Rule:** `expo-router/unstable-native-tabs` v6.0.23 exports only `NativeTabs`, `NativeTabTrigger`, `NativeTabsTriggerTabBar`, and common elements. It does NOT export `Badge`.
+**Rule:** Keep Expo Router tabs, unstable native tabs, blur, and symbol modules lazily loaded inside the active layout branch. Validate common-element exports before use, and set `hidden` explicitly when clearing a native badge.
 
-**Why it only hit supervisors/managers:** `Badge` was inside the `{isPrivileged && <NativeTabs.Trigger name="audits">...</NativeTabs.Trigger>}` block in NativeTabLayout. Field workers never render that block.
+**Why:** Eager navigation-module imports previously triggered a production temporal-dead-zone crash. Native badge behavior also treats a missing child differently from an explicitly hidden badge.
 
-**Why it crashed:** `Badge = undefined`. React.createElement(undefined, ...) throws in Hermes as `{} is not iterable`.
-
-**Fix:** Removed `Badge` from NativeTabLayout; replaced with text fallback `Audits (N)` in the Label when count > 0. NativeTabLayout is iOS Liquid Glass only (guarded by `Platform.OS !== "web"` + `isLiquidGlassAvailable()`).
+**How to apply:** Preserve platform-gated `require` calls, run an unmocked production export, and cover both visible and hidden badge states without moving these modules to top-level imports.
