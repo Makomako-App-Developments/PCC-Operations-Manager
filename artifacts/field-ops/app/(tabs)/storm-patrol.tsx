@@ -4,7 +4,7 @@ import { getGetCurrentStormPatrolQueryKey, useClaimStormPatrolJob, useDeleteStor
 import * as ImagePicker from "expo-image-picker";
 import * as Location from "expo-location";
 import { useFocusEffect } from "expo-router";
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ActivityIndicator, Alert, Image, Linking, Modal, Platform, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { PinMap } from "@/components/PinMap";
@@ -29,13 +29,22 @@ const COMPLETED_STATUSES = new Set(["completed", "too_dangerous"]);
 const label = (phase: string) => ({ pre: "Before storm", mid: "During storm", post: "After storm" }[phase] ?? phase);
 const isCompletedJob = (job: Pick<Job, "status">) => COMPLETED_STATUSES.has(job.status);
 
-async function stageAttachments(sources: readonly AttachmentSource[]): Promise<DurableAttachment[]> {
-  const staged: DurableAttachment[] = [];
+async function stageAttachments(sources: readonly AttachmentSource[]): Promise<{
+  attachments: DurableAttachment[];
+  created: DurableAttachment[];
+}> {
+  const attachments: DurableAttachment[] = [];
+  const created: DurableAttachment[] = [];
   try {
-    for (const source of sources) staged.push(await persistAttachment(source));
-    return staged;
+    for (const source of sources) {
+      const wasManaged = "managed" in source && source.managed === true;
+      const attachment = await persistAttachment(source);
+      attachments.push(attachment);
+      if (!wasManaged) created.push(attachment);
+    }
+    return { attachments, created };
   } catch (error) {
-    await Promise.all(staged.map(attachment => removeManagedAttachment(attachment)));
+    await Promise.all(created.map(attachment => removeManagedAttachment(attachment)));
     throw error;
   }
 }
@@ -66,6 +75,10 @@ export default function StormPatrolScreen() {
   const [discardingPhotos, setDiscardingPhotos] = useState(false);
   const [showDiscardConfirmation, setShowDiscardConfirmation] = useState(false);
   const [discardError, setDiscardError] = useState<string | null>(null);
+  const [photoOperationInProgress, setPhotoOperationInProgress] = useState(false);
+  const photoOperationRef = useRef(false);
+  const photosRef = useRef(photos);
+  const observationPhotosRef = useRef(observationPhotos);
   const [flooding, setFlooding] = useState(false);
   const [floodingDescription, setFloodingDescription] = useState("");
   const [slips, setSlips] = useState(false);
@@ -91,6 +104,13 @@ export default function StormPatrolScreen() {
     const update = () => setElapsedMinutes(Math.max(0, Math.floor((Date.now() - new Date(selected.startedAt!).getTime()) / 60_000)));
     update(); const timer = setInterval(update, 15_000); return () => clearInterval(timer);
   }, [selected?.id, selected?.startedAt, selected?.status, selected?.actualTimeMins]);
+  useEffect(() => { photosRef.current = photos; }, [photos]);
+  useEffect(() => { observationPhotosRef.current = observationPhotos; }, [observationPhotos]);
+  useEffect(() => () => {
+    if (photoOperationRef.current) return;
+    for (const photo of photosRef.current) void removeManagedAttachment(photo.source as DurableAttachment);
+    for (const photo of observationPhotosRef.current) void removeManagedAttachment(photo as DurableAttachment);
+  }, []);
 
   const grouped = useMemo(() => PHASES.map(phase => [phase, (patrol?.jobs ?? []).filter(j => j.phase === phase).sort((a, b) => (a.routeOrder ?? Number.MAX_SAFE_INTEGER) - (b.routeOrder ?? Number.MAX_SAFE_INTEGER))] as const), [patrol]);
   const automaticallyCollapsedPhases = useMemo(() => grouped
@@ -124,14 +144,34 @@ export default function StormPatrolScreen() {
     Alert.alert("Photo limit reached", `You can add up to ${MAX_PHOTOS_PER_SECTION} ${purpose === "observation" ? "general observation" : purpose} photos.`);
     return false;
   };
+  const addPickedPhoto = async (source: AttachmentSource, purpose: StormPhotoPurpose) => {
+    let preservedSource: AttachmentSource = source;
+    if (Platform.OS === "web") {
+      try {
+        // Safari picker blob URLs can expire before the form is submitted.
+        // Preserve the bytes while the picker result is still fresh.
+        preservedSource = await persistAttachment(source);
+      } catch (error) {
+        Alert.alert(
+          "Photo not saved",
+          error instanceof Error ? error.message : "GardenOps could not safely preserve the selected photo. Please select it again.",
+        );
+        return;
+      }
+    }
+    if (purpose === "observation" && !selected) {
+      setObservationPhotos(current => [...current, preservedSource]);
+    } else {
+      setPhotos(current => [...current, { source: preservedSource, purpose }]);
+    }
+  };
   const take = async (purpose: StormPhotoPurpose) => {
     if (!canAddPhoto(purpose)) return;
     if (Platform.OS === "web") { await library(purpose); return; }
     if (!(await requestCameraPermission())) return;
     const result = await ImagePicker.launchCameraAsync({ mediaTypes: ["images"], quality: 0.75 });
     if (!result.canceled && result.assets[0]) {
-      if (purpose === "observation" && !selected) setObservationPhotos(current => [...current, result.assets[0]]);
-      else setPhotos(p => [...p, { source: result.assets[0], purpose }]);
+      await addPickedPhoto(result.assets[0], purpose);
     }
   };
   const library = async (purpose: StormPhotoPurpose) => {
@@ -139,16 +179,28 @@ export default function StormPatrolScreen() {
     if (!(await requestMediaLibraryPermission())) return;
     const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ["images"], quality: 0.75 });
     if (!result.canceled && result.assets[0]) {
-      if (purpose === "observation" && !selected) setObservationPhotos(current => [...current, result.assets[0]]);
-      else setPhotos(p => [...p, { source: result.assets[0], purpose }]);
+      await addPickedPhoto(result.assets[0], purpose);
     }
   };
   const choosePhoto = (purpose: StormPhotoPurpose) => { void take(purpose); };
   const removePendingPhoto = (photo: { source: AttachmentSource; purpose: StormPhotoPurpose }) => {
+    if (photoOperationRef.current) return;
     setPhotos(current => current.filter(candidate => candidate !== photo));
+    void removeManagedAttachment(photo.source as DurableAttachment);
   };
   const removeObservationPhoto = (photo: AttachmentSource) => {
+    if (photoOperationRef.current) return;
     setObservationPhotos(current => current.filter(candidate => candidate !== photo));
+    void removeManagedAttachment(photo as DurableAttachment);
+  };
+  const removePendingPhotosByPurpose = (purpose: StormPhotoPurpose) => {
+    if (photoOperationRef.current) return;
+    setPhotos(current => {
+      for (const photo of current) {
+        if (photo.purpose === purpose) void removeManagedAttachment(photo.source as DurableAttachment);
+      }
+      return current.filter(photo => photo.purpose !== purpose);
+    });
   };
   const removeSavedPhoto = (photoId: string) => {
     if (!selected) return;
@@ -210,6 +262,17 @@ export default function StormPatrolScreen() {
       })
       .finally(() => setDiscardingPhotos(false));
   };
+  const runPhotoOperation = async (operation: () => Promise<void>) => {
+    if (photoOperationRef.current) return;
+    photoOperationRef.current = true;
+    setPhotoOperationInProgress(true);
+    try {
+      await operation();
+    } finally {
+      photoOperationRef.current = false;
+      setPhotoOperationInProgress(false);
+    }
+  };
   const complete = async () => {
     if (!selected || !user) return;
     if (photos.some(photo => photo.purpose === "urgent_issue")) {
@@ -223,9 +286,12 @@ export default function StormPatrolScreen() {
         return;
       }
       let stagedPhotos: DurableAttachment[] = [];
+      let createdDuringSubmit: DurableAttachment[] = [];
       let durablyQueued = false;
       try {
-        stagedPhotos = await stageAttachments(replacementPhotos.map(photo => photo.source));
+        const staged = await stageAttachments(replacementPhotos.map(photo => photo.source));
+        stagedPhotos = staged.attachments;
+        createdDuringSubmit = staged.created;
         const pendingItems = stagedPhotos.map((attachment, index) => {
           const idempotencyKey = `storm-photo-${stormQueueId()}`;
           return createStormQueueItem({
@@ -242,15 +308,28 @@ export default function StormPatrolScreen() {
         });
         const queuedItems = await enqueueStormItems(pendingItems);
         durablyQueued = true;
-        const remaining = await sync();
+        for (const photo of photos) {
+          if (!replacementPhotos.includes(photo)) {
+            await removeManagedAttachment(photo.source as DurableAttachment);
+          }
+        }
+        photosRef.current = [];
+        setPhotos([]);
+        setSelected(null);
+        let remaining: StormQueueItem[];
+        try {
+          remaining = await sync();
+        } catch {
+          await refreshQueue();
+          Alert.alert("Photos saved for sync", "The photos are safe in this browser and will retry automatically.");
+          return;
+        }
         if (remaining.some(item => queuedItems.some(queued => queued.id === item.id))) {
           Alert.alert("Photos saved for sync", "The photos are safe in this browser. GardenOps will keep retrying until they are sent.");
         }
-        setSelected(null);
-        setPhotos([]);
         return;
       } catch (error) {
-        if (!durablyQueued) await Promise.all(stagedPhotos.map(removeManagedAttachment));
+        if (!durablyQueued) await Promise.all(createdDuringSubmit.map(removeManagedAttachment));
         Alert.alert("Photos not saved", error instanceof Error ? error.message : "GardenOps could not safely queue these replacement photos.");
         refreshQueue();
         return;
@@ -272,11 +351,13 @@ export default function StormPatrolScreen() {
       return;
     }
     let stagedPhotos: Array<{ source: DurableAttachment; purpose: StormPhotoPurpose }> = [];
+    let createdDuringSubmit: DurableAttachment[] = [];
     const queuedAttachmentIds = new Set<string>();
     try {
       const point = await location();
-      const stagedAttachments = await stageAttachments(photos.map(photo => photo.source));
-      stagedPhotos = photos.map((photo, index) => ({ ...photo, source: stagedAttachments[index] }));
+      const staged = await stageAttachments(photos.map(photo => photo.source));
+      createdDuringSubmit = staged.created;
+      stagedPhotos = photos.map((photo, index) => ({ ...photo, source: staged.attachments[index] }));
       const pendingItems: StormQueueItem[] = [];
       if (selected.phase === "post") {
         for (const observation of [
@@ -328,15 +409,23 @@ export default function StormPatrolScreen() {
       const queuedItems = await enqueueStormItems(pendingItems);
       stagedPhotos.forEach(photo => queuedAttachmentIds.add(photo.source.uploadId));
       const submittedItemIds = queuedItems.map(item => item.id);
-      const remaining = await sync();
+      photosRef.current = [];
+      setSelected(null); setPhotos([]); setComments(""); setWorkTypes([]); setDangerous(false); setDangerReason(""); setFlooding(false); setSlips(false); setFloodingDescription(""); setSlipDescription("");
+      let remaining: StormQueueItem[];
+      try {
+        remaining = await sync();
+      } catch {
+        await refreshQueue();
+        Alert.alert("Saved for sync", "The patrol details and photos are safe on this device and will retry automatically.");
+        return;
+      }
       if (remaining.some(item => submittedItemIds.includes(item.id))) {
         Alert.alert("Saved for sync", "The patrol details are safe on this device. GardenOps will keep retrying any attachments that have not sent yet.");
       }
-      setSelected(null); setPhotos([]); setComments(""); setWorkTypes([]); setDangerous(false); setDangerReason(""); setFlooding(false); setSlips(false); setFloodingDescription(""); setSlipDescription("");
     } catch (error) {
-      await Promise.all(stagedPhotos
-        .filter(photo => !queuedAttachmentIds.has(photo.source.uploadId))
-        .map(photo => removeManagedAttachment(photo.source)));
+      await Promise.all(createdDuringSubmit
+        .filter(attachment => !queuedAttachmentIds.has(attachment.uploadId))
+        .map(removeManagedAttachment));
       Alert.alert("Patrol not saved", error instanceof Error ? error.message : "GardenOps could not safely queue this patrol and its photos.");
       refreshQueue();
     }
@@ -346,10 +435,13 @@ export default function StormPatrolScreen() {
     if (!observation.trim()) { Alert.alert("Description required", "Describe what you observed before sending."); return; }
     if (!observationLocation) { Alert.alert("Location required", "Capture your current location before sending the observation."); return; }
     let stagedPhotos: DurableAttachment[] = [];
+    let createdDuringSubmit: DurableAttachment[] = [];
     const queuedAttachmentIds = new Set<string>();
     try {
       const idempotencyKey = `storm-observation-${stormQueueId()}`;
-      stagedPhotos = await stageAttachments(observationPhotos);
+      const staged = await stageAttachments(observationPhotos);
+      stagedPhotos = staged.attachments;
+      createdDuringSubmit = staged.created;
       const item = createStormQueueItem({ ownerId: user.id, kind: "observation", idempotencyKey, payload: { data: { eventId: patrol.event.id, description: observation.trim(), idempotencyKey, ...observationLocation } } });
       const pendingItems = [item];
       for (const photo of stagedPhotos) {
@@ -364,13 +456,21 @@ export default function StormPatrolScreen() {
       }
       const queuedItems = await enqueueStormItems(pendingItems);
       stagedPhotos.forEach(photo => queuedAttachmentIds.add(photo.uploadId));
-      const remaining = await sync();
+      observationPhotosRef.current = [];
       setObservation(""); setObservationPhotos([]); setObservationLocation(null);
+      let remaining: StormQueueItem[];
+      try {
+        remaining = await sync();
+      } catch {
+        await refreshQueue();
+        Alert.alert("Observation saved for sync", "The observation and photos are safe on this device and will retry automatically.");
+        return;
+      }
       if (remaining.some(queued => queuedItems.some(item => item.id === queued.id))) {
         Alert.alert("Observation saved for sync", "The observation is safe on this device. GardenOps will keep retrying until its attachment is sent.");
       }
     } catch (error) {
-      await Promise.all(stagedPhotos
+      await Promise.all(createdDuringSubmit
         .filter(photo => !queuedAttachmentIds.has(photo.uploadId))
         .map(removeManagedAttachment));
       Alert.alert("Observation not queued", error instanceof Error ? error.message : "GardenOps could not safely queue this observation and its photos.");
@@ -392,9 +492,12 @@ export default function StormPatrolScreen() {
     const urgentPhotos = photos.filter(p => p.purpose === "urgent_issue");
     if (!urgentPhotos.length) { Alert.alert("Urgent photo required", "Capture an urgent issue photo before sending the alert."); return; }
     let stagedUrgentPhotos: DurableAttachment[] = [];
+    let createdDuringSubmit: DurableAttachment[] = [];
     let durablyQueued = false;
     try {
-      stagedUrgentPhotos = await stageAttachments(urgentPhotos.map(photo => photo.source));
+      const staged = await stageAttachments(urgentPhotos.map(photo => photo.source));
+      stagedUrgentPhotos = staged.attachments;
+      createdDuringSubmit = staged.created;
       const alertIdempotencyKey = `storm-alert-${stormQueueId()}`;
       const alert = createStormQueueItem({
         kind: "alert",
@@ -414,13 +517,15 @@ export default function StormPatrolScreen() {
       })];
       const queuedItems = await enqueueStormItems(pendingItems);
       durablyQueued = true;
-      setIssue(""); setUrgentExpanded(false); setPhotos(currentPhotos => currentPhotos.filter(photo => photo.purpose !== "urgent_issue"));
+      const remainingPhotos = photos.filter(photo => photo.purpose !== "urgent_issue");
+      photosRef.current = remainingPhotos;
+      setIssue(""); setUrgentExpanded(false); setPhotos(remainingPhotos);
       const remaining = await sync().catch(async () => { await refreshQueue(); return loadStormQueue(user.id); });
       if (remaining.some(item => queuedItems.some(queued => queued.id === item.id))) {
         Alert.alert("Urgent issue saved for sync", "The alert is safe on this device. GardenOps will keep retrying its attachment.");
       }
     } catch (error) {
-      if (!durablyQueued) await Promise.all(stagedUrgentPhotos.map(removeManagedAttachment));
+      if (!durablyQueued) await Promise.all(createdDuringSubmit.map(removeManagedAttachment));
       Alert.alert("Urgent issue not queued", error instanceof Error ? error.message : "GardenOps could not safely queue the alert and its photo.");
       refreshQueue();
     }
@@ -437,6 +542,8 @@ export default function StormPatrolScreen() {
     void Linking.openURL(`https://www.google.com/maps/dir/?api=1&destination=${destination}&travelmode=driving&dir_action=navigate`);
   };
   const openJob = (job: Job) => {
+    if (photoOperationRef.current) return;
+    for (const photo of photos) void removeManagedAttachment(photo.source as DurableAttachment);
     const dangerousFollowUp = (patrol?.followUps ?? []).find(
       (followUp: any) => followUp?.stormSourceJobId === job.id && followUp?.origin === "storm_patrol",
     ) as { description?: string } | undefined;
@@ -462,7 +569,12 @@ export default function StormPatrolScreen() {
   };
 
   if (selected) return <><ScrollView style={[styles.root, { backgroundColor: colors.background }]} contentContainerStyle={[styles.detail, { paddingTop: insets.top + 16, paddingBottom: insets.bottom + 100 }]}>
-    <TouchableOpacity onPress={() => setSelected(null)}><Text style={{ color: colors.primary, fontFamily: "Inter_600SemiBold" }}>‹ Patrol list</Text></TouchableOpacity>
+    <TouchableOpacity disabled={photoOperationInProgress} onPress={() => {
+      if (photoOperationRef.current) return;
+      for (const photo of photos) void removeManagedAttachment(photo.source as DurableAttachment);
+      setPhotos([]);
+      setSelected(null);
+    }}><Text style={{ color: colors.primary, fontFamily: "Inter_600SemiBold" }}>‹ Patrol list</Text></TouchableOpacity>
     <Text style={[styles.title, { color: colors.foreground }]}>{selected.assetName ?? "Stormwater site"}</Text>
     <Text style={[styles.sub, { color: colors.mutedForeground }]}>{label(selected.phase)}</Text>
     {hasSelectedCoordinates ? <View style={styles.assetMapSection}>
@@ -495,7 +607,7 @@ export default function StormPatrolScreen() {
     <Pressable onPress={() => setDangerous(x => !x)} style={styles.check}><Feather name={dangerous ? "check-square" : "square"} size={20} color={dangerous ? colors.primary : colors.mutedForeground}/><Text style={{ color: colors.foreground }}>Site is too dangerous to complete</Text></Pressable>
     {dangerous && <TextInput value={dangerReason} onChangeText={setDangerReason} multiline placeholder="Why is it unsafe?" placeholderTextColor={colors.mutedForeground} style={[styles.input, styles.note, { color: colors.foreground, borderColor: colors.border }]}/>}
     <View style={styles.chips}>{WORK_TYPES.map(([value, text]) => <Pressable key={value} onPress={() => setWorkTypes(w => w.includes(value) ? w.filter(x => x !== value) : [...w, value])} style={[styles.chip, { borderColor: workTypes.includes(value) ? colors.primary : colors.border, backgroundColor: workTypes.includes(value) ? colors.secondary : colors.card }]}><Text style={{ color: colors.foreground }}>{text}</Text></Pressable>)}</View>
-    {selected.phase === "post" && <><Text style={[styles.heading, { color: colors.foreground }]}>Post-storm conditions</Text><BooleanQuestion title="New flooding?" value={flooding} onChange={value => { setFlooding(value); if (!value) { setFloodingDescription(""); setPhotos(currentPhotos => currentPhotos.filter(photo => photo.purpose !== "new_flooding")); } }} color={colors.primary}/>{flooding && <><TextInput value={floodingDescription} onChangeText={setFloodingDescription} multiline placeholder="Describe the flooding" placeholderTextColor={colors.mutedForeground} style={[styles.input, styles.note, { color: colors.foreground, borderColor: colors.border }]}/><Button title="Flooding photo" icon="camera" onPress={() => take("new_flooding")} color={colors.primary}/></>}<BooleanQuestion title="New slips?" value={slips} onChange={value => { setSlips(value); if (!value) { setSlipDescription(""); setPhotos(currentPhotos => currentPhotos.filter(photo => photo.purpose !== "new_slip")); } }} color={colors.primary}/>{slips && <><TextInput value={slipDescription} onChangeText={setSlipDescription} multiline placeholder="Describe the slip" placeholderTextColor={colors.mutedForeground} style={[styles.input, styles.note, { color: colors.foreground, borderColor: colors.border }]}/><Button title="Slip photo" icon="camera" onPress={() => take("new_slip")} color={colors.primary}/></>}</>}
+    {selected.phase === "post" && <><Text style={[styles.heading, { color: colors.foreground }]}>Post-storm conditions</Text><BooleanQuestion title="New flooding?" value={flooding} onChange={value => { setFlooding(value); if (!value) { setFloodingDescription(""); removePendingPhotosByPurpose("new_flooding"); } }} color={colors.primary}/>{flooding && <><TextInput value={floodingDescription} onChangeText={setFloodingDescription} multiline placeholder="Describe the flooding" placeholderTextColor={colors.mutedForeground} style={[styles.input, styles.note, { color: colors.foreground, borderColor: colors.border }]}/><Button title="Flooding photo" icon="camera" onPress={() => take("new_flooding")} color={colors.primary}/></>}<BooleanQuestion title="New slips?" value={slips} onChange={value => { setSlips(value); if (!value) { setSlipDescription(""); removePendingPhotosByPurpose("new_slip"); } }} color={colors.primary}/>{slips && <><TextInput value={slipDescription} onChangeText={setSlipDescription} multiline placeholder="Describe the slip" placeholderTextColor={colors.mutedForeground} style={[styles.input, styles.note, { color: colors.foreground, borderColor: colors.border }]}/><Button title="Slip photo" icon="camera" onPress={() => take("new_slip")} color={colors.primary}/></>}</>}
     <TextInput value={comments} onChangeText={setComments} multiline placeholder={workTypes.includes("visual_check_only") && !dangerous ? "Comments (required for visual check only)" : "Comments (optional)"} placeholderTextColor={colors.mutedForeground} style={[styles.input, styles.note, { color: colors.foreground, borderColor: colors.border }]}/>
     <Text style={[styles.heading, { color: colors.foreground }]}>3. After photo</Text>
     <Button title={`After photo (${photoCount("after")}/${MAX_PHOTOS_PER_SECTION})`} icon="camera" onPress={() => choosePhoto("after")} color={colors.primary}/>
@@ -503,7 +615,7 @@ export default function StormPatrolScreen() {
       {(selected.photos ?? []).filter(photo => photo.purpose === "after" && !removedSavedPhotoIds.has(photo.id)).map(photo => <PhotoThumbnail key={photo.id} uri={photo.blobUrl} label="after" testID={`remove-saved-photo-${photo.id}`} onRemove={() => removeSavedPhoto(photo.id)} colors={colors}/>)}
       {photos.filter(photo => photo.purpose === "after").map((photo, i) => <PhotoThumbnail key={`${photo.source.uri}-${i}`} uri={photo.source.uri} label="after" testID={`remove-after-photo-${i}`} onRemove={() => removePendingPhoto(photo)} colors={colors}/>)}
     </ScrollView>}
-    <Button title={isCompletedJob(selected) ? "Save changes" : dangerous ? "Report dangerous site" : "Complete patrol"} icon="check-circle" onPress={complete} color={dangerous ? colors.destructive : colors.success}/>
+    <Button title={photoOperationInProgress ? "Saving…" : isCompletedJob(selected) ? "Save changes" : dangerous ? "Report dangerous site" : "Complete patrol"} icon="check-circle" onPress={() => { void runPhotoOperation(complete); }} color={dangerous ? colors.destructive : colors.success}/>
     <View style={[styles.sectionDivider, { backgroundColor: colors.border }]}/>
     <View style={[styles.urgentPanel, { backgroundColor: colors.destructive }]}>
       <Pressable
@@ -519,7 +631,7 @@ export default function StormPatrolScreen() {
       {urgentExpanded && <View style={styles.urgentContent}>
         <TextInput value={issue} onChangeText={setIssue} placeholder="Tell managers what needs urgent attention" placeholderTextColor={colors.mutedForeground} style={[styles.input, styles.urgentInput, { color: colors.foreground, borderColor: colors.border, backgroundColor: colors.card }]}/>
         <Button title="Urgent issue photo" icon="camera" onPress={() => take("urgent_issue")} color={colors.primary}/>
-        <Button title="Send urgent alert" icon="alert-circle" onPress={urgent} color="#7f1d1d"/>
+        <Button title={photoOperationInProgress ? "Sending…" : "Send urgent alert"} icon="alert-circle" onPress={() => { void runPhotoOperation(urgent); }} color="#7f1d1d"/>
       </View>}
     </View>
   </ScrollView></>;
@@ -577,7 +689,7 @@ export default function StormPatrolScreen() {
       </ScrollView>}
       <Button title={capturingLocation ? "Capturing location…" : "Capture location"} icon="map-pin" onPress={() => { if (!capturingLocation) void captureObservationLocation(); }} color={colors.primary}/>
       {observationLocation && <Text style={[styles.locationStatus, { color: colors.success }]}>Location captured: {observationLocation.locationLat.toFixed(5)}, {observationLocation.locationLng.toFixed(5)}</Text>}
-      <Button title="Send observation" icon="send" onPress={submitObservation} color={colors.success}/>
+      <Button title={photoOperationInProgress ? "Sending…" : "Send observation"} icon="send" onPress={() => { void runPhotoOperation(submitObservation); }} color={colors.success}/>
     </View>}
   </ScrollView>
     {showDiscardConfirmation && <Modal visible transparent animationType="fade" onRequestClose={() => { if (!discardingPhotos) setShowDiscardConfirmation(false); }}>

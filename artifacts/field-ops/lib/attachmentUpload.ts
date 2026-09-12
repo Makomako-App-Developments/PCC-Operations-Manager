@@ -182,6 +182,34 @@ export function createAttachmentFormData(
   return form;
 }
 
+function multipartToken(value: string): string {
+  return value.replace(/[\r\n"]/g, "_");
+}
+
+export function createWebMultipartBody(
+  attachment: DurableAttachment,
+  webFile: Blob,
+  fields: Record<string, string | undefined> = {},
+): { body: Blob; contentType: string } {
+  const boundary = `----GardenOps${attachment.uploadId.replace(/[^a-zA-Z0-9]/g, "")}`;
+  const chunks: BlobPart[] = [];
+  for (const [key, value] of Object.entries({ idempotencyKey: attachment.uploadId, ...fields })) {
+    if (value == null) continue;
+    chunks.push(
+      `--${boundary}\r\nContent-Disposition: form-data; name="${multipartToken(key)}"\r\n\r\n${value}\r\n`,
+    );
+  }
+  chunks.push(
+    `--${boundary}\r\nContent-Disposition: form-data; name="photo"; filename="${multipartToken(attachment.fileName)}"\r\nContent-Type: ${attachment.mimeType}\r\n\r\n`,
+    webFile,
+    `\r\n--${boundary}--\r\n`,
+  );
+  return {
+    body: new Blob(chunks, { type: `multipart/form-data; boundary=${boundary}` }),
+    contentType: `multipart/form-data; boundary=${boundary}`,
+  };
+}
+
 export async function uploadAttachment<T = unknown>(
   endpoint: string,
   attachment: DurableAttachment,
@@ -204,12 +232,21 @@ export async function uploadAttachment<T = unknown>(
   if (Platform.OS === "web" && !uploadBlob) {
     throw attachmentError("attachment-web-bytes-missing", WEB_ATTACHMENT_MISSING_MESSAGE);
   }
+  const webMultipart = Platform.OS === "web" && uploadBlob
+    ? createWebMultipartBody(attachment, uploadBlob, fields)
+    : undefined;
   const options = {
     method: "POST",
     bodyFactory: () => {
       if (authGuard) assertAuthOwner(authGuard);
+      if (webMultipart) {
+        // Build a fresh Blob wrapper for every retry while retaining the same
+        // boundary and durable image bytes.
+        return new Blob([webMultipart.body], { type: webMultipart.contentType });
+      }
       return createAttachmentFormData(attachment, fields, uploadBlob);
     },
+    headers: webMultipart ? { "content-type": webMultipart.contentType } : undefined,
     requestGuard: authGuard ? () => assertAuthOwner(authGuard) : undefined,
   };
   try {

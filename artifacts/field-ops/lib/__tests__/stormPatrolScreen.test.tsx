@@ -513,6 +513,8 @@ describe("Storm Patrol completed jobs", () => {
     act(() => (document.querySelector('[data-testid="storm-job-completed-job"]') as HTMLButtonElement).click());
     const before = Array.from(document.querySelectorAll("button")).find(button => button.textContent?.startsWith("Before photo"))!;
     await act(async () => before.click());
+    expect(mocks.persistAttachment).toHaveBeenCalledOnce();
+    expect(mocks.persistAttachment).toHaveBeenCalledWith(expect.objectContaining({ uri: "blob:replacement" }));
     const save = Array.from(document.querySelectorAll("button")).find(button => button.textContent?.includes("Save changes"))!;
     await act(async () => save.click());
     await settle();
@@ -566,10 +568,63 @@ describe("Storm Patrol completed jobs", () => {
     await settle();
     act(() => (document.querySelector('[data-testid="storm-job-completed-job"]') as HTMLButtonElement).click());
     await act(async () => Array.from(document.querySelectorAll("button")).find(button => button.textContent?.startsWith("Before photo"))!.click());
-    await act(async () => Array.from(document.querySelectorAll("button")).find(button => button.textContent?.includes("Save changes"))!.click());
 
     expect(mocks.enqueueStormItems).not.toHaveBeenCalled();
-    expect(mocks.alert).toHaveBeenCalledWith("Photos not saved", expect.stringContaining("not have enough storage"));
+    expect(document.body.textContent).toContain("Before photo (1/3)");
+    expect(document.querySelector('[data-testid="remove-before-photo-0"]')).toBeNull();
+    expect(mocks.alert).toHaveBeenCalledWith("Photo not saved", expect.stringContaining("not have enough storage"));
+  });
+
+  it("keeps an immediately staged Safari photo when submit revalidation fails", async () => {
+    mocks.currentResult.data.data.jobs = [{
+      id: "completed-job",
+      eventId: "event-one",
+      assetId: "asset-one",
+      assetName: "Thompson Grove Reserve",
+      phase: "mid",
+      status: "completed",
+      routeOrder: 1,
+      actualTimeMins: 12,
+      comments: "",
+      workTypes: [],
+      photos: [],
+      lat: null,
+      lng: null,
+    }] as any;
+    mocks.loadStormQueue.mockResolvedValue([]);
+    mocks.flushStormQueue.mockReset().mockResolvedValue([]);
+    const durable = {
+      uri: "blob:safari-photo",
+      uploadId: "safari-photo",
+      fileName: "safari.jpg",
+      mimeType: "image/jpeg",
+      size: 100,
+      managed: true,
+      webStorageKey: "safari-photo",
+    };
+    mocks.persistAttachment
+      .mockReset()
+      .mockResolvedValueOnce(durable)
+      .mockRejectedValueOnce(new Error("Browser attachment storage could not be read."));
+    vi.mocked(ImagePicker.launchImageLibraryAsync).mockResolvedValue({
+      canceled: false,
+      assets: [{ uri: "blob:safari-photo", fileName: "safari.jpg", mimeType: "image/jpeg", fileSize: 100 }],
+    } as any);
+
+    await act(async () => {
+      root = createRoot(document.getElementById("root")!);
+      root.render(<StormPatrolScreen />);
+    });
+    await settle();
+    act(() => (document.querySelector('[data-testid="storm-job-completed-job"]') as HTMLButtonElement).click());
+    await act(async () => Array.from(document.querySelectorAll("button")).find(button => button.textContent?.startsWith("Before photo"))!.click());
+    await act(async () => Array.from(document.querySelectorAll("button")).find(button => button.textContent?.includes("Save changes"))!.click());
+    await settle();
+
+    expect(mocks.enqueueStormItems).not.toHaveBeenCalled();
+    expect(mocks.removeManagedAttachment).not.toHaveBeenCalled();
+    expect(document.querySelector('[data-testid="remove-before-photo-0"]')).not.toBeNull();
+    expect(mocks.alert).toHaveBeenCalledWith("Photos not saved", expect.stringContaining("could not be read"));
   });
 
   it("automatically collapses a completed earlier phase and lets the user reopen it", async () => {

@@ -21,6 +21,7 @@ vi.mock("../webAttachmentStore", () => ({
 }));
 
 import {
+  createWebMultipartBody,
   persistAttachment,
   removeManagedAttachment,
   uploadAttachment,
@@ -87,12 +88,18 @@ describe("browser attachment persistence", () => {
     const reloaded = JSON.parse(JSON.stringify(first));
     const rebuilt = await persistAttachment(reloaded);
     customFetch.mockImplementation(async (_endpoint, options) => {
-      const firstBody = options.bodyFactory() as FormData;
-      const retryBody = options.bodyFactory() as FormData;
-      expect(await (firstBody.get("photo") as Blob).text()).toBe("after-bytes");
-      expect(await (retryBody.get("photo") as Blob).text()).toBe("after-bytes");
-      expect(firstBody.get("idempotencyKey")).toBe("stable-retry");
-      expect(retryBody.get("purpose")).toBe("after");
+      const firstBody = options.bodyFactory() as Blob;
+      const retryBody = options.bodyFactory() as Blob;
+      const firstText = await firstBody.text();
+      const retryText = await retryBody.text();
+      expect(firstText).toContain("after-bytes");
+      expect(retryText).toContain("after-bytes");
+      expect(firstText).toContain('name="idempotencyKey"');
+      expect(firstText).toContain("stable-retry");
+      expect(retryText).toContain('name="purpose"');
+      expect(retryText).toContain("after");
+      expect(firstBody).not.toBe(retryBody);
+      expect(options.headers["content-type"]).toContain("multipart/form-data; boundary=----GardenOps");
       return { id: "server-photo" };
     });
 
@@ -104,6 +111,30 @@ describe("browser attachment persistence", () => {
     expect(customFetch).toHaveBeenCalledOnce();
     await removeManagedAttachment(rebuilt);
     expect(stored.has("stable-retry")).toBe(false);
+  });
+
+  it("builds a non-empty standards-compliant multipart body for Safari fetch", async () => {
+    const attachment = {
+      uri: "blob:safari",
+      uploadId: "safari-upload",
+      fileName: 'before "storm".jpg',
+      mimeType: "image/jpeg",
+      size: 12,
+      managed: true,
+      webStorageKey: "safari-upload",
+    };
+    const multipart = createWebMultipartBody(
+      attachment,
+      new Blob(["safari-bytes"], { type: "image/jpeg" }),
+      { purpose: "before" },
+    );
+    const text = await multipart.body.text();
+
+    expect(multipart.body.size).toBeGreaterThan(12);
+    expect(multipart.contentType).toBe("multipart/form-data; boundary=----GardenOpssafariupload");
+    expect(text).toContain('name="photo"; filename="before _storm_.jpg"');
+    expect(text).toContain("safari-bytes");
+    expect(text).toContain("------GardenOpssafariupload--");
   });
 
   it("marks legacy metadata-only browser attachments as unrecoverable", async () => {
