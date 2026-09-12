@@ -24,7 +24,10 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useAuth } from "@/context/auth";
 import { useColors } from "@/hooks/useColors";
+import { PhotoQueueActions } from "@/components/PhotoQueueActions";
+import { PhotoRemoveButton } from "@/components/PhotoRemoveButton";
 import type { AttachmentSource } from "@/lib/attachmentUpload";
+import { pickWebCameraPhoto } from "@/lib/webPhotoPicker";
 import { enqueuePhotoBatch, flushQueuedPhoto } from "@/lib/photoQueue";
 import { getApiUrl } from "@/lib/api";
 
@@ -653,7 +656,12 @@ export default function ReportScreen() {
 
   const takePhoto = async () => {
     if (Platform.OS === "web") {
-      Alert.alert("Not available", "Camera capture is not supported on web. Use the library picker instead.");
+      try {
+        const source = await pickWebCameraPhoto();
+        if (source) setSelectedPhotos(prev => [...prev, source]);
+      } catch {
+        Alert.alert("Camera unavailable", "Chrome could not open the camera. Check the site camera permission, then try again. You can still choose a photo from the gallery.");
+      }
       return;
     }
     if (!(await requestCameraPermission())) return;
@@ -943,37 +951,27 @@ export default function ReportScreen() {
                 {selectedPhotos.map((p, idx) => (
                   <View key={idx} style={styles.thumbWrap}>
                     <Image source={{ uri: p.uri }} style={styles.thumb} />
-                    <TouchableOpacity
+                    <PhotoRemoveButton
                       style={[styles.thumbRemove, { backgroundColor: colors.destructive }]}
-                      onPress={() => removePhoto(idx)}
-                      activeOpacity={0.8}
-                    >
-                      <Feather name="x" size={10} color="#fff" />
-                    </TouchableOpacity>
+                      onRemove={() => removePhoto(idx)}
+                      accessibilityLabel={`Remove photo ${idx + 1}`}
+                      iconSize={10}
+                    />
                   </View>
                 ))}
               </ScrollView>
             )}
 
             {/* Add buttons */}
-            <View style={styles.photoActions}>
-              <TouchableOpacity
-                style={[styles.photoBtn, { borderColor: colors.border, borderRadius: colors.radius, backgroundColor: colors.background }]}
-                onPress={takePhoto}
-                activeOpacity={0.8}
-              >
-                <Feather name="camera" size={16} color={colors.primary} />
-                <Text style={[styles.photoBtnText, { color: colors.foreground }]}>Camera</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.photoBtn, { borderColor: colors.border, borderRadius: colors.radius, backgroundColor: colors.background }]}
-                onPress={pickFromLibrary}
-                activeOpacity={0.8}
-              >
-                <Feather name="image" size={16} color={colors.primary} />
-                <Text style={[styles.photoBtnText, { color: colors.foreground }]}>Library</Text>
-              </TouchableOpacity>
-            </View>
+            <PhotoQueueActions
+              containerStyle={styles.photoActions}
+              buttonStyle={[styles.photoBtn, { borderColor: colors.border, borderRadius: colors.radius, backgroundColor: colors.background }]}
+              textStyle={[styles.photoBtnText, { color: colors.foreground }]}
+              iconColor={colors.primary}
+              isPending={uploadingPhotos}
+              onTakePhoto={() => { void takePhoto(); }}
+              onPickFromLibrary={() => { void pickFromLibrary(); }}
+            />
           </View>
         </View>
 

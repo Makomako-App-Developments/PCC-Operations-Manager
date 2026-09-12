@@ -8,10 +8,13 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { ActivityIndicator, Alert, Image, Linking, Modal, Platform, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { PinMap } from "@/components/PinMap";
+import { PhotoSourceModal } from "@/components/PhotoQueueActions";
+import { PhotoRemoveButton } from "@/components/PhotoRemoveButton";
 import { requestCameraPermission, requestMediaLibraryPermission } from "@/hooks/usePhotoLibraryPermission";
 import { useColors } from "@/hooks/useColors";
 import { clearStormQueueItems, createStormQueueItem, enqueueStormItems, flushStormQueue, getStormPatrolCompletionRequirements, isUnrecoverableQueuedStormPhoto, loadStormQueue, stormQueueId, type StormPhotoPurpose, type StormQueueItem } from "@/lib/stormPatrolQueue";
 import { persistAttachment, removeManagedAttachment, type AttachmentSource, type DurableAttachment } from "@/lib/attachmentUpload";
+import { pickWebCameraPhoto } from "@/lib/webPhotoPicker";
 import { useAuth } from "@/context/auth";
 
 const CACHE_KEY = "@storm_patrol_current_v1";
@@ -76,6 +79,7 @@ export default function StormPatrolScreen() {
   const [showDiscardConfirmation, setShowDiscardConfirmation] = useState(false);
   const [discardError, setDiscardError] = useState<string | null>(null);
   const [photoOperationInProgress, setPhotoOperationInProgress] = useState(false);
+  const [photoSourcePurpose, setPhotoSourcePurpose] = useState<StormPhotoPurpose | null>(null);
   const photoOperationRef = useRef(false);
   const photosRef = useRef(photos);
   const observationPhotosRef = useRef(observationPhotos);
@@ -167,7 +171,15 @@ export default function StormPatrolScreen() {
   };
   const take = async (purpose: StormPhotoPurpose) => {
     if (!canAddPhoto(purpose)) return;
-    if (Platform.OS === "web") { await library(purpose); return; }
+    if (Platform.OS === "web") {
+      try {
+        const source = await pickWebCameraPhoto();
+        if (source) await addPickedPhoto(source, purpose);
+      } catch {
+        Alert.alert("Camera unavailable", "Chrome could not open the camera. Check the site camera permission, then try again. You can still choose a photo from the gallery.");
+      }
+      return;
+    }
     if (!(await requestCameraPermission())) return;
     const result = await ImagePicker.launchCameraAsync({ mediaTypes: ["images"], quality: 0.75 });
     if (!result.canceled && result.assets[0]) {
@@ -182,7 +194,27 @@ export default function StormPatrolScreen() {
       await addPickedPhoto(result.assets[0], purpose);
     }
   };
-  const choosePhoto = (purpose: StormPhotoPurpose) => { void take(purpose); };
+  const choosePhoto = (purpose: StormPhotoPurpose) => {
+    if (Platform.OS === "web") {
+      if (canAddPhoto(purpose)) setPhotoSourcePurpose(purpose);
+      return;
+    }
+    void take(purpose);
+  };
+  const photoSourceModal = <PhotoSourceModal
+    visible={photoSourcePurpose != null}
+    onCancel={() => setPhotoSourcePurpose(null)}
+    onTakePhoto={() => {
+      const purpose = photoSourcePurpose;
+      setPhotoSourcePurpose(null);
+      if (purpose) void take(purpose);
+    }}
+    onPickFromLibrary={() => {
+      const purpose = photoSourcePurpose;
+      setPhotoSourcePurpose(null);
+      if (purpose) void library(purpose);
+    }}
+  />;
   const removePendingPhoto = (photo: { source: AttachmentSource; purpose: StormPhotoPurpose }) => {
     if (photoOperationRef.current) return;
     setPhotos(current => {
@@ -615,7 +647,7 @@ export default function StormPatrolScreen() {
     <Pressable onPress={() => setDangerous(x => !x)} style={styles.check}><Feather name={dangerous ? "check-square" : "square"} size={20} color={dangerous ? colors.primary : colors.mutedForeground}/><Text style={{ color: colors.foreground }}>Site is too dangerous to complete</Text></Pressable>
     {dangerous && <TextInput value={dangerReason} onChangeText={setDangerReason} multiline placeholder="Why is it unsafe?" placeholderTextColor={colors.mutedForeground} style={[styles.input, styles.note, { color: colors.foreground, borderColor: colors.border }]}/>}
     <View style={styles.chips}>{WORK_TYPES.map(([value, text]) => <Pressable key={value} onPress={() => setWorkTypes(w => w.includes(value) ? w.filter(x => x !== value) : [...w, value])} style={[styles.chip, { borderColor: workTypes.includes(value) ? colors.primary : colors.border, backgroundColor: workTypes.includes(value) ? colors.secondary : colors.card }]}><Text style={{ color: colors.foreground }}>{text}</Text></Pressable>)}</View>
-    {selected.phase === "post" && <><Text style={[styles.heading, { color: colors.foreground }]}>Post-storm conditions</Text><BooleanQuestion title="New flooding?" value={flooding} onChange={value => { setFlooding(value); if (!value) { setFloodingDescription(""); removePendingPhotosByPurpose("new_flooding"); } }} color={colors.primary}/>{flooding && <><TextInput value={floodingDescription} onChangeText={setFloodingDescription} multiline placeholder="Describe the flooding" placeholderTextColor={colors.mutedForeground} style={[styles.input, styles.note, { color: colors.foreground, borderColor: colors.border }]}/><Button title="Flooding photo" icon="camera" onPress={() => take("new_flooding")} color={colors.primary}/></>}<BooleanQuestion title="New slips?" value={slips} onChange={value => { setSlips(value); if (!value) { setSlipDescription(""); removePendingPhotosByPurpose("new_slip"); } }} color={colors.primary}/>{slips && <><TextInput value={slipDescription} onChangeText={setSlipDescription} multiline placeholder="Describe the slip" placeholderTextColor={colors.mutedForeground} style={[styles.input, styles.note, { color: colors.foreground, borderColor: colors.border }]}/><Button title="Slip photo" icon="camera" onPress={() => take("new_slip")} color={colors.primary}/></>}</>}
+    {selected.phase === "post" && <><Text style={[styles.heading, { color: colors.foreground }]}>Post-storm conditions</Text><BooleanQuestion title="New flooding?" value={flooding} onChange={value => { setFlooding(value); if (!value) { setFloodingDescription(""); removePendingPhotosByPurpose("new_flooding"); } }} color={colors.primary}/>{flooding && <><TextInput value={floodingDescription} onChangeText={setFloodingDescription} multiline placeholder="Describe the flooding" placeholderTextColor={colors.mutedForeground} style={[styles.input, styles.note, { color: colors.foreground, borderColor: colors.border }]}/><Button title="Flooding photo" icon="camera" onPress={() => choosePhoto("new_flooding")} color={colors.primary}/></>}<BooleanQuestion title="New slips?" value={slips} onChange={value => { setSlips(value); if (!value) { setSlipDescription(""); removePendingPhotosByPurpose("new_slip"); } }} color={colors.primary}/>{slips && <><TextInput value={slipDescription} onChangeText={setSlipDescription} multiline placeholder="Describe the slip" placeholderTextColor={colors.mutedForeground} style={[styles.input, styles.note, { color: colors.foreground, borderColor: colors.border }]}/><Button title="Slip photo" icon="camera" onPress={() => choosePhoto("new_slip")} color={colors.primary}/></>}</>}
     <TextInput value={comments} onChangeText={setComments} multiline placeholder={workTypes.includes("visual_check_only") && !dangerous ? "Comments (required for visual check only)" : "Comments (optional)"} placeholderTextColor={colors.mutedForeground} style={[styles.input, styles.note, { color: colors.foreground, borderColor: colors.border }]}/>
     <Text style={[styles.heading, { color: colors.foreground }]}>3. After photo</Text>
     <Button title={`After photo (${photoCount("after")}/${MAX_PHOTOS_PER_SECTION})`} icon="camera" onPress={() => choosePhoto("after")} color={colors.primary}/>
@@ -638,11 +670,11 @@ export default function StormPatrolScreen() {
       </Pressable>
       {urgentExpanded && <View style={styles.urgentContent}>
         <TextInput value={issue} onChangeText={setIssue} placeholder="Tell managers what needs urgent attention" placeholderTextColor={colors.mutedForeground} style={[styles.input, styles.urgentInput, { color: colors.foreground, borderColor: colors.border, backgroundColor: colors.card }]}/>
-        <Button title="Urgent issue photo" icon="camera" onPress={() => take("urgent_issue")} color={colors.primary}/>
+        <Button title="Urgent issue photo" icon="camera" onPress={() => choosePhoto("urgent_issue")} color={colors.primary}/>
         <Button title={photoOperationInProgress ? "Sending…" : "Send urgent alert"} icon="alert-circle" onPress={() => { void runPhotoOperation(urgent); }} color="#7f1d1d"/>
       </View>}
     </View>
-  </ScrollView></>;
+  </ScrollView>{photoSourceModal}</>;
 
   return <View style={[styles.root, { backgroundColor: colors.background }]}><ScrollView contentContainerStyle={[styles.list, { paddingTop: insets.top + 16, paddingBottom: insets.bottom + 100 }]} refreshControl={<RefreshControl refreshing={current.isRefetching} onRefresh={() => { void sync().catch(refreshQueue); }} tintColor={colors.primary}/>}>
     <Text style={[styles.title, { color: colors.foreground }]}>Storm Patrol</Text>
@@ -700,6 +732,7 @@ export default function StormPatrolScreen() {
       <Button title={photoOperationInProgress ? "Sending…" : "Send observation"} icon="send" onPress={() => { void runPhotoOperation(submitObservation); }} color={colors.success}/>
     </View>}
   </ScrollView>
+    {photoSourceModal}
     {showDiscardConfirmation && <Modal visible transparent animationType="fade" onRequestClose={() => { if (!discardingPhotos) setShowDiscardConfirmation(false); }}>
       <View style={styles.confirmOverlay}>
         <View accessibilityViewIsModal style={[styles.confirmCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
@@ -725,9 +758,7 @@ function Button({ title, icon, onPress, color }: { title: string; icon: any; onP
 function PhotoThumbnail({ uri, label, large = false, testID, onRemove, colors }: { uri: string; label?: string; large?: boolean; testID: string; onRemove: () => void; colors: ReturnType<typeof useColors> }) {
   return <View style={styles.photoContainer}>
     <Image source={{ uri }} style={large ? styles.observationPhoto : styles.photo}/>
-    <TouchableOpacity testID={testID} accessibilityRole="button" accessibilityLabel={`Remove ${label ?? "observation"} photo`} onPress={onRemove} style={[styles.photoRemove, { backgroundColor: colors.destructive, borderColor: colors.card }]}>
-      <Feather name="x" size={14} color="#fff"/>
-    </TouchableOpacity>
+    <PhotoRemoveButton testID={testID} accessibilityLabel={`Remove ${label ?? "observation"} photo`} onRemove={onRemove} iconSize={14} style={[styles.photoRemove, { backgroundColor: colors.destructive, borderColor: colors.card }]}/>
     {label && <Text style={[styles.caption, { color: colors.mutedForeground }]}>{label}</Text>}
   </View>;
 }

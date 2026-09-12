@@ -6,6 +6,8 @@ import * as Location from "expo-location";
 import { useLocalSearchParams } from "expo-router";
 import React, { useState, useMemo, useEffect, useRef } from "react";
 import { AuditMap } from "@/components/AuditMap";
+import { PhotoSourceModal } from "@/components/PhotoQueueActions";
+import { PhotoRemoveButton } from "@/components/PhotoRemoveButton";
 import {
   ActivityIndicator,
   Alert,
@@ -28,6 +30,7 @@ import { useAuth } from "@/context/auth";
 import { useColors } from "@/hooks/useColors";
 import { enqueuePhotoBatch, flushQueuedPhoto, type PhotoQueueInput } from "@/lib/photoQueue";
 import { getApiUrl } from "@/lib/api";
+import { pickWebCameraPhoto } from "@/lib/webPhotoPicker";
 
 // ─── Weekly Quota Banner ──────────────────────────────────────────────────────
 
@@ -443,13 +446,12 @@ function KpiRow({
               {photos.map((p, i) => (
                 <View key={`${p.uri}-${i}`} style={styles.photoThumbWrap}>
                   <Image source={{ uri: p.uri }} style={styles.photoThumb} />
-                  <TouchableOpacity
+                  <PhotoRemoveButton
                     style={[styles.photoRemoveBtn, { backgroundColor: colors.destructive }]}
-                    onPress={() => onPhotoRemove(i)}
-                    hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
-                  >
-                    <Feather name="x" size={10} color="#fff" />
-                  </TouchableOpacity>
+                    onRemove={() => onPhotoRemove(i)}
+                    accessibilityLabel={`Remove audit photo ${i + 1}`}
+                    iconSize={10}
+                  />
                 </View>
               ))}
             </View>
@@ -483,6 +485,7 @@ export default function AuditsScreen() {
   const [auditId, setAuditId] = useState<string | null>(null);
   const [responses, setResponses] = useState<Record<string, KpiResponse>>({});
   const [photos, setPhotos] = useState<Record<string, LocalPhoto[]>>({});
+  const [photoSourceCriterion, setPhotoSourceCriterion] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [doneScore, setDoneScore] = useState<number | null>(null);
@@ -657,7 +660,31 @@ ${userMarker}
     createAudit.mutate(startAssetId);
   }, [startAssetId, startAssetName, token]);
 
-  const handlePhotoAdd = async (criterion: string) => {
+  const appendAuditPhoto = (criterion: string, asset: {
+    uri: string;
+    file?: File;
+    fileName?: string | null;
+    mimeType?: string | null;
+  }) => {
+    setPhotos((prev) => {
+      const existing = prev[criterion] ?? [];
+      if (existing.length >= MAX_PHOTOS_PER_ITEM) return prev;
+      return {
+        ...prev,
+        [criterion]: [
+          ...existing,
+          {
+            uri: asset.uri,
+            uploadId: `audit-photo-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
+            mimeType: asset.mimeType ?? "image/jpeg",
+            fileName: asset.fileName ?? `audit-${criterion}-${existing.length}.jpg`,
+            file: asset.file,
+          },
+        ],
+      };
+    });
+  };
+  const pickAuditPhotoFromLibrary = async (criterion: string) => {
     if ((photos[criterion]?.length ?? 0) >= MAX_PHOTOS_PER_ITEM) return;
     if (!(await requestMediaLibraryPermission())) return;
     const result = await ImagePicker.launchImageLibraryAsync({
@@ -666,25 +693,24 @@ ${userMarker}
       allowsEditing: false,
     });
     if (!result.canceled && result.assets[0]) {
-      const asset = result.assets[0];
-      setPhotos((prev) => {
-        const existing = prev[criterion] ?? [];
-        if (existing.length >= MAX_PHOTOS_PER_ITEM) return prev;
-        return {
-          ...prev,
-          [criterion]: [
-            ...existing,
-            {
-              uri: asset.uri,
-              uploadId: `audit-photo-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
-              mimeType: asset.mimeType ?? "image/jpeg",
-              fileName: asset.fileName ?? `audit-${criterion}-${existing.length}.jpg`,
-              file: asset.file,
-            },
-          ],
-        };
-      });
+      appendAuditPhoto(criterion, result.assets[0]);
     }
+  };
+  const takeAuditPhoto = async (criterion: string) => {
+    try {
+      const source = await pickWebCameraPhoto();
+      if (source) appendAuditPhoto(criterion, source);
+    } catch {
+      Alert.alert("Camera unavailable", "Chrome could not open the camera. Check the site camera permission, then try again. You can still choose a photo from the gallery.");
+    }
+  };
+  const handlePhotoAdd = (criterion: string) => {
+    if ((photos[criterion]?.length ?? 0) >= MAX_PHOTOS_PER_ITEM) return;
+    if (Platform.OS === "web") {
+      setPhotoSourceCriterion(criterion);
+      return;
+    }
+    void pickAuditPhotoFromLibrary(criterion);
   };
 
   const handlePhotoRemove = (criterion: string, index: number) => {
@@ -1061,6 +1087,20 @@ ${userMarker}
             )}
           </TouchableOpacity>
         </View>
+        <PhotoSourceModal
+          visible={photoSourceCriterion != null}
+          onCancel={() => setPhotoSourceCriterion(null)}
+          onTakePhoto={() => {
+            const criterion = photoSourceCriterion;
+            setPhotoSourceCriterion(null);
+            if (criterion) void takeAuditPhoto(criterion);
+          }}
+          onPickFromLibrary={() => {
+            const criterion = photoSourceCriterion;
+            setPhotoSourceCriterion(null);
+            if (criterion) void pickAuditPhotoFromLibrary(criterion);
+          }}
+        />
       </View>
     );
   }

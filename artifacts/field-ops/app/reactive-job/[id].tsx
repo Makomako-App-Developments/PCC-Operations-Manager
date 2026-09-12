@@ -28,6 +28,7 @@ import { PinMap } from "@/components/PinMap";
 import { useAuth } from "@/context/auth";
 import { useGetReactiveJob, useUpdateReactiveJob } from "@workspace/api-client-react";
 import type { AttachmentSource } from "@/lib/attachmentUpload";
+import { pickWebCameraPhoto } from "@/lib/webPhotoPicker";
 import { enqueuePhoto, flushQueuedPhoto, type QueuedPhoto } from "@/lib/photoQueue";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -127,7 +128,12 @@ function AttachmentsSection({ jobId, readOnly }: { jobId: string; readOnly: bool
 
   const takePhoto = async () => {
     if (Platform.OS === "web") {
-      Alert.alert("Not supported", "Camera capture is not available on web. Use the library picker instead.");
+      try {
+        const source = await pickWebCameraPhoto();
+        if (source) upload.mutate({ source, file: source.file }, { onSuccess: handleMutateResult });
+      } catch {
+        Alert.alert("Camera unavailable", "Chrome could not open the camera. Check the site camera permission, then try again. You can still choose a photo from the gallery.");
+      }
       return;
     }
     if (!(await requestCameraPermission())) return;

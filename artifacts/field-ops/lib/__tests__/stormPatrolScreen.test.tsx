@@ -13,6 +13,7 @@ const mocks = vi.hoisted(() => ({
   persistAttachment: vi.fn(),
   removeManagedAttachment: vi.fn(),
   requestLocation: vi.fn(),
+  pickWebCameraPhoto: vi.fn(),
   getLocation: vi.fn(),
   refetch: vi.fn(),
   currentResult: {
@@ -176,6 +177,9 @@ vi.mock("@/lib/stormPatrolQueue", () => ({
   loadStormQueue: mocks.loadStormQueue,
   stormQueueId: vi.fn(() => "queue-id"),
 }));
+vi.mock("@/lib/webPhotoPicker", () => ({
+  pickWebCameraPhoto: mocks.pickWebCameraPhoto,
+}));
 
 import StormPatrolScreen from "../../app/(tabs)/storm-patrol";
 import * as ImagePicker from "expo-image-picker";
@@ -186,6 +190,13 @@ async function settle() {
   await act(async () => {
     await Promise.resolve();
     await Promise.resolve();
+  });
+}
+
+async function chooseGallery(trigger: HTMLButtonElement) {
+  act(() => trigger.click());
+  await act(async () => {
+    (document.querySelector('[data-testid="photo-source-library"]') as HTMLButtonElement).click();
   });
 }
 
@@ -206,6 +217,7 @@ beforeEach(() => {
   }));
   mocks.removeManagedAttachment.mockReset().mockResolvedValue(undefined);
   mocks.requestLocation.mockReset().mockResolvedValue({ status: "granted" });
+  mocks.pickWebCameraPhoto.mockReset().mockResolvedValue(null);
   mocks.getLocation.mockReset().mockResolvedValue({ coords: { latitude: -41.1, longitude: 174.8 } });
   mocks.refetch.mockReset().mockResolvedValue(undefined);
   mocks.currentResult.refetch = mocks.refetch;
@@ -293,7 +305,7 @@ describe("Storm Patrol blocked photo recovery", () => {
 });
 
 describe("Storm Patrol photo picker", () => {
-  it("opens the native picker directly without showing an app source menu", async () => {
+  it("offers camera and gallery choices in the web PWA", async () => {
     mocks.currentResult.data.data.jobs = [{
       id: "job-one",
       eventId: "event-one",
@@ -327,13 +339,40 @@ describe("Storm Patrol photo picker", () => {
     );
     expect(beforePhoto).toBeDefined();
 
-    await act(async () => {
-      beforePhoto!.click();
-    });
+    act(() => beforePhoto!.click());
+    expect(document.body.textContent).toContain("Take photo");
+    expect(document.body.textContent).toContain("Choose from gallery");
+    expect(ImagePicker.launchImageLibraryAsync).not.toHaveBeenCalled();
 
+    await act(async () => {
+      (document.querySelector('[data-testid="photo-source-library"]') as HTMLButtonElement).click();
+    });
     expect(ImagePicker.launchImageLibraryAsync).toHaveBeenCalledOnce();
-    expect(document.body.textContent).not.toContain("Choose where to get the photo");
-    expect(document.body.textContent).not.toContain("Add before photo");
+    expect(document.body.textContent).not.toContain("Choose from gallery");
+  });
+
+  it("routes the camera choice through immediate durable staging", async () => {
+    mocks.currentResult.data.data.jobs = [{
+      id: "job-one", eventId: "event-one", assetId: "asset-one",
+      assetName: "Thompson Grove Reserve", phase: "mid", status: "in_progress",
+      routeOrder: 3, lat: null, lng: null,
+    }] as any;
+    const cameraSource = { uri: "blob:android-camera", fileName: "camera.jpg", mimeType: "image/jpeg", fileSize: 123 };
+    mocks.pickWebCameraPhoto.mockResolvedValue(cameraSource);
+
+    await act(async () => {
+      root = createRoot(document.getElementById("root")!);
+      root.render(<StormPatrolScreen />);
+    });
+    await settle();
+    act(() => Array.from(document.querySelectorAll("button")).find(button => button.textContent?.includes("Thompson Grove Reserve"))!.click());
+    act(() => Array.from(document.querySelectorAll("button")).find(button => button.textContent?.startsWith("Before photo"))!.click());
+    await act(async () => (document.querySelector('[data-testid="photo-source-camera"]') as HTMLButtonElement).click());
+    await settle();
+
+    expect(mocks.pickWebCameraPhoto).toHaveBeenCalledOnce();
+    expect(mocks.persistAttachment).toHaveBeenCalledWith(cameraSource);
+    expect(document.querySelector('[data-testid="remove-before-photo-0"]')).not.toBeNull();
   });
 
   it("allows three before photos while keeping the after-photo limit independent", async () => {
@@ -365,23 +404,23 @@ describe("Storm Patrol photo picker", () => {
 
     const before = Array.from(document.querySelectorAll("button")).find(button => button.textContent?.startsWith("Before photo"))!;
     for (let index = 0; index < 3; index++) {
-      await act(async () => before.click());
+      await chooseGallery(before);
     }
     expect(before.textContent).toBe("Before photo (3/3)");
 
     act(() => (document.querySelector('[data-testid="remove-before-photo-1"]') as HTMLButtonElement).click());
     expect(before.textContent).toBe("Before photo (2/3)");
 
-    await act(async () => before.click());
+    await chooseGallery(before);
     expect(before.textContent).toBe("Before photo (3/3)");
     expect(ImagePicker.launchImageLibraryAsync).toHaveBeenCalledTimes(4);
 
-    await act(async () => before.click());
+    act(() => before.click());
     expect(ImagePicker.launchImageLibraryAsync).toHaveBeenCalledTimes(4);
     expect(mocks.alert).toHaveBeenCalledWith("Photo limit reached", "You can add up to 3 before photos.");
 
     const after = Array.from(document.querySelectorAll("button")).find(button => button.textContent?.startsWith("After photo"))!;
-    await act(async () => after.click());
+    await chooseGallery(after);
     expect(after.textContent).toBe("After photo (1/3)");
     expect(ImagePicker.launchImageLibraryAsync).toHaveBeenCalledTimes(5);
   });
@@ -401,7 +440,7 @@ describe("Storm Patrol photo picker", () => {
 
     const observationPhoto = Array.from(document.querySelectorAll("button")).find(button => button.textContent?.startsWith("Observation photo"))!;
     for (let index = 0; index < 3; index++) {
-      await act(async () => observationPhoto.click());
+      await chooseGallery(observationPhoto);
     }
     expect(observationPhoto.textContent).toBe("Observation photo (3/3)");
     expect(document.querySelectorAll("img")).toHaveLength(3);
@@ -410,11 +449,11 @@ describe("Storm Patrol photo picker", () => {
     expect(observationPhoto.textContent).toBe("Observation photo (2/3)");
     expect(document.querySelectorAll("img")).toHaveLength(2);
 
-    await act(async () => observationPhoto.click());
+    await chooseGallery(observationPhoto);
     expect(observationPhoto.textContent).toBe("Observation photo (3/3)");
     expect(ImagePicker.launchImageLibraryAsync).toHaveBeenCalledTimes(4);
 
-    await act(async () => observationPhoto.click());
+    act(() => observationPhoto.click());
     expect(ImagePicker.launchImageLibraryAsync).toHaveBeenCalledTimes(4);
     expect(mocks.alert).toHaveBeenCalledWith("Photo limit reached", "You can add up to 3 general observation photos.");
   });
@@ -512,7 +551,7 @@ describe("Storm Patrol completed jobs", () => {
     await settle();
     act(() => (document.querySelector('[data-testid="storm-job-completed-job"]') as HTMLButtonElement).click());
     const before = Array.from(document.querySelectorAll("button")).find(button => button.textContent?.startsWith("Before photo"))!;
-    await act(async () => before.click());
+    await chooseGallery(before);
     expect(mocks.persistAttachment).toHaveBeenCalledOnce();
     expect(mocks.persistAttachment).toHaveBeenCalledWith(expect.objectContaining({ uri: "blob:replacement" }));
     const save = Array.from(document.querySelectorAll("button")).find(button => button.textContent?.includes("Save changes"))!;
@@ -567,7 +606,7 @@ describe("Storm Patrol completed jobs", () => {
     });
     await settle();
     act(() => (document.querySelector('[data-testid="storm-job-completed-job"]') as HTMLButtonElement).click());
-    await act(async () => Array.from(document.querySelectorAll("button")).find(button => button.textContent?.startsWith("Before photo"))!.click());
+    await chooseGallery(Array.from(document.querySelectorAll("button")).find(button => button.textContent?.startsWith("Before photo"))!);
 
     expect(mocks.enqueueStormItems).not.toHaveBeenCalled();
     expect(document.body.textContent).toContain("Before photo (1/3)");
@@ -617,7 +656,7 @@ describe("Storm Patrol completed jobs", () => {
     });
     await settle();
     act(() => (document.querySelector('[data-testid="storm-job-completed-job"]') as HTMLButtonElement).click());
-    await act(async () => Array.from(document.querySelectorAll("button")).find(button => button.textContent?.startsWith("Before photo"))!.click());
+    await chooseGallery(Array.from(document.querySelectorAll("button")).find(button => button.textContent?.startsWith("Before photo"))!);
     await act(async () => Array.from(document.querySelectorAll("button")).find(button => button.textContent?.includes("Save changes"))!.click());
     await settle();
 

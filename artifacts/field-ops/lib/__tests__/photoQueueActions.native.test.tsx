@@ -18,6 +18,9 @@ vi.mock("react-native", () => {
 
   return {
     ActivityIndicator: nativeElement("ActivityIndicator"),
+    Modal: nativeElement("Modal"),
+    Platform: { OS: "ios" },
+    Pressable: nativeElement("Pressable"),
     StyleSheet: { create: (styles: unknown) => styles },
     Text: nativeElement("Text"),
     TouchableOpacity: nativeElement("TouchableOpacity"),

@@ -38,6 +38,7 @@ import { PhotoQueueActions } from "@/components/PhotoQueueActions";
 import { useAuth } from "@/context/auth";
 import { useColors } from "@/hooks/useColors";
 import { getApiUrl, trackedFetch } from "@/lib/api";
+import { pickWebCameraPhoto } from "@/lib/webPhotoPicker";
 import { useOfflinePhotoQueue } from "@/hooks/useOfflinePhotoQueue";
 import type { AttachmentSource } from "@/lib/attachmentUpload";
 import { enqueuePhoto, flushQueuedPhoto, type QueuedPhoto } from "@/lib/photoQueue";
@@ -322,27 +323,12 @@ function PhotoSection({ jobId, readOnly }: { jobId: string; readOnly: boolean })
 
   const takePhoto = async () => {
     if (Platform.OS === "web") {
-      const input = document.createElement("input");
-      input.type = "file";
-      input.accept = "image/*";
-      // setAttribute is required on Android Chrome — setting .capture as a JS
-      // property is silently ignored on many Android browsers.
-      input.setAttribute("capture", "environment");
-      input.onchange = async (e: Event) => {
-        const file = (e.target as HTMLInputElement).files?.[0];
-        if (file) {
-          const uri = URL.createObjectURL(file);
-          uploadPhoto.mutate({ source: { uri, fileName: file.name, mimeType: file.type, fileSize: file.size }, file });
-        }
-      };
-      // Must be in the DOM before click() — mobile browsers drop programmatic
-      // clicks on detached elements.
-      input.style.display = "none";
-      document.body.appendChild(input);
-      input.click();
-      // Clean up after the picker closes (change fires before this runs on
-      // desktop; on mobile the cleanup happens after selection).
-      setTimeout(() => document.body.removeChild(input), 30_000);
+      try {
+        const source = await pickWebCameraPhoto();
+        if (source) uploadPhoto.mutate({ source, file: source.file }, { onSuccess: (r) => handleMutateResult(r) });
+      } catch {
+        Alert.alert("Camera unavailable", "Chrome could not open the camera. Check the site camera permission, then try again. You can still choose a photo from the gallery.");
+      }
       return;
     }
     if (!(await requestCameraPermission())) return;

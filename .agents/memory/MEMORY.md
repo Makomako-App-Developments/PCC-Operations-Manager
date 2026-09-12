@@ -38,3 +38,4 @@
 - [Photo cleanup schema contract](photo-cleanup-schema-contract.md) — compare directly applied cleanup migrations with runtime Drizzle metadata before concurrency tests run.
 - [Queued uploads and auth identity](queued-upload-auth-identity.md) — durable uploads must stay bound to their originating user through retries, token refresh, account switches, and multi-tab sessions.
 - [React Native Web confirmations](rnweb-confirmations.md) — do not rely on multi-button Alert callbacks for required web actions; use an in-app confirmation dialog and exercise real rendered controls.
+- [Safari photo remove controls](safari-photo-remove-controls.md) — photo-overlay remove buttons inside scroll views need direct web pointer-up handling plus duplicate-press suppression.
