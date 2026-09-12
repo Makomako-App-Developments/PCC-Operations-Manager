@@ -88,7 +88,16 @@ vi.mock("@/hooks/use-toast", () => ({
 }));
 
 vi.mock("react-leaflet", () => ({
-  MapContainer: ({ children }: { children: React.ReactNode }) => <div data-testid="storm-map">{children}</div>,
+  MapContainer: ({ children, center, zoom, ...props }: any) => (
+    <div
+      data-testid="storm-map"
+      data-center={JSON.stringify(center)}
+      data-zoom={zoom}
+      aria-label={props["aria-label"]}
+    >
+      {children}
+    </div>
+  ),
   TileLayer: () => null,
   CircleMarker: (props: any) => (
     <div
@@ -97,13 +106,14 @@ vi.mock("react-leaflet", () => ({
       data-fill-color={props.pathOptions?.fillColor}
       data-fill-opacity={props.pathOptions?.fillOpacity}
       data-radius={props.radius}
+      data-center={JSON.stringify(props.center)}
     />
   ),
   Popup: ({ children }: { children: React.ReactNode }) => <>{children}</>,
-  useMap: () => ({ fitBounds: vi.fn() }),
+  useMap: () => ({ fitBounds: vi.fn(), invalidateSize: vi.fn() }),
 }));
 
-function renderCommandCenter(jobs: any[] = [], observations: any[] = []) {
+function renderCommandCenter(jobs: any[] = [], observations: any[] = [], followUps: any[] = []) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
@@ -122,7 +132,7 @@ function renderCommandCenter(jobs: any[] = [], observations: any[] = []) {
           jobs,
           alerts: [],
           observations,
-          followUps: [],
+          followUps,
           summary: {},
         }}
       />
@@ -311,7 +321,7 @@ describe("Storm Patrol work package asset filters", () => {
     expect(screen.getAllByTestId("storm-marker")[0]).toHaveAttribute("data-fill-opacity", "0");
   });
 
-  it("opens completed work in a modal and returns to Storm Patrol when closed", async () => {
+  it("shows scannable New Observation cards and opens the mapped details modal", async () => {
     const user = userEvent.setup();
     renderCommandCenter([], [{
       id: "observation-1",
@@ -321,7 +331,7 @@ describe("Storm Patrol work package asset filters", () => {
       locationLat: -41.12345,
       locationLng: 174.98765,
       createdAt: "2026-09-10T04:30:00.000Z",
-      reactiveJobId: null,
+      reactiveJobId: "draft-job-1",
       photos: [{
         id: "photo-1",
         purpose: "observation",
@@ -329,11 +339,23 @@ describe("Storm Patrol work package asset filters", () => {
         caption: "Blocked inlet",
         createdAt: "2026-09-10T04:30:00.000Z",
       }],
-    }]);
+    }], [{ id: "draft-job-1" }]);
 
-    await user.click(screen.getByRole("button", { name: "Open field observation: Pigs blocking the drain" }));
+    const card = screen.getByRole("button", { name: "Open New Observation: Pigs blocking the drain" });
+    expect(within(card).getByText("10 Sep 2026")).toBeVisible();
+    expect(within(card).getByText("Draft Unscheduled job created")).toBeVisible();
+    expect(within(card).queryByText("View details")).not.toBeInTheDocument();
+
+    await user.click(card);
 
     const dialog = screen.getByRole("dialog");
+    expect(within(dialog).getByText("New Observation")).toBeVisible();
+    const observationMap = within(dialog).getByLabelText("New Observation recorded location");
+    expect(observationMap).toHaveAttribute("data-center", "[-41.12345,174.98765]");
+    expect(observationMap).toHaveAttribute("data-zoom", "17");
+    const observationMarker = within(observationMap).getByTestId("storm-marker");
+    expect(observationMarker).toHaveAttribute("data-center", "[-41.12345,174.98765]");
+    expect(observationMarker).toHaveAttribute("data-fill-color", "#00AECD");
     expect(within(dialog).getByText("Needs urgent clearance.")).toBeVisible();
     expect(within(dialog).getByText("-41.12345")).toBeVisible();
     expect(within(dialog).getByText("174.98765")).toBeVisible();
@@ -341,7 +363,7 @@ describe("Storm Patrol work package asset filters", () => {
     expect(mocks.customFetch).toHaveBeenCalledWith("/api/uploads/observation-1.jpg", expect.objectContaining({ responseType: "blob" }));
     expect(within(dialog).getByText("Blocked inlet")).toBeVisible();
 
-    await user.click(within(dialog).getByRole("button", { name: "Close field observation" }));
+    await user.click(within(dialog).getByRole("button", { name: "Close New Observation" }));
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 
@@ -402,7 +424,7 @@ describe("Storm Patrol work package asset filters", () => {
       }],
     }]);
 
-    await user.click(screen.getByRole("button", { name: "Open field observation: Pigs blocking the drain" }));
+    await user.click(screen.getByRole("button", { name: "Open New Observation: Pigs blocking the drain" }));
 
     const dialog = screen.getByRole("dialog");
     expect(within(dialog).getByText("Needs urgent clearance.")).toBeVisible();
@@ -411,7 +433,7 @@ describe("Storm Patrol work package asset filters", () => {
     await waitFor(() => expect(within(dialog).getByRole("img", { name: "Observation photo 1" })).toHaveAttribute("src", "blob:authenticated-photo"));
     expect(within(dialog).getByText("Blocked inlet")).toBeVisible();
 
-    await user.click(within(dialog).getByRole("button", { name: "Close field observation" }));
+    await user.click(within(dialog).getByRole("button", { name: "Close New Observation" }));
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 

@@ -103,6 +103,17 @@ function FitBounds({ assets }: { assets: any[] }) {
   return null;
 }
 
+function ResizeObservationMap() {
+  const map = useMap();
+
+  React.useEffect(() => {
+    const timeout = window.setTimeout(() => map.invalidateSize(), 0);
+    return () => window.clearTimeout(timeout);
+  }, [map]);
+
+  return null;
+}
+
 interface CommandCenterProps {
   data: StormCurrentResponseData;
 }
@@ -496,23 +507,25 @@ export default function CommandCenter({ data }: CommandCenterProps) {
                         key={obs.id}
                         type="button"
                         className="w-full cursor-pointer rounded-lg bg-black/20 border border-white/5 p-3 text-left transition-colors hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00AECD]"
-                        aria-label={`Open field observation: ${obs.description}`}
+                        aria-label={`Open New Observation: ${obs.description}`}
                         onClick={() => setSelectedObservation(obs)}
                       >
                         <p className="text-sm font-medium text-white/90 mb-1">{obs.description}</p>
                         {obs.notes && <p className="text-xs text-white/60 mb-2">{obs.notes}</p>}
+                        <p className="mb-2 text-[10px] font-medium uppercase tracking-wider text-white/45">
+                          {obs.createdAt ? format(new Date(obs.createdAt), "d MMM yyyy") : "Date not recorded"}
+                        </p>
                         
                         {/* Check if a follow-up job exists */}
                         {data?.followUps?.find((f: any) => f.id === obs.reactiveJobId) ? (
                           <span className="inline-flex items-center gap-1 text-[10px] font-medium text-green-400 bg-green-400/10 px-2 py-0.5 rounded">
-                            <Check className="w-3 h-3" /> Job Created
+                            <Check className="w-3 h-3" /> Draft Unscheduled job created
                           </span>
                         ) : (
                           <span className="inline-flex items-center gap-1 text-[10px] font-medium text-white/40">
                             Logged {obs.createdAt ? format(new Date(obs.createdAt), "HH:mm") : ""}
                           </span>
                         )}
-                        <span className="mt-2 block text-[10px] font-semibold uppercase tracking-wider text-[#65d8e8]">View details</span>
                       </button>
                     ))}
                   </div>
@@ -1129,13 +1142,39 @@ export default function CommandCenter({ data }: CommandCenterProps) {
                 <DialogHeader className="border-b border-white/10 pb-4 pr-8">
                   <div className="mb-1 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-[#65d8e8]">
                     <Eye className="h-4 w-4" />
-                    Field observation
+                    New Observation
                   </div>
                   <DialogTitle className="text-xl text-white">{selectedObservation.description}</DialogTitle>
                   <DialogDescription className="text-white/55">
                     Logged {selectedObservation.createdAt ? format(new Date(selectedObservation.createdAt), "HH:mm, d MMM yyyy") : "at an unknown time"}
                   </DialogDescription>
                 </DialogHeader>
+
+                <section>
+                  <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-white/45">Recorded location</h3>
+                  <div className="h-52 w-full overflow-hidden rounded-lg border border-white/10 bg-black/20 sm:h-60">
+                    <MapContainer
+                      center={[selectedObservation.locationLat, selectedObservation.locationLng]}
+                      zoom={17}
+                      scrollWheelZoom
+                      className="h-full w-full"
+                      aria-label="New Observation recorded location"
+                    >
+                      <TileLayer
+                        attribution="&copy; OpenStreetMap contributors"
+                        url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                      />
+                      <CircleMarker
+                        center={[selectedObservation.locationLat, selectedObservation.locationLng]}
+                        radius={9}
+                        pathOptions={{ color: "#ffffff", weight: 3, fillColor: BRAND, fillOpacity: 1 }}
+                      >
+                        <Popup>Recorded New Observation location</Popup>
+                      </CircleMarker>
+                      <ResizeObservationMap />
+                    </MapContainer>
+                  </div>
+                </section>
 
                 <div className="grid grid-cols-2 gap-3">
                   <div className="rounded-lg border border-white/10 bg-white/5 p-3">
@@ -1183,7 +1222,7 @@ export default function CommandCenter({ data }: CommandCenterProps) {
                 <div className="flex justify-end border-t border-white/10 pt-4">
                   <Button
                     type="button"
-                    aria-label="Close field observation"
+                    aria-label="Close New Observation"
                     onClick={() => setSelectedObservation(null)}
                     className="bg-[#00AECD] text-white hover:bg-[#00AECD]/90"
                   >
