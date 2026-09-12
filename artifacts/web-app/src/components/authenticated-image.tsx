@@ -7,6 +7,10 @@ type AuthenticatedImageProps = Omit<ImgHTMLAttributes<HTMLImageElement>, "src"> 
   unavailableClassName?: string;
 };
 
+type LocalImagePreviewProps = Omit<ImgHTMLAttributes<HTMLImageElement>, "src"> & {
+  file: File;
+};
+
 type AuthenticatedMediaLinkProps = {
   src: string;
   children: ReactNode;
@@ -15,6 +19,21 @@ type AuthenticatedMediaLinkProps = {
 };
 
 const OBJECT_URL_REVOKE_DELAY_MS = 60_000;
+
+export function LocalImagePreview({ file, alt = "", ...imageProps }: LocalImagePreviewProps) {
+  const [objectUrl, setObjectUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    const createdUrl = URL.createObjectURL(file);
+    setObjectUrl(createdUrl);
+
+    return () => URL.revokeObjectURL(createdUrl);
+  }, [file]);
+
+  if (!objectUrl) return null;
+
+  return <img {...imageProps} src={objectUrl} alt={alt} />;
+}
 
 export function AuthenticatedMediaLink({
   src,

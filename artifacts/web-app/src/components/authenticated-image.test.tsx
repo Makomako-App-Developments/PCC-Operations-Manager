@@ -1,7 +1,7 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import userEvent from "@testing-library/user-event";
-import { AuthenticatedImage, AuthenticatedMediaLink } from "./authenticated-image";
+import { AuthenticatedImage, AuthenticatedMediaLink, LocalImagePreview } from "./authenticated-image";
 
 const mocks = vi.hoisted(() => ({
   customFetch: vi.fn(),
@@ -27,6 +27,33 @@ afterEach(() => {
   cleanup();
   vi.useRealTimers();
   vi.restoreAllMocks();
+});
+
+describe("LocalImagePreview", () => {
+  it("reuses one object URL per file and revokes URLs when replaced or unmounted", () => {
+    const firstFile = new File(["first"], "first.jpg", { type: "image/jpeg" });
+    const secondFile = new File(["second"], "second.jpg", { type: "image/jpeg" });
+    vi.mocked(URL.createObjectURL)
+      .mockReturnValueOnce("blob:first-photo")
+      .mockReturnValueOnce("blob:second-photo");
+
+    const { rerender, unmount } = render(
+      <LocalImagePreview file={firstFile} alt="Local audit photo" />,
+    );
+    expect(screen.getByRole("img", { name: "Local audit photo" })).toHaveAttribute("src", "blob:first-photo");
+
+    rerender(<LocalImagePreview file={firstFile} alt="Updated label" />);
+    expect(URL.createObjectURL).toHaveBeenCalledTimes(1);
+    expect(URL.revokeObjectURL).not.toHaveBeenCalled();
+
+    rerender(<LocalImagePreview file={secondFile} alt="Updated label" />);
+    expect(URL.revokeObjectURL).toHaveBeenCalledWith("blob:first-photo");
+    expect(URL.createObjectURL).toHaveBeenCalledTimes(2);
+    expect(screen.getByRole("img", { name: "Updated label" })).toHaveAttribute("src", "blob:second-photo");
+
+    unmount();
+    expect(URL.revokeObjectURL).toHaveBeenCalledWith("blob:second-photo");
+  });
 });
 
 describe("AuthenticatedImage", () => {
