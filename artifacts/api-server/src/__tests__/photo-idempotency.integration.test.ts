@@ -154,10 +154,29 @@ vi.mock("@workspace/db", async importOriginal => {
         })),
         update: vi.fn((table: any) => ({
           set: vi.fn((values: any) => ({
-            where: vi.fn(async (condition: any) => {
-              state.rows.set(table.name, rowsFor(table).map(row =>
-                matches(row, condition) ? { ...row, ...values } : row,
-              ));
+            where: vi.fn((condition: any) => {
+              let executed: Promise<any[]> | undefined;
+              const execute = () => {
+                if (!executed) {
+                  executed = (async () => {
+                    // A real UPDATE waits for an open transaction holding the
+                    // Storm Patrol row lock before evaluating its WHERE clause.
+                    if (table.name === "stormJobsTable") await state.transactionTail;
+                    const updated = rowsFor(table)
+                      .filter(row => matches(row, condition))
+                      .map(row => ({ ...row, ...values }));
+                    state.rows.set(table.name, rowsFor(table).map(row =>
+                      updated.find(candidate => candidate.id === row.id) ?? row,
+                    ));
+                    return updated;
+                  })();
+                }
+                return executed;
+              };
+              return {
+                returning: vi.fn(() => execute()),
+                then: (resolve: any, reject?: any) => execute().then(resolve, reject),
+              };
             }),
           })),
         })),
@@ -315,10 +334,35 @@ beforeEach(() => {
   state.rows.set("auditsTable", [{ id: ids.audit, teamId: null, auditorId: "manager" }]);
   state.rows.set("auditItemsTable", [{ id: ids.item, auditId: ids.audit }]);
   state.rows.set("stormJobsTable", [
-    { id: ids.stormJob, eventId: ids.stormEvent, teamId: null, assignedUserId: null },
-    { id: ids.otherStormJob, eventId: ids.stormEvent, teamId: null, assignedUserId: null },
+    { id: ids.stormJob, eventId: ids.stormEvent, teamId: null, assignedUserId: null, status: "pending" },
+    { id: ids.otherStormJob, eventId: ids.stormEvent, teamId: null, assignedUserId: null, status: "pending" },
   ]);
   state.rows.set("stormObservationsTable", [{ id: ids.observation, idempotencyKey: "observation-key", raisedById: "00000000-0000-0000-0000-000000000001", reactiveJobId: ids.reactive }]);
+});
+
+describe("Storm Patrol claim and cancellation concurrency", () => {
+  it("allows exactly one request to claim or cancel the same pending job", async () => {
+    const server = app();
+    const claiming = request(server).post(`/api/storm-patrol/jobs/${ids.stormJob}/claim`);
+    const cancelling = request(server).delete(`/api/storm-patrol/jobs/${ids.stormJob}`);
+
+    const [claim, cancel] = await Promise.all([claiming, cancelling]);
+    const job = rowsFor(tables.stormJobsTable).find(row => row.id === ids.stormJob);
+
+    expect([claim.status, cancel.status].filter(status => status >= 200 && status < 300)).toHaveLength(1);
+
+    if (claim.status === 200) {
+      expect(cancel.status).toBe(409);
+      expect(job).toMatchObject({
+        assignedUserId: "00000000-0000-0000-0000-000000000001",
+        status: "in_progress",
+      });
+    } else {
+      expect(cancel.status).toBe(204);
+      expect(claim.status).toBeGreaterThanOrEqual(400);
+      expect(job).toBeUndefined();
+    }
+  });
 });
 
 describe("Storm Patrol report event closure", () => {
