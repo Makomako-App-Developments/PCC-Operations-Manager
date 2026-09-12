@@ -120,6 +120,7 @@ interface CommandCenterProps {
 
 export default function CommandCenter({ data }: CommandCenterProps) {
   const { event, jobs, summary } = data!;
+  const actualTimeMinutes = jobs.reduce((total, job) => total + (job.actualTimeMins ?? 0), 0);
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
@@ -450,8 +451,8 @@ export default function CommandCenter({ data }: CommandCenterProps) {
                     <p className="text-xs text-orange-500/60 font-medium">In Progress</p>
                   </div>
                   <div>
-                    <p className="text-3xl font-black text-red-500">{jobs.filter(j => j.comments?.includes('dangerous') || j.actualTimeMins === 0 && j.status === 'completed').length}</p>
-                    <p className="text-xs text-red-500/60 font-medium">Escalations</p>
+                    <p className="text-3xl font-black text-purple-300">{actualTimeMinutes}</p>
+                    <p className="text-xs text-purple-300/60 font-medium">Actual Minutes</p>
                   </div>
                 </div>
               </div>

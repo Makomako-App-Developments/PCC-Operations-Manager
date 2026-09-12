@@ -186,6 +186,47 @@ afterEach(() => {
 });
 
 describe("Storm Patrol work package asset filters", () => {
+  it("shows the total actual minutes used by field workers", () => {
+    renderCommandCenter([
+      {
+        id: "job-completed-one",
+        eventId: "event-1",
+        workPackageId: "package-1",
+        phase: "pre",
+        assetId: "asset-1",
+        teamId: "team-1",
+        status: "completed",
+        assetName: "Completed Site One",
+        actualTimeMins: 30,
+      },
+      {
+        id: "job-completed-two",
+        eventId: "event-1",
+        workPackageId: "package-1",
+        phase: "mid",
+        assetId: "asset-2",
+        teamId: "team-1",
+        status: "completed",
+        assetName: "Completed Site Two",
+        actualTimeMins: 45,
+      },
+      {
+        id: "job-without-time",
+        eventId: "event-1",
+        workPackageId: "package-1",
+        phase: "post",
+        assetId: "asset-3",
+        teamId: "team-1",
+        status: "pending",
+        assetName: "Pending Site",
+      },
+    ]);
+
+    expect(screen.getByText("Actual Minutes")).toBeVisible();
+    expect(screen.getByText("75")).toBeVisible();
+    expect(screen.queryByText("Escalations")).not.toBeInTheDocument();
+  });
+
   it("confirms and cancels only pending live jobs", async () => {
     const user = userEvent.setup();
     renderCommandCenter([
