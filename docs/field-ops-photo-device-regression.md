@@ -1,11 +1,10 @@
 # Field Ops photo device regression
 
-This is the release check for native and mobile-web photo transport. The native
-matrix must be run on one physical iOS phone and one physical Android phone. A
-web preview, simulator, or emulator does not verify picker URI lifetime, native
-multipart behavior, or OS process storage. The mobile-web matrix must be run in
-Safari on a physical iPhone against the published Field Ops URL because Safari
-IndexedDB behavior is part of the transport.
+This is the production release gate for Field Ops photo transport. Every row
+must use the published Field Ops URL and controlled production records. Expo,
+local previews, simulators, and emulators are supporting development checks,
+not release evidence. Physical mobile browsers are required because picker
+lifetime, IndexedDB, tab suspension, and storage quotas vary by browser and OS.
 
 ## Before the run
 
@@ -22,23 +21,33 @@ IndexedDB behavior is part of the transport.
    normalized endpoint, opaque record ID, duration, status, retry count, and
    failure category. Do not paste tokens, URLs, captions, filenames, or image
    data into a bug report.
-4. Record the app version, OS version, device model, network condition, and
+4. Confirm a checkpoint is available before publishing. Stop the run and roll
+   back if any photo is lost, attached to the wrong record, duplicated, or
+   reported as safe without durable queue state.
+5. Record the app version, OS version, device model, browser version, network condition, and
    result in the matrix below. Do not record an account email or device
    identifier.
 
-## Test matrix
+## Supported production browser matrix
 
-Run each row on both iOS and Android.
+Run every flow in each available production browser. An unavailable combination
+must be recorded as not tested; it must not be reported as passed.
 
-| Flow | Online upload | Token expiry during upload | Offline queue → force-close → reconnect | Server result |
-| --- | --- | --- | --- | --- |
-| Scheduled job | ☐ | ☐ | ☐ | ☐ |
-| Reactive report | ☐ | ☐ | ☐ | ☐ |
-| Storm Patrol job (before and after) | ☐ | ☐ | ☐ | ☐ |
-| Storm Patrol observation | ☐ | ☐ | ☐ | ☐ |
-| Audit fail evidence | ☐ | ☐ | ☐ | ☐ |
+| Browser/device | Scheduled job | Reactive job/report | Audit evidence | Storm Patrol | Offline close/reopen | Result |
+| --- | --- | --- | --- | --- | --- | --- |
+| iPhone Safari | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ |
+| Android Chrome | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ |
+| Samsung Internet | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ |
+| Desktop Safari | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ |
+| Desktop Chrome | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ |
+| Desktop Edge | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ |
+| Desktop Firefox | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ |
 
-### Mobile Safari matrix
+For each checked flow, verify online upload, token refresh during multipart
+upload, offline queue followed by tab/browser close and reopen, exactly one
+server photo row, and empty local queue after success.
+
+### Detailed Storm Patrol matrix
 
 Run these rows in Safari on a physical iPhone. Use a normal browsing tab, then
 repeat the storage-failure case in Private Browsing.
@@ -133,11 +142,27 @@ photo, a picker URI, a full request URL, an authorization header, or user
 entered text. A failure is release-blocking when a photo is lost, the queue
 claims success while retaining a record, or the server contains duplicates.
 
+## Stop and rollback criteria
+
+Stop production validation immediately and return to the last checkpoint if:
+
+- the UI says a photo is saved but neither durable queue metadata nor a server
+  record exists;
+- a photo is attached to the wrong scheduled job, reactive job, audit item,
+  Storm Patrol job, or observation;
+- one upload identity creates multiple server rows;
+- an established scheduled-job, reactive-job/report, or audit flow fails after
+  publishing;
+- clearing one unavailable legacy photo removes unrelated queued work.
+
+Do not clear browser site data to recover a failed test. Preserve the queue for
+diagnosis unless selective discard is the case being tested.
+
 ## Exit criteria
 
-The device pass is complete only when every native matrix row passes on both
-platforms, every mobile Safari row passes on an iPhone, all paths leave no stuck
-queue item, and each submitted photo has exactly one corresponding server
-record. If a physical device is not available, leave this check pending rather
-than marking the regression as passed; the automated queue and diagnostic tests
-are supporting evidence, not a replacement for this run.
+The production pass is complete only when every available supported-browser row
+passes, all paths leave no stuck queue item, and each submitted photo has exactly
+one corresponding server record owned by the correct parent. If a physical
+device or browser is unavailable, record that row as not tested rather than
+passed. Automated queue, idempotency, and diagnostic tests are supporting
+evidence, not a replacement for the controlled production run.

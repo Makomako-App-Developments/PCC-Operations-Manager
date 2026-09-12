@@ -5,6 +5,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   readQueuedPhotos: vi.fn(),
+  flushStormQueue: vi.fn(),
+  authState: { user: { id: "user-one" }, isLoading: false },
 }));
 
 vi.mock("@expo/vector-icons", () => ({
@@ -53,10 +55,15 @@ vi.mock("react-native", async () => {
 });
 
 vi.mock("../photoQueue", () => ({
-  attemptUpload: vi.fn(),
+  flushQueuedPhoto: vi.fn(),
   QueueStorageReadError: class QueueStorageReadError extends Error {},
   readQueuedPhotos: mocks.readQueuedPhotos,
-  removeFromQueue: vi.fn(),
+}));
+vi.mock("@/context/auth", () => ({
+  useAuth: () => mocks.authState,
+}));
+vi.mock("@/lib/stormPatrolQueue", () => ({
+  flushStormQueue: mocks.flushStormQueue,
 }));
 
 import {
@@ -77,6 +84,7 @@ describe("PhotoQueueProvider storage retry", () => {
   beforeEach(() => {
     vi.useFakeTimers();
     mocks.readQueuedPhotos.mockReset();
+    mocks.flushStormQueue.mockReset().mockResolvedValue([]);
     container = document.createElement("div");
     document.body.appendChild(container);
     root = createRoot(container);
@@ -119,10 +127,10 @@ describe("PhotoQueueProvider storage retry", () => {
     expect(document.querySelector(
       '[data-testid="photo-queue-storage-retry-loading"]',
     )).not.toBeNull();
-    expect(mocks.readQueuedPhotos).toHaveBeenCalledTimes(1);
+    expect(mocks.readQueuedPhotos).toHaveBeenCalledTimes(2);
 
     act(() => retry.click());
-    expect(mocks.readQueuedPhotos).toHaveBeenCalledTimes(1);
+    expect(mocks.readQueuedPhotos).toHaveBeenCalledTimes(2);
 
     await act(async () => {
       resolveRead?.({ state: "available", items: [] });
@@ -135,7 +143,7 @@ describe("PhotoQueueProvider storage retry", () => {
   });
 
   it("keeps the warning actionable after an unexpected read failure", async () => {
-    mocks.readQueuedPhotos.mockRejectedValueOnce(new Error("read failed"));
+    mocks.readQueuedPhotos.mockRejectedValue(new Error("read failed"));
 
     await act(async () => {
       root.render(
@@ -167,5 +175,25 @@ describe("PhotoQueueProvider storage retry", () => {
     expect(document.querySelector(
       '[data-testid="photo-queue-storage-retry-loading"]',
     )).toBeNull();
+  });
+
+  it("retries Storm Patrol globally on startup and browser reconnect", async () => {
+    mocks.readQueuedPhotos.mockResolvedValue({ state: "empty", items: [] });
+
+    await act(async () => {
+      root.render(
+        <QueryClientProvider client={new QueryClient()}>
+          <PhotoQueueProvider><div /></PhotoQueueProvider>
+        </QueryClientProvider>,
+      );
+      await Promise.resolve();
+    });
+    expect(mocks.flushStormQueue).toHaveBeenCalledWith("user-one");
+
+    await act(async () => {
+      window.dispatchEvent(new Event("online"));
+      await Promise.resolve();
+    });
+    expect(mocks.flushStormQueue).toHaveBeenCalledTimes(2);
   });
 });

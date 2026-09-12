@@ -157,6 +157,9 @@ vi.mock("@/hooks/useColors", () => ({
     success: "#16803a",
   }),
 }));
+vi.mock("@/context/auth", () => ({
+  useAuth: () => ({ user: { id: "user-one" }, isLoading: false }),
+}));
 vi.mock("@/lib/stormPatrolQueue", () => ({
   clearStormQueueItems: mocks.clearStormQueueItems,
   createStormQueueItem: (item: any) => ({

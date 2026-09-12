@@ -26,8 +26,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 
 import { useAuth } from "@/context/auth";
 import { useColors } from "@/hooks/useColors";
-import { persistAttachment, removeManagedAttachment, uploadAttachment, uploadImmediateWebAttachment } from "@/lib/attachmentUpload";
-import { enqueuePhoto } from "@/lib/photoQueue";
+import { enqueuePhotoBatch, flushQueuedPhoto, type PhotoQueueInput } from "@/lib/photoQueue";
 import { getApiUrl } from "@/lib/api";
 
 // ─── Weekly Quota Banner ──────────────────────────────────────────────────────
@@ -336,6 +335,7 @@ interface LocalPhoto {
   uploadId?: string;
   mimeType?: string;
   fileName?: string;
+  file?: File;
 }
 
 const MAX_PHOTOS_PER_ITEM = 5;
@@ -679,6 +679,7 @@ ${userMarker}
               uploadId: `audit-photo-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
               mimeType: asset.mimeType ?? "image/jpeg",
               fileName: asset.fileName ?? `audit-${criterion}-${existing.length}.jpg`,
+              file: asset.file,
             },
           ],
         };
@@ -735,28 +736,23 @@ ${userMarker}
       if (!putRes.ok) throw new Error("Failed to submit responses");
       const detail = await putRes.json();
 
-      // Upload photos (up to MAX_PHOTOS_PER_ITEM) for any fail items that have local photos
+      // Queue all evidence in one durable write before attempting any upload.
       const photoEntries = Object.entries(photos);
-      let queuedPhotoCount = 0;
+      const queueInputs: PhotoQueueInput[] = [];
       for (const [criterion, criterionPhotos] of photoEntries) {
         const item = detail.items?.find((i: any) => i.criterion === criterion);
-        if (!item) continue;
-        for (const photo of criterionPhotos) {
-          const attachment = await persistAttachment(photo);
-          if (Platform.OS === "web") {
-            const blob = await (await fetch(photo.uri)).blob();
-            const browserFile = new File([blob], attachment.fileName, { type: attachment.mimeType });
-            await uploadImmediateWebAttachment(`/api/audits/${auditId}/items/${item.id}/photos`, attachment, {}, browserFile);
-          } else {
-            try {
-              await uploadAttachment(`/api/audits/${auditId}/items/${item.id}/photos`, attachment);
-              await removeManagedAttachment(attachment);
-            } catch {
-              await enqueuePhoto("audit-item", item.id, attachment, undefined, auditId);
-              queuedPhotoCount += 1;
-            }
-          }
+        if (!item && criterionPhotos.length > 0) {
+          throw new Error("Audit responses were saved, but GardenOps could not match photo evidence to the audit item.");
         }
+        for (const photo of criterionPhotos) {
+          if (!user) throw new Error("Sign in again before saving audit evidence.");
+          queueInputs.push({ ownerId: user.id, jobType: "audit-item", jobId: item.id, auditId, source: photo });
+        }
+      }
+      const queued = await enqueuePhotoBatch(queueInputs);
+      let queuedPhotoCount = 0;
+      for (const item of queued) {
+        if (!(await flushQueuedPhoto(item, user!.id))) queuedPhotoCount += 1;
       }
 
       setDoneScore(detail.overallScore != null ? Number(detail.overallScore) : null);
@@ -770,8 +766,8 @@ ${userMarker}
       qc.invalidateQueries({ queryKey: ["audit-quota-badge"] });
       qc.invalidateQueries({ queryKey: ["audit-quota-current"] });
       setView("done");
-    } catch {
-      setSubmitError("Could not save the audit. Please try again.");
+    } catch (error) {
+      setSubmitError(error instanceof Error ? error.message : "Could not save the audit. Please try again.");
     } finally {
       setSubmitting(false);
     }

@@ -1,4 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { DurableAttachment } from "../attachmentUpload";
+import { setCurrentAuthOwner } from "../authIdentity";
 
 const mocks = vi.hoisted(() => ({
   values: new Map<string, string>(),
@@ -20,6 +22,7 @@ vi.mock("@sentry/react-native", () => ({ captureMessage: vi.fn() }));
 
 vi.mock("../attachmentUpload", () => ({
   persistAttachment: vi.fn(async (source: any) => ({
+    ...source,
     uri: source.uri,
     uploadId: source.uploadId,
     fileName: source.fileName ?? "photo.jpg",
@@ -31,14 +34,16 @@ vi.mock("../attachmentUpload", () => ({
   uploadAttachment: mocks.uploadAttachment,
 }));
 
-import { attemptUpload, enqueuePhoto, loadAllQueued, readQueuedPhotos, removeFromQueue } from "../photoQueue";
+import { attemptUpload, claimLegacyQueuedPhotos, enqueuePhoto, enqueuePhotoBatch, flushQueuedPhoto, loadAllQueued, readQueuedPhotos, removeFromQueue } from "../photoQueue";
 import {
   setPhotoQueueDiagnosticHandler,
   type PhotoQueueReadDiagnostic,
 } from "../photoQueueDiagnostics";
 
 describe("photo queue durability", () => {
+  const ownerId = "user-one";
   beforeEach(() => {
+    setCurrentAuthOwner(ownerId);
     vi.useRealTimers();
     setPhotoQueueDiagnosticHandler();
     mocks.values.clear();
@@ -131,17 +136,41 @@ describe("photo queue durability", () => {
 
   it("serializes concurrent enqueues without losing either attachment", async () => {
     await Promise.all([
-      enqueuePhoto("job", "job-one", { uri: "file:///one.jpg", uploadId: "one" }),
-      enqueuePhoto("job", "job-one", { uri: "file:///two.jpg", uploadId: "two" }),
+      enqueuePhoto(ownerId, "job", "job-one", { uri: "file:///one.jpg", uploadId: "one" }),
+      enqueuePhoto(ownerId, "job", "job-one", { uri: "file:///two.jpg", uploadId: "two" }),
     ]);
 
     expect((await loadAllQueued()).map(item => item.id)).toEqual(["one", "two"]);
   });
 
+  it("commits a browser photo batch in one durable queue write", async () => {
+    const queued = await enqueuePhotoBatch([
+      { ownerId, jobType: "reactive-job", jobId: "report-one", source: { uri: "blob:one", uploadId: "one" } },
+      { ownerId, jobType: "reactive-job", jobId: "report-one", source: { uri: "blob:two", uploadId: "two" } },
+    ]);
+
+    expect(queued.map(item => item.id)).toEqual(["one", "two"]);
+    expect(mocks.setItem).toHaveBeenCalledTimes(1);
+    expect((await loadAllQueued()).map(item => item.id)).toEqual(["one", "two"]);
+  });
+
+  it("cleans every newly staged photo when an atomic batch cannot be saved", async () => {
+    mocks.setItem.mockRejectedValueOnce(new Error("AsyncStorage unavailable"));
+
+    await expect(enqueuePhotoBatch([
+      { ownerId, jobType: "audit-item", jobId: "item-one", auditId: "audit-one", source: { uri: "blob:one", uploadId: "one" } },
+      { ownerId, jobType: "audit-item", jobId: "item-two", auditId: "audit-one", source: { uri: "blob:two", uploadId: "two" } },
+    ])).rejects.toThrow("AsyncStorage unavailable");
+
+    expect(mocks.removeManagedAttachment).toHaveBeenCalledTimes(2);
+    expect(mocks.removeManagedAttachment).toHaveBeenCalledWith(expect.objectContaining({ uploadId: "one" }));
+    expect(mocks.removeManagedAttachment).toHaveBeenCalledWith(expect.objectContaining({ uploadId: "two" }));
+  });
+
   it("rejects an enqueue and cleans its managed file when durable storage fails", async () => {
     mocks.setItem.mockRejectedValueOnce(new Error("AsyncStorage unavailable"));
 
-    await expect(enqueuePhoto("job", "job-one", {
+    await expect(enqueuePhoto(ownerId, "job", "job-one", {
       uri: "file:///one.jpg",
       uploadId: "one",
     })).rejects.toThrow("AsyncStorage unavailable");
@@ -149,7 +178,7 @@ describe("photo queue durability", () => {
   });
 
   it("commits queue removal before deleting the managed file", async () => {
-    await enqueuePhoto("job", "job-one", { uri: "file:///one.jpg", uploadId: "one" });
+    await enqueuePhoto(ownerId, "job", "job-one", { uri: "file:///one.jpg", uploadId: "one" });
     const order: string[] = [];
     mocks.setItem.mockImplementationOnce(async (key: string, value: string) => {
       order.push("saved");
@@ -165,6 +194,7 @@ describe("photo queue durability", () => {
 
   it("retries audit evidence through its audit item endpoint with the same upload identity", async () => {
     const item = await enqueuePhoto(
+      ownerId,
       "audit-item",
       "item-one",
       { uri: "file:///audit.jpg", uploadId: "audit-upload-one" },
@@ -181,7 +211,7 @@ describe("photo queue durability", () => {
   });
 
   it("keeps a staged photo across network loss and a reload before clearing it", async () => {
-    const queued = await enqueuePhoto("job", "job-one", {
+    const queued = await enqueuePhoto(ownerId, "job", "job-one", {
       uri: "file:///scheduled.jpg",
       uploadId: "scheduled-upload-one",
     });
@@ -212,12 +242,77 @@ describe("photo queue durability", () => {
     );
   });
 
+  it("serializes concurrent flushes so one retry owns upload and cleanup", async () => {
+    const queued = await enqueuePhoto(ownerId, "job", "job-one", {
+      uri: "blob:scheduled",
+      uploadId: "locked-upload",
+      webStorageKey: "locked-upload",
+      fileName: "scheduled.jpg",
+      mimeType: "image/jpeg",
+      size: 100,
+      managed: true,
+    } as DurableAttachment);
+    let releaseUpload!: () => void;
+    mocks.uploadAttachment.mockImplementationOnce(() => new Promise(resolve => {
+      releaseUpload = () => resolve({ id: "server-photo" });
+    }));
+
+    const first = flushQueuedPhoto(queued, ownerId);
+    const second = flushQueuedPhoto(queued, ownerId);
+    await vi.waitFor(() => expect(mocks.uploadAttachment).toHaveBeenCalledOnce());
+    releaseUpload();
+
+    await expect(Promise.all([first, second])).resolves.toEqual([true, true]);
+    expect(mocks.uploadAttachment).toHaveBeenCalledOnce();
+    expect(mocks.removeManagedAttachment).toHaveBeenCalledOnce();
+    expect(await loadAllQueued()).toEqual([]);
+  });
+
+  it("never uploads another signed-in user's queued photo", async () => {
+    const queued = await enqueuePhoto(ownerId, "job", "job-one", {
+      uri: "file:///private.jpg",
+      uploadId: "private-upload",
+    });
+
+    await expect(flushQueuedPhoto(queued, "user-two")).resolves.toBe(false);
+    expect(mocks.uploadAttachment).not.toHaveBeenCalled();
+    expect(await loadAllQueued()).toEqual([queued]);
+  });
+
+  it("quarantines legacy records until the signed-in user explicitly claims them", async () => {
+    mocks.values.set("@photo_upload_queue_v1", JSON.stringify([{
+      id: "legacy-upload",
+      jobType: "job",
+      jobId: "job-one",
+      uri: "file:///legacy.jpg",
+      queuedAt: "2026-09-12T00:00:00.000Z",
+      attempts: 0,
+      attachment: {
+        uri: "file:///legacy.jpg",
+        uploadId: "legacy-upload",
+        fileName: "legacy.jpg",
+        mimeType: "image/jpeg",
+        size: 100,
+        managed: true,
+      },
+    }]));
+
+    const legacy = (await loadAllQueued())[0];
+    await expect(flushQueuedPhoto(legacy, ownerId)).resolves.toBe(false);
+    expect(mocks.uploadAttachment).not.toHaveBeenCalled();
+
+    await expect(claimLegacyQueuedPhotos(ownerId)).resolves.toBe(1);
+    const claimed = (await loadAllQueued())[0];
+    expect(claimed.ownerId).toBe(ownerId);
+    await expect(flushQueuedPhoto(claimed, ownerId)).resolves.toBe(true);
+  });
+
   it.each([
     ["job", "job-one", undefined, "/api/jobs/job-one/photos"],
     ["reactive-job", "reactive-one", undefined, "/api/reactive-jobs/reactive-one/photos"],
     ["audit-item", "item-one", "audit-one", "/api/audits/audit-one/items/item-one/photos"],
   ] as const)("uses the durable upload path for %s photos", async (jobType, jobId, auditId, endpoint) => {
-    const item = await enqueuePhoto(jobType, jobId, {
+    const item = await enqueuePhoto(ownerId, jobType, jobId, {
       uri: `file:///${jobType}.jpg`,
       uploadId: `${jobType}-upload-one`,
     }, undefined, auditId);
@@ -226,6 +321,25 @@ describe("photo queue durability", () => {
     expect(mocks.uploadAttachment).toHaveBeenCalledWith(
       endpoint,
       expect.objectContaining({ uploadId: `${jobType}-upload-one` }),
+      { caption: undefined },
+    );
+  });
+
+  it("retries a browser-backed queue record instead of rejecting web uploads", async () => {
+    const item = await enqueuePhoto(ownerId, "job", "job-one", {
+      uri: "blob:scheduled",
+      uploadId: "browser-upload",
+      webStorageKey: "browser-upload",
+      fileName: "scheduled.jpg",
+      mimeType: "image/jpeg",
+      size: 100,
+      managed: true,
+    } as DurableAttachment);
+
+    await expect(attemptUpload(item)).resolves.toBe(true);
+    expect(mocks.uploadAttachment).toHaveBeenCalledWith(
+      "/api/jobs/job-one/photos",
+      expect.objectContaining({ uploadId: "browser-upload", webStorageKey: "browser-upload" }),
       { caption: undefined },
     );
   });

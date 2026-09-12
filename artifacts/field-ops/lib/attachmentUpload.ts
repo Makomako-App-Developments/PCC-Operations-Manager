@@ -3,6 +3,7 @@ import { Directory, File as ExpoFile, Paths } from "expo-file-system";
 import { Platform } from "react-native";
 import { customFetch } from "@workspace/api-client-react";
 import { deleteWebAttachment, loadWebAttachment, saveWebAttachment } from "./webAttachmentStore";
+import { assertAuthOwner, type AuthOwnerGuard } from "./authIdentity";
 
 const ATTACHMENT_DIRECTORY = "pending-field-attachments";
 const MAX_ATTACHMENT_BYTES = 20 * 1024 * 1024;
@@ -186,6 +187,7 @@ export async function uploadAttachment<T = unknown>(
   attachment: DurableAttachment,
   fields: Record<string, string | undefined> = {},
   webFile?: Blob,
+  authGuard?: AuthOwnerGuard,
 ): Promise<T> {
   Sentry.addBreadcrumb({
     category: "field-ops.attachment",
@@ -204,7 +206,11 @@ export async function uploadAttachment<T = unknown>(
   }
   const options = {
     method: "POST",
-    bodyFactory: () => createAttachmentFormData(attachment, fields, uploadBlob),
+    bodyFactory: () => {
+      if (authGuard) assertAuthOwner(authGuard);
+      return createAttachmentFormData(attachment, fields, uploadBlob);
+    },
+    requestGuard: authGuard ? () => assertAuthOwner(authGuard) : undefined,
   };
   try {
     const result = await customFetch<T>(endpoint, options as Parameters<typeof customFetch>[1]);
@@ -229,22 +235,6 @@ export async function uploadAttachment<T = unknown>(
       },
     });
     throw error;
-  }
-}
-
-export async function uploadImmediateWebAttachment<T = unknown>(
-  endpoint: string,
-  attachment: DurableAttachment,
-  fields: Record<string, string | undefined> = {},
-  webFile?: Blob,
-): Promise<T> {
-  if (Platform.OS !== "web") {
-    throw attachmentError("attachment-web-only", "Immediate browser attachment upload is only available on web.");
-  }
-  try {
-    return await uploadAttachment<T>(endpoint, attachment, fields, webFile);
-  } finally {
-    await removeManagedAttachment(attachment);
   }
 }
 

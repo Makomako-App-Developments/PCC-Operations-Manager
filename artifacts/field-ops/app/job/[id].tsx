@@ -39,7 +39,8 @@ import { useAuth } from "@/context/auth";
 import { useColors } from "@/hooks/useColors";
 import { getApiUrl, trackedFetch } from "@/lib/api";
 import { useOfflinePhotoQueue } from "@/hooks/useOfflinePhotoQueue";
-import { persistAttachment, removeManagedAttachment, uploadAttachment, uploadImmediateWebAttachment, type AttachmentSource, type DurableAttachment } from "@/lib/attachmentUpload";
+import type { AttachmentSource } from "@/lib/attachmentUpload";
+import { enqueuePhoto, flushQueuedPhoto, type QueuedPhoto } from "@/lib/photoQueue";
 import { loadCachedAsset, loadCachedCoreJob, saveCachedAsset, saveCachedCoreJob } from "@/lib/jobDetailCache";
 
 // ─── Task definitions ────────────────────────────────────────────────────────
@@ -114,27 +115,21 @@ function useJobPhotos(jobId: string) {
 
 function useUploadPhoto(jobId: string) {
   const qc = useQueryClient();
+  const { user } = useAuth();
   return useMutation({
-    mutationFn: async ({ source, file, caption }: { source: AttachmentSource; file?: File; caption?: string }): Promise<JobPhoto | { queued: true; attachment: DurableAttachment; caption?: string }> => {
-      const attachment = await persistAttachment(source);
-      try {
-        if (Platform.OS === "web") {
-          const browserFile = file ?? new File([await fetch(source.uri).then(r => r.blob())], attachment.fileName, { type: attachment.mimeType });
-          const photo = await uploadImmediateWebAttachment<JobPhoto>(`/api/jobs/${jobId}/photos`, attachment, { caption }, browserFile);
-          return photo;
-        }
-        const photo = await uploadAttachment<JobPhoto>(`/api/jobs/${jobId}/photos`, attachment, { caption });
-        await removeManagedAttachment(attachment);
+    mutationFn: async ({ source, file, caption }: { source: AttachmentSource; file?: File; caption?: string }): Promise<JobPhoto | { queued: true; item: QueuedPhoto; caption?: string }> => {
+      if (!user) throw new Error("Sign in again before saving this photo.");
+      const queued = await enqueuePhoto(user.id, "job", jobId, { ...source, file: file ?? source.file }, caption);
+      if (await flushQueuedPhoto(queued, user.id)) {
         qc.invalidateQueries({ queryKey: ["job-photos", jobId] });
-        return photo;
-      } catch (err) {
-        if (Platform.OS !== "web") {
-          return { queued: true, attachment, caption };
-        }
-        throw err;
+        return { id: queued.id, blobUrl: "", caption: caption ?? null, createdAt: new Date().toISOString() };
       }
+      return { queued: true, item: queued, caption };
     },
-    onError: () => Alert.alert("Upload failed", "Could not attach photo. Please try again."),
+    onError: (error) => Alert.alert(
+      "Photo not saved",
+      error instanceof Error ? error.message : "GardenOps could not safely store this photo. Please select it again.",
+    ),
   });
 }
 
@@ -298,13 +293,14 @@ function PhotoSection({ jobId, readOnly }: { jobId: string; readOnly: boolean })
   const colors = useColors();
   const { data, isLoading, isError, refetch, isFetching } = useJobPhotos(jobId);
   const uploadPhoto = useUploadPhoto(jobId);
-  const { pending: queuedPhotos, isFlushing, add: addToQueue } = useOfflinePhotoQueue("job", jobId);
+  const { pending: queuedPhotos, isFlushing, track: trackQueuedPhoto } = useOfflinePhotoQueue("job", jobId);
   const photos = data?.data ?? [];
   const totalCount = photos.length + queuedPhotos.length;
 
   const handleMutateResult = async (result: any, caption?: string) => {
     if (result && result.queued === true) {
-      await addToQueue(result.attachment, caption);
+      trackQueuedPhoto(result.item);
+      Alert.alert("Photo saved for sync", "The photo is safe on this device and will upload automatically when the connection is available.");
     }
   };
 

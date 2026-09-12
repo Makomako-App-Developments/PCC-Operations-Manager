@@ -6,16 +6,18 @@ import React, {
   useRef,
   useState,
 } from "react";
-import { AppState, Platform } from "react-native";
+import { AppState } from "react-native";
 import { useQueryClient } from "@tanstack/react-query";
 import {
-  attemptUpload,
+  flushQueuedPhoto,
+  claimLegacyQueuedPhotos,
   QueueStorageReadError,
   readQueuedPhotos,
-  removeFromQueue,
   type QueueReadState,
 } from "@/lib/photoQueue";
 import { PhotoQueueStorageWarning } from "@/components/PhotoQueueStorageWarning";
+import { useAuth } from "@/context/auth";
+import { flushStormQueue } from "@/lib/stormPatrolQueue";
 
 interface PhotoQueueContextValue {
   isFlushing: boolean;
@@ -38,7 +40,9 @@ export function PhotoQueueProvider({ children }: { children: React.ReactNode }) 
   const [isRetryingStorage, setIsRetryingStorage] = useState(false);
   const [queueVersion, setQueueVersion] = useState(0);
   const [storageState, setStorageState] = useState<QueueReadState | "unknown">("unknown");
+  const [legacyCount, setLegacyCount] = useState(0);
   const qc = useQueryClient();
+  const { user, isLoading: authLoading } = useAuth();
   const flushingRef = useRef(false);
   const reportStorageState = useCallback((state: QueueReadState) => {
     setStorageState(state);
@@ -60,55 +64,65 @@ export function PhotoQueueProvider({ children }: { children: React.ReactNode }) 
   }, []);
 
   const flushAll = useCallback(async () => {
-    if (flushingRef.current || Platform.OS === "web") return;
+    if (flushingRef.current || authLoading || !user) return;
     flushingRef.current = true;
     setIsFlushing(true);
     try {
-      const queue = await readQueuedPhotos();
-      setStorageState(queue.state);
-      if (queue.state !== "available") return;
       let anySuccess = false;
-      for (const item of queue.items) {
-        let ok: boolean;
-        try {
-          ok = await attemptUpload(item);
-        } catch (error) {
-          if (error instanceof QueueStorageReadError) {
-            setStorageState(error.state);
-            break;
+      try {
+        const queue = await readQueuedPhotos();
+        setStorageState(queue.state);
+        setLegacyCount(queue.items.filter(item => !item.ownerId).length);
+        if (queue.state === "available") {
+          for (const item of queue.items.filter(candidate => candidate.ownerId === user.id)) {
+            let ok: boolean;
+            try {
+              ok = await flushQueuedPhoto(item, user.id);
+            } catch (error) {
+              if (error instanceof QueueStorageReadError) {
+                setStorageState(error.state);
+                break;
+              }
+              throw error;
+            }
+            if (ok) {
+              const key =
+                item.jobType === "job"
+                  ? ["job-photos", item.jobId]
+                  : item.jobType === "reactive-job"
+                    ? ["reactive-job-photos", item.jobId]
+                    : ["audit-item-photos", item.auditId, item.jobId];
+              qc.invalidateQueries({ queryKey: key });
+              anySuccess = true;
+            }
           }
-          throw error;
         }
-        if (ok) {
-          await removeFromQueue(item.id);
-          const key =
-            item.jobType === "job"
-              ? ["job-photos", item.jobId]
-              : item.jobType === "reactive-job"
-                ? ["reactive-job-photos", item.jobId]
-                : ["audit-item-photos", item.auditId, item.jobId];
-          qc.invalidateQueries({ queryKey: key });
-          anySuccess = true;
-        }
+      } catch (error) {
+        if (error instanceof QueueStorageReadError) setStorageState(error.state);
       }
       if (anySuccess) {
         setQueueVersion(v => v + 1);
       }
+      await flushStormQueue(user.id).catch(() => {});
     } finally {
       flushingRef.current = false;
       setIsFlushing(false);
     }
-  }, [qc]);
+  }, [authLoading, qc, user]);
 
   useEffect(() => {
-    flushAll();
+    const safelyFlush = () => { void flushAll().catch(() => {}); };
+    safelyFlush();
     const sub = AppState.addEventListener("change", state => {
-      if (state === "active") flushAll();
+      if (state === "active") safelyFlush();
     });
-    const timer = setInterval(flushAll, 30_000);
+    const timer = setInterval(safelyFlush, 30_000);
+    const onOnline = safelyFlush;
+    if (typeof window !== "undefined") window.addEventListener("online", onOnline);
     return () => {
       sub.remove();
       clearInterval(timer);
+      if (typeof window !== "undefined") window.removeEventListener("online", onOnline);
     };
   }, [flushAll]);
 
@@ -116,8 +130,16 @@ export function PhotoQueueProvider({ children }: { children: React.ReactNode }) 
     <PhotoQueueContext.Provider value={{ isFlushing, queueVersion, reportStorageState }}>
       <PhotoQueueStorageWarning
         state={storageState}
+        legacyCount={legacyCount}
         isRetrying={isRetryingStorage}
         onRetry={() => { void retryStorageRead(); }}
+        onClaimLegacy={() => {
+          if (!user) return;
+          void claimLegacyQueuedPhotos(user.id).then(() => {
+            setLegacyCount(0);
+            return flushAll();
+          }).catch(() => {});
+        }}
       />
       {children}
     </PhotoQueueContext.Provider>

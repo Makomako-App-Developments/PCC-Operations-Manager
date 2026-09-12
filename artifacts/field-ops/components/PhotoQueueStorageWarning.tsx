@@ -10,14 +10,19 @@ interface PhotoQueueStorageWarningProps {
   state: PhotoQueueStorageState;
   isRetrying: boolean;
   onRetry: () => void;
+  legacyCount?: number;
+  onClaimLegacy?: () => void;
 }
 
 export function PhotoQueueStorageWarning({
   state,
   isRetrying,
   onRetry,
+  legacyCount = 0,
+  onClaimLegacy,
 }: PhotoQueueStorageWarningProps) {
-  if (state !== "unavailable" && state !== "corrupt") return null;
+  const hasLegacy = legacyCount > 0;
+  if (state !== "unavailable" && state !== "corrupt" && !hasLegacy) return null;
 
   const unavailable = state === "unavailable";
   return (
@@ -30,7 +35,9 @@ export function PhotoQueueStorageWarning({
       <View style={styles.copy}>
         <Text style={styles.title}>Queued photos need attention</Text>
         <Text style={styles.message}>
-          {unavailable
+          {hasLegacy
+            ? `${legacyCount} queued photo${legacyCount === 1 ? "" : "s"} from an earlier version are paused. Resume only if they are yours.`
+            : unavailable
             ? "Queued photos are temporarily unavailable. They have not been deleted; try again when storage is available."
             : "Queued photos could not be read. They have not been deleted; do not clear app storage and try again later."}
         </Text>
@@ -38,9 +45,9 @@ export function PhotoQueueStorageWarning({
       <Pressable
         testID="photo-queue-storage-retry"
         accessibilityRole="button"
-        accessibilityLabel="Retry reading queued photos"
+        accessibilityLabel={hasLegacy ? "Resume my earlier queued photos" : "Retry reading queued photos"}
         disabled={isRetrying}
-        onPress={onRetry}
+        onPress={hasLegacy ? onClaimLegacy : onRetry}
         style={({ pressed }) => [
           styles.retry,
           (pressed || isRetrying) && styles.retryDisabled,
@@ -48,7 +55,7 @@ export function PhotoQueueStorageWarning({
       >
         {isRetrying
           ? <ActivityIndicator testID="photo-queue-storage-retry-loading" size="small" color="#92400e" />
-          : <Text style={styles.retryText}>Retry</Text>}
+          : <Text style={styles.retryText}>{hasLegacy ? "Resume mine" : "Retry"}</Text>}
       </Pressable>
     </View>
   );

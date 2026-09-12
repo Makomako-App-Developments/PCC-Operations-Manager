@@ -24,7 +24,8 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useAuth } from "@/context/auth";
 import { useColors } from "@/hooks/useColors";
-import { persistAttachment, removeManagedAttachment, uploadAttachment, uploadImmediateWebAttachment, type AttachmentSource } from "@/lib/attachmentUpload";
+import type { AttachmentSource } from "@/lib/attachmentUpload";
+import { enqueuePhotoBatch, flushQueuedPhoto } from "@/lib/photoQueue";
 import { getApiUrl } from "@/lib/api";
 
 const REPORT_DRAFT_KEY = "@report_draft_v1";
@@ -540,7 +541,7 @@ const apStyles = StyleSheet.create({
 export default function ReportScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
-  const { token } = useAuth();
+  const { token, user } = useAuth();
 
   const navigation = useNavigation();
 
@@ -619,24 +620,19 @@ export default function ReportScreen() {
     return unsubscribe;
   }, [navigation, saveDraft]);
 
-  const uploadPhotos = async (jobId: string) => {
-    for (const photo of selectedPhotos) {
-      const attachment = await persistAttachment(photo);
-      try {
-        if (Platform.OS === "web") {
-          const browserFile = photo.file ?? new File([await fetch(photo.uri).then(r => r.blob())], attachment.fileName, { type: attachment.mimeType });
-          await uploadImmediateWebAttachment(`/api/reactive-jobs/${jobId}/photos`, attachment, {}, browserFile);
-        } else {
-          await uploadAttachment(`/api/reactive-jobs/${jobId}/photos`, attachment);
-          await removeManagedAttachment(attachment);
-        }
-      } catch {
-        if (Platform.OS !== "web") {
-          const { enqueuePhoto } = await import("@/hooks/useOfflinePhotoQueue");
-          await enqueuePhoto("reactive-job", jobId, attachment);
-        }
-      }
+  const uploadPhotos = async (jobId: string): Promise<number> => {
+    if (!user) throw new Error("Sign in again before saving these photos.");
+    const queued = await enqueuePhotoBatch(selectedPhotos.map(photo => ({
+      ownerId: user.id,
+      jobType: "reactive-job" as const,
+      jobId,
+      source: photo,
+    })));
+    let waiting = 0;
+    for (const item of queued) {
+      if (!(await flushQueuedPhoto(item, user.id))) waiting += 1;
     }
+    return waiting;
   };
 
   const pickFromLibrary = async () => {
@@ -706,7 +702,30 @@ export default function ReportScreen() {
           await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
           if (selectedPhotos.length > 0 && newJob?.id) {
             setUploadingPhotos(true);
-            await uploadPhotos(newJob.id);
+            try {
+              const waiting = await uploadPhotos(newJob.id);
+              if (waiting > 0) {
+                Alert.alert(
+                  "Report saved with queued photos",
+                  `${waiting} photo${waiting === 1 ? " is" : "s are"} safe on this device and will upload automatically.`,
+                );
+              }
+            } catch (error) {
+              setUploadingPhotos(false);
+              await clearDraft();
+              setIssueType("");
+              setPriority("medium");
+              setDescription("");
+              setSelectedAssetId("");
+              setSelectedAssetName("");
+              setPestPlantsSelected([]);
+              setSelectedPhotos([]);
+              Alert.alert(
+                "Report saved, photos not saved",
+                `${error instanceof Error ? error.message : "GardenOps could not safely store the selected photos."} Open the new reactive job and select the photos again.`,
+              );
+              return;
+            }
             setUploadingPhotos(false);
           }
           await clearDraft();

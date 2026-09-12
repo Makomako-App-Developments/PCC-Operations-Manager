@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   readQueuedPhotos: vi.fn(),
+  authState: { user: { id: "user-one" }, isLoading: false },
 }));
 
 vi.mock("@expo/vector-icons", () => ({
@@ -33,10 +34,15 @@ vi.mock("react-native", () => {
 });
 
 vi.mock("@/lib/photoQueue", () => ({
-  attemptUpload: vi.fn(),
+  flushQueuedPhoto: vi.fn(),
   QueueStorageReadError: class QueueStorageReadError extends Error {},
   readQueuedPhotos: mocks.readQueuedPhotos,
-  removeFromQueue: vi.fn(),
+}));
+vi.mock("@/context/auth", () => ({
+  useAuth: () => mocks.authState,
+}));
+vi.mock("@/lib/stormPatrolQueue", () => ({
+  flushStormQueue: vi.fn().mockResolvedValue([]),
 }));
 
 import {

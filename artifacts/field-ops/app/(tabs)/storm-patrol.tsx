@@ -12,6 +12,7 @@ import { requestCameraPermission, requestMediaLibraryPermission } from "@/hooks/
 import { useColors } from "@/hooks/useColors";
 import { clearStormQueueItems, createStormQueueItem, enqueueStormItems, flushStormQueue, getStormPatrolCompletionRequirements, isUnrecoverableQueuedStormPhoto, loadStormQueue, stormQueueId, type StormPhotoPurpose, type StormQueueItem } from "@/lib/stormPatrolQueue";
 import { persistAttachment, removeManagedAttachment, type AttachmentSource, type DurableAttachment } from "@/lib/attachmentUpload";
+import { useAuth } from "@/context/auth";
 
 const CACHE_KEY = "@storm_patrol_current_v1";
 const MAX_PHOTOS_PER_SECTION = 3;
@@ -41,6 +42,7 @@ async function stageAttachments(sources: readonly AttachmentSource[]): Promise<D
 
 export default function StormPatrolScreen() {
   const colors = useColors();
+  const { user } = useAuth();
   const insets = useSafeAreaInsets();
   const current = useGetCurrentStormPatrol({
     query: { queryKey: getGetCurrentStormPatrolQueryKey(), refetchInterval: 30_000 },
@@ -72,10 +74,10 @@ export default function StormPatrolScreen() {
   const [removedSavedPhotoIds, setRemovedSavedPhotoIds] = useState<Set<string>>(() => new Set());
   const patrol = ((current.data as unknown as { data?: Patrol } | undefined)?.data ?? cached) as Patrol | null;
 
-  const refreshQueue = useCallback(() => loadStormQueue().then(setQueue).catch(() => {}), []);
+  const refreshQueue = useCallback(() => user ? loadStormQueue(user.id).then(setQueue).catch(() => {}) : Promise.resolve(), [user]);
   useFocusEffect(useCallback(() => {
-    void flushStormQueue().then(setQueue).catch(refreshQueue);
-  }, [refreshQueue]));
+    if (user) void flushStormQueue(user.id).then(setQueue).catch(refreshQueue);
+  }, [refreshQueue, user]));
   useEffect(() => {
     const live = (current.data as unknown as { data?: Patrol } | undefined)?.data;
     if (live) { setCached(live); AsyncStorage.setItem(CACHE_KEY, JSON.stringify(live)).catch(() => {}); }
@@ -173,7 +175,8 @@ export default function StormPatrolScreen() {
     return { locationLat: point.coords.latitude, locationLng: point.coords.longitude };
   };
   const sync = async (showFailure = false) => {
-    const remaining = await flushStormQueue();
+    if (!user) throw new Error("Sign in again before syncing Storm Patrol.");
+    const remaining = await flushStormQueue(user.id);
     setQueue(remaining);
     await current.refetch();
     if (showFailure && remaining.length > 0) {
@@ -211,7 +214,7 @@ export default function StormPatrolScreen() {
     );
   };
   const complete = async () => {
-    if (!selected) return;
+    if (!selected || !user) return;
     if (photos.some(photo => photo.purpose === "urgent_issue")) {
       Alert.alert("Urgent issue not sent", "Send or remove the urgent issue photo before completing this patrol check.");
       return;
@@ -229,6 +232,7 @@ export default function StormPatrolScreen() {
         const pendingItems = stagedPhotos.map((attachment, index) => {
           const idempotencyKey = `storm-photo-${stormQueueId()}`;
           return createStormQueueItem({
+            ownerId: user.id,
             kind: "photo",
             idempotencyKey,
             payload: {
@@ -285,6 +289,7 @@ export default function StormPatrolScreen() {
           if (!observation) continue;
           const parent = createStormQueueItem({
             kind: "observation",
+            ownerId: user.id,
             idempotencyKey: observation.key,
             payload: { data: { eventId: selected.eventId, assetId: selected.assetId, sourceJobId: selected.id, description: observation.description, notes: observation.notes, idempotencyKey: observation.key, ...point } },
           });
@@ -293,6 +298,7 @@ export default function StormPatrolScreen() {
             const idempotencyKey = `storm-photo-${stormQueueId()}`;
             pendingItems.push(createStormQueueItem({
               kind: "photo",
+              ownerId: user.id,
               idempotencyKey,
               dependsOn: parent.id,
               payload: { attachment: photo.source, purpose: "observation", observationIdempotencyKey: observation.key, idempotencyKey },
@@ -305,6 +311,7 @@ export default function StormPatrolScreen() {
         const completionKey = `storm-completion-${stormQueueId()}`;
         const completion = createStormQueueItem({
           kind: "completion",
+          ownerId: user.id,
           idempotencyKey: completionKey,
           payload: { jobId: selected.id, data: { outcome: dangerous ? "too_dangerous" : "completed", actualTimeMins: elapsedMinutes, comments: comments.trim() || undefined, workTypes: (dangerous ? ["site_too_dangerous"] : workTypes) as any, dangerousReason: dangerous ? dangerReason.trim() : undefined, idempotencyKey: completionKey, ...point } },
         });
@@ -315,6 +322,7 @@ export default function StormPatrolScreen() {
         const idempotencyKey = `storm-photo-${stormQueueId()}`;
         pendingItems.push(createStormQueueItem({
           kind: "photo",
+          ownerId: user.id,
           idempotencyKey,
           dependsOn: completionItemId,
           payload: { jobId: selected.id, attachment: photo.source, purpose: photo.purpose, idempotencyKey },
@@ -337,7 +345,7 @@ export default function StormPatrolScreen() {
     }
   };
   const submitObservation = async () => {
-    if (!patrol) return;
+    if (!patrol || !user) return;
     if (!observation.trim()) { Alert.alert("Description required", "Describe what you observed before sending."); return; }
     if (!observationLocation) { Alert.alert("Location required", "Capture your current location before sending the observation."); return; }
     let stagedPhotos: DurableAttachment[] = [];
@@ -345,12 +353,13 @@ export default function StormPatrolScreen() {
     try {
       const idempotencyKey = `storm-observation-${stormQueueId()}`;
       stagedPhotos = await stageAttachments(observationPhotos);
-      const item = createStormQueueItem({ kind: "observation", idempotencyKey, payload: { data: { eventId: patrol.event.id, description: observation.trim(), idempotencyKey, ...observationLocation } } });
+      const item = createStormQueueItem({ ownerId: user.id, kind: "observation", idempotencyKey, payload: { data: { eventId: patrol.event.id, description: observation.trim(), idempotencyKey, ...observationLocation } } });
       const pendingItems = [item];
       for (const photo of stagedPhotos) {
         const photoIdempotencyKey = `storm-photo-${stormQueueId()}`;
         pendingItems.push(createStormQueueItem({
           kind: "photo",
+          ownerId: user.id,
           idempotencyKey: photoIdempotencyKey,
           dependsOn: item.id,
           payload: { attachment: photo, purpose: "observation", observationIdempotencyKey: idempotencyKey, idempotencyKey: photoIdempotencyKey },
@@ -382,7 +391,7 @@ export default function StormPatrolScreen() {
     }
   };
   const urgent = async () => {
-    if (!patrol || !selected || !issue.trim()) return;
+    if (!patrol || !selected || !issue.trim() || !user) return;
     const urgentPhotos = photos.filter(p => p.purpose === "urgent_issue");
     if (!urgentPhotos.length) { Alert.alert("Urgent photo required", "Capture an urgent issue photo before sending the alert."); return; }
     let stagedUrgentPhotos: DurableAttachment[] = [];
@@ -392,6 +401,7 @@ export default function StormPatrolScreen() {
       const alertIdempotencyKey = `storm-alert-${stormQueueId()}`;
       const alert = createStormQueueItem({
         kind: "alert",
+        ownerId: user.id,
         idempotencyKey: alertIdempotencyKey,
         payload: { eventId: patrol.event.id, message: issue.trim(), stormJobId: selected.id, idempotencyKey: alertIdempotencyKey },
       });
@@ -399,6 +409,7 @@ export default function StormPatrolScreen() {
         const idempotencyKey = `storm-photo-${stormQueueId()}`;
         return createStormQueueItem({
           kind: "photo",
+          ownerId: user.id,
           idempotencyKey,
           dependsOn: alert.id,
           payload: { jobId: selected.id, attachment: photo, purpose: "urgent_issue", idempotencyKey },
@@ -407,7 +418,7 @@ export default function StormPatrolScreen() {
       const queuedItems = await enqueueStormItems(pendingItems);
       durablyQueued = true;
       setIssue(""); setUrgentExpanded(false); setPhotos(currentPhotos => currentPhotos.filter(photo => photo.purpose !== "urgent_issue"));
-      const remaining = await sync().catch(async () => { await refreshQueue(); return loadStormQueue(); });
+      const remaining = await sync().catch(async () => { await refreshQueue(); return loadStormQueue(user.id); });
       if (remaining.some(item => queuedItems.some(queued => queued.id === item.id))) {
         Alert.alert("Urgent issue saved for sync", "The alert is safe on this device. GardenOps will keep retrying its attachment.");
       }

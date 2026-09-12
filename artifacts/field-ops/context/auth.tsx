@@ -10,6 +10,7 @@ import React, {
 } from "react";
 import { Platform } from "react-native";
 import * as Notifications from "expo-notifications";
+import { assertRefreshedTokenOwner, setCurrentAuthOwner } from "@/lib/authIdentity";
 
 const TOKEN_KEY = "pcc_auth_token";
 const USER_KEY = "pcc_auth_user";
@@ -130,6 +131,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     setAuthTokenUpdater(newToken => {
+      assertRefreshedTokenOwner(newToken);
       _currentToken = newToken;
       setToken(newToken);
       secureSet(TOKEN_KEY, newToken).catch(() => {});
@@ -160,6 +162,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                   user: AuthUser;
                 };
                 _currentToken = redeemedToken;
+                setCurrentAuthOwner(redeemedUser.id);
                 setToken(redeemedToken);
                 setUser(redeemedUser);
                 Sentry.setUser({ id: redeemedUser.id, username: redeemedUser.name });
@@ -184,6 +187,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           _currentToken = storedToken;
           setToken(storedToken);
           const parsedUser = JSON.parse(storedUser) as AuthUser;
+            setCurrentAuthOwner(parsedUser.id);
           setUser(parsedUser);
           Sentry.setUser({ id: parsedUser.id, username: parsedUser.name });
           // Re-register push token on app restart (token may have rotated)
@@ -200,6 +204,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const logout = async () => {
     await clearPushToken();
     _currentToken = null;
+    setCurrentAuthOwner(null);
     _logoutFn = null;
     setToken(null);
     setUser(null);
@@ -217,6 +222,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const login = async (newToken: string, newUser: AuthUser) => {
     // Set in-memory state immediately — this is what drives the UI.
     _currentToken = newToken;
+    setCurrentAuthOwner(newUser.id);
     setToken(newToken);
     setUser(newUser);
     Sentry.setUser({ id: newUser.id, username: newUser.name });

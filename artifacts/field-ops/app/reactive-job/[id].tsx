@@ -27,7 +27,8 @@ import { PhotoQueueActions } from "@/components/PhotoQueueActions";
 import { PinMap } from "@/components/PinMap";
 import { useAuth } from "@/context/auth";
 import { useGetReactiveJob, useUpdateReactiveJob } from "@workspace/api-client-react";
-import { persistAttachment, removeManagedAttachment, uploadAttachment, uploadImmediateWebAttachment, type AttachmentSource, type DurableAttachment } from "@/lib/attachmentUpload";
+import type { AttachmentSource } from "@/lib/attachmentUpload";
+import { enqueuePhoto, flushQueuedPhoto, type QueuedPhoto } from "@/lib/photoQueue";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -73,26 +74,21 @@ function useReactiveJobPhotos(id: string) {
 
 function useUploadReactivePhoto(jobId: string) {
   const qc = useQueryClient();
+  const { user } = useAuth();
   return useMutation({
-    mutationFn: async ({ source, file }: { source: AttachmentSource; file?: File }): Promise<JobPhoto | { queued: true; attachment: DurableAttachment }> => {
-      const attachment = await persistAttachment(source);
-      try {
-        if (Platform.OS === "web") {
-          const browserFile = file ?? new File([await fetch(source.uri).then(r => r.blob())], attachment.fileName, { type: attachment.mimeType });
-          return uploadImmediateWebAttachment<JobPhoto>(`/api/reactive-jobs/${jobId}/photos`, attachment, {}, browserFile);
-        }
-        const photo = await uploadAttachment<JobPhoto>(`/api/reactive-jobs/${jobId}/photos`, attachment);
-        await removeManagedAttachment(attachment);
+    mutationFn: async ({ source, file }: { source: AttachmentSource; file?: File }): Promise<JobPhoto | { queued: true; item: QueuedPhoto }> => {
+      if (!user) throw new Error("Sign in again before saving this photo.");
+      const queued = await enqueuePhoto(user.id, "reactive-job", jobId, { ...source, file: file ?? source.file });
+      if (await flushQueuedPhoto(queued, user.id)) {
         qc.invalidateQueries({ queryKey: ["reactive-job-photos", jobId] });
-        return photo;
-      } catch (err) {
-        if (Platform.OS !== "web") {
-          return { queued: true, attachment };
-        }
-        throw err;
+        return { id: queued.id, blobUrl: "", caption: null, createdAt: new Date().toISOString() };
       }
+      return { queued: true, item: queued };
     },
-    onError: () => Alert.alert("Upload failed", "Could not upload photo. Please try again."),
+    onError: (error) => Alert.alert(
+      "Photo not saved",
+      error instanceof Error ? error.message : "GardenOps could not safely store this photo. Please select it again.",
+    ),
   });
 }
 
@@ -102,13 +98,14 @@ function AttachmentsSection({ jobId, readOnly }: { jobId: string; readOnly: bool
   const colors = useColors();
   const { data, isLoading } = useReactiveJobPhotos(jobId);
   const upload = useUploadReactivePhoto(jobId);
-  const { pending: queuedPhotos, isFlushing, add: addToQueue } = useOfflinePhotoQueue("reactive-job", jobId);
+  const { pending: queuedPhotos, isFlushing, track: trackQueuedPhoto } = useOfflinePhotoQueue("reactive-job", jobId);
   const photos = data?.data ?? [];
   const totalCount = photos.length + queuedPhotos.length;
 
   const handleMutateResult = async (result: any) => {
     if (result && result.queued === true) {
-      await addToQueue(result.attachment);
+      trackQueuedPhoto(result.item);
+      Alert.alert("Photo saved for sync", "The photo is safe on this device and will upload automatically when the connection is available.");
     }
   };
 

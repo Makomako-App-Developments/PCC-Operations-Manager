@@ -36,3 +36,4 @@
 - [Operational alert state transitions](operational-alert-state-transitions.md) — mark incident state before async delivery; only successful metrics can clear it, and recovery stays visible.
 - [Photo cleanup provider deadlines](photo-cleanup-provider-deadlines.md) — bound storage deletes below the queue lease and pass cancellation so reclaimed rows do not duplicate in-flight provider traffic.
 - [Photo cleanup schema contract](photo-cleanup-schema-contract.md) — compare directly applied cleanup migrations with runtime Drizzle metadata before concurrency tests run.
+- [Queued uploads and auth identity](queued-upload-auth-identity.md) — durable uploads must stay bound to their originating user through retries, token refresh, account switches, and multi-tab sessions.

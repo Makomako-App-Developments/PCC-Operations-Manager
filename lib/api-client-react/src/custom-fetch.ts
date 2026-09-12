@@ -2,6 +2,8 @@ export type CustomFetchOptions = Omit<RequestInit, "body"> & {
   body?: BodyInit | null;
   /** Rebuilds non-replayable request bodies (especially native FormData) for every auth retry. */
   bodyFactory?: () => BodyInit | null;
+  /** Revalidated immediately before each initial or auth-refreshed network send. */
+  requestGuard?: () => void;
   responseType?: "json" | "text" | "blob" | "auto";
 };
 
@@ -353,7 +355,7 @@ export async function customFetch<T = unknown>(
   options: CustomFetchOptions = {},
   _retry = false,
 ): Promise<T> {
-  const { responseType = "auto", headers: headersInit, bodyFactory, ...init } = options;
+  const { responseType = "auto", headers: headersInit, bodyFactory, requestGuard, ...init } = options;
   const body = bodyFactory ? bodyFactory() : init.body;
 
   const method = resolveMethod(input, init.method);
@@ -391,6 +393,7 @@ export async function customFetch<T = unknown>(
   } else if (_retry) {
     headers.delete("authorization");
   }
+  requestGuard?.();
 
   const requestInfo = { method, url: resolvedUrl };
   const credentials = _retry || !authToken ? ("include" as const) : ("omit" as const);

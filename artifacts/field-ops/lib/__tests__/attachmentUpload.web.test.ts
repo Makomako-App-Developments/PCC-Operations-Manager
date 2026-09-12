@@ -24,11 +24,12 @@ import {
   persistAttachment,
   removeManagedAttachment,
   uploadAttachment,
-  uploadImmediateWebAttachment,
   WEB_ATTACHMENT_MISSING_MESSAGE,
 } from "../attachmentUpload";
+import { captureAuthOwner, setCurrentAuthOwner } from "../authIdentity";
 
 beforeEach(() => {
+    setCurrentAuthOwner("user-one");
   stored.clear();
   customFetch.mockReset();
   addBreadcrumb.mockClear();
@@ -56,6 +57,25 @@ describe("browser attachment persistence", () => {
       webStorageKey: "stable-upload",
     });
     expect(await stored.get("stable-upload")?.blob.text()).toBe("gardenops-photo");
+  });
+
+  it("aborts an auth-refresh retry when the signed-in owner changes", async () => {
+    const attachment = await persistAttachment({
+      uri: "blob:owner-photo",
+      file: new File(["owner-photo"], "owner.jpg", { type: "image/jpeg" }),
+      uploadId: "owner-upload",
+    });
+    const guard = captureAuthOwner("user-one");
+    customFetch.mockImplementationOnce(async (_endpoint, options) => {
+      options.bodyFactory();
+      options.requestGuard();
+      setCurrentAuthOwner("user-two");
+      options.bodyFactory();
+      return { id: "must-not-upload" };
+    });
+
+    await expect(uploadAttachment("/api/jobs/job-one/photos", attachment, {}, undefined, guard))
+      .rejects.toThrow("signed-in account changed");
   });
 
   it("rebuilds multipart bodies from durable bytes after in-memory File state is gone", async () => {
@@ -95,33 +115,6 @@ describe("browser attachment persistence", () => {
       size: 10,
       managed: false,
     })).rejects.toThrow(WEB_ATTACHMENT_MISSING_MESSAGE);
-  });
-
-  it("cleans staged browser bytes after an immediate upload succeeds", async () => {
-    const attachment = await persistAttachment({
-      uri: "blob:job-photo",
-      file: new File(["job-photo"], "job.jpg", { type: "image/jpeg" }),
-      uploadId: "job-upload",
-    });
-    customFetch.mockResolvedValueOnce({ id: "server-photo" });
-
-    await uploadImmediateWebAttachment("/api/jobs/job-one/photos", attachment);
-
-    expect(stored.has("job-upload")).toBe(false);
-  });
-
-  it("cleans staged browser bytes after an immediate upload fails", async () => {
-    const attachment = await persistAttachment({
-      uri: "blob:reactive-photo",
-      file: new File(["reactive-photo"], "reactive.jpg", { type: "image/jpeg" }),
-      uploadId: "reactive-upload",
-    });
-    customFetch.mockRejectedValueOnce(new Error("Network unavailable"));
-
-    await expect(uploadImmediateWebAttachment("/api/reactive-jobs/job-one/photos", attachment))
-      .rejects.toThrow("Network unavailable");
-
-    expect(stored.has("reactive-upload")).toBe(false);
   });
 
   it("fails before queueing when browser storage cannot preserve the bytes", async () => {

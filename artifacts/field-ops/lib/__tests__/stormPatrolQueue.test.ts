@@ -33,8 +33,10 @@ vi.mock("../attachmentUpload", () => ({
 }));
 
 import { clearQueuedStormPhotos, clearStormQueueItems, createStormQueueItem, deserializeStormQueue, enqueueStormItem, enqueueStormItems, enqueueStormObservationPhoto, flushStormQueue, getStormPatrolCompletionRequirements, isPermanentStormCompletionFailure, isStormQueueItemReady, isUnrecoverableQueuedStormPhoto, loadStormQueue, saveStormQueue, serializeStormQueue, validatePostStormConditions, validateStormCompletionComments, validateStormPhaseCompletion, type StormQueueItem } from "../stormPatrolQueue";
+import { setCurrentAuthOwner } from "../authIdentity";
 
 beforeEach(() => {
+  setCurrentAuthOwner("user-one");
   values.clear();
   setItem.mockReset().mockImplementation(async (key: string, value: string) => { values.set(key, value); });
   customFetch.mockReset().mockResolvedValue({ ok: true });
@@ -44,7 +46,8 @@ beforeEach(() => {
 });
 
 describe("Storm Patrol offline queue", () => {
-  const item: StormQueueItem = { id: "one", kind: "completion", idempotencyKey: "completion-one", createdAt: "2026-01-01T00:00:00.000Z", attempts: 0, payload: { jobId: "job" } };
+  const ownerId = "user-one";
+  const item: StormQueueItem = { id: "one", ownerId, kind: "completion", idempotencyKey: "completion-one", createdAt: "2026-01-01T00:00:00.000Z", attempts: 0, payload: { jobId: "job" } };
 
   it("round-trips durable queue metadata", () => {
     expect(deserializeStormQueue(serializeStormQueue([item]))).toEqual([item]);
@@ -258,7 +261,7 @@ describe("Storm Patrol offline queue", () => {
       })
       .mockResolvedValueOnce({ ok: true });
 
-    expect(await flushStormQueue()).toEqual([]);
+    expect(await flushStormQueue(ownerId)).toEqual([]);
     expect(uploadAttachment).not.toHaveBeenCalled();
     expect(removeManagedAttachment).toHaveBeenCalledWith(
       expect.objectContaining({ uploadId: "dependent-photo" }),
@@ -302,7 +305,7 @@ describe("Storm Patrol offline queue", () => {
       data: { code, error: "Human-readable wording is not used for classification." },
     });
 
-    expect(await flushStormQueue()).toEqual([]);
+    expect(await flushStormQueue(ownerId)).toEqual([]);
     expect(uploadAttachment).not.toHaveBeenCalled();
     expect(removeManagedAttachment).toHaveBeenCalledWith(
       expect.objectContaining({ uploadId: `${kind}-photo` }),
@@ -358,7 +361,7 @@ describe("Storm Patrol offline queue", () => {
       }));
     });
 
-    const flushing = flushStormQueue();
+    const flushing = flushStormQueue(ownerId);
     await uploadStarted;
     const clearing = clearQueuedStormPhotos();
     rejectUpload(new Error("HTTP 400: Photo is required"));
@@ -369,7 +372,7 @@ describe("Storm Patrol offline queue", () => {
   });
 
   it("queues an observation photo behind its observation metadata", async () => {
-    const photo = await enqueueStormObservationPhoto("file:///observation.jpg", "observation-key", "observation-item");
+    const photo = await enqueueStormObservationPhoto(ownerId, "file:///observation.jpg", "observation-key", "observation-item");
     expect(photo.kind).toBe("photo");
     expect(photo.dependsOn).toBe("observation-item");
     expect(photo.payload).toMatchObject({
@@ -389,7 +392,7 @@ describe("Storm Patrol offline queue", () => {
       }));
     });
 
-    const flushing = flushStormQueue();
+    const flushing = flushStormQueue(ownerId);
     await uploadStarted;
     const newItem = await enqueueStormItem({
       kind: "observation",
@@ -404,9 +407,19 @@ describe("Storm Patrol offline queue", () => {
 
   it("serializes overlapping flushes so an item is sent once", async () => {
     await saveStormQueue([item]);
-    await Promise.all([flushStormQueue(), flushStormQueue()]);
+    await Promise.all([flushStormQueue(ownerId), flushStormQueue(ownerId)]);
     expect(customFetch).toHaveBeenCalledTimes(1);
     expect(await loadStormQueue()).toEqual([]);
+  });
+
+  it("quarantines ownerless and other-user Storm Patrol records", async () => {
+    const ownerless = { ...item, id: "legacy", ownerId: undefined };
+    const otherUser = { ...item, id: "other-user", ownerId: "user-two" };
+    await saveStormQueue([ownerless, otherUser, item]);
+
+    expect(await flushStormQueue(ownerId)).toEqual([ownerless]);
+    expect(customFetch).toHaveBeenCalledTimes(1);
+    expect(await loadStormQueue()).toEqual([ownerless, otherUser]);
   });
 
   it("continues syncing unrelated records after one attachment fails", async () => {
@@ -431,7 +444,7 @@ describe("Storm Patrol offline queue", () => {
     await saveStormQueue([failedPhoto, observation]);
     uploadAttachment.mockRejectedValueOnce(new Error("Network unavailable"));
 
-    const remaining = await flushStormQueue();
+    const remaining = await flushStormQueue(ownerId);
 
     expect(remaining).toHaveLength(1);
     expect(remaining[0]).toMatchObject({ id: "failed-photo", attempts: 1 });
@@ -440,6 +453,7 @@ describe("Storm Patrol offline queue", () => {
 
   it("keeps a Storm Patrol photo after an offline attempt and delivers it once after reconnecting", async () => {
     const photo = await enqueueStormItem({
+      ownerId,
       kind: "photo",
       idempotencyKey: "storm-photo-one",
       payload: {
@@ -457,17 +471,19 @@ describe("Storm Patrol offline queue", () => {
     });
 
     uploadAttachment.mockRejectedValueOnce(new Error("Network unavailable"));
-    await flushStormQueue();
+    await flushStormQueue(ownerId);
     expect(await loadStormQueue()).toMatchObject([
       { id: photo.id, attempts: 1, idempotencyKey: "storm-photo-one" },
     ]);
 
     uploadAttachment.mockResolvedValueOnce({ id: "server-storm-photo-one" });
-    await flushStormQueue();
+    await flushStormQueue(ownerId);
     expect(uploadAttachment).toHaveBeenLastCalledWith(
       "/api/storm-patrol/jobs/storm-job/photos",
       expect.objectContaining({ uploadId: "storm-upload-one" }),
       { purpose: "before", idempotencyKey: "storm-photo-one", observationIdempotencyKey: undefined },
+      undefined,
+      expect.objectContaining({ ownerId }),
     );
     expect(await loadStormQueue()).toEqual([]);
     expect(removeManagedAttachment).toHaveBeenCalledWith(
