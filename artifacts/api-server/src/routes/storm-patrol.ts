@@ -514,6 +514,25 @@ router.get("/storm-patrol/jobs", requireAuth, validateQuery(z.object({ eventId: 
   res.json({ data: await enrichedStormJobs(conditions.length ? and(...conditions) : undefined) });
 });
 
+router.delete("/storm-patrol/jobs/:id", requireAuth, requireRole("manager"), async (req, res) => {
+  const id = String(req.params.id);
+  const result = await executeWithCircuitBreaker(() => db.transaction(async tx => {
+    const [job] = await tx.select().from(stormJobsTable).where(eq(stormJobsTable.id, id)).limit(1).for("update");
+    if (!job) return { status: "missing" as const };
+    if (job.status !== "pending") return { status: "conflict" as const };
+    await tx.delete(stormJobsTable).where(eq(stormJobsTable.id, id));
+    return { status: "cancelled" as const, job };
+  }));
+  if (result.status === "missing") { res.status(404).json({ error: "Storm Patrol job not found." }); return; }
+  if (result.status === "conflict") { res.status(409).json({ error: "Only pending Storm Patrol jobs can be cancelled." }); return; }
+  try {
+    await auditLog({ tableName: "storm_jobs", recordId: id, action: "DELETE", changedById: req.auth!.userId, oldData: result.job as any });
+  } catch (error) {
+    console.error("[storm-job-cancel-audit]", error instanceof Error ? error.message : "Audit write failed");
+  }
+  res.status(204).send();
+});
+
 router.post("/storm-patrol/jobs/:id/claim", requireAuth, async (req, res) => {
   const id = String(req.params.id); const mine = await ownJob(id, req.auth!.userId, req.auth!.teamId, req.auth!.role); if (mine.error) { res.status(mine.error).json({ error: mine.error === 404 ? "Storm job not found" : "Forbidden" }); return; }
   const [job] = await executeWithCircuitBreaker(() => db.update(stormJobsTable).set({ assignedUserId: req.auth!.userId, status: "in_progress", startedAt: new Date(), updatedAt: new Date() }).where(and(eq(stormJobsTable.id, id), eq(stormJobsTable.status, "pending"), isNull(stormJobsTable.assignedUserId))).returning());

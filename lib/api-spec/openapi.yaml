@@ -1362,6 +1362,19 @@ paths:
                 },
             },
         }
+  /storm-patrol/jobs/{id}:
+    delete:
+      operationId: cancelStormPatrolJob
+      tags: [storm-patrol]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "204": { description: Pending job cancelled }
+        "404": { description: Storm Patrol job not found }
+        "409": { description: Job is no longer pending }
   /storm-patrol/jobs/{id}/claim:
     post:
       operationId: claimStormPatrolJob

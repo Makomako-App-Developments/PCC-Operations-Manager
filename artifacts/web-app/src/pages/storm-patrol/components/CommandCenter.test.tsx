@@ -6,6 +6,7 @@ import CommandCenter, { filterStormwaterAssets } from "./CommandCenter";
 
 const mocks = vi.hoisted(() => ({
   publish: vi.fn(),
+  cancelJob: vi.fn(),
   toast: vi.fn(),
   customFetch: vi.fn(),
 }));
@@ -71,6 +72,7 @@ vi.mock("@workspace/api-client-react", () => ({
   useListTeams: () => ({ data: [{ id: "team-1", name: "Storm Team" }] }),
   useListAssets: () => ({ data: { data: assets, total: assets.length, page: 1, limit: 2000 } }),
   usePublishStormPatrolPackage: () => ({ mutateAsync: mocks.publish, isPending: false }),
+  useCancelStormPatrolJob: () => ({ mutateAsync: mocks.cancelJob, isPending: false }),
   useCloseStormPatrolEvent: () => ({ mutateAsync: vi.fn(), isPending: false }),
   useCreateStormPatrolAlert: () => ({ mutateAsync: vi.fn(), isPending: false }),
   useAcknowledgeStormPatrolAlert: () => ({ mutateAsync: vi.fn(), isPending: false }),
@@ -150,6 +152,7 @@ beforeEach(() => {
 
   mocks.publish.mockReset();
   mocks.publish.mockResolvedValue({ package: {}, jobs: [] });
+  mocks.cancelJob.mockReset().mockResolvedValue(undefined);
   mocks.toast.mockReset();
   mocks.customFetch.mockReset();
   mocks.customFetch.mockResolvedValue(new Blob(["photo"], { type: "image/jpeg" }));
@@ -164,6 +167,41 @@ afterEach(() => {
 });
 
 describe("Storm Patrol work package asset filters", () => {
+  it("confirms and cancels only pending live jobs", async () => {
+    const user = userEvent.setup();
+    renderCommandCenter([
+      {
+        id: "job-pending",
+        eventId: "event-1",
+        workPackageId: "package-1",
+        phase: "pre",
+        assetId: "asset-1",
+        teamId: "team-1",
+        status: "pending",
+        assetName: "Pending Site",
+      },
+      {
+        id: "job-completed",
+        eventId: "event-1",
+        workPackageId: "package-1",
+        phase: "pre",
+        assetId: "asset-2",
+        teamId: "team-1",
+        status: "completed",
+        assetName: "Completed Site",
+      },
+    ]);
+
+    expect(screen.queryByRole("button", { name: "Cancel pending job for Completed Site" })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Cancel pending job for Pending Site" }));
+    expect(screen.getByRole("heading", { name: "Cancel pending job?" })).toBeVisible();
+
+    await user.click(screen.getByRole("button", { name: "Cancel job" }));
+
+    await waitFor(() => expect(mocks.cancelJob).toHaveBeenCalledWith({ id: "job-pending" }));
+    expect(mocks.toast).toHaveBeenCalledWith(expect.objectContaining({ title: "Pending job cancelled" }));
+  });
+
   it("filters live operations by phase and sorts table columns in both directions", async () => {
     const user = userEvent.setup();
     renderCommandCenter([

@@ -2374,6 +2374,10 @@ export const ListStormPatrolJobsResponse = zod.object({
   ),
 });
 
+export const CancelStormPatrolJobParams = zod.object({
+  id: zod.coerce.string().uuid(),
+});
+
 export const ClaimStormPatrolJobParams = zod.object({
   id: zod.coerce.string().uuid(),
 });

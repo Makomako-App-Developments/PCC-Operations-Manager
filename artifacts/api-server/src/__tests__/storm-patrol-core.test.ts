@@ -28,6 +28,14 @@ describe("Storm Patrol core invariants", () => {
     expect(source).toContain('idempotencyKey, body.idempotencyKey');
   });
 
+  it("cancels only a transaction-locked pending job", async () => {
+    const source = await readFile(fileURLToPath(new URL("../routes/storm-patrol.ts", import.meta.url)), "utf8");
+    expect(source).toContain('router.delete("/storm-patrol/jobs/:id", requireAuth, requireRole("manager")');
+    expect(source).toContain('.limit(1).for("update")');
+    expect(source).toContain('job.status !== "pending"');
+    expect(source).toContain("tx.delete(stormJobsTable)");
+  });
+
   it("replaces saved completion details without duplicating dangerous-site follow-ups", async () => {
     const source = await readFile(fileURLToPath(new URL("../routes/storm-patrol.ts", import.meta.url)), "utf8");
     expect(source).toContain('inArray(stormJobsTable.status, ["in_progress", "completed", "too_dangerous"])');

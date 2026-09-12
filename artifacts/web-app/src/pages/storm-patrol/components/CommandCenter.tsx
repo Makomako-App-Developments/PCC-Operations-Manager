@@ -11,6 +11,7 @@ import {
   useCreateStormPatrolAlert,
   useAcknowledgeStormPatrolAlert,
   useRetryStormPatrolAlertEmail,
+  useCancelStormPatrolJob,
   getGetStormPatrolReportUrl,
   getGetCurrentStormPatrolQueryKey,
   getListStormPatrolEventsQueryKey,
@@ -18,7 +19,7 @@ import {
 import { useQueryClient } from "@tanstack/react-query";
 import { 
   CloudLightning, Loader2, Plus, Users, MapPin, Search, Check, ChevronDown, ChevronUp,
-  AlertTriangle, Eye, ArrowRight, Save, Download, Navigation, Clock, ClipboardCheck
+  AlertTriangle, Eye, ArrowRight, Save, Download, Navigation, Clock, ClipboardCheck, X
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -119,10 +120,12 @@ export default function CommandCenter({ data }: CommandCenterProps) {
   const ackAlert = useAcknowledgeStormPatrolAlert();
   const createAlert = useCreateStormPatrolAlert();
   const retryEmail = useRetryStormPatrolAlertEmail();
+  const cancelJob = useCancelStormPatrolJob();
   
   const [isAlerting, setIsAlerting] = useState(false);
   const [selectedCompletedJob, setSelectedCompletedJob] = useState<StormJob | null>(null);
   const [selectedObservation, setSelectedObservation] = useState<StormObservation | null>(null);
+  const [pendingCancelJob, setPendingCancelJob] = useState<StormJob | null>(null);
 
   const teams = teamsData || [];
   const assets = assetsData?.data || [];
@@ -174,6 +177,22 @@ export default function CommandCenter({ data }: CommandCenterProps) {
     setLiveJobSort(current => current.key === key
       ? { key, direction: current.direction === "asc" ? "desc" : "asc" }
       : { key, direction: "asc" });
+  };
+
+  const confirmCancelJob = async () => {
+    if (!pendingCancelJob) return;
+    try {
+      await cancelJob.mutateAsync({ id: pendingCancelJob.id });
+      toast({ title: "Pending job cancelled", description: `${pendingCancelJob.assetName || "Storm Patrol job"} was removed from live operations.` });
+      setPendingCancelJob(null);
+      await queryClient.invalidateQueries({ queryKey: getGetCurrentStormPatrolQueryKey() });
+    } catch (error) {
+      toast({
+        title: "Unable to cancel job",
+        description: error instanceof Error ? error.message : "The job may already have been claimed.",
+        variant: "destructive",
+      });
+    }
   };
 
   // Alerts & Observations State
@@ -869,12 +888,13 @@ export default function CommandCenter({ data }: CommandCenterProps) {
                             </button>
                           </th>
                         ))}
+                        <th className="w-12 px-4 py-3"><span className="sr-only">Actions</span></th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-white/5">
                       {visibleLiveJobs.length === 0 ? (
                         <tr>
-                          <td colSpan={5} className="px-4 py-8 text-center text-white/40">
+                          <td colSpan={6} className="px-4 py-8 text-center text-white/40">
                             {jobs.length === 0 ? "No jobs dispatched yet." : "No jobs match this phase."}
                           </td>
                         </tr>
@@ -933,6 +953,21 @@ export default function CommandCenter({ data }: CommandCenterProps) {
                               </td>
                               <td className="px-4 py-3 text-white/60 truncate max-w-[200px]" title={job.comments || ""}>
                                 {job.comments || "-"}
+                              </td>
+                              <td className="px-4 py-3 text-right">
+                                {job.status === "pending" && (
+                                  <button
+                                    type="button"
+                                    aria-label={`Cancel pending job for ${job.assetName || "Unknown Asset"}`}
+                                    className="inline-flex h-7 w-7 items-center justify-center rounded text-red-400 transition-colors hover:bg-red-500/15 hover:text-red-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400"
+                                    onClick={(event) => {
+                                      event.stopPropagation();
+                                      setPendingCancelJob(job);
+                                    }}
+                                  >
+                                    <X className="h-4 w-4" />
+                                  </button>
+                                )}
                               </td>
                             </tr>
                           );
@@ -1045,6 +1080,41 @@ export default function CommandCenter({ data }: CommandCenterProps) {
                 </div>
               </>
             )}
+          </DialogContent>
+        </Dialog>
+        <Dialog
+          open={pendingCancelJob !== null}
+          onOpenChange={(open) => {
+            if (!open && !cancelJob.isPending) setPendingCancelJob(null);
+          }}
+        >
+          <DialogContent className="border-white/10 bg-[#0f2a36] text-white sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle className="text-white">Cancel pending job?</DialogTitle>
+              <DialogDescription className="text-white/55">
+                {pendingCancelJob?.assetName || "This Storm Patrol job"} will be removed from Live Field Operations. This cannot be undone.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="flex justify-end gap-3 pt-3">
+              <Button
+                type="button"
+                variant="outline"
+                disabled={cancelJob.isPending}
+                onClick={() => setPendingCancelJob(null)}
+                className="border-white/10 bg-transparent text-white hover:bg-white/10"
+              >
+                Keep job
+              </Button>
+              <Button
+                type="button"
+                disabled={cancelJob.isPending}
+                onClick={() => { void confirmCancelJob(); }}
+                className="bg-red-600 text-white hover:bg-red-500"
+              >
+                {cancelJob.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                Cancel job
+              </Button>
+            </div>
           </DialogContent>
         </Dialog>
         <Dialog

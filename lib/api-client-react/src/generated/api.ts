@@ -5403,6 +5403,84 @@ export function useListStormPatrolJobs<
   return { ...query, queryKey: queryOptions.queryKey };
 }
 
+export const getCancelStormPatrolJobUrl = (id: string) => {
+  return `/api/storm-patrol/jobs/${id}`;
+};
+
+export const cancelStormPatrolJob = async (
+  id: string,
+  options?: RequestInit,
+): Promise<void> => {
+  return customFetch<void>(getCancelStormPatrolJobUrl(id), {
+    ...options,
+    method: "DELETE",
+  });
+};
+
+export const getCancelStormPatrolJobMutationOptions = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof cancelStormPatrolJob>>,
+    TError,
+    { id: string },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof cancelStormPatrolJob>>,
+  TError,
+  { id: string },
+  TContext
+> => {
+  const mutationKey = ["cancelStormPatrolJob"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof cancelStormPatrolJob>>,
+    { id: string }
+  > = (props) => {
+    const { id } = props ?? {};
+
+    return cancelStormPatrolJob(id, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type CancelStormPatrolJobMutationResult = NonNullable<
+  Awaited<ReturnType<typeof cancelStormPatrolJob>>
+>;
+
+export type CancelStormPatrolJobMutationError = ErrorType<void>;
+
+export const useCancelStormPatrolJob = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof cancelStormPatrolJob>>,
+    TError,
+    { id: string },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof cancelStormPatrolJob>>,
+  TError,
+  { id: string },
+  TContext
+> => {
+  return useMutation(getCancelStormPatrolJobMutationOptions(options));
+};
+
 export const getClaimStormPatrolJobUrl = (id: string) => {
   return `/api/storm-patrol/jobs/${id}/claim`;
 };
