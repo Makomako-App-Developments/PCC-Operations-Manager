@@ -47,6 +47,9 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Smoke check API runtime dependencies
+        run: pnpm --filter @workspace/api-server run check:runtime-dependencies
+
       - name: Check generated API clients
         run: pnpm run check:api-contract
 

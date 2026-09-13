@@ -7,6 +7,7 @@
     "dev": "NODE_ENV=development tsx ./src/index.ts",
     "prebuild": "pnpm lint",
     "build": "tsx ./build.ts",
+    "check:runtime-dependencies": "tsx ./src/scripts/check-runtime-dependencies.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint": "eslint src/routes/health-circuit-breaker.ts",
     "test": "vitest run",
