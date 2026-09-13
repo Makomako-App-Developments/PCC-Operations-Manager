@@ -1841,6 +1841,12 @@ components:
         name: { type: string }
         status: { type: string, enum: [draft, active, closed] }
         hourlyRateCents: { type: integer }
+        actualMinutes:
+          type: integer
+          description: Total recorded minutes across completed or too-dangerous jobs in this event.
+        labourChargeCents:
+          type: integer
+          description: Event labour charge calculated from total actual minutes and the event hourly rate.
         activatedAt: { type: string, format: date-time, nullable: true }
         closedAt: { type: string, format: date-time, nullable: true }
     StormJob:

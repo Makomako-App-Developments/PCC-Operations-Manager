@@ -2221,6 +2221,18 @@ export const GetCurrentStormPatrolResponse = zod.object({
         name: zod.string(),
         status: zod.enum(["draft", "active", "closed"]),
         hourlyRateCents: zod.number(),
+        actualMinutes: zod
+          .number()
+          .optional()
+          .describe(
+            "Total recorded minutes across completed or too-dangerous jobs in this event.",
+          ),
+        labourChargeCents: zod
+          .number()
+          .optional()
+          .describe(
+            "Event labour charge calculated from total actual minutes and the event hourly rate.",
+          ),
         activatedAt: zod.date().nullish(),
         closedAt: zod.date().nullish(),
       }),
@@ -2346,6 +2358,18 @@ export const ListStormPatrolEventsResponse = zod.object({
       name: zod.string(),
       status: zod.enum(["draft", "active", "closed"]),
       hourlyRateCents: zod.number(),
+      actualMinutes: zod
+        .number()
+        .optional()
+        .describe(
+          "Total recorded minutes across completed or too-dangerous jobs in this event.",
+        ),
+      labourChargeCents: zod
+        .number()
+        .optional()
+        .describe(
+          "Event labour charge calculated from total actual minutes and the event hourly rate.",
+        ),
       activatedAt: zod.date().nullish(),
       closedAt: zod.date().nullish(),
     }),
@@ -2381,6 +2405,18 @@ export const GetStormPatrolEventResponse = zod.object({
         name: zod.string(),
         status: zod.enum(["draft", "active", "closed"]),
         hourlyRateCents: zod.number(),
+        actualMinutes: zod
+          .number()
+          .optional()
+          .describe(
+            "Total recorded minutes across completed or too-dangerous jobs in this event.",
+          ),
+        labourChargeCents: zod
+          .number()
+          .optional()
+          .describe(
+            "Event labour charge calculated from total actual minutes and the event hourly rate.",
+          ),
         activatedAt: zod.date().nullish(),
         closedAt: zod.date().nullish(),
       }),
@@ -2508,6 +2544,18 @@ export const CloseStormPatrolEventResponse = zod.object({
   name: zod.string(),
   status: zod.enum(["draft", "active", "closed"]),
   hourlyRateCents: zod.number(),
+  actualMinutes: zod
+    .number()
+    .optional()
+    .describe(
+      "Total recorded minutes across completed or too-dangerous jobs in this event.",
+    ),
+  labourChargeCents: zod
+    .number()
+    .optional()
+    .describe(
+      "Event labour charge calculated from total actual minutes and the event hourly rate.",
+    ),
   activatedAt: zod.date().nullish(),
   closedAt: zod.date().nullish(),
 });
@@ -2892,6 +2940,18 @@ export const GetStormPatrolReportResponse = zod.object({
     name: zod.string(),
     status: zod.enum(["draft", "active", "closed"]),
     hourlyRateCents: zod.number(),
+    actualMinutes: zod
+      .number()
+      .optional()
+      .describe(
+        "Total recorded minutes across completed or too-dangerous jobs in this event.",
+      ),
+    labourChargeCents: zod
+      .number()
+      .optional()
+      .describe(
+        "Event labour charge calculated from total actual minutes and the event hourly rate.",
+      ),
     activatedAt: zod.date().nullish(),
     closedAt: zod.date().nullish(),
   }),

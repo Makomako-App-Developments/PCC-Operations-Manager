@@ -731,7 +731,10 @@ async function sendAdditionalCompletionReport(
 
   const photoBuffers = await downloadReportImages(report.photos);
   const PDFDocument = (await import("pdfkit")).default;
-  const doc = new PDFDocument({ margin: 50, size: "A4" });
+  const isStormPatrol = source === "storm_patrol";
+  const doc = new PDFDocument(isStormPatrol
+    ? { margin: 36, size: "A4", layout: "landscape" }
+    : { margin: 50, size: "A4" });
   const safeSiteName = report.siteName.replace(/[\\/:*?"<>|]/g, "").trim();
   const dateLabel = report.completedAt
     ? new Date(report.completedAt).toISOString().slice(0, 10)
@@ -741,6 +744,111 @@ async function sendAdditionalCompletionReport(
   const navy = "#0f2a36";
   const grey = "#6b7280";
   const teal = "#00AECD";
+  if (isStormPatrol) {
+    const pageWidth = doc.page.width;
+    const pageHeight = doc.page.height;
+    const margin = 36;
+    const contentWidth = pageWidth - margin * 2;
+    const detailValue = (label: string) => report.details.find(([detailLabel]) => detailLabel === label)?.[1] ?? null;
+    const completed = report.completedAt
+      ? new Date(report.completedAt).toLocaleString("en-NZ", {
+        dateStyle: "medium",
+        timeStyle: "short",
+        timeZone: "Pacific/Auckland",
+      })
+      : "—";
+
+    doc.rect(0, 0, pageWidth, 102).fill(navy);
+    try { doc.image(LOGO_PATH, pageWidth - 170, 20, { fit: [134, 64], align: "right", valign: "center" }); } catch { /* optional logo */ }
+    doc.font("Helvetica-Bold").fontSize(22).fillColor("#ffffff").text("Storm Patrol Work Report", margin, 25);
+    doc.font("Helvetica").fontSize(11).fillColor("#a9d8dd").text(report.siteName, margin, 58, { width: 520 });
+    if (report.siteDescription) {
+      doc.fontSize(8).fillColor("#87b8be").text(report.siteDescription, margin, 77, { width: 520, height: 16, ellipsis: true });
+    }
+
+    const cardGap = 8;
+    const cardWidth = (contentWidth - cardGap * 3) / 4;
+    const cardHeight = 45;
+    const cards: [string, string | null][] = [
+      ["Storm", detailValue("Storm")],
+      ["Outcome", detailValue("Outcome")],
+      ["Phase", detailValue("Phase")],
+      ["Completed", completed],
+      ["Team", report.teamName],
+      ["Completed by", report.workerName],
+      ["Actual time", detailValue("Actual time")],
+      ["Labour charge", detailValue("Labour charge")],
+    ];
+    cards.forEach(([label, value], index) => {
+      const row = Math.floor(index / 4);
+      const column = index % 4;
+      const x = margin + column * (cardWidth + cardGap);
+      const y = 118 + row * (cardHeight + cardGap);
+      doc.roundedRect(x, y, cardWidth, cardHeight, 4).fillAndStroke("#f5f9fa", "#d8e3e6");
+      doc.font("Helvetica-Bold").fontSize(7).fillColor(grey).text(label.toUpperCase(), x + 10, y + 9, { width: cardWidth - 20 });
+      doc.font("Helvetica").fontSize(9).fillColor(navy).text(value || "—", x + 10, y + 23, { width: cardWidth - 20, height: 14, ellipsis: true });
+    });
+
+    const workPerformed = detailValue("Work performed") || "No work types recorded.";
+    doc.font("Helvetica-Bold").fontSize(9).fillColor(teal).text("WORK COMPLETED", margin, 228);
+    doc.font("Helvetica").fontSize(9).fillColor(navy).text(workPerformed, margin, 243, {
+      width: contentWidth,
+      height: 22,
+      ellipsis: true,
+    });
+    doc.font("Helvetica-Bold").fontSize(9).fillColor(teal).text("FIELD COMMENTS", margin, 270);
+    doc.font("Helvetica").fontSize(8.5).fillColor("#374151").text(report.notes || "No comments recorded.", margin, 285, {
+      width: contentWidth,
+      height: 34,
+      ellipsis: true,
+    });
+
+    doc.font("Helvetica-Bold").fontSize(9).fillColor(teal).text(`PHOTOS (${photoBuffers.length})`, margin, 327);
+    const photoTop = 344;
+    const photoBottom = pageHeight - 45;
+    const photoAreaHeight = photoBottom - photoTop;
+    if (photoBuffers.length === 0) {
+      doc.roundedRect(margin, photoTop, contentWidth, 52, 4).fillAndStroke("#f5f9fa", "#d8e3e6");
+      doc.font("Helvetica-Oblique").fontSize(9).fillColor(grey)
+        .text("No photos were attached to this completed job.", margin + 12, photoTop + 20);
+    } else {
+      const columns = Math.min(photoBuffers.length, 4);
+      const rows = Math.ceil(photoBuffers.length / columns);
+      const photoGap = 8;
+      const cellWidth = (contentWidth - photoGap * (columns - 1)) / columns;
+      const cellHeight = (photoAreaHeight - photoGap * (rows - 1)) / rows;
+      photoBuffers.forEach((photo, index) => {
+        const row = Math.floor(index / columns);
+        const column = index % columns;
+        const x = margin + column * (cellWidth + photoGap);
+        const y = photoTop + row * (cellHeight + photoGap);
+        doc.roundedRect(x, y, cellWidth, cellHeight, 4).fillAndStroke("#f5f9fa", "#d8e3e6");
+        try {
+          doc.image(photo.buf, x + 5, y + 5, {
+            fit: [cellWidth - 10, Math.max(20, cellHeight - 23)],
+            align: "center",
+            valign: "center",
+          });
+        } catch { /* skip invalid image bytes */ }
+        doc.font("Helvetica").fontSize(7).fillColor(grey)
+          .text(photo.caption || `Photo ${index + 1}`, x + 5, y + cellHeight - 14, {
+            width: cellWidth - 10,
+            height: 9,
+            align: "center",
+            ellipsis: true,
+          });
+      });
+    }
+
+    doc.font("Helvetica").fontSize(7.5).fillColor(grey)
+      .text(`Generated ${new Date().toLocaleString("en-NZ", { timeZone: "Pacific/Auckland" })} · Porirua City Council Gardens Manager`, margin, pageHeight - 25, {
+        width: contentWidth,
+        align: "center",
+      });
+    doc.end();
+    return;
+  }
+
   try { doc.image(LOGO_PATH, 415, 38, { width: 130 }); } catch { /* optional logo */ }
   doc.fontSize(20).font("Helvetica-Bold").fillColor(navy).text("Completed Works Record", 50, 50);
   doc.fontSize(10).font("Helvetica").fillColor(grey).text("Porirua City Council — Gardens Manager", 50, 75);

@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import StormPatrol from "./index";
 
 const historicalData = {
-  event: { id: "event-closed", name: "Cyclone Cam", status: "closed", hourlyRateCents: 10000 },
+  event: { id: "event-closed", name: "Cyclone Cam", status: "closed", hourlyRateCents: 10000, actualMinutes: 180, labourChargeCents: 30000 },
   jobs: [],
   observations: [],
   followUps: [],
@@ -15,7 +15,10 @@ const historicalData = {
 vi.mock("@workspace/api-client-react", () => ({
   useGetCurrentStormPatrol: () => ({ data: { data: null }, isLoading: false }),
   useListStormPatrolEvents: () => ({
-    data: { data: [{ id: "event-closed", name: "Cyclone Cam", status: "closed", hourlyRateCents: 10000, activatedAt: "2026-09-10T00:00:00.000Z" }] },
+    data: { data: [
+      { id: "event-closed", name: "Cyclone Cam", status: "closed", hourlyRateCents: 10000, actualMinutes: 180, labourChargeCents: 30000, activatedAt: "2026-09-10T00:00:00.000Z" },
+      { id: "event-closed-2", name: "Cyclone Test", status: "closed", hourlyRateCents: 10000, actualMinutes: 300, labourChargeCents: 50000, activatedAt: "2026-09-08T00:00:00.000Z" },
+    ] },
     isLoading: false,
   }),
   useGetStormPatrolEvent: (id: string) => ({
@@ -54,6 +57,15 @@ vi.mock("./components/CommandCenter", () => ({
 afterEach(cleanup);
 
 describe("Storm Patrol previous events", () => {
+  it("shows average cost and hours across historical storms", () => {
+    render(<StormPatrol />);
+
+    expect(screen.getByText("Average cost per storm")).toBeVisible();
+    expect(screen.getByText("$400")).toBeVisible();
+    expect(screen.getByText("Average hours per storm")).toBeVisible();
+    expect(screen.getByText("4.0 hrs")).toBeVisible();
+  });
+
   it("opens a previous event in a read-only detail view and returns to the list", async () => {
     const user = userEvent.setup();
     render(<StormPatrol />);

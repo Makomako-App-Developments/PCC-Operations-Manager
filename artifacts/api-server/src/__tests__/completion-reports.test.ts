@@ -4,6 +4,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 let selectQueue: unknown[][] = [];
 const pdfImageMock = vi.hoisted(() => vi.fn());
+const pdfAddPageMock = vi.hoisted(() => vi.fn());
+const pdfDocumentOptionsMock = vi.hoisted(() => vi.fn());
 
 function makeChain(result: unknown[]) {
   const chain: Record<string, any> = {
@@ -56,12 +58,18 @@ vi.mock("../lib/push-notifications", () => ({
 
 vi.mock("pdfkit", () => {
   class FakePdfDocument {
-    page = { height: 842 };
+    page: { width: number; height: number };
     y = 140;
     private response?: express.Response;
+    constructor(options: { layout?: string } = {}) {
+      pdfDocumentOptionsMock(options);
+      this.page = options.layout === "landscape"
+        ? { width: 842, height: 595 }
+        : { width: 595, height: 842 };
+    }
     pipe(response: express.Response) { this.response = response; return response; }
     end() { this.response?.end("%PDF-1.4 completion report"); }
-    addPage() { this.y = 50; return this; }
+    addPage() { pdfAddPageMock(); this.y = 50; return this; }
     image(...args: unknown[]) { pdfImageMock(...args); this.y += 20; return this; }
     text() { this.y += 10; return this; }
     moveDown() { this.y += 10; return this; }
@@ -72,6 +80,10 @@ vi.mock("pdfkit", () => {
     fontSize() { return this; }
     font() { return this; }
     fillColor() { return this; }
+    rect() { return this; }
+    roundedRect() { return this; }
+    fill() { return this; }
+    fillAndStroke() { return this; }
   }
   return { default: FakePdfDocument };
 });
@@ -98,6 +110,8 @@ const common = {
 beforeEach(() => {
   selectQueue = [];
   pdfImageMock.mockClear();
+  pdfAddPageMock.mockClear();
+  pdfDocumentOptionsMock.mockClear();
 });
 
 describe("completion report PDFs", () => {
@@ -155,7 +169,11 @@ describe("completion report PDFs", () => {
     },
     {
       source: "storm_patrol",
-      rows: [[{ ...common, phase: "response", hourlyRateCents: 6500, actualTimeMins: 30 }], [{ workType: "debris_clearance" }], []],
+      rows: [
+        [{ ...common, phase: "response", hourlyRateCents: 6500, actualTimeMins: 30 }],
+        [{ workType: "debris_clearance" }],
+        [{ blobUrl: "/api/uploads/uploads/storm-photo.jpg", contentType: "image/jpeg", caption: "Drain cleared" }],
+      ],
     },
   ])("generates a PDF for $source completion fields", async ({ source, rows }) => {
     selectQueue = rows;
@@ -169,6 +187,11 @@ describe("completion report PDFs", () => {
     expect(selectQueue).toHaveLength(0);
     if (source === "infill_planting") {
       expect(pdfImageMock.mock.calls.filter(([image]) => Buffer.isBuffer(image))).toHaveLength(2);
+    }
+    if (source === "storm_patrol") {
+      expect(pdfDocumentOptionsMock).toHaveBeenCalledWith(expect.objectContaining({ layout: "landscape" }));
+      expect(pdfImageMock.mock.calls.filter(([image]) => Buffer.isBuffer(image))).toHaveLength(1);
+      expect(pdfAddPageMock).not.toHaveBeenCalled();
     }
   });
 });

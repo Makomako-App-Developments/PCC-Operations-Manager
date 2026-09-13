@@ -11,6 +11,7 @@ import {
   useAcknowledgeStormPatrolAlert,
   useRetryStormPatrolAlertEmail,
   useCancelStormPatrolJob,
+  getDownloadCompletionReportUrl,
   getGetStormPatrolReportUrl,
   getGetCurrentStormPatrolQueryKey,
   getListStormPatrolEventsQueryKey,
@@ -150,12 +151,17 @@ export default function CommandCenter({ data, readOnly = false, onBack }: Comman
   const urgentIssueLng = finiteCoordinate(selectedUrgentIssue?.lng);
   const observationLat = finiteCoordinate(selectedObservation?.locationLat);
   const observationLng = finiteCoordinate(selectedObservation?.locationLng);
+  const completedJobLat = finiteCoordinate(selectedCompletedJob?.lat);
+  const completedJobLng = finiteCoordinate(selectedCompletedJob?.lng);
   const [urgentIssueTilesFailed, setUrgentIssueTilesFailed] = useState(false);
   const [urgentIssueTileAttempt, setUrgentIssueTileAttempt] = useState(0);
   const urgentIssueTileAttemptHadError = useRef(false);
   const [observationTilesFailed, setObservationTilesFailed] = useState(false);
   const [observationTileAttempt, setObservationTileAttempt] = useState(0);
   const observationTileAttemptHadError = useRef(false);
+  const [completedJobTilesFailed, setCompletedJobTilesFailed] = useState(false);
+  const [completedJobTileAttempt, setCompletedJobTileAttempt] = useState(0);
+  const completedJobTileAttemptHadError = useRef(false);
   const [pendingCancelJob, setPendingCancelJob] = useState<StormJob | null>(null);
 
   const teams = teamsData || [];
@@ -1231,16 +1237,35 @@ export default function CommandCenter({ data, readOnly = false, onBack }: Comman
             {selectedCompletedJob && (
               <>
                 <DialogHeader className="border-b border-white/10 pb-4 pr-8">
-                  <div className="mb-1 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-green-400">
-                    <ClipboardCheck className="h-4 w-4" />
-                    {selectedCompletedJob.status === "too_dangerous" ? "Too dangerous" : "Completed work"}
+                  <div className="flex items-start justify-between gap-4">
+                    <div>
+                      <div className="mb-1 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-green-400">
+                        <ClipboardCheck className="h-4 w-4" />
+                        {selectedCompletedJob.status === "too_dangerous" ? "Too dangerous" : "Completed work"}
+                      </div>
+                      <DialogTitle className="text-xl text-white">
+                        {selectedCompletedJob.assetName || "Unknown Asset"}
+                      </DialogTitle>
+                      <DialogDescription className="text-white/55">
+                        {selectedCompletedJob.assetDescription || selectedCompletedJob.streetAddress || "Storm Patrol job details"}
+                      </DialogDescription>
+                    </div>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      aria-label="Download completed work PDF"
+                      className="shrink-0 border-white/15 bg-white/5 text-white hover:bg-white/10"
+                      onClick={() => {
+                        const link = document.createElement("a");
+                        link.href = getDownloadCompletionReportUrl(selectedCompletedJob.id, { source: "storm_patrol" });
+                        link.click();
+                      }}
+                    >
+                      <Download className="mr-1.5 h-4 w-4" />
+                      PDF
+                    </Button>
                   </div>
-                  <DialogTitle className="text-xl text-white">
-                    {selectedCompletedJob.assetName || "Unknown Asset"}
-                  </DialogTitle>
-                  <DialogDescription className="text-white/55">
-                    {selectedCompletedJob.assetDescription || selectedCompletedJob.streetAddress || "Storm Patrol job details"}
-                  </DialogDescription>
                 </DialogHeader>
 
                 <div className="grid grid-cols-2 gap-3">
@@ -1258,6 +1283,74 @@ export default function CommandCenter({ data, readOnly = false, onBack }: Comman
                     </div>
                   ))}
                 </div>
+
+                {completedJobLat != null && completedJobLng != null && (
+                  <section>
+                    <h3 className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-white/45">
+                      <MapPin className="h-3.5 w-3.5" />
+                      Site location
+                    </h3>
+                    <div className="relative h-56 w-full overflow-hidden rounded-lg border border-white/10 bg-black/20">
+                      <MapContainer
+                        center={[completedJobLat, completedJobLng]}
+                        zoom={17}
+                        scrollWheelZoom
+                        className="h-full w-full"
+                        aria-label={`Completed work location for ${selectedCompletedJob.assetName || "unknown site"}`}
+                      >
+                        <TileLayer
+                          key={completedJobTileAttempt}
+                          attribution="&copy; OpenStreetMap contributors"
+                          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                          eventHandlers={{
+                            tileerror: () => {
+                              completedJobTileAttemptHadError.current = true;
+                              setCompletedJobTilesFailed(true);
+                            },
+                            load: () => {
+                              if (!completedJobTileAttemptHadError.current) setCompletedJobTilesFailed(false);
+                            },
+                          }}
+                        />
+                        <CircleMarker
+                          center={[completedJobLat, completedJobLng]}
+                          radius={9}
+                          pathOptions={{ color: "#ffffff", weight: 3, fillColor: GREEN, fillOpacity: 1 }}
+                        >
+                          <Popup>{selectedCompletedJob.assetName || "Completed work location"}</Popup>
+                        </CircleMarker>
+                        <ResizeObservationMap />
+                      </MapContainer>
+                      {completedJobTilesFailed && (
+                        <div role="status" className="absolute inset-0 z-[500] flex items-center justify-center bg-[#102d38]/95 p-6 text-center">
+                          <div className="max-w-sm">
+                            <MapPin className="mx-auto mb-3 h-7 w-7 text-green-400" />
+                            <p className="font-semibold text-white">Map tiles are unavailable</p>
+                            <p className="mt-1 text-sm text-white/65">The site coordinates remain available below.</p>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              className="mt-3 border-white/15 bg-white/5 text-white hover:bg-white/10"
+                              onClick={() => {
+                                completedJobTileAttemptHadError.current = false;
+                                setCompletedJobTilesFailed(false);
+                                setCompletedJobTileAttempt(attempt => attempt + 1);
+                              }}
+                            >
+                              Retry map
+                            </Button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                    <p className="mt-2 text-xs text-white/45">
+                      {[selectedCompletedJob.streetAddress, selectedCompletedJob.suburb].filter(Boolean).join(", ")}
+                      {selectedCompletedJob.streetAddress || selectedCompletedJob.suburb ? " · " : ""}
+                      {completedJobLat.toFixed(5)}, {completedJobLng.toFixed(5)}
+                    </p>
+                  </section>
+                )}
 
                 {selectedCompletedJob.workTypes && selectedCompletedJob.workTypes.length > 0 && (
                   <section>

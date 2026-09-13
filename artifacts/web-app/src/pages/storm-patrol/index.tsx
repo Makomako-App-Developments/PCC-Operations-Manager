@@ -10,7 +10,7 @@ import {
   getListStormPatrolEventsQueryKey,
   getGetStormPatrolReportUrl,
 } from "@workspace/api-client-react";
-import { Loader2, Plus, CloudLightning, Archive, Calendar, DollarSign, Download, ArrowRight } from "lucide-react";
+import { Loader2, Plus, CloudLightning, Archive, Calendar, DollarSign, Download, ArrowRight, Clock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -107,20 +107,55 @@ export default function StormPatrol() {
     }
   }
 
+  const historicalEvents = eventsData?.data.filter(event => event.status !== "active") ?? [];
+  const averageCostCents = historicalEvents.length > 0
+    ? historicalEvents.reduce((total, event) => total + (event.labourChargeCents ?? 0), 0) / historicalEvents.length
+    : null;
+  const averageHours = historicalEvents.length > 0
+    ? historicalEvents.reduce((total, event) => total + (event.actualMinutes ?? 0), 0) / historicalEvents.length / 60
+    : null;
+  const currencyFormatter = new Intl.NumberFormat("en-NZ", {
+    style: "currency",
+    currency: "NZD",
+    maximumFractionDigits: 0,
+  });
+
   return (
     <div className="flex-1 flex flex-col min-h-0 bg-gradient-to-br from-[#0c6670] via-[#0e5360] to-[#124b59] text-white">
       <div className="flex-1 overflow-y-auto px-8 py-10">
         
         <div className="max-w-4xl mx-auto space-y-12">
           {/* Header */}
-          <div>
-            <div className="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-[#00AECD]/20 mb-4">
-              <CloudLightning className="w-6 h-6 text-[#00AECD]" />
+          <div className="flex flex-col gap-6 md:flex-row md:items-end md:justify-between">
+            <div>
+              <div className="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-[#00AECD]/20 mb-4">
+                <CloudLightning className="w-6 h-6 text-[#00AECD]" />
+              </div>
+              <h1 className="text-3xl font-bold tracking-tight text-white mb-2">Storm Patrol Command</h1>
+              <p className="text-white/60 text-lg">
+                No active storm event. Activate a new event to begin coordinating field work and tracking jobs.
+              </p>
             </div>
-            <h1 className="text-3xl font-bold tracking-tight text-white mb-2">Storm Patrol Command</h1>
-            <p className="text-white/60 text-lg">
-              No active storm event. Activate a new event to begin coordinating field work and tracking jobs.
-            </p>
+            <div className="grid w-full grid-cols-2 gap-3 md:w-auto">
+              <div className="min-w-40 rounded-xl border border-white/10 bg-black/20 p-4">
+                <div className="mb-3 flex items-center gap-2 text-white/45">
+                  <DollarSign className="h-4 w-4 text-[#00AECD]" />
+                  <span className="text-[10px] font-semibold uppercase tracking-wider">Average cost per storm</span>
+                </div>
+                <p className="text-2xl font-bold text-white">
+                  {averageCostCents == null ? "—" : currencyFormatter.format(averageCostCents / 100)}
+                </p>
+              </div>
+              <div className="min-w-40 rounded-xl border border-white/10 bg-black/20 p-4">
+                <div className="mb-3 flex items-center gap-2 text-white/45">
+                  <Clock className="h-4 w-4 text-[#00AECD]" />
+                  <span className="text-[10px] font-semibold uppercase tracking-wider">Average hours per storm</span>
+                </div>
+                <p className="text-2xl font-bold text-white">
+                  {averageHours == null ? "—" : `${averageHours.toFixed(1)} hrs`}
+                </p>
+              </div>
+            </div>
           </div>
 
           <StormwaterAssetImport />
@@ -182,13 +217,13 @@ export default function StormPatrol() {
               <h2 className="text-lg font-semibold text-white/90">Previous Events</h2>
             </div>
             
-            {!eventsData?.data || eventsData.data.length === 0 ? (
+            {historicalEvents.length === 0 ? (
               <div className="text-center py-12 bg-white/5 border border-white/10 rounded-2xl border-dashed">
                 <p className="text-white/40">No historical events found.</p>
               </div>
             ) : (
               <div className="space-y-3">
-                {eventsData.data.filter(e => e.status !== "active").map(event => (
+                {historicalEvents.map(event => (
                   <div
                     key={event.id}
                     role="button"

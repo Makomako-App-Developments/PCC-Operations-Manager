@@ -12,6 +12,10 @@ export interface StormEvent {
   name: string;
   status: StormEventStatus;
   hourlyRateCents: number;
+  /** Total recorded minutes across completed or too-dangerous jobs in this event. */
+  actualMinutes?: number;
+  /** Event labour charge calculated from total actual minutes and the event hourly rate. */
+  labourChargeCents?: number;
   activatedAt?: Date | null;
   closedAt?: Date | null;
 }

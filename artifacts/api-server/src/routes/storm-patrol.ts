@@ -482,7 +482,28 @@ router.get("/storm-patrol/current", requireAuth, async (req, res) => {
 });
 
 router.get("/storm-patrol/events", requireAuth, requireRole("manager", "supervisor"), async (_req, res) => {
-  res.json({ data: await executeWithCircuitBreaker(() => db.select().from(stormEventsTable).orderBy(desc(stormEventsTable.createdAt))) });
+  const [events, minuteTotals] = await Promise.all([
+    executeWithCircuitBreaker(() => db.select().from(stormEventsTable).orderBy(desc(stormEventsTable.createdAt))),
+    executeWithCircuitBreaker(() => db
+      .select({
+        eventId: stormJobsTable.eventId,
+        actualMinutes: sql<number>`cast(coalesce(sum(${stormJobsTable.actualTimeMins}), 0) as integer)`,
+      })
+      .from(stormJobsTable)
+      .where(inArray(stormJobsTable.status, ["completed", "too_dangerous"]))
+      .groupBy(stormJobsTable.eventId)),
+  ]);
+  const minutesByEventId = new Map(minuteTotals.map(row => [row.eventId, Number(row.actualMinutes)]));
+  res.json({
+    data: events.map(event => {
+      const actualMinutes = minutesByEventId.get(event.id) ?? 0;
+      return {
+        ...event,
+        actualMinutes,
+        labourChargeCents: calculateStormChargeCents(actualMinutes, event.hourlyRateCents),
+      };
+    }),
+  });
 });
 
 router.get("/storm-patrol/events/:id", requireAuth, requireRole("manager", "supervisor"), async (req, res) => {

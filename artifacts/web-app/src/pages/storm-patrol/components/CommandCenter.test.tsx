@@ -11,6 +11,7 @@ const mocks = vi.hoisted(() => ({
   toast: vi.fn(),
   customFetch: vi.fn(),
   reportUrl: vi.fn(),
+  completionReportUrl: vi.fn(),
   tileLayerHandlers: { current: undefined as any },
   tileLayerRenderCount: { current: 0 },
 }));
@@ -82,6 +83,7 @@ vi.mock("@workspace/api-client-react", () => ({
   useAcknowledgeStormPatrolAlert: () => ({ mutateAsync: mocks.acknowledgeAlert, isPending: false }),
   useRetryStormPatrolAlertEmail: () => ({ mutateAsync: vi.fn(), isPending: false }),
   getGetStormPatrolReportUrl: mocks.reportUrl,
+  getDownloadCompletionReportUrl: mocks.completionReportUrl,
   getGetCurrentStormPatrolQueryKey: () => ["/api/storm-patrol/current"],
   getListStormPatrolEventsQueryKey: () => ["/api/storm-patrol/events"],
   customFetch: mocks.customFetch,
@@ -205,6 +207,9 @@ beforeEach(() => {
   mocks.reportUrl.mockReset();
   mocks.reportUrl.mockImplementation((_id, params) =>
     `/api/storm-patrol/report?${new URLSearchParams(params).toString()}`);
+  mocks.completionReportUrl.mockReset();
+  mocks.completionReportUrl.mockImplementation((id, params) =>
+    `/api/jobs/${id}/pdf?${new URLSearchParams(params).toString()}`);
   mocks.cancelJob.mockReset().mockResolvedValue(undefined);
   mocks.toast.mockReset();
   mocks.customFetch.mockReset();
@@ -644,7 +649,7 @@ describe("Storm Patrol work package asset filters", () => {
     expect(within(dialog).getByTestId("storm-marker")).toBeVisible();
   });
 
-  it("shows uploaded before and after photos in completed work", async () => {
+  it("shows the location, PDF download, and uploaded photos in completed work", async () => {
     const user = userEvent.setup();
     renderCommandCenter([{
       id: "completed-job",
@@ -656,6 +661,10 @@ describe("Storm Patrol work package asset filters", () => {
       status: "completed",
       routeOrder: 1,
       assetName: "Thompson Grove",
+      streetAddress: "12 Thompson Grove",
+      suburb: "Ranui",
+      lat: "-41.13",
+      lng: "174.83",
       photos: [
         { id: "before-1", purpose: "before", blobUrl: "/api/uploads/before-1.jpg", caption: null },
         { id: "after-1", purpose: "after", blobUrl: "/api/uploads/after-1.jpg", caption: "Cleared" },
@@ -665,6 +674,14 @@ describe("Storm Patrol work package asset filters", () => {
     await user.click(screen.getByRole("row", { name: "Open completed work for Thompson Grove" }));
 
     const dialog = screen.getByRole("dialog");
+    const map = within(dialog).getByLabelText("Completed work location for Thompson Grove");
+    expect(map).toHaveAttribute("data-center", "[-41.13,174.83]");
+    expect(within(map).getByTestId("storm-marker")).toHaveAttribute("data-fill-color", "#22c55e");
+    expect(within(dialog).getByText(/-41\.13000, 174\.83000/)).toBeVisible();
+
+    await user.click(within(dialog).getByRole("button", { name: "Download completed work PDF" }));
+    expect(mocks.completionReportUrl).toHaveBeenCalledWith("completed-job", { source: "storm_patrol" });
+
     await waitFor(() => expect(within(dialog).getByRole("img", { name: "Before photo 1" })).toHaveAttribute("src", "blob:authenticated-photo"));
     expect(within(dialog).getByRole("img", { name: "After photo 2" })).toHaveAttribute("src", "blob:authenticated-photo");
     expect(mocks.customFetch).toHaveBeenCalledWith("/api/uploads/before-1.jpg", expect.objectContaining({ responseType: "blob" }));
