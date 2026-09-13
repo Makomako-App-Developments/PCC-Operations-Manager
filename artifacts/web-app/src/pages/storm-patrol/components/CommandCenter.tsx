@@ -401,11 +401,23 @@ export default function CommandCenter({ data, readOnly = false, onBack }: Comman
             className="bg-transparent border-white/10 text-white hover:bg-white/10"
             onClick={() => {
               const a = document.createElement("a");
-              a.href = `${getGetStormPatrolReportUrl(event.id)}?format=pdf`;
+              a.href = getGetStormPatrolReportUrl(event.id, { format: "pdf" });
               a.click();
             }}
           >
             PDF
+          </Button>
+          <Button
+            variant="outline"
+            className="bg-transparent border-white/10 text-white hover:bg-white/10"
+            onClick={() => {
+              const a = document.createElement("a");
+              a.href = getGetStormPatrolReportUrl(event.id, { format: "pdf", photos: "include" });
+              a.click();
+            }}
+            data-testid="btn-download-photo-report"
+          >
+            PDF + photos
           </Button>
           {!readOnly && <Button
             variant="outline" 

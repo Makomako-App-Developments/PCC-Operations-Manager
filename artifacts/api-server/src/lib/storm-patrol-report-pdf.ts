@@ -1,4 +1,6 @@
 import path from "node:path";
+import sharp from "sharp";
+import { downloadStoredReportPhoto } from "./objectStorage";
 
 const NAVY = "#103746";
 const TEAL = "#00AECD";
@@ -32,6 +34,21 @@ type ReportDetails = {
     tooDangerousCount: number;
   };
 };
+
+type ReportPhoto = {
+  blobUrl: string;
+  caption?: string | null;
+  purpose?: string | null;
+};
+
+export async function prepareStormPatrolReportPhoto(buffer: Buffer) {
+  return sharp(buffer, { failOn: "warning", limitInputPixels: 40_000_000 })
+    .rotate()
+    .resize({ width: 1400, height: 1000, fit: "inside", withoutEnlargement: true })
+    .flatten({ background: WHITE })
+    .jpeg({ quality: 78, mozjpeg: true })
+    .toBuffer();
+}
 
 const phaseLabels: Record<string, string> = {
   pre: "Pre-Storm Preparation",
@@ -70,7 +87,11 @@ function humanize(value: string) {
     .replace(/\b\w/g, character => character.toUpperCase());
 }
 
-export async function writeStormPatrolPdf(doc: any, details: ReportDetails) {
+export async function writeStormPatrolPdf(
+  doc: any,
+  details: ReportDetails,
+  options: { includePhotos?: boolean } = {},
+) {
   const { event, jobs, observations, alerts, summary } = details;
   const pageWidth = 841.89;
   const pageHeight = 595.28;
@@ -280,6 +301,89 @@ export async function writeStormPatrolPdf(doc: any, details: ReportDetails) {
         ].filter(Boolean).join("\n"),
       ], alertColumns, index);
     });
+  }
+
+  if (options.includePhotos) {
+    type PhotoGroup = { title: string; context: string; photos: ReportPhoto[] };
+    const groups: PhotoGroup[] = [];
+    for (const observation of observations) {
+      if (observation.photos?.length) {
+        groups.push({
+          title: "Field observation",
+          context: [
+            safeText(observation.description, "Observation"),
+            observation.notes,
+            `Recorded ${formatDate(observation.createdAt, true)} by ${safeText(observation.observerName, "Unknown")}`,
+          ].filter(Boolean).join("  •  "),
+          photos: observation.photos,
+        });
+      }
+    }
+    for (const alert of alerts) {
+      if (alert.photoUrl) {
+        groups.push({
+          title: "Urgent issue",
+          context: [
+            [alert.assetName, alert.assetDescription].filter(Boolean).join(" — ") || "Unknown site",
+            alert.message,
+            formatDate(alert.createdAt, true),
+          ].filter(Boolean).join("  •  "),
+          photos: [{ blobUrl: alert.photoUrl, caption: "Urgent issue photo", purpose: "urgent_issue" }],
+        });
+      }
+    }
+    for (const job of jobs) {
+      const photos = (job.photos ?? []).filter((photo: ReportPhoto) => ["before", "after"].includes(photo.purpose ?? ""));
+      if (photos.length) {
+        groups.push({
+          title: "Job photos",
+          context: [
+            [job.assetName, job.assetDescription].filter(Boolean).join(" — ") || "Unknown site",
+            [job.streetAddress, job.suburb].filter(Boolean).join(", "),
+            `${phaseLabels[job.phase] ?? humanize(job.phase)}  •  ${statusLabels[job.status] ?? humanize(job.status)}`,
+          ].filter(Boolean).join("  •  "),
+          photos,
+        });
+      }
+    }
+
+    if (groups.length > 0) {
+      addPage();
+      sectionTitle("Photo Appendix", `${groups.length} site or observation group${groups.length === 1 ? "" : "s"}`);
+      let photoNumber = 0;
+      for (const group of groups) {
+        ensureSpace(64);
+        doc.font("Helvetica-Bold").fontSize(10).fillColor(INK).text(group.title, margin, doc.y);
+        doc.font("Helvetica").fontSize(7.5).fillColor(MUTED).text(group.context, margin, doc.y + 3, { width: contentWidth });
+        doc.y += 18;
+        for (const photo of group.photos) {
+          photoNumber++;
+          let image: Buffer | null = null;
+          try {
+            image = await prepareStormPatrolReportPhoto(await downloadStoredReportPhoto(photo.blobUrl));
+          } catch {
+            // Missing, unsupported, or corrupt attachments do not break the report.
+          }
+          ensureSpace(image ? 350 : 42);
+          const imageY = doc.y;
+          if (image) {
+            doc.image(image, margin, imageY, { fit: [contentWidth, 315], align: "center", valign: "center" });
+            doc.y = imageY + 322;
+          } else {
+            doc.roundedRect(margin, imageY, contentWidth, 28, 4).fill(PALE_TEAL);
+            doc.font("Helvetica-Oblique").fontSize(8).fillColor(MUTED)
+              .text("Photo unavailable or unreadable.", margin + 10, imageY + 9);
+            doc.y = imageY + 34;
+          }
+          const purpose = photo.purpose ? humanize(photo.purpose) : group.title;
+          doc.font("Helvetica-Bold").fontSize(7.5).fillColor(INK)
+            .text(`Photo ${photoNumber} — ${purpose}`, margin, doc.y, { continued: Boolean(photo.caption) });
+          if (photo.caption) doc.font("Helvetica").fillColor(MUTED).text(`  •  ${safeText(photo.caption)}`);
+          doc.y += 15;
+        }
+        doc.y += 8;
+      }
+    }
   }
 
   const range = doc.bufferedPageRange();

@@ -2873,6 +2873,14 @@ export const GetStormPatrolReportParams = zod.object({
   id: zod.coerce.string().uuid(),
 });
 
+export const GetStormPatrolReportQueryParams = zod.object({
+  format: zod.enum(["csv", "pdf"]).optional(),
+  photos: zod
+    .enum(["include"])
+    .optional()
+    .describe("Set to include to append field photos to a PDF report"),
+});
+
 export const GetStormPatrolReportResponse = zod.object({
   event: zod.object({
     id: zod.string().uuid(),

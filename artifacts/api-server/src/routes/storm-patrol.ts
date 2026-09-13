@@ -891,10 +891,12 @@ router.get("/storm-patrol/events/:id/report", requireAuth, requireRole("manager"
     res.type("text/csv").attachment(`storm-patrol-${event.id}.csv`).send([...summaryRows, "", headers.join(","), ...rows].join("\r\n")); return;
   }
   if (req.query.format === "pdf") {
+    const includePhotos = req.query.photos === "include";
     const PDFDocument = (await import("pdfkit")).default;
     const doc = new PDFDocument({ margin: 36, size: "A4", layout: "landscape", bufferPages: true });
-    res.type("application/pdf").attachment(`storm-patrol-${event.id}.pdf`); doc.pipe(res);
-    await writeStormPatrolPdf(doc, details);
+    const suffix = includePhotos ? "-with-photos" : "";
+    res.type("application/pdf").attachment(`storm-patrol-${event.id}${suffix}.pdf`); doc.pipe(res);
+    await writeStormPatrolPdf(doc, details, { includePhotos });
     doc.end(); return;
   }
   res.json(report);

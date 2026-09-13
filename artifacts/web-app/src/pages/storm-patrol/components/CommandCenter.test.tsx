@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => ({
   cancelJob: vi.fn(),
   toast: vi.fn(),
   customFetch: vi.fn(),
+  reportUrl: vi.fn(),
   tileLayerHandlers: { current: undefined as any },
   tileLayerRenderCount: { current: 0 },
 }));
@@ -79,7 +80,7 @@ vi.mock("@workspace/api-client-react", () => ({
   useCreateStormPatrolAlert: () => ({ mutateAsync: vi.fn(), isPending: false }),
   useAcknowledgeStormPatrolAlert: () => ({ mutateAsync: vi.fn(), isPending: false }),
   useRetryStormPatrolAlertEmail: () => ({ mutateAsync: vi.fn(), isPending: false }),
-  getGetStormPatrolReportUrl: () => "/api/storm-patrol/report",
+  getGetStormPatrolReportUrl: mocks.reportUrl,
   getGetCurrentStormPatrolQueryKey: () => ["/api/storm-patrol/current"],
   getListStormPatrolEventsQueryKey: () => ["/api/storm-patrol/events"],
   customFetch: mocks.customFetch,
@@ -157,6 +158,22 @@ function renderCommandCenter(
   );
 }
 
+describe("Storm Patrol report downloads", () => {
+  it("offers both standard and photo-inclusive PDF report URLs", async () => {
+    const user = userEvent.setup();
+    renderCommandCenter();
+
+    await user.click(screen.getByRole("button", { name: "PDF" }));
+    expect(mocks.reportUrl).toHaveBeenCalledWith("event-1", { format: "pdf" });
+
+    await user.click(screen.getByRole("button", { name: "PDF + photos" }));
+    expect(mocks.reportUrl).toHaveBeenCalledWith("event-1", {
+      format: "pdf",
+      photos: "include",
+    });
+  });
+});
+
 async function chooseSelect(
   user: ReturnType<typeof userEvent.setup>,
   label: string,
@@ -179,6 +196,9 @@ beforeEach(() => {
 
   mocks.publish.mockReset();
   mocks.publish.mockResolvedValue({ package: {}, jobs: [] });
+  mocks.reportUrl.mockReset();
+  mocks.reportUrl.mockImplementation((_id, params) =>
+    `/api/storm-patrol/report?${new URLSearchParams(params).toString()}`);
   mocks.cancelJob.mockReset().mockResolvedValue(undefined);
   mocks.toast.mockReset();
   mocks.customFetch.mockReset();

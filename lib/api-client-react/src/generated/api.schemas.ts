@@ -1606,3 +1606,26 @@ export type UploadStormPatrolObservationPhoto201 = { [key: string]: unknown };
 export type ListStormPatrolAlertsParams = {
   eventId?: string;
 };
+
+export type GetStormPatrolReportParams = {
+  format?: GetStormPatrolReportFormat;
+  /**
+   * Set to include to append field photos to a PDF report
+   */
+  photos?: GetStormPatrolReportPhotos;
+};
+
+export type GetStormPatrolReportFormat =
+  (typeof GetStormPatrolReportFormat)[keyof typeof GetStormPatrolReportFormat];
+
+export const GetStormPatrolReportFormat = {
+  csv: "csv",
+  pdf: "pdf",
+} as const;
+
+export type GetStormPatrolReportPhotos =
+  (typeof GetStormPatrolReportPhotos)[keyof typeof GetStormPatrolReportPhotos];
+
+export const GetStormPatrolReportPhotos = {
+  include: "include",
+} as const;

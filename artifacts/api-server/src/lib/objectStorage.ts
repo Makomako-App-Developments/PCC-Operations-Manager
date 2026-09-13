@@ -52,6 +52,30 @@ export type DeleteStoredObjectOptions = {
   signal?: AbortSignal;
 };
 
+const REPORT_PHOTO_PREFIX = "/api/uploads/";
+const MAX_REPORT_PHOTO_SOURCE_BYTES = 25 * 1024 * 1024;
+
+export async function downloadStoredReportPhoto(blobUrl: string): Promise<Buffer> {
+  if (!blobUrl.startsWith(REPORT_PHOTO_PREFIX)) {
+    throw new ObjectNotFoundError();
+  }
+  const objectName = blobUrl.slice(REPORT_PHOTO_PREFIX.length);
+  if (!objectName.startsWith("uploads/storm-patrol/") || objectName.includes("..")) {
+    throw new ObjectNotFoundError();
+  }
+  const bucketId = process.env.DEFAULT_OBJECT_STORAGE_BUCKET_ID;
+  if (!bucketId) throw new Error("Object storage is not configured.");
+
+  const file = objectStorageClient.bucket(bucketId).file(objectName);
+  const [metadata] = await file.getMetadata();
+  const size = Number(metadata.size);
+  if (!Number.isFinite(size) || size <= 0 || size > MAX_REPORT_PHOTO_SOURCE_BYTES) {
+    throw new Error("Photo is too large to include in a report.");
+  }
+  const [buffer] = await file.download();
+  return buffer;
+}
+
 export class ObjectNotFoundError extends Error {
   constructor() {
     super("Object not found");

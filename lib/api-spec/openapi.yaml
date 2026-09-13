@@ -1751,6 +1751,17 @@ paths:
             required: true,
             schema: { type: string, format: uuid },
           },
+          {
+            name: format,
+            in: query,
+            schema: { type: string, enum: [csv, pdf] },
+          },
+          {
+            name: photos,
+            in: query,
+            description: Set to include to append field photos to a PDF report,
+            schema: { type: string, enum: [include] },
+          },
         ]
       responses:
         {

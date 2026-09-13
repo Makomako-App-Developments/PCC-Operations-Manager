@@ -39,6 +39,7 @@ import type {
   ForbiddenResponse,
   GetOverdueScheduleJobsParams,
   GetScheduleWeekParams,
+  GetStormPatrolReportParams,
   HealthDetailResponse,
   HealthStatus,
   InfillOrder,
@@ -6791,16 +6792,32 @@ export const useRetryStormPatrolAlertEmail = <
   return useMutation(getRetryStormPatrolAlertEmailMutationOptions(options));
 };
 
-export const getGetStormPatrolReportUrl = (id: string) => {
-  return `/api/storm-patrol/events/${id}/report`;
+export const getGetStormPatrolReportUrl = (
+  id: string,
+  params?: GetStormPatrolReportParams,
+) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/storm-patrol/events/${id}/report?${stringifiedParams}`
+    : `/api/storm-patrol/events/${id}/report`;
 };
 
 export const getStormPatrolReport = async (
   id: string,
+  params?: GetStormPatrolReportParams,
   options?: RequestInit,
 ): Promise<StormReport | string | Blob> => {
   return customFetch<StormReport | string | Blob>(
-    getGetStormPatrolReportUrl(id),
+    getGetStormPatrolReportUrl(id, params),
     {
       ...options,
       method: "GET",
@@ -6808,8 +6825,14 @@ export const getStormPatrolReport = async (
   );
 };
 
-export const getGetStormPatrolReportQueryKey = (id: string) => {
-  return [`/api/storm-patrol/events/${id}/report`] as const;
+export const getGetStormPatrolReportQueryKey = (
+  id: string,
+  params?: GetStormPatrolReportParams,
+) => {
+  return [
+    `/api/storm-patrol/events/${id}/report`,
+    ...(params ? [params] : []),
+  ] as const;
 };
 
 export const getGetStormPatrolReportQueryOptions = <
@@ -6817,6 +6840,7 @@ export const getGetStormPatrolReportQueryOptions = <
   TError = ErrorType<unknown>,
 >(
   id: string,
+  params?: GetStormPatrolReportParams,
   options?: {
     query?: UseQueryOptions<
       Awaited<ReturnType<typeof getStormPatrolReport>>,
@@ -6829,11 +6853,12 @@ export const getGetStormPatrolReportQueryOptions = <
   const { query: queryOptions, request: requestOptions } = options ?? {};
 
   const queryKey =
-    queryOptions?.queryKey ?? getGetStormPatrolReportQueryKey(id);
+    queryOptions?.queryKey ?? getGetStormPatrolReportQueryKey(id, params);
 
   const queryFn: QueryFunction<
     Awaited<ReturnType<typeof getStormPatrolReport>>
-  > = ({ signal }) => getStormPatrolReport(id, { signal, ...requestOptions });
+  > = ({ signal }) =>
+    getStormPatrolReport(id, params, { signal, ...requestOptions });
 
   return {
     queryKey,
@@ -6857,6 +6882,7 @@ export function useGetStormPatrolReport<
   TError = ErrorType<unknown>,
 >(
   id: string,
+  params?: GetStormPatrolReportParams,
   options?: {
     query?: UseQueryOptions<
       Awaited<ReturnType<typeof getStormPatrolReport>>,
@@ -6866,7 +6892,7 @@ export function useGetStormPatrolReport<
     request?: SecondParameter<typeof customFetch>;
   },
 ): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
-  const queryOptions = getGetStormPatrolReportQueryOptions(id, options);
+  const queryOptions = getGetStormPatrolReportQueryOptions(id, params, options);
 
   const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
     queryKey: QueryKey;
