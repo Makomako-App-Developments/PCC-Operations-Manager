@@ -18,13 +18,13 @@ function errorMessage(error: unknown): string {
 }
 
 async function resolveSender(connectors: ReplitConnectors): Promise<string> {
-  if (process.env.STORM_PATROL_EMAIL_FROM) return process.env.STORM_PATROL_EMAIL_FROM;
   const response = await connectors.proxy("resend", "/domains", { method: "GET" });
   if (response.ok) {
     const payload = await response.json() as { data?: Array<{ name?: string; status?: string }> };
     const verified = payload.data?.find((domain) => domain.status === "verified" && domain.name);
     if (verified?.name) return `Storm Patrol <storm-patrol@${verified.name}>`;
   }
+  if (process.env.STORM_PATROL_EMAIL_FROM) return process.env.STORM_PATROL_EMAIL_FROM;
   return "Storm Patrol <onboarding@resend.dev>";
 }
 
