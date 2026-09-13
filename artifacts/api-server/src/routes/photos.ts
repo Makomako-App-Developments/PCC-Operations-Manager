@@ -3,7 +3,7 @@ import multer from "multer";
 import path from "path";
 import { createHash, randomUUID } from "crypto";
 import { db, infillJobsTable, jobPhotosTable, jobsTable, mulchingRecordsTable, reactiveJobsTable, executeWithCircuitBreaker } from "@workspace/db";
-import { eq, sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { requireAuth } from "../middlewares/auth";
 import { objectStorageClient } from "../lib/objectStorage";
 import { reconcileUncommittedPhotoObject, removeUncommittedPhotoObject } from "../lib/photo-object-cleanup";
@@ -319,6 +319,39 @@ router.post(
     res.status(201).json(photo);
   },
 );
+
+router.delete("/infill-jobs/:id/photos/:photoId", requireAuth, async (req, res) => {
+  const id = String(req.params.id);
+  const photoId = String(req.params.photoId);
+  const [infillJob] = await executeWithCircuitBreaker(() => db
+    .select({ id: infillJobsTable.id, assignedTeamId: infillJobsTable.assignedTeamId })
+    .from(infillJobsTable)
+    .where(eq(infillJobsTable.id, id))
+    .limit(1));
+  if (!infillJob) { res.status(404).json({ error: "Infill job not found" }); return; }
+
+  if (
+    !isPrivilegedRole(req.auth!.role)
+    && (!infillJob.assignedTeamId || infillJob.assignedTeamId !== req.auth!.teamId)
+  ) {
+    res.status(403).json({ error: "Forbidden" }); return;
+  }
+
+  const [photo] = await executeWithCircuitBreaker(() => db.delete(jobPhotosTable)
+    .where(and(eq(jobPhotosTable.id, photoId), eq(jobPhotosTable.infillJobId, id)))
+    .returning());
+  if (!photo) { res.status(404).json({ error: "Photo not found" }); return; }
+
+  const bucketId = process.env["DEFAULT_OBJECT_STORAGE_BUCKET_ID"];
+  if (bucketId && photo.blobUrl.startsWith("/api/uploads/")) {
+    await removeUncommittedPhotoObject(
+      bucketId,
+      photo.blobUrl.slice("/api/uploads/".length),
+      "scheduled",
+    );
+  }
+  res.status(204).send();
+});
 
 // ── Reactive job attachments ───────────────────────────────────────────────────
 

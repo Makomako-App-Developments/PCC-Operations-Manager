@@ -112,6 +112,33 @@ describe("Completed Works sources", () => {
     );
   });
 
+  it("removes an infill photo from Completed Works immediately after confirmation", async () => {
+    fetchMock.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === "/api/infill-jobs/infill-1/photos/infill-photo-1" && init?.method === "DELETE") {
+        return { ok: true, status: 204 };
+      }
+      if (url === "/api/teams") return { ok: true, json: async () => [] };
+      if (url.startsWith("/api/completed-works?")) {
+        return { ok: true, json: async () => ({ data: [{ id: "infill-1", workSource: "infill_planting", jobType: "infill_planting", completedAt: "2026-09-13T03:00:00.000Z", scheduledDate: "2026-09-13", assetName: "Infill Site", actualTimeMins: null, photoEndpoint: "/api/infill-jobs/infill-1/photos" }] }) };
+      }
+      if (url === "/api/infill-jobs/infill-1/photos") {
+        return { ok: true, json: async () => ({ data: [{ id: "infill-photo-1", blobUrl: "/api/uploads/infill-complete.jpg", caption: "Completed infill planting", createdAt: "2026-09-13T03:01:00.000Z" }] }) };
+      }
+      throw new Error(`Unexpected request: ${url}`);
+    });
+    renderPage();
+    fireEvent.click(await screen.findByText("Infill Site"));
+    fireEvent.click(await screen.findByRole("button", { name: "Remove completion photo" }));
+    fireEvent.click(screen.getByRole("button", { name: "Remove photo" }));
+
+    await waitFor(() => expect(screen.queryByAltText("Completed infill planting")).not.toBeInTheDocument());
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/infill-jobs/infill-1/photos/infill-photo-1",
+      { method: "DELETE", credentials: "include" },
+    );
+  });
+
   it.each([
     ["routine_maintenance", "/api/jobs/work-1/pdf"],
     ["unscheduled", "/api/jobs/work-1/pdf?source=unscheduled"],

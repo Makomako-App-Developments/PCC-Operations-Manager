@@ -472,6 +472,51 @@ describe("photo routes: real multipart idempotency", () => {
     expect(rowsFor(tables.jobPhotosTable)).toHaveLength(1);
   });
 
+  it("lets the assigned field team delete its infill photo and stored object", async () => {
+    const created = await multipart(
+      `/api/infill-jobs/${ids.infill}/photos`,
+      "assigned-team-infill-delete",
+    ).set("x-test-role", "field_worker").set("x-test-team", "team-1");
+
+    const response = await request(app())
+      .delete(`/api/infill-jobs/${ids.infill}/photos/${created.body.id}`)
+      .set("x-test-role", "field_worker")
+      .set("x-test-team", "team-1");
+
+    expect(response.status).toBe(204);
+    expect(rowsFor(tables.jobPhotosTable)).toHaveLength(0);
+    expect(state.objects.has(created.body.blobUrl.slice("/api/uploads/".length))).toBe(false);
+  });
+
+  it("does not let a different field team delete an infill photo", async () => {
+    const created = await multipart(`/api/infill-jobs/${ids.infill}/photos`, "protected-infill-delete");
+    const response = await request(app())
+      .delete(`/api/infill-jobs/${ids.infill}/photos/${created.body.id}`)
+      .set("x-test-role", "field_worker")
+      .set("x-test-team", "team-2");
+
+    expect(response.status).toBe(403);
+    expect(rowsFor(tables.jobPhotosTable)).toHaveLength(1);
+    expect(state.objects.has(created.body.blobUrl.slice("/api/uploads/".length))).toBe(true);
+  });
+
+  it("queues storage cleanup after an authorized infill photo delete fails at the provider", async () => {
+    const created = await multipart(`/api/infill-jobs/${ids.infill}/photos`, "queued-infill-delete");
+    state.failDeletes = true;
+
+    const response = await request(app())
+      .delete(`/api/infill-jobs/${ids.infill}/photos/${created.body.id}`);
+
+    expect(response.status).toBe(204);
+    expect(rowsFor(tables.jobPhotosTable)).toHaveLength(0);
+    expect(rowsFor(tables.photoObjectCleanupTable)).toEqual([
+      expect.objectContaining({
+        objectName: created.body.blobUrl.slice("/api/uploads/".length),
+        route: "scheduled",
+      }),
+    ]);
+  });
+
   it("rejects infill image formats that cannot appear in the completion PDF", async () => {
     const response = await request(app())
       .post(`/api/infill-jobs/${ids.infill}/photos`)

@@ -851,6 +851,8 @@ function InfillCompletionPhotos({
   token: string | null;
 }) {
   const colors = useColors();
+  const qc = useQueryClient();
+  const [photoPendingDelete, setPhotoPendingDelete] = useState<InfillPhoto | null>(null);
   const { data, isLoading, isError, refetch, isFetching } = useQuery<{ data: InfillPhoto[] }>({
     queryKey: ["infill-job-photos", jobId],
     queryFn: async () => {
@@ -892,6 +894,26 @@ function InfillCompletionPhotos({
       error instanceof Error
         ? error.message
         : "GardenOps could not safely store this photo. Please select it again.",
+    ),
+  });
+  const deletePhoto = useMutation({
+    mutationFn: async (photoId: string) => {
+      const res = await fetch(getApiUrl(`/api/infill-jobs/${jobId}/photos/${photoId}`), {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) throw new Error("The photo could not be removed.");
+    },
+    onSuccess: (_data, photoId) => {
+      qc.setQueryData<{ data: InfillPhoto[] }>(
+        ["infill-job-photos", jobId],
+        current => ({ data: (current?.data ?? []).filter(photo => photo.id !== photoId) }),
+      );
+      setPhotoPendingDelete(null);
+    },
+    onError: error => Alert.alert(
+      "Photo not removed",
+      error instanceof Error ? error.message : "Check your connection and try again.",
     ),
   });
   const photos = data?.data ?? [];
@@ -986,14 +1008,24 @@ function InfillCompletionPhotos({
       ) : totalCount > 0 ? (
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.infillPhotoRow}>
           {photos.map(photo => (
-            <AuthenticatedPhoto
-              key={photo.id}
-              uri={getApiUrl(photo.blobUrl)}
-              token={token}
-              style={[styles.infillPhotoThumb, { borderRadius: colors.radius / 2 }]}
-              placeholderColor={colors.card}
-              iconColor={colors.mutedForeground}
-            />
+            <View key={photo.id} style={styles.infillPhotoPending}>
+              <AuthenticatedPhoto
+                uri={getApiUrl(photo.blobUrl)}
+                token={token}
+                style={[styles.infillPhotoThumb, { borderRadius: colors.radius / 2 }]}
+                placeholderColor={colors.card}
+                iconColor={colors.mutedForeground}
+              />
+              <TouchableOpacity
+                accessibilityRole="button"
+                accessibilityLabel="Remove completion photo"
+                testID={`remove-infill-photo-${photo.id}`}
+                style={styles.infillPhotoRemove}
+                onPress={() => setPhotoPendingDelete(photo)}
+              >
+                <Feather name="trash-2" size={14} color="#fff" />
+              </TouchableOpacity>
+            </View>
           ))}
           {queuedPhotos.map((photo: QueuedPhoto) => (
             <View key={photo.id} style={styles.infillPhotoPending}>
@@ -1022,6 +1054,38 @@ function InfillCompletionPhotos({
         onTakePhoto={takePhoto}
         onPickFromLibrary={pickFromLibrary}
       />
+      {photoPendingDelete && (
+        <Modal transparent visible animationType="fade" onRequestClose={() => setPhotoPendingDelete(null)}>
+          <View style={styles.infillDeleteBackdrop}>
+            <View style={[styles.infillDeleteDialog, { backgroundColor: colors.card, borderColor: colors.border }]}>
+              <Text style={[styles.infillDeleteTitle, { color: colors.foreground }]}>Remove this photo?</Text>
+              <Text style={[styles.infillDeleteMessage, { color: colors.mutedForeground }]}>
+                This permanently removes the completion photo from the infill job.
+              </Text>
+              <View style={styles.infillDeleteActions}>
+                <TouchableOpacity
+                  style={[styles.infillDeleteButton, { borderColor: colors.border }]}
+                  onPress={() => setPhotoPendingDelete(null)}
+                  disabled={deletePhoto.isPending}
+                >
+                  <Text style={{ color: colors.foreground }}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  accessibilityRole="button"
+                  accessibilityLabel="Confirm remove photo"
+                  style={[styles.infillDeleteButton, { backgroundColor: "#b91c1c", borderColor: "#b91c1c" }]}
+                  onPress={() => deletePhoto.mutate(photoPendingDelete.id)}
+                  disabled={deletePhoto.isPending}
+                >
+                  {deletePhoto.isPending
+                    ? <ActivityIndicator size="small" color="#fff" />
+                    : <Text style={{ color: "#fff" }}>Remove</Text>}
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </Modal>
+      )}
     </View>
   );
 }
@@ -1766,6 +1830,20 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: "rgba(15,23,42,0.3)",
+  },
+  infillPhotoRemove: {
+    position: "absolute", top: 4, right: 4, width: 28, height: 28, borderRadius: 14,
+    alignItems: "center", justifyContent: "center", backgroundColor: "rgba(127, 29, 29, 0.9)",
+  },
+  infillDeleteBackdrop: {
+    flex: 1, backgroundColor: "rgba(0,0,0,0.45)", alignItems: "center", justifyContent: "center", padding: 24,
+  },
+  infillDeleteDialog: { width: "100%", maxWidth: 360, borderWidth: 1, borderRadius: 14, padding: 20 },
+  infillDeleteTitle: { fontFamily: "Inter_600SemiBold", fontSize: 18 },
+  infillDeleteMessage: { fontFamily: "Inter_400Regular", fontSize: 14, lineHeight: 20, marginTop: 8 },
+  infillDeleteActions: { flexDirection: "row", justifyContent: "flex-end", gap: 10, marginTop: 20 },
+  infillDeleteButton: {
+    minWidth: 90, minHeight: 42, borderWidth: 1, borderRadius: 8, alignItems: "center", justifyContent: "center",
   },
   infillPhotoActions: { flexDirection: "row", gap: 8, paddingTop: 8 },
   infillPhotoButton: { flex: 1, minHeight: 38, borderWidth: 1, justifyContent: "center" },

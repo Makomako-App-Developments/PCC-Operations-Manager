@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useSearch } from "wouter";
-import { Search, X, Clock, Camera, FileText, ChevronRight, CheckCircle2, ArrowUpRight, ArrowDownRight, Minus, ChevronsUpDown, ChevronUp, ChevronDown, MapPin, Maximize2, Download, Loader2 } from "lucide-react";
+import { Search, X, Clock, Camera, FileText, ChevronRight, CheckCircle2, ArrowUpRight, ArrowDownRight, Minus, ChevronsUpDown, ChevronUp, ChevronDown, MapPin, Maximize2, Download, Loader2, Trash2 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -146,7 +146,11 @@ function varianceMins(actual: number | null, estimated: number | null): number |
   return actual - estimated;
 }
 
-export function CompletedWorkPhotos({ photos }: { photos: Photo[] }) {
+export function CompletedWorkPhotos({ photos, onRemove, removingId }: {
+  photos: Photo[];
+  onRemove?: (photo: Photo) => void;
+  removingId?: string | null;
+}) {
   if (photos.length === 0) {
     return <p className="text-sm text-gray-400 italic">No photos attached.</p>;
   }
@@ -169,6 +173,21 @@ export function CompletedWorkPhotos({ photos }: { photos: Photo[] }) {
             <div className="absolute bottom-0 left-0 right-0 bg-black/50 px-2 py-1 text-white text-[10px] truncate">
               {photo.caption}
             </div>
+          )}
+          {onRemove && (
+            <button
+              type="button"
+              aria-label="Remove completion photo"
+              disabled={removingId === photo.id}
+              onClick={event => {
+                event.preventDefault();
+                event.stopPropagation();
+                onRemove(photo);
+              }}
+              className="absolute top-1.5 left-1.5 rounded bg-red-700/90 p-1.5 text-white opacity-0 transition-opacity hover:bg-red-800 group-hover:opacity-100 focus:opacity-100 disabled:opacity-60"
+            >
+              {removingId === photo.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+            </button>
           )}
           <div className="absolute top-1.5 right-1.5 bg-black/30 rounded p-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
             <ChevronRight className="w-3 h-3 text-white" />
@@ -211,8 +230,11 @@ export function CompletedWorkPdfLink({
 
 function DetailPanel({ job, onClose }: { job: CompletedWork; onClose: () => void }) {
   const isStorm = job.workSource === "storm_patrol";
+  const queryClient = useQueryClient();
+  const [photoPendingDelete, setPhotoPendingDelete] = useState<Photo | null>(null);
+  const photoQueryKey = ["job-photos", job.id, job.workSource] as const;
   const { data: photosData } = useQuery<{ data: Photo[] }>({
-    queryKey: ["job-photos", job.id, job.workSource],
+    queryKey: photoQueryKey,
     queryFn: async () => {
       if (!job.photoEndpoint) return { data: [] };
       const res = await fetch(job.photoEndpoint, { credentials: "include" });
@@ -220,6 +242,22 @@ function DetailPanel({ job, onClose }: { job: CompletedWork; onClose: () => void
       return res.json();
     },
     enabled: Boolean(job.photoEndpoint),
+  });
+  const deletePhoto = useMutation({
+    mutationFn: async (photoId: string) => {
+      const res = await fetch(`/api/infill-jobs/${job.id}/photos/${photoId}`, {
+        method: "DELETE",
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error("The photo could not be removed.");
+    },
+    onSuccess: (_data, photoId) => {
+      queryClient.setQueryData<{ data: Photo[] }>(
+        photoQueryKey,
+        current => ({ data: (current?.data ?? []).filter(photo => photo.id !== photoId) }),
+      );
+      setPhotoPendingDelete(null);
+    },
   });
 
   const photos = photosData?.data ?? [];
@@ -353,7 +391,14 @@ function DetailPanel({ job, onClose }: { job: CompletedWork; onClose: () => void
               <span className="ml-auto text-xs font-normal text-gray-400 normal-case">{photos.length} photo{photos.length !== 1 ? "s" : ""}</span>
             )}
           </h3>
-          <CompletedWorkPhotos photos={photos} />
+          <CompletedWorkPhotos
+            photos={photos}
+            onRemove={job.workSource === "infill_planting" ? setPhotoPendingDelete : undefined}
+            removingId={deletePhoto.isPending ? photoPendingDelete?.id : null}
+          />
+          {deletePhoto.isError && (
+            <p className="mt-2 text-xs text-red-600">The photo was not removed. Check your connection and try again.</p>
+          )}
         </section>
 
         {/* Download PDF */}
@@ -363,6 +408,25 @@ function DetailPanel({ job, onClose }: { job: CompletedWork; onClose: () => void
           </div>
         )}
       </div>
+      <Dialog open={Boolean(photoPendingDelete)} onOpenChange={open => { if (!open && !deletePhoto.isPending) setPhotoPendingDelete(null); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Remove this photo?</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-gray-600">This permanently removes the completion photo from the infill job.</p>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setPhotoPendingDelete(null)} disabled={deletePhoto.isPending}>Cancel</Button>
+            <Button
+              variant="destructive"
+              onClick={() => photoPendingDelete && deletePhoto.mutate(photoPendingDelete.id)}
+              disabled={deletePhoto.isPending}
+            >
+              {deletePhoto.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Remove photo
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
