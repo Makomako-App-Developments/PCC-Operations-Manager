@@ -125,11 +125,73 @@ jobs:
           path: api-container-startup.log
           if-no-files-found: warn
 
-      - name: Build & push web image
+      - name: Build, validate & push web image
         run: |
           docker build -f artifacts/web-app/Dockerfile -t $REGISTRY/$WEB_IMAGE:$GITHUB_SHA -t $REGISTRY/$WEB_IMAGE:latest .
+
+          container_name=web-deploy-validation
+          response_file=$(mktemp)
+          cleanup() {
+            docker logs "$container_name" > web-container-startup.log 2>&1 || true
+            docker rm -f "$container_name" >/dev/null 2>&1 || true
+            rm -f "$response_file"
+          }
+          trap cleanup EXIT
+
+          docker run --detach \
+            --name "$container_name" \
+            --publish 127.0.0.1:18081:80 \
+            "$REGISTRY/$WEB_IMAGE:$GITHUB_SHA"
+
+          healthy=false
+          for attempt in $(seq 1 30); do
+            if ! docker inspect --format '{{.State.Running}}' "$container_name" | grep -qx true; then
+              echo "Web container exited before becoming healthy."
+              exit 1
+            fi
+
+            : > "$response_file"
+            http_status=$(curl --silent --show-error \
+              --connect-timeout 2 \
+              --max-time 3 \
+              --output "$response_file" \
+              --write-out '%{http_code}' \
+              http://127.0.0.1:18081/) || http_status="request_failed"
+
+            if [ "$http_status" = "200" ]; then
+              if grep -Fq '<div id="root"></div>' "$response_file" \
+                && grep -Fq '<title>PCC Gardens Manager</title>' "$response_file"; then
+                healthy=true
+                break
+              fi
+              echo "Web container returned HTTP 200 without the expected application shell."
+              cat "$response_file"
+              exit 1
+            fi
+
+            if [ "$http_status" != "request_failed" ] && [ "$http_status" != "000" ]; then
+              echo "Web container returned an unhealthy HTTP status: $http_status"
+              cat "$response_file"
+              exit 1
+            fi
+            sleep 1
+          done
+
+          if [ "$healthy" != true ]; then
+            echo "Timed out waiting for a healthy web response."
+            exit 1
+          fi
+
           docker push $REGISTRY/$WEB_IMAGE:$GITHUB_SHA
           docker push $REGISTRY/$WEB_IMAGE:latest
+
+      - name: Upload web startup logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-container-startup-${{ github.sha }}
+          path: web-container-startup.log
+          if-no-files-found: warn
 
       - name: Deploy API to Azure App Service
         uses: azure/webapps-deploy@v3
