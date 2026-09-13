@@ -2242,6 +2242,7 @@ export const GetCurrentStormPatrolResponse = zod.object({
             assetId: zod.string().uuid().nullish(),
             description: zod.string(),
             notes: zod.string().nullish(),
+            observerName: zod.string().nullish(),
             locationLat: zod.number(),
             locationLng: zod.number(),
             reactiveJobId: zod.string().uuid().nullish(),

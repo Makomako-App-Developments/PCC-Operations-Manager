@@ -14,6 +14,7 @@ export interface StormObservation {
   assetId?: string | null;
   description: string;
   notes?: string | null;
+  observerName?: string | null;
   locationLat: number;
   locationLng: number;
   reactiveJobId?: string | null;

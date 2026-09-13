@@ -458,6 +458,7 @@ describe("Storm Patrol work package asset filters", () => {
       eventId: "event-1",
       description: "Pigs blocking the drain",
       notes: "Needs urgent clearance.",
+      observerName: "Alex Crew",
       locationLat: -41.12345,
       locationLng: 174.98765,
       createdAt: "2026-09-10T04:30:00.000Z",
@@ -472,7 +473,8 @@ describe("Storm Patrol work package asset filters", () => {
     }], [{ id: "draft-job-1" }]);
 
     const card = screen.getByRole("button", { name: "Open New Observation: Pigs blocking the drain" });
-    expect(within(card).getByText("10 Sep 2026")).toBeVisible();
+    expect(within(card).getByText(/10 Sep 2026/)).toBeVisible();
+    expect(within(card).getByText(/Alex Crew/)).toBeVisible();
     expect(within(card).getByText("Draft Unscheduled job created")).toBeVisible();
     expect(within(card).queryByText("View details")).not.toBeInTheDocument();
 
@@ -480,6 +482,7 @@ describe("Storm Patrol work package asset filters", () => {
 
     const dialog = screen.getByRole("dialog");
     expect(within(dialog).getByText("New Observation")).toBeVisible();
+    expect(within(dialog).getByText("Logged by Alex Crew · 04:30, 10 Sep 2026")).toBeVisible();
     const observationMap = within(dialog).getByLabelText("New Observation recorded location");
     expect(observationMap).toHaveAttribute("data-center", "[-41.12345,174.98765]");
     expect(observationMap).toHaveAttribute("data-zoom", "17");

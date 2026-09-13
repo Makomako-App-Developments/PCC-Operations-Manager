@@ -46,6 +46,7 @@ type StormObservation = {
   eventId: string;
   description: string;
   notes?: string | null;
+  observerName?: string | null;
   locationLat: number;
   locationLng: number;
   reactiveJobId?: string | null;
@@ -534,6 +535,7 @@ export default function CommandCenter({ data }: CommandCenterProps) {
                         <p className="text-sm font-medium text-white/90 mb-1">{obs.description}</p>
                         {obs.notes && <p className="text-xs text-white/60 mb-2">{obs.notes}</p>}
                         <p className="mb-2 text-[10px] font-medium uppercase tracking-wider text-white/45">
+                          {obs.observerName ? `${obs.observerName} · ` : ""}
                           {obs.createdAt ? format(new Date(obs.createdAt), "d MMM yyyy") : "Date not recorded"}
                         </p>
                         
@@ -1307,7 +1309,9 @@ export default function CommandCenter({ data }: CommandCenterProps) {
                   </div>
                   <DialogTitle className="text-xl text-white">{selectedObservation.description}</DialogTitle>
                   <DialogDescription className="text-white/55">
-                    Logged {selectedObservation.createdAt ? format(new Date(selectedObservation.createdAt), "HH:mm, d MMM yyyy") : "at an unknown time"}
+                    Logged by {selectedObservation.observerName || "Unknown field worker"}
+                    {" · "}
+                    {selectedObservation.createdAt ? format(new Date(selectedObservation.createdAt), "HH:mm, d MMM yyyy") : "time unknown"}
                   </DialogDescription>
                 </DialogHeader>
 

@@ -1803,6 +1803,7 @@ components:
         assetId: { type: string, format: uuid, nullable: true }
         description: { type: string }
         notes: { type: string, nullable: true }
+        observerName: { type: string, nullable: true }
         locationLat: { type: number }
         locationLng: { type: number }
         reactiveJobId: { type: string, format: uuid, nullable: true }

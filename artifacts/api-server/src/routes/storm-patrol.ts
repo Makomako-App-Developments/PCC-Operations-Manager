@@ -7,7 +7,7 @@ import {
   stormCheckResultsTable, stormObservationsTable, stormAlertsTable, stormPatrolSettingsTable,
   stormPhotosTable, reactiveJobsTable, assetsTable, teamsTable, usersTable,
 } from "@workspace/db";
-import { and, asc, desc, eq, inArray, isNull, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, getTableColumns, inArray, isNull, or, sql } from "drizzle-orm";
 import { z } from "zod";
 import { STORM_PATROL_ERROR_CODES } from "@workspace/asset-definitions";
 import { requireAuth, requireRole } from "../middlewares/auth";
@@ -396,7 +396,15 @@ router.get("/storm-patrol/current", requireAuth, async (req, res) => {
   const completed = jobs.filter(j => j.status === "completed" || j.status === "too_dangerous");
   const minutes = sumStormPatrolActualMinutes(jobs);
   const [observations, followUps, alerts] = await Promise.all([
-    executeWithCircuitBreaker(() => db.select().from(stormObservationsTable).where(eq(stormObservationsTable.eventId, event.id)).orderBy(desc(stormObservationsTable.createdAt))),
+    executeWithCircuitBreaker(() => db
+      .select({
+        ...getTableColumns(stormObservationsTable),
+        observerName: usersTable.name,
+      })
+      .from(stormObservationsTable)
+      .leftJoin(usersTable, eq(stormObservationsTable.raisedById, usersTable.id))
+      .where(eq(stormObservationsTable.eventId, event.id))
+      .orderBy(desc(stormObservationsTable.createdAt))),
     executeWithCircuitBreaker(() => db.select().from(reactiveJobsTable).where(and(eq(reactiveJobsTable.stormEventId, event.id), eq(reactiveJobsTable.origin, "storm_patrol"))).orderBy(desc(reactiveJobsTable.createdAt))),
     executeWithCircuitBreaker(() => db.select().from(stormAlertsTable).where(eq(stormAlertsTable.eventId, event.id)).orderBy(desc(stormAlertsTable.createdAt))),
   ]);
