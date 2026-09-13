@@ -1,6 +1,6 @@
 import { Router } from "express";
 import path from "path";
-import { db, executeWithCircuitBreaker, jobsTable, reactiveJobsTable, insertJobSchema, insertReactiveJobSchema, assetsTable, teamsTable, usersTable, jobTeamCompletionsTable, jobTaskSkipReasonsTable, mulchingRecordsTable, jobPhotosTable, auditLogTable, stormJobsTable, stormEventsTable, stormCheckResultsTable } from "@workspace/db";
+import { db, executeWithCircuitBreaker, jobsTable, reactiveJobsTable, insertJobSchema, insertReactiveJobSchema, assetsTable, teamsTable, usersTable, jobTeamCompletionsTable, jobTaskSkipReasonsTable, infillJobsTable, mulchingRecordsTable, jobPhotosTable, auditLogTable, stormJobsTable, stormEventsTable, stormCheckResultsTable } from "@workspace/db";
 import { eq, and, inArray, notInArray, or, isNull, gte, lte, ilike, desc, sql } from "drizzle-orm";
 import { z } from "zod";
 import { z as zV4 } from "zod/v4";
@@ -264,7 +264,7 @@ const completedWorksQuerySchema = z.object({
   from:       z.string().optional(),
   to:         z.string().optional(),
   search:     z.string().optional(),
-  workSource: z.enum(["garden", "storm_patrol", "all"]).default("all"),
+  workSource: z.enum(["garden", "routine_maintenance", "unscheduled", "infill_planting", "mulching", "storm_patrol", "all"]).default("all"),
   page:       z.coerce.number().int().min(1).default(1),
   limit:      z.coerce.number().int().min(1).max(1000).default(100),
 });
@@ -289,6 +289,15 @@ router.get("/completed-works", requireAuth, validateQuery(completedWorksQuerySch
   if (q.search) {
     const term = `%${q.search}%`;
     conditions.push(ilike(assetsTable.name, term) as any);
+  }
+  const jobTypeForSource = {
+    routine_maintenance: "scheduled",
+    unscheduled: "reactive",
+    infill_planting: "infill_planting",
+    mulching: "mulching",
+  } as const;
+  if (q.workSource in jobTypeForSource) {
+    conditions.push(eq(jobsTable.jobType, jobTypeForSource[q.workSource as keyof typeof jobTypeForSource]) as any);
   }
 
   const offset = (q.page - 1) * q.limit;
@@ -326,8 +335,177 @@ router.get("/completed-works", requireAuth, validateQuery(completedWorksQuerySch
     .limit(q.limit)
     .offset(offset));
 
+  const mappedJobs = rows.map(row => ({
+    ...row,
+    workSource: row.jobType === "scheduled" ? "routine_maintenance" : row.jobType,
+    pdfAvailable: true,
+    photoEndpoint: `/api/jobs/${row.id}/photos`,
+  }));
+
+  const commonAssetConditions = (table: {
+    assetId: any;
+    teamId: any;
+    date: any;
+  }) => {
+    const sourceConditions: any[] = [];
+    if (q.assetId) sourceConditions.push(eq(table.assetId, q.assetId));
+    if (q.teamId) sourceConditions.push(eq(table.teamId, q.teamId));
+    if (q.from) sourceConditions.push(gte(table.date, q.from));
+    if (q.to) sourceConditions.push(lte(table.date, q.to));
+    if (q.ward) sourceConditions.push(eq(assetsTable.ward, q.ward as any));
+    if (q.gardenType) sourceConditions.push(eq(assetsTable.gardenType, q.gardenType as any));
+    if (q.search) sourceConditions.push(ilike(assetsTable.name, `%${q.search}%`));
+    return sourceConditions;
+  };
+
+  const includeUnscheduled = q.workSource === "all" || q.workSource === "unscheduled";
+  const reactiveConditions: any[] = [
+    eq(reactiveJobsTable.status, "completed"),
+    ...commonAssetConditions({
+      assetId: reactiveJobsTable.assetId,
+      teamId: reactiveJobsTable.assignedTeamId,
+      date: reactiveJobsTable.scheduledDate,
+    }),
+  ];
+  if (!isPrivilegedRole(req.auth!.role)) reactiveConditions.push(eq(reactiveJobsTable.assignedTeamId, req.auth!.teamId ?? ""));
+  const reactiveRows = includeUnscheduled ? await executeWithCircuitBreaker(() => db
+    .select({
+      id: reactiveJobsTable.id,
+      scheduledDate: reactiveJobsTable.scheduledDate,
+      startedAt: reactiveJobsTable.startedAt,
+      completedAt: reactiveJobsTable.completedAt,
+      actualTimeMins: reactiveJobsTable.actualTimeMins,
+      estimatedTimeMins: reactiveJobsTable.estimatedTimeMins,
+      notes: reactiveJobsTable.notes,
+      teamId: reactiveJobsTable.assignedTeamId,
+      assignedUserName: usersTable.name,
+      teamName: teamsTable.name,
+      assetId: assetsTable.id,
+      assetName: assetsTable.name,
+      assetDescription: assetsTable.description,
+      gardenType: assetsTable.gardenType,
+      ward: assetsTable.ward,
+      suburb: assetsTable.suburb,
+      areaM2: assetsTable.areaM2,
+      issueType: reactiveJobsTable.issueType,
+      description: reactiveJobsTable.description,
+      priority: reactiveJobsTable.priority,
+    })
+    .from(reactiveJobsTable)
+    .leftJoin(assetsTable, eq(reactiveJobsTable.assetId, assetsTable.id))
+    .leftJoin(teamsTable, eq(reactiveJobsTable.assignedTeamId, teamsTable.id))
+    .leftJoin(usersTable, eq(reactiveJobsTable.assignedUserId, usersTable.id))
+    .where(and(...reactiveConditions))
+    .orderBy(desc(reactiveJobsTable.completedAt))
+    .limit(q.limit)) : [];
+  const mappedReactive = reactiveRows.map(row => ({
+    ...row,
+    jobType: "reactive",
+    workSource: "unscheduled",
+    crewStatus: null,
+    isAllTeams: false,
+    pdfAvailable: false,
+    photoEndpoint: `/api/reactive-jobs/${row.id}/photos`,
+  }));
+
+  const includeInfill = q.workSource === "all" || q.workSource === "infill_planting";
+  const infillConditions: any[] = [
+    eq(infillJobsTable.status, "completed"),
+    ...commonAssetConditions({
+      assetId: infillJobsTable.assetId,
+      teamId: infillJobsTable.assignedTeamId,
+      date: infillJobsTable.plannedDate,
+    }),
+  ];
+  if (!isPrivilegedRole(req.auth!.role)) infillConditions.push(eq(infillJobsTable.assignedTeamId, req.auth!.teamId ?? ""));
+  const infillRows = includeInfill ? await executeWithCircuitBreaker(() => db
+    .select({
+      id: infillJobsTable.id,
+      scheduledDate: infillJobsTable.plannedDate,
+      completedAt: infillJobsTable.updatedAt,
+      estimatedTimeMins: infillJobsTable.estimatedMins,
+      notes: infillJobsTable.assessmentNotes,
+      teamId: infillJobsTable.assignedTeamId,
+      teamName: teamsTable.name,
+      assetId: assetsTable.id,
+      assetName: assetsTable.name,
+      assetDescription: assetsTable.description,
+      gardenType: assetsTable.gardenType,
+      ward: assetsTable.ward,
+      suburb: assetsTable.suburb,
+      areaM2: assetsTable.areaM2,
+    })
+    .from(infillJobsTable)
+    .innerJoin(assetsTable, eq(infillJobsTable.assetId, assetsTable.id))
+    .leftJoin(teamsTable, eq(infillJobsTable.assignedTeamId, teamsTable.id))
+    .where(and(...infillConditions))
+    .orderBy(desc(infillJobsTable.updatedAt))
+    .limit(q.limit)) : [];
+  const mappedInfill = infillRows.map(row => ({
+    ...row,
+    jobType: "infill_planting",
+    workSource: "infill_planting",
+    startedAt: null,
+    actualTimeMins: null,
+    crewStatus: null,
+    isAllTeams: false,
+    assignedUserName: null,
+    pdfAvailable: false,
+    photoEndpoint: null,
+  }));
+
+  const includeMulching = q.workSource === "all" || q.workSource === "mulching";
+  const mulchConditions: any[] = [
+    eq(mulchingRecordsTable.status, "completed"),
+    ...commonAssetConditions({
+      assetId: mulchingRecordsTable.assetId,
+      teamId: mulchingRecordsTable.assignedTeamId,
+      date: mulchingRecordsTable.scheduledDate,
+    }),
+  ];
+  if (!isPrivilegedRole(req.auth!.role)) mulchConditions.push(eq(mulchingRecordsTable.assignedTeamId, req.auth!.teamId ?? ""));
+  const mulchRows = includeMulching ? await executeWithCircuitBreaker(() => db
+    .select({
+      id: mulchingRecordsTable.id,
+      scheduledDate: mulchingRecordsTable.scheduledDate,
+      completedDate: mulchingRecordsTable.completedDate,
+      estimatedTimeMins: mulchingRecordsTable.estimatedMins,
+      notes: mulchingRecordsTable.notes,
+      teamId: mulchingRecordsTable.assignedTeamId,
+      teamName: teamsTable.name,
+      assetId: assetsTable.id,
+      assetName: assetsTable.name,
+      assetDescription: assetsTable.description,
+      gardenType: assetsTable.gardenType,
+      ward: assetsTable.ward,
+      suburb: assetsTable.suburb,
+      areaM2: assetsTable.areaM2,
+      mulchType: mulchingRecordsTable.mulchType,
+      volumeM3: mulchingRecordsTable.volumeM3,
+      chargeCents: sql<number | null>`CASE WHEN ${mulchingRecordsTable.costNzd} IS NULL THEN NULL ELSE ROUND(${mulchingRecordsTable.costNzd} * 100)::int END`,
+    })
+    .from(mulchingRecordsTable)
+    .innerJoin(assetsTable, eq(mulchingRecordsTable.assetId, assetsTable.id))
+    .leftJoin(teamsTable, eq(mulchingRecordsTable.assignedTeamId, teamsTable.id))
+    .where(and(...mulchConditions))
+    .orderBy(desc(mulchingRecordsTable.completedDate))
+    .limit(q.limit)) : [];
+  const mappedMulching = mulchRows.map(row => ({
+    ...row,
+    jobType: "mulching",
+    workSource: "mulching",
+    completedAt: row.completedDate ? new Date(`${row.completedDate}T00:00:00Z`) : null,
+    startedAt: null,
+    actualTimeMins: null,
+    crewStatus: null,
+    isAllTeams: false,
+    assignedUserName: null,
+    pdfAvailable: false,
+    photoEndpoint: `/api/jobs/${row.id}/photos`,
+  }));
+
   // Storm Patrol is deliberately a separate workflow, exposed alongside—not
-  // converted into—Horticulture maintenance records.
+  // converted into—other completed work records.
   const stormConditions: any[] = [inArray(stormJobsTable.status, ["completed", "too_dangerous"] as any[])];
   if (q.teamId) stormConditions.push(eq(stormJobsTable.teamId, q.teamId));
   if (!isPrivilegedRole(req.auth!.role)) stormConditions.push(eq(stormJobsTable.teamId, req.auth!.teamId ?? ""));
@@ -350,8 +528,27 @@ router.get("/completed-works", requireAuth, validateQuery(completedWorksQuerySch
   const workTypes = stormRows.length ? await executeWithCircuitBreaker(() => db.select().from(stormCheckResultsTable).where(inArray(stormCheckResultsTable.stormJobId, stormRows.map(r => r.id)))) : [];
   const typesByJob = new Map<string, string[]>();
   for (const row of workTypes) typesByJob.set(row.stormJobId, [...(typesByJob.get(row.stormJobId) ?? []), row.workType]);
-  const mappedStorm = stormRows.map(row => ({ ...row, workSource: "storm_patrol", workTypes: typesByJob.get(row.id) ?? [], chargeCents: Math.round((row.actualTimeMins ?? 0) * row.hourlyRateCents / 60) }));
-  res.json({ data: [...rows.map(row => ({ ...row, workSource: "garden" })), ...mappedStorm], page: q.page, limit: q.limit });
+  const mappedStorm = stormRows.map(row => ({
+    ...row,
+    workSource: "storm_patrol",
+    workTypes: typesByJob.get(row.id) ?? [],
+    chargeCents: Math.round((row.actualTimeMins ?? 0) * row.hourlyRateCents / 60),
+    pdfAvailable: false,
+    photoEndpoint: null,
+  }));
+  const combined: any[] = [
+    ...mappedJobs,
+    ...mappedReactive,
+    ...mappedInfill,
+    ...mappedMulching,
+    ...mappedStorm,
+  ];
+  combined.sort((a, b) => {
+    const aDate = new Date(a.completedAt ?? a.scheduledDate ?? 0).getTime();
+    const bDate = new Date(b.completedAt ?? b.scheduledDate ?? 0).getTime();
+    return bDate - aDate;
+  });
+  res.json({ data: combined.slice(0, q.limit), page: q.page, limit: q.limit });
 });
 
 // GET /api/jobs/:id/pdf

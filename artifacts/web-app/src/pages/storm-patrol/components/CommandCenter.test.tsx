@@ -205,6 +205,53 @@ describe("Storm Patrol work package asset filters", () => {
 
     expect(screen.getByRole("heading", { name: "Urgent Issues" })).toBeVisible();
     expect(screen.queryByRole("heading", { name: "Active Alerts" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Broadcast Alert" })).not.toBeInTheDocument();
+    expect(screen.queryByTestId("input-alert-message")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("btn-send-alert")).not.toBeInTheDocument();
+  });
+
+  it("opens an urgent issue with its site, photo, map, and report details", async () => {
+    const user = userEvent.setup();
+    renderCommandCenter([], [], [], [{
+      id: "alert-details",
+      eventId: "event-1",
+      stormJobId: "job-1",
+      message: "Large tree blocking the culvert",
+      photoUrl: "/api/uploads/urgent-issue.jpg",
+      createdAt: "2026-09-13T01:15:00.000Z",
+      emailStatus: "sent",
+      emailAttempts: 1,
+      acknowledgedAt: null,
+      assetName: "Bodman SW grate",
+      assetDescription: "Stormwater inlet",
+      streetAddress: "56 Bodmans Lane",
+      suburb: "Ranui",
+      lat: -41.13,
+      lng: 174.83,
+      teamName: "Storm Team",
+      workerName: "Alex Crew",
+      phase: "mid",
+      jobStatus: "in_progress",
+      routeOrder: 4,
+    }]);
+
+    await user.click(screen.getByRole("button", { name: "Open urgent issue: Large tree blocking the culvert" }));
+
+    const dialog = screen.getByRole("dialog");
+    expect(within(dialog).getByRole("heading", { name: "Bodman SW grate" })).toBeVisible();
+    expect(within(dialog).getByText("56 Bodmans Lane")).toBeVisible();
+    expect(within(dialog).getByText("Large tree blocking the culvert")).toBeVisible();
+    expect(within(dialog).getByText("Storm Team")).toBeVisible();
+    expect(within(dialog).getByText("Alex Crew")).toBeVisible();
+    expect(within(dialog).getByText("Email sent · 1 attempt")).toBeVisible();
+
+    const map = within(dialog).getByLabelText("Urgent issue location for Bodman SW grate");
+    expect(map).toHaveAttribute("data-center", "[-41.13,174.83]");
+    const marker = within(map).getByTestId("storm-marker");
+    expect(marker).toHaveAttribute("data-fill-color", "#f97316");
+
+    const photo = await within(dialog).findByAltText("Urgent issue at Bodman SW grate");
+    expect(photo).toHaveAttribute("src", "blob:authenticated-photo");
   });
 
   it("shows the total actual minutes used by field workers", () => {

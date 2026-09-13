@@ -6,15 +6,30 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { StormAlertEmailStatus } from "./stormAlertEmailStatus";
+import type { StormAlertPhase } from "./stormAlertPhase";
 
 export interface StormAlert {
   id: string;
   eventId: string;
+  stormJobId?: string | null;
   message: string;
+  photoUrl?: string | null;
+  createdAt?: Date | null;
   acknowledgedAt?: Date | null;
   emailStatus: StormAlertEmailStatus;
   emailAttempts: number;
   emailLastError?: string | null;
   emailLastAttemptAt?: Date | null;
   emailSentAt?: Date | null;
+  assetName?: string | null;
+  assetDescription?: string | null;
+  streetAddress?: string | null;
+  suburb?: string | null;
+  lat?: number | null;
+  lng?: number | null;
+  teamName?: string | null;
+  workerName?: string | null;
+  phase?: StormAlertPhase;
+  jobStatus?: string | null;
+  routeOrder?: number | null;
 }

@@ -36,8 +36,16 @@ interface CompletedWork {
   suburb?: string | null;
   areaM2?: number | null;
 
+  workSource: "garden" | "routine_maintenance" | "unscheduled" | "infill_planting" | "mulching" | "storm_patrol";
+  issueType?: string | null;
+  description?: string | null;
+  priority?: string | null;
+  mulchType?: string | null;
+  volumeM3?: string | number | null;
+  pdfAvailable?: boolean;
+  photoEndpoint?: string | null;
+
   // Storm Patrol Specific
-  workSource: "garden" | "storm_patrol";
   phase?: string;
   outcome?: string;
   comments?: string | null;
@@ -80,6 +88,40 @@ const JOB_TYPE_LABELS: Record<string, string> = {
   mulching:        "Mulching",
   infill_planting: "Infill Planting",
 };
+
+const WORK_SOURCE_LABELS: Record<string, string> = {
+  garden: "Routine Maintenance",
+  routine_maintenance: "Routine Maintenance",
+  unscheduled: "Unscheduled Work",
+  reactive: "Unscheduled Work",
+  infill_planting: "Infill Planting",
+  mulching: "Mulching",
+  storm_patrol: "Storm Patrol",
+};
+
+export function completedWorkSourceLabel(work: Pick<CompletedWork, "workSource" | "jobType" | "stormName">) {
+  if (work.workSource === "storm_patrol" && work.stormName) return work.stormName;
+  return WORK_SOURCE_LABELS[work.workSource]
+    ?? (work.jobType ? WORK_SOURCE_LABELS[work.jobType] : undefined)
+    ?? "Completed Work";
+}
+
+function completedWorkDate(work: CompletedWork) {
+  return work.completedAt?.slice(0, 10) || work.scheduledDate || "";
+}
+
+function completedWorkDescription(work: CompletedWork) {
+  if (work.workSource === "storm_patrol") return work.workTypes?.join("; ") || "—";
+  if (work.workSource === "unscheduled" || work.jobType === "reactive") {
+    return work.issueType || work.description || "Unscheduled work";
+  }
+  if (work.workSource === "infill_planting" || work.jobType === "infill_planting") return "Infill planting";
+  if (work.workSource === "mulching" || work.jobType === "mulching") {
+    const details = [work.mulchType, work.volumeM3 != null ? `${work.volumeM3} m³` : null].filter(Boolean);
+    return details.join(" · ") || "Mulching";
+  }
+  return GARDEN_TYPE_LABELS[work.gardenType ?? ""] ?? work.gardenType ?? "—";
+}
 
 function formatDate(d: string | null) {
   if (!d) return "—";
@@ -167,11 +209,12 @@ function DetailPanel({ job, onClose }: { job: CompletedWork; onClose: () => void
   const { data: photosData } = useQuery<{ data: Photo[] }>({
     queryKey: ["job-photos", job.id, job.workSource],
     queryFn: async () => {
-      if (isStorm) return { data: [] };
-      const res = await fetch(`/api/jobs/${job.id}/photos`, { credentials: "include" });
+      if (!job.photoEndpoint) return { data: [] };
+      const res = await fetch(job.photoEndpoint, { credentials: "include" });
       if (!res.ok) throw new Error("Failed");
       return res.json();
     },
+    enabled: Boolean(job.photoEndpoint),
   });
 
   const photos = photosData?.data ?? [];
@@ -224,7 +267,7 @@ function DetailPanel({ job, onClose }: { job: CompletedWork; onClose: () => void
               <InfoBlock label="Charge" value={job.chargeCents != null ? `${(job.chargeCents/100).toFixed(2)}` : "—"} />
             </>
           ) : (
-            <InfoBlock label="Job Type" value={job.jobType ? (JOB_TYPE_LABELS[job.jobType] ?? job.jobType) : "—"} />
+            <InfoBlock label="Job Type" value={completedWorkSourceLabel(job)} />
           )}
 
           <InfoBlock label="Ward" value={job.ward ? WARD_LABELS[job.ward] ?? job.ward : "—"} />
@@ -309,9 +352,11 @@ function DetailPanel({ job, onClose }: { job: CompletedWork; onClose: () => void
         </section>
 
         {/* Download PDF */}
-        <div className="pt-1 pb-2">
-          <CompletedWorkPdfLink jobId={job.id} />
-        </div>
+        {job.pdfAvailable !== false && (
+          <div className="pt-1 pb-2">
+            <CompletedWorkPdfLink jobId={job.id} />
+          </div>
+        )}
       </div>
     </div>
   );
@@ -346,7 +391,7 @@ export default function CompletedWorks() {
   const [search, setSearch] = useState("");
   const [teamId, setTeamId] = useState("all");
   const [gardenType, setGardenType] = useState("all");
-  const [workSource, setWorkSource] = useState("garden");
+  const [workSource, setWorkSource] = useState("all");
   const [dateRange, setDateRange] = useState<"all" | "this-week" | "this-month" | "custom">("all");
   const [customFrom, setCustomFrom] = useState("");
   const [customTo, setCustomTo] = useState("");
@@ -447,6 +492,7 @@ export default function CompletedWorks() {
       if (sortKey === "scheduledDate")      { av = a.scheduledDate ?? null; bv = b.scheduledDate ?? null; }
       else if (sortKey === "assetName")     { av = a.assetName; bv = b.assetName; }
       else if (sortKey === "assetDescription") { av = a.assetDescription; bv = b.assetDescription; }
+      else if (sortKey === "workSource")    { av = completedWorkSourceLabel(a); bv = completedWorkSourceLabel(b); }
       else if (sortKey === "gardenType")    { av = a.gardenType ?? null; bv = b.gardenType ?? null; }
       else if (sortKey === "ward")          { av = a.ward ?? null; bv = b.ward ?? null; }
       else if (sortKey === "teamName")      { av = a.isAllTeams ? "All Teams" : (a.teamName ?? ""); bv = b.isAllTeams ? "All Teams" : (b.teamName ?? ""); }
@@ -475,7 +521,9 @@ export default function CompletedWorks() {
         uniqueAssets.set(r.assetId, r.areaM2 ?? null);
       }
       totalActualMins += r.actualTimeMins ?? 0;
-      totalScheduledMins += r.estimatedTimeMins ?? 0;
+      if (r.actualTimeMins != null && r.estimatedTimeMins != null) {
+        totalScheduledMins += r.estimatedTimeMins;
+      }
     }
     const totalAreaM2 = [...uniqueAssets.values()].reduce<number>((s, a) => s + Number(a ?? 0), 0);
     return {
@@ -489,13 +537,14 @@ export default function CompletedWorks() {
   function clearFilters() {
     setSearch("");
     setTeamId("all");
+    setWorkSource("all");
     setGardenType("all");
     setDateRange("all");
     setCustomFrom("");
     setCustomTo("");
   }
 
-  const hasFilters = search || teamId !== "all" || gardenType !== "all" || dateRange !== "all";
+  const hasFilters = search || teamId !== "all" || workSource !== "all" || gardenType !== "all" || dateRange !== "all";
 
   async function handleExportCSV() {
     setExportLoading(true);
@@ -516,21 +565,26 @@ export default function CompletedWorks() {
 
       const headers = ["Date", "Source", "Site", "Description", "Specification", "Ward", "Suburb", "Team", "Completed by", "Estimated (min)", "Actual (min)", "Variance (min)", "Status", "Charge ($)", "Notes"];
       const csvRows = filtered.map(r => {
-        const est = r.estimatedTimeMins ?? 0;
-        const act = r.actualTimeMins ?? est;
+        const est = r.estimatedTimeMins ?? "";
+        const act = r.actualTimeMins ?? "";
+        const variance = r.workSource !== "storm_patrol"
+          && r.actualTimeMins != null
+          && r.estimatedTimeMins != null
+          ? r.actualTimeMins - r.estimatedTimeMins
+          : "";
         return [
-          r.workSource === "storm_patrol" ? (r.completedAt ? r.completedAt.slice(0, 10) : "") : (r.scheduledDate ?? ""),
-          r.workSource === "storm_patrol" ? `Storm: ${r.stormName}` : "Maintenance",
+          completedWorkDate(r),
+          completedWorkSourceLabel(r),
           r.assetName ?? "",
           r.assetDescription ?? "",
-          r.workSource === "storm_patrol" ? r.workTypes?.join("; ") : (GARDEN_TYPE_LABELS[r.gardenType ?? ""] ?? r.gardenType ?? ""),
+          completedWorkDescription(r),
           WARD_LABELS[r.ward ?? ""] ?? r.ward ?? "",
           r.suburb ?? "",
           r.isAllTeams ? "All Teams" : (r.teamName ?? ""),
            r.isAllTeams ? "Team sign-off" : (r.assignedUserName || r.workerName || ""),
           est,
           act,
-          r.workSource === "storm_patrol" ? 0 : (act - est),
+          variance,
           r.crewStatus || r.outcome || "completed",
           r.chargeCents ? (r.chargeCents / 100).toFixed(2) : "",
           (r.notes || r.comments || "").replace(/"/g, '""'),
@@ -604,7 +658,7 @@ export default function CompletedWorks() {
               <MapPin className="w-4 h-4 text-[#00AECD]" />
             </div>
             <div className="min-w-0 flex-1">
-              <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-0.5">Gardens Serviced</p>
+              <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-0.5">Sites Serviced</p>
               <p className="text-sm font-bold text-gray-900">{isLoading ? "—" : stats.gardens.toLocaleString()}</p>
               <p className="text-[11px] text-gray-400">unique sites in view</p>
             </div>
@@ -628,7 +682,7 @@ export default function CompletedWorks() {
             <div className="min-w-0 flex-1">
               <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-0.5">Total Area</p>
               <p className="text-sm font-bold text-gray-900">{isLoading ? "—" : `${Number(stats.areaM2).toFixed(1)} m²`}</p>
-              <p className="text-[11px] text-gray-400">combined garden area</p>
+              <p className="text-[11px] text-gray-400">combined site area</p>
             </div>
           </div>
           {/* Time Variance */}
@@ -684,7 +738,10 @@ export default function CompletedWorks() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Sources</SelectItem>
-              <SelectItem value="garden">Routine Maintenance</SelectItem>
+              <SelectItem value="routine_maintenance">Routine Maintenance</SelectItem>
+              <SelectItem value="unscheduled">Unscheduled Work</SelectItem>
+              <SelectItem value="infill_planting">Infill Planting</SelectItem>
+              <SelectItem value="mulching">Mulching</SelectItem>
               <SelectItem value="storm_patrol">Storm Patrol</SelectItem>
             </SelectContent>
           </Select>
@@ -785,10 +842,12 @@ export default function CompletedWorks() {
                         }`}
                       >
                         <td className="px-5 py-3 text-gray-600 whitespace-nowrap text-xs">
-                          {formatDate(isStorm ? (row.completedAt ? row.completedAt.slice(0, 10) : "") : (row.scheduledDate ?? ""))}
+                          {formatDate(completedWorkDate(row))}
                         </td>
                         <td className="px-5 py-3 whitespace-nowrap text-xs text-gray-600">
-                          {isStorm ? <span className="text-red-500 font-semibold">{row.stormName}</span> : "Routine Maintenance"}
+                          <span className={isStorm ? "text-red-500 font-semibold" : undefined}>
+                            {completedWorkSourceLabel(row)}
+                          </span>
                         </td>
                         <td className="px-5 py-3">
                           <div className="font-medium text-gray-900 truncate max-w-[220px]">{row.assetName ?? "—"}</div>
@@ -800,10 +859,10 @@ export default function CompletedWorks() {
                           {isStorm ? (
                             <div className="flex flex-col gap-0.5">
                               <span className="font-medium uppercase tracking-wider text-[10px]">{row.phase}</span>
-                              <span className="text-gray-400 truncate max-w-[150px]">{row.workTypes?.join("; ") || "—"}</span>
+                              <span className="text-gray-400 truncate max-w-[150px]">{completedWorkDescription(row)}</span>
                             </div>
                           ) : (
-                            GARDEN_TYPE_LABELS[row.gardenType ?? ""] ?? row.gardenType ?? "—"
+                            completedWorkDescription(row)
                           )}
                         </td>
                         <td className="px-5 py-3 whitespace-nowrap text-xs text-gray-600">
@@ -821,11 +880,13 @@ export default function CompletedWorks() {
                         <td className="px-4 py-3">
                           <div className="flex items-center gap-1 justify-end">
                             {(row.notes || row.comments) && <FileText className="w-3 h-3 text-amber-400 flex-shrink-0" aria-label="Has notes" />}
-                            <CompletedWorkPdfLink
-                              jobId={row.id}
-                              compact
-                              onClick={e => e.stopPropagation()}
-                            />
+                            {row.pdfAvailable !== false && (
+                              <CompletedWorkPdfLink
+                                jobId={row.id}
+                                compact
+                                onClick={e => e.stopPropagation()}
+                              />
+                            )}
                           </div>
                         </td>
                       </tr>

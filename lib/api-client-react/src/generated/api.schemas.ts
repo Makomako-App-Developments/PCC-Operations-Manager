@@ -144,16 +144,40 @@ export const StormAlertEmailStatus = {
   failed: "failed",
 } as const;
 
+export type StormAlertPhase =
+  | (typeof StormAlertPhase)[keyof typeof StormAlertPhase]
+  | null;
+
+export const StormAlertPhase = {
+  pre: "pre",
+  mid: "mid",
+  post: "post",
+} as const;
+
 export interface StormAlert {
   id: string;
   eventId: string;
+  stormJobId?: string | null;
   message: string;
+  photoUrl?: string | null;
+  createdAt?: string | null;
   acknowledgedAt?: string | null;
   emailStatus: StormAlertEmailStatus;
   emailAttempts: number;
   emailLastError?: string | null;
   emailLastAttemptAt?: string | null;
   emailSentAt?: string | null;
+  assetName?: string | null;
+  assetDescription?: string | null;
+  streetAddress?: string | null;
+  suburb?: string | null;
+  lat?: number | null;
+  lng?: number | null;
+  teamName?: string | null;
+  workerName?: string | null;
+  phase?: StormAlertPhase;
+  jobStatus?: string | null;
+  routeOrder?: number | null;
 }
 
 export type StormCurrentResponseData = {

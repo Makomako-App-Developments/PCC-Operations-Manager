@@ -427,7 +427,29 @@ router.get("/storm-patrol/current", requireAuth, async (req, res) => {
     ...observation,
     photos: observation.reactiveJobId ? photosByReactiveJobId.get(observation.reactiveJobId) ?? [] : [],
   }));
-  res.json({ data: { event, jobs, observations: observationsWithPhotos, followUps, alerts, summary: { selectedCount: jobs.length, checkedCount: completed.length, actualMinutes: minutes, workMinutes: minutes, labourChargeCents: cents(minutes, event.hourlyRateCents), tooDangerousCount: jobs.filter(j => j.status === "too_dangerous").length } } });
+  const jobsById = new Map(jobs.map(job => [job.id, job]));
+  const alertsWithDetails = alerts.map(alert => {
+    const job = alert.stormJobId ? jobsById.get(alert.stormJobId) : undefined;
+    const urgentPhoto = job?.photos
+      .filter(photo => photo.purpose === "urgent_issue")
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0];
+    return {
+      ...alert,
+      photoUrl: alert.photoUrl ?? urgentPhoto?.blobUrl ?? null,
+      assetName: job?.assetName ?? null,
+      assetDescription: job?.assetDescription ?? null,
+      streetAddress: job?.streetAddress ?? null,
+      suburb: job?.suburb ?? null,
+      lat: job?.lat ?? null,
+      lng: job?.lng ?? null,
+      teamName: job?.teamName ?? null,
+      workerName: job?.workerName ?? null,
+      phase: job?.phase ?? null,
+      jobStatus: job?.status ?? null,
+      routeOrder: job?.routeOrder ?? null,
+    };
+  });
+  res.json({ data: { event, jobs, observations: observationsWithPhotos, followUps, alerts: alertsWithDetails, summary: { selectedCount: jobs.length, checkedCount: completed.length, actualMinutes: minutes, workMinutes: minutes, labourChargeCents: cents(minutes, event.hourlyRateCents), tooDangerousCount: jobs.filter(j => j.status === "too_dangerous").length } } });
 });
 
 router.get("/storm-patrol/events", requireAuth, requireRole("manager", "supervisor"), async (_req, res) => {

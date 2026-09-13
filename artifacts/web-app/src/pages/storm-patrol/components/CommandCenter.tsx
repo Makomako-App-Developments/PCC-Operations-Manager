@@ -8,7 +8,6 @@ import {
   useListAssets,
   usePublishStormPatrolPackage,
   useCloseStormPatrolEvent,
-  useCreateStormPatrolAlert,
   useAcknowledgeStormPatrolAlert,
   useRetryStormPatrolAlertEmail,
   useCancelStormPatrolJob,
@@ -24,7 +23,6 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
@@ -58,6 +56,7 @@ type StormObservation = {
     caption?: string | null;
   }>;
 };
+type UrgentIssue = NonNullable<NonNullable<StormCurrentResponseData>["alerts"]>[number];
 
 export function filterStormwaterAssets(
   assets: Asset[],
@@ -130,13 +129,15 @@ export default function CommandCenter({ data }: CommandCenterProps) {
   const publishPackage = usePublishStormPatrolPackage();
   const closeEvent = useCloseStormPatrolEvent();
   const ackAlert = useAcknowledgeStormPatrolAlert();
-  const createAlert = useCreateStormPatrolAlert();
   const retryEmail = useRetryStormPatrolAlertEmail();
   const cancelJob = useCancelStormPatrolJob();
   
-  const [isAlerting, setIsAlerting] = useState(false);
   const [selectedCompletedJob, setSelectedCompletedJob] = useState<StormJob | null>(null);
+  const [selectedUrgentIssue, setSelectedUrgentIssue] = useState<UrgentIssue | null>(null);
   const [selectedObservation, setSelectedObservation] = useState<StormObservation | null>(null);
+  const [urgentIssueTilesFailed, setUrgentIssueTilesFailed] = useState(false);
+  const [urgentIssueTileAttempt, setUrgentIssueTileAttempt] = useState(0);
+  const urgentIssueTileAttemptHadError = useRef(false);
   const [observationTilesFailed, setObservationTilesFailed] = useState(false);
   const [observationTileAttempt, setObservationTileAttempt] = useState(0);
   const observationTileAttemptHadError = useRef(false);
@@ -227,7 +228,6 @@ export default function CommandCenter({ data }: CommandCenterProps) {
   };
 
   // Alerts & Observations State
-  const [alertMessage, setAlertMessage] = useState("");
 
   const handlePublishPackage = async () => {
     if (!selectedTeam || selectedAssets.size === 0) return;
@@ -260,28 +260,6 @@ export default function CommandCenter({ data }: CommandCenterProps) {
       queryClient.invalidateQueries({ queryKey: getListStormPatrolEventsQueryKey() });
     } catch (err: any) {
       toast({ title: "Failed to close event", description: err.message, variant: "destructive" });
-    }
-  };
-
-  const handleCreateAlert = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!alertMessage.trim()) return;
-    try {
-      setIsAlerting(true);
-      await createAlert.mutateAsync({
-        data: {
-          eventId: event.id,
-          message: alertMessage,
-          idempotencyKey: crypto.randomUUID(),
-        },
-      });
-      toast({ title: "Alert broadcasted" });
-      setAlertMessage("");
-      queryClient.invalidateQueries({ queryKey: getGetCurrentStormPatrolQueryKey() });
-    } catch (err: any) {
-      toast({ title: "Failed to create alert", description: err.message, variant: "destructive" });
-    } finally {
-      setIsAlerting(false);
     }
   };
 
@@ -466,14 +444,36 @@ export default function CommandCenter({ data }: CommandCenterProps) {
                   </h3>
                   <div className="space-y-3 max-h-[300px] overflow-y-auto pr-1">
                     {data.alerts.map(alert => (
-                      <div key={alert.id} className={`p-3 rounded-lg border ${!alert.acknowledgedAt ? "bg-orange-500/10 border-orange-500/30" : "bg-black/20 border-white/5"}`}>
+                      <div
+                        key={alert.id}
+                        role="button"
+                        tabIndex={0}
+                        onClick={() => {
+                          urgentIssueTileAttemptHadError.current = false;
+                          setUrgentIssueTilesFailed(false);
+                          setSelectedUrgentIssue(alert);
+                        }}
+                        onKeyDown={(event) => {
+                          if (event.key !== "Enter" && event.key !== " ") return;
+                          event.preventDefault();
+                          urgentIssueTileAttemptHadError.current = false;
+                          setUrgentIssueTilesFailed(false);
+                          setSelectedUrgentIssue(alert);
+                        }}
+                        aria-label={`Open urgent issue: ${alert.message}`}
+                        className={`w-full p-3 rounded-lg border text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-400 ${!alert.acknowledgedAt ? "bg-orange-500/10 border-orange-500/30 hover:bg-orange-500/15" : "bg-black/20 border-white/5 hover:bg-white/10"}`}
+                      >
                         <div className="flex items-start justify-between gap-2">
-                          <p className={`text-sm ${!alert.acknowledgedAt ? "text-orange-100" : "text-white/60"}`}>{alert.message}</p>
+                          <div>
+                            <p className={`text-sm ${!alert.acknowledgedAt ? "text-orange-100" : "text-white/60"}`}>{alert.message}</p>
+                            {alert.assetName && <p className="mt-1 text-xs font-medium text-white/45">{alert.assetName}</p>}
+                          </div>
                           {!alert.acknowledgedAt && (
                             <Button 
                               size="sm" 
                               variant="outline"
-                              onClick={async () => {
+                              onClick={async (event) => {
+                                event.stopPropagation();
                                 try {
                                   await ackAlert.mutateAsync({ id: alert.id });
                                   queryClient.invalidateQueries({ queryKey: getGetCurrentStormPatrolQueryKey() });
@@ -499,7 +499,8 @@ export default function CommandCenter({ data }: CommandCenterProps) {
                               size="sm"
                               variant="outline"
                               disabled={retryEmail.isPending}
-                              onClick={async () => {
+                              onClick={async (event) => {
+                                event.stopPropagation();
                                 await retryEmail.mutateAsync({ id: alert.id });
                                 queryClient.invalidateQueries({ queryKey: getGetCurrentStormPatrolQueryKey() });
                               }}
@@ -551,33 +552,6 @@ export default function CommandCenter({ data }: CommandCenterProps) {
                   </div>
                 </div>
               )}
-
-              {/* Broadcast Alert */}
-              <div className="bg-[#0d2c36] border border-orange-500/30 rounded-2xl p-5">
-                <div className="flex items-center gap-2 mb-3">
-                  <AlertTriangle className="w-5 h-5 text-orange-500" />
-                  <h3 className="text-sm font-semibold text-orange-500 uppercase tracking-wider">Broadcast Alert</h3>
-                </div>
-                <form onSubmit={handleCreateAlert} className="space-y-3">
-                  <Textarea 
-                    value={alertMessage}
-                    onChange={e => setAlertMessage(e.target.value)}
-                    placeholder="Urgent message for all field teams..."
-                    className="bg-black/20 border-orange-500/20 text-white placeholder:text-white/30 resize-none h-20"
-                    data-testid="input-alert-message"
-                    required
-                  />
-                  <Button 
-                    type="submit" 
-                    disabled={isAlerting || !alertMessage.trim()}
-                    className="w-full bg-orange-500 hover:bg-orange-600 text-white font-semibold"
-                    data-testid="btn-send-alert"
-                  >
-                    {isAlerting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
-                    Send to Field
-                  </Button>
-                </form>
-              </div>
 
             </div>
 
@@ -1013,6 +987,173 @@ export default function CommandCenter({ data }: CommandCenterProps) {
             </div>
           </div>
         </main>
+        <Dialog
+          open={selectedUrgentIssue !== null}
+          onOpenChange={(open) => {
+            if (!open) setSelectedUrgentIssue(null);
+          }}
+        >
+          <DialogContent className="max-h-[88vh] overflow-y-auto border-white/10 bg-[#0f2a36] text-white sm:max-w-2xl">
+            {selectedUrgentIssue && (
+              <>
+                <DialogHeader className="border-b border-white/10 pb-4 pr-8">
+                  <div className="mb-1 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-orange-400">
+                    <AlertTriangle className="h-4 w-4" />
+                    Urgent issue
+                  </div>
+                  <DialogTitle className="text-xl text-white">
+                    {selectedUrgentIssue.assetName || "Unknown site"}
+                  </DialogTitle>
+                  <DialogDescription className="text-white/55">
+                    {selectedUrgentIssue.streetAddress
+                      || selectedUrgentIssue.assetDescription
+                      || "Storm Patrol urgent issue details"}
+                  </DialogDescription>
+                </DialogHeader>
+
+                <section>
+                  <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-white/45">Issue reported</h3>
+                  <div className="rounded-lg border border-orange-500/25 bg-orange-500/10 p-4 text-sm leading-relaxed text-orange-50">
+                    {selectedUrgentIssue.message}
+                  </div>
+                  <p className="mt-2 text-xs text-white/45">
+                    Reported {selectedUrgentIssue.createdAt ? format(new Date(selectedUrgentIssue.createdAt), "HH:mm, d MMM yyyy") : "at an unknown time"}
+                  </p>
+                </section>
+
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                  {[
+                    ["Phase", selectedUrgentIssue.phase ? selectedUrgentIssue.phase.toUpperCase() : "—"],
+                    ["Team", selectedUrgentIssue.teamName || "—"],
+                    ["Field worker", selectedUrgentIssue.workerName || "—"],
+                    ["Status", selectedUrgentIssue.acknowledgedAt ? "Acknowledged" : "Needs acknowledgement"],
+                  ].map(([label, value]) => (
+                    <div key={label} className="rounded-lg border border-white/10 bg-white/5 p-3">
+                      <p className="text-[10px] font-semibold uppercase tracking-wider text-white/40">{label}</p>
+                      <p className="mt-1 text-sm font-medium text-white/90">{value}</p>
+                    </div>
+                  ))}
+                </div>
+
+                {selectedUrgentIssue.lat != null && selectedUrgentIssue.lng != null && (
+                  <section>
+                    <h3 className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-white/45">
+                      <MapPin className="h-3.5 w-3.5" />
+                      Site location
+                    </h3>
+                    <div className="relative h-56 w-full overflow-hidden rounded-lg border border-white/10 bg-black/20 sm:h-64">
+                      <MapContainer
+                        center={[selectedUrgentIssue.lat, selectedUrgentIssue.lng]}
+                        zoom={17}
+                        scrollWheelZoom
+                        className="h-full w-full"
+                        aria-label={`Urgent issue location for ${selectedUrgentIssue.assetName || "unknown site"}`}
+                      >
+                        <TileLayer
+                          key={urgentIssueTileAttempt}
+                          attribution="&copy; OpenStreetMap contributors"
+                          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                          eventHandlers={{
+                            tileerror: () => {
+                              urgentIssueTileAttemptHadError.current = true;
+                              setUrgentIssueTilesFailed(true);
+                            },
+                            load: () => {
+                              if (!urgentIssueTileAttemptHadError.current) setUrgentIssueTilesFailed(false);
+                            },
+                          }}
+                        />
+                        <CircleMarker
+                          center={[selectedUrgentIssue.lat, selectedUrgentIssue.lng]}
+                          radius={9}
+                          pathOptions={{ color: "#ffffff", weight: 3, fillColor: ORANGE, fillOpacity: 1 }}
+                        >
+                          <Popup>{selectedUrgentIssue.assetName || "Urgent issue location"}</Popup>
+                        </CircleMarker>
+                        <ResizeObservationMap />
+                      </MapContainer>
+                      {urgentIssueTilesFailed && (
+                        <div role="status" className="absolute inset-0 z-[500] flex items-center justify-center bg-[#102d38]/95 p-6 text-center">
+                          <div className="max-w-sm">
+                            <MapPin className="mx-auto mb-3 h-7 w-7 text-orange-400" />
+                            <p className="font-semibold text-white">Map tiles are unavailable</p>
+                            <p className="mt-1 text-sm text-white/65">The site coordinates remain available below.</p>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              className="mt-3 border-white/15 bg-white/5 text-white hover:bg-white/10"
+                              onClick={() => {
+                                urgentIssueTileAttemptHadError.current = false;
+                                setUrgentIssueTilesFailed(false);
+                                setUrgentIssueTileAttempt(attempt => attempt + 1);
+                              }}
+                            >
+                              Retry map
+                            </Button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                    <p className="mt-2 text-xs text-white/45">
+                      {[selectedUrgentIssue.streetAddress, selectedUrgentIssue.suburb].filter(Boolean).join(", ")}
+                      {selectedUrgentIssue.streetAddress || selectedUrgentIssue.suburb ? " · " : ""}
+                      {selectedUrgentIssue.lat.toFixed(5)}, {selectedUrgentIssue.lng.toFixed(5)}
+                    </p>
+                  </section>
+                )}
+
+                <section>
+                  <h3 className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-white/45">
+                    <Eye className="h-3.5 w-3.5" />
+                    Photo
+                  </h3>
+                  {selectedUrgentIssue.photoUrl ? (
+                    <figure className="overflow-hidden rounded-lg border border-white/10 bg-black/20">
+                      <AuthenticatedImage
+                        src={selectedUrgentIssue.photoUrl}
+                        alt={`Urgent issue at ${selectedUrgentIssue.assetName || "unknown site"}`}
+                        className="max-h-[420px] w-full object-contain"
+                      />
+                    </figure>
+                  ) : (
+                    <div className="rounded-lg border border-dashed border-white/10 bg-black/15 p-4 text-sm text-white/45">
+                      No photo was attached to this urgent issue.
+                    </div>
+                  )}
+                </section>
+
+                <div className="flex flex-wrap items-center justify-between gap-3 border-t border-white/10 pt-4">
+                  <p className={`text-xs ${selectedUrgentIssue.emailStatus === "sent" ? "text-green-400" : selectedUrgentIssue.emailStatus === "failed" ? "text-red-400" : "text-white/45"}`}>
+                    Email {selectedUrgentIssue.emailStatus}
+                    {selectedUrgentIssue.emailAttempts ? ` · ${selectedUrgentIssue.emailAttempts} attempt${selectedUrgentIssue.emailAttempts === 1 ? "" : "s"}` : ""}
+                  </p>
+                  <div className="flex gap-2">
+                    {!selectedUrgentIssue.acknowledgedAt && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        disabled={ackAlert.isPending}
+                        onClick={async () => {
+                          await ackAlert.mutateAsync({ id: selectedUrgentIssue.id });
+                          await queryClient.invalidateQueries({ queryKey: getGetCurrentStormPatrolQueryKey() });
+                          setSelectedUrgentIssue(current => current ? { ...current, acknowledgedAt: new Date().toISOString() } : current);
+                        }}
+                        className="border-orange-500/30 bg-orange-500/10 text-orange-300 hover:bg-orange-500/20"
+                      >
+                        {ackAlert.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                        Acknowledge
+                      </Button>
+                    )}
+                    <Button type="button" onClick={() => setSelectedUrgentIssue(null)} className="bg-[#00AECD] text-white hover:bg-[#00AECD]/90">
+                      Close
+                    </Button>
+                  </div>
+                </div>
+              </>
+            )}
+          </DialogContent>
+        </Dialog>
         <Dialog
           open={selectedCompletedJob !== null}
           onOpenChange={(open) => {

@@ -124,6 +124,7 @@ export * from "./stormAlert";
 export * from "./stormAlertCreate";
 export * from "./stormAlertEmailStatus";
 export * from "./stormAlertListResponse";
+export * from "./stormAlertPhase";
 export * from "./stormCompletion";
 export * from "./stormCompletionOutcome";
 export * from "./stormCompletionResponse";
