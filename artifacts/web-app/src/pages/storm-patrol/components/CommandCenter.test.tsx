@@ -127,6 +127,7 @@ function renderCommandCenter(
   summary: Record<string, number> = {
     actualMinutes: jobs.reduce((total, job) => total + (job.actualTimeMins ?? 0), 0),
   },
+  readOnly = false,
 ) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
@@ -149,6 +150,8 @@ function renderCommandCenter(
           followUps,
           summary,
         }}
+        readOnly={readOnly}
+        onBack={readOnly ? vi.fn() : undefined}
       />
     </QueryClientProvider>,
   );
@@ -252,6 +255,40 @@ describe("Storm Patrol work package asset filters", () => {
 
     const photo = await within(dialog).findByAltText("Urgent issue at Bodman SW grate");
     expect(photo).toHaveAttribute("src", "blob:authenticated-photo");
+  });
+
+  it("shows archived event details without any write controls", async () => {
+    const user = userEvent.setup();
+    renderCommandCenter([{
+      id: "pending-job",
+      eventId: "event-1",
+      workPackageId: "package-1",
+      phase: "pre",
+      assetId: "asset-high-hotspot",
+      teamId: "team-1",
+      status: "pending",
+      assetName: "Bodman SW grate",
+    }], [], [], [{
+      id: "alert-archived",
+      eventId: "event-1",
+      message: "Archived urgent issue",
+      emailStatus: "failed",
+      emailAttempts: 1,
+      acknowledgedAt: null,
+      assetName: "Bodman SW grate",
+    }], undefined, true);
+
+    expect(screen.getByText("Archived · Read only")).toBeVisible();
+    expect(screen.getByRole("button", { name: "Previous Events" })).toBeVisible();
+    expect(screen.queryByRole("button", { name: "Close Event" })).not.toBeInTheDocument();
+    expect(screen.queryByText("Create Work Package")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Cancel pending job for Bodman SW grate" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Ack" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Retry email" })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Open urgent issue: Archived urgent issue" }));
+    expect(screen.getByRole("dialog")).toBeVisible();
+    expect(screen.queryByRole("button", { name: "Acknowledge" })).not.toBeInTheDocument();
   });
 
   it("shows the total actual minutes used by field workers", () => {

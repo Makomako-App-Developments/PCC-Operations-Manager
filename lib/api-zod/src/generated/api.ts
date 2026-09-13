@@ -2328,6 +2328,138 @@ export const CreateStormPatrolEventBody = zod.object({
     .optional(),
 });
 
+/**
+ * @summary Read-only details for a Storm Patrol event
+ */
+export const GetStormPatrolEventParams = zod.object({
+  id: zod.coerce.string().uuid(),
+});
+
+export const GetStormPatrolEventResponse = zod.object({
+  data: zod
+    .object({
+      event: zod.object({
+        id: zod.string().uuid(),
+        name: zod.string(),
+        status: zod.enum(["draft", "active", "closed"]),
+        hourlyRateCents: zod.number(),
+        activatedAt: zod.date().nullish(),
+        closedAt: zod.date().nullish(),
+      }),
+      jobs: zod.array(
+        zod.object({
+          id: zod.string().uuid(),
+          eventId: zod.string().uuid(),
+          workPackageId: zod.string().uuid(),
+          phase: zod.enum(["pre", "mid", "post"]),
+          assetId: zod.string().uuid(),
+          teamId: zod.string().uuid(),
+          assignedUserId: zod.string().uuid().nullish(),
+          routeOrder: zod.number().nullish(),
+          status: zod.enum([
+            "pending",
+            "in_progress",
+            "completed",
+            "too_dangerous",
+          ]),
+          actualTimeMins: zod.number().nullish(),
+          comments: zod.string().nullish(),
+          assetName: zod.string().optional(),
+          assetDescription: zod.string().nullish(),
+          streetAddress: zod.string().nullish(),
+          suburb: zod.string().nullish(),
+          lat: zod.number().nullish(),
+          lng: zod.number().nullish(),
+          departmentDetails: zod.unknown().nullish(),
+          teamName: zod.string().nullish(),
+          workerName: zod.string().nullish(),
+          workTypes: zod.array(zod.string()),
+          photos: zod.array(
+            zod.object({
+              id: zod.string().uuid(),
+              purpose: zod.enum([
+                "before",
+                "after",
+                "urgent_issue",
+                "new_flooding",
+                "new_slip",
+                "observation",
+              ]),
+              blobUrl: zod.string(),
+              caption: zod.string().nullish(),
+              createdAt: zod.date(),
+            }),
+          ),
+        }),
+      ),
+      observations: zod
+        .array(
+          zod.object({
+            id: zod.string().uuid(),
+            eventId: zod.string().uuid(),
+            sourceJobId: zod.string().uuid().nullish(),
+            assetId: zod.string().uuid().nullish(),
+            description: zod.string(),
+            notes: zod.string().nullish(),
+            observerName: zod.string().nullish(),
+            locationLat: zod.number(),
+            locationLng: zod.number(),
+            reactiveJobId: zod.string().uuid().nullish(),
+            createdAt: zod.date(),
+            photos: zod.array(
+              zod.object({
+                id: zod.string().uuid(),
+                purpose: zod.enum([
+                  "before",
+                  "after",
+                  "urgent_issue",
+                  "new_flooding",
+                  "new_slip",
+                  "observation",
+                ]),
+                blobUrl: zod.string(),
+                caption: zod.string().nullish(),
+                createdAt: zod.date(),
+              }),
+            ),
+          }),
+        )
+        .optional(),
+      followUps: zod.array(zod.record(zod.string(), zod.unknown())).optional(),
+      alerts: zod
+        .array(
+          zod.object({
+            id: zod.string().uuid(),
+            eventId: zod.string().uuid(),
+            stormJobId: zod.string().uuid().nullish(),
+            message: zod.string(),
+            photoUrl: zod.string().nullish(),
+            createdAt: zod.date().nullish(),
+            acknowledgedAt: zod.date().nullish(),
+            emailStatus: zod.enum(["pending", "sent", "failed"]),
+            emailAttempts: zod.number(),
+            emailLastError: zod.string().nullish(),
+            emailLastAttemptAt: zod.date().nullish(),
+            emailSentAt: zod.date().nullish(),
+            assetName: zod.string().nullish(),
+            assetDescription: zod.string().nullish(),
+            streetAddress: zod.string().nullish(),
+            suburb: zod.string().nullish(),
+            lat: zod.number().nullish(),
+            lng: zod.number().nullish(),
+            teamName: zod.string().nullish(),
+            workerName: zod.string().nullish(),
+            phase: zod.enum(["pre", "mid", "post"]).nullish(),
+            jobStatus: zod.string().nullish(),
+            routeOrder: zod.number().nullish(),
+          }),
+        )
+        .optional(),
+      summary: zod.record(zod.string(), zod.number()),
+    })
+    .nullable(),
+});
+
 export const CloseStormPatrolEventParams = zod.object({
   id: zod.coerce.string().uuid(),
 });

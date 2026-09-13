@@ -30,8 +30,9 @@ export function useStormPatrolBadge({
     query: {
       queryKey: stormPatrolCurrentQueryKey(userId),
       enabled: enabled && Boolean(userId),
-      refetchInterval: 30_000,
+      refetchInterval: 15_000,
       refetchOnWindowFocus: true,
+      refetchOnMount: "always",
     },
   });
   const response = current.data as unknown as { data?: Patrol | null } | undefined;

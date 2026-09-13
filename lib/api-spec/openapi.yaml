@@ -1307,6 +1307,28 @@ paths:
                 },
             },
         }
+  /storm-patrol/events/{id}:
+    get:
+      operationId: getStormPatrolEvent
+      tags: [storm-patrol]
+      summary: Read-only details for a Storm Patrol event
+      parameters:
+        [
+          {
+            name: id,
+            in: path,
+            required: true,
+            schema: { type: string, format: uuid },
+          },
+        ]
+      responses:
+        "200":
+          description: Full historical Storm Patrol event details
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/StormCurrentResponse" }
+        "404":
+          description: Storm event not found
   /storm-patrol/events/{id}/close:
     post:
       operationId: closeStormPatrolEvent

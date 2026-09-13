@@ -18,7 +18,7 @@ import {
 import { useQueryClient } from "@tanstack/react-query";
 import { 
   CloudLightning, Loader2, Plus, Users, MapPin, Search, Check, ChevronDown, ChevronUp,
-  AlertTriangle, Eye, ArrowRight, Save, Download, Navigation, Clock, ClipboardCheck, X
+  AlertTriangle, Eye, ArrowLeft, ArrowRight, Save, Download, Navigation, Clock, ClipboardCheck, X
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -116,9 +116,11 @@ function ResizeObservationMap() {
 
 interface CommandCenterProps {
   data: StormCurrentResponseData;
+  readOnly?: boolean;
+  onBack?: () => void;
 }
 
-export default function CommandCenter({ data }: CommandCenterProps) {
+export default function CommandCenter({ data, readOnly = false, onBack }: CommandCenterProps) {
   const { event, jobs, summary } = data!;
   const actualTimeMinutes = summary.actualMinutes ?? jobs.reduce((total, job) => total + (job.actualTimeMins ?? 0), 0);
   const queryClient = useQueryClient();
@@ -358,7 +360,9 @@ export default function CommandCenter({ data }: CommandCenterProps) {
           <div>
             <div className="flex items-center gap-3">
               <h1 className="text-xl font-bold text-white tracking-tight">{event.name}</h1>
-              <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-red-500 text-white">Active</span>
+              <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider text-white ${readOnly ? "bg-white/15" : "bg-red-500"}`}>
+                {readOnly ? "Archived · Read only" : "Active"}
+              </span>
             </div>
             <div className="flex items-center gap-4 mt-1 text-xs text-white/50">
               <span>Activated: {event.activatedAt ? format(new Date(event.activatedAt), "HH:mm, d MMM") : "Unknown"}</span>
@@ -368,6 +372,17 @@ export default function CommandCenter({ data }: CommandCenterProps) {
           </div>
         </div>
         <div className="flex items-center gap-3">
+          {readOnly && onBack && (
+            <Button
+              type="button"
+              variant="outline"
+              className="bg-transparent border-white/10 text-white hover:bg-white/10"
+              onClick={onBack}
+            >
+              <ArrowLeft className="w-4 h-4 mr-2" />
+              Previous Events
+            </Button>
+          )}
           <Button 
             variant="outline" 
             className="bg-transparent border-white/10 text-white hover:bg-white/10"
@@ -392,7 +407,7 @@ export default function CommandCenter({ data }: CommandCenterProps) {
           >
             PDF
           </Button>
-          <Button 
+          {!readOnly && <Button
             variant="outline" 
             className="bg-red-500/20 border-red-500/30 text-red-500 hover:bg-red-500/30 hover:text-red-400"
             onClick={handleCloseEvent}
@@ -401,7 +416,7 @@ export default function CommandCenter({ data }: CommandCenterProps) {
           >
             {closeEvent.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
             Close Event
-          </Button>
+          </Button>}
         </div>
       </header>
 
@@ -415,7 +430,7 @@ export default function CommandCenter({ data }: CommandCenterProps) {
             <div className="lg:col-span-1 space-y-6">
               {/* Stats */}
               <div className="bg-white/5 border border-white/10 rounded-2xl p-5">
-                <h3 className="text-sm font-semibold text-white/60 uppercase tracking-wider mb-4">Live Status</h3>
+                <h3 className="text-sm font-semibold text-white/60 uppercase tracking-wider mb-4">{readOnly ? "Event Summary" : "Live Status"}</h3>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <p className="text-3xl font-black text-white">{jobs.length}</p>
@@ -469,7 +484,7 @@ export default function CommandCenter({ data }: CommandCenterProps) {
                             <p className={`text-sm ${!alert.acknowledgedAt ? "text-orange-100" : "text-white/60"}`}>{alert.message}</p>
                             {alert.assetName && <p className="mt-1 text-xs font-medium text-white/45">{alert.assetName}</p>}
                           </div>
-                          {!alert.acknowledgedAt && (
+                          {!readOnly && !alert.acknowledgedAt && (
                             <Button 
                               size="sm" 
                               variant="outline"
@@ -495,7 +510,7 @@ export default function CommandCenter({ data }: CommandCenterProps) {
                           <p className={`text-[10px] ${alert.emailStatus === "sent" ? "text-green-400" : alert.emailStatus === "failed" ? "text-red-400" : "text-white/40"}`}>
                             Email {alert.emailStatus}{alert.emailAttempts ? ` · ${alert.emailAttempts} attempt${alert.emailAttempts === 1 ? "" : "s"}` : ""}
                           </p>
-                          {alert.emailStatus === "failed" && (
+                          {!readOnly && alert.emailStatus === "failed" && (
                             <Button
                               size="sm"
                               variant="outline"
@@ -561,6 +576,7 @@ export default function CommandCenter({ data }: CommandCenterProps) {
             <div className="flex min-h-0 flex-col gap-6 lg:col-span-3">
               
               {/* Package Creator */}
+              {!readOnly && (
               <div className={`bg-white/5 border border-white/10 rounded-2xl p-6 ${isPackageCollapsed ? "" : "lg:h-[calc(100dvh-9rem)] lg:max-h-[calc(100dvh-9rem)] lg:min-h-0 flex flex-col"}`}>
                 <div className={`flex items-center justify-between ${isPackageCollapsed ? "" : "mb-6"}`}>
                   <div className="flex items-center gap-3">
@@ -849,11 +865,12 @@ export default function CommandCenter({ data }: CommandCenterProps) {
                 </>
                 )}
               </div>
+              )}
 
               {/* Live Jobs Table */}
               <div className="flex min-h-[400px] flex-1 flex-col overflow-hidden rounded-2xl border border-white/10 bg-white/5">
                 <div className="p-4 border-b border-white/10 bg-white/5 flex items-center justify-between">
-                  <h2 className="text-base font-semibold text-white">Live Field Operations</h2>
+                  <h2 className="text-base font-semibold text-white">{readOnly ? "Event Work" : "Live Field Operations"}</h2>
                   <div className="flex items-center gap-2">
                     <Select value={livePhaseFilter} onValueChange={(value: "all" | "pre" | "mid" | "post") => setLivePhaseFilter(value)}>
                       <SelectTrigger aria-label="Filter live jobs by phase" className="h-8 w-[130px] border-white/10 bg-black/20 text-xs text-white">
@@ -964,7 +981,7 @@ export default function CommandCenter({ data }: CommandCenterProps) {
                                 {job.comments || "-"}
                               </td>
                               <td className="px-4 py-3 text-right">
-                                {job.status === "pending" && (
+                                {!readOnly && job.status === "pending" && (
                                   <button
                                     type="button"
                                     aria-label={`Cancel pending job for ${job.assetName || "Unknown Asset"}`}
@@ -1131,7 +1148,7 @@ export default function CommandCenter({ data }: CommandCenterProps) {
                     {selectedUrgentIssue.emailAttempts ? ` · ${selectedUrgentIssue.emailAttempts} attempt${selectedUrgentIssue.emailAttempts === 1 ? "" : "s"}` : ""}
                   </p>
                   <div className="flex gap-2">
-                    {!selectedUrgentIssue.acknowledgedAt && (
+                    {!readOnly && !selectedUrgentIssue.acknowledgedAt && (
                       <Button
                         type="button"
                         variant="outline"

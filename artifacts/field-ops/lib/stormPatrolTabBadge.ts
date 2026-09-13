@@ -4,7 +4,7 @@ export function isStormPatrolPath(pathname: string) {
 
 export function stormPatrolTabBadgePresentation(hasUnseenJobs: boolean) {
   return {
-    classicBadge: hasUnseenJobs ? " " : undefined,
+    classicBadge: hasUnseenJobs ? "1" : undefined,
     accessibilityLabel: hasUnseenJobs ? "Storm Patrol, new jobs available" : "Storm Patrol",
     nativeBadge: {
       children: hasUnseenJobs ? "1" : undefined,

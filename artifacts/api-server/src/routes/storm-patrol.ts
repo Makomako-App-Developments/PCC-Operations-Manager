@@ -16,6 +16,7 @@ import { auditLog } from "../lib/audit";
 import { notifyUsers } from "../lib/push-notifications";
 import { objectStorageClient } from "../lib/objectStorage";
 import { reconcileUncommittedPhotoObject, removeUncommittedPhotoObject } from "../lib/photo-object-cleanup";
+import { writeStormPatrolPdf } from "../lib/storm-patrol-report-pdf";
 import { arePublishableStormwaterAssets, calculateStormChargeCents, escapeCsvCell, requiresStormVisualCheckComments, sumStormPatrolActualMinutes } from "../lib/storm-patrol";
 import { deliverStormAlertEmail } from "../lib/storm-patrol-email";
 
@@ -388,10 +389,13 @@ router.post("/storm-patrol/assets/import/commit", requireAuth, requireRole("mana
   }
 });
 
-router.get("/storm-patrol/current", requireAuth, async (req, res) => {
-  const event = await activeEvent();
-  if (!event) { res.json({ data: null }); return; }
-  const where = !privileged(req.auth!.role) ? and(eq(stormJobsTable.eventId, event.id), eq(stormJobsTable.teamId, req.auth!.teamId ?? "")) : eq(stormJobsTable.eventId, event.id);
+async function loadStormEventDetails(
+  event: typeof stormEventsTable.$inferSelect,
+  access: { role: string; teamId?: string | null },
+) {
+  const where = !privileged(access.role)
+    ? and(eq(stormJobsTable.eventId, event.id), eq(stormJobsTable.teamId, access.teamId ?? ""))
+    : eq(stormJobsTable.eventId, event.id);
   const jobs = await enrichedStormJobs(where);
   const completed = jobs.filter(j => j.status === "completed" || j.status === "too_dangerous");
   const minutes = sumStormPatrolActualMinutes(jobs);
@@ -457,11 +461,30 @@ router.get("/storm-patrol/current", requireAuth, async (req, res) => {
       routeOrder: job?.routeOrder ?? null,
     };
   });
-  res.json({ data: { event, jobs, observations: observationsWithPhotos, followUps, alerts: alertsWithDetails, summary: { selectedCount: jobs.length, checkedCount: completed.length, actualMinutes: minutes, workMinutes: minutes, labourChargeCents: cents(minutes, event.hourlyRateCents), tooDangerousCount: jobs.filter(j => j.status === "too_dangerous").length } } });
+  return { event, jobs, observations: observationsWithPhotos, followUps, alerts: alertsWithDetails, summary: { selectedCount: jobs.length, checkedCount: completed.length, actualMinutes: minutes, workMinutes: minutes, labourChargeCents: cents(minutes, event.hourlyRateCents), tooDangerousCount: jobs.filter(j => j.status === "too_dangerous").length } };
+}
+
+router.get("/storm-patrol/current", requireAuth, async (req, res) => {
+  const event = await activeEvent();
+  if (!event) { res.json({ data: null }); return; }
+  res.json({ data: await loadStormEventDetails(event, req.auth!) });
 });
 
 router.get("/storm-patrol/events", requireAuth, requireRole("manager", "supervisor"), async (_req, res) => {
   res.json({ data: await executeWithCircuitBreaker(() => db.select().from(stormEventsTable).orderBy(desc(stormEventsTable.createdAt))) });
+});
+
+router.get("/storm-patrol/events/:id", requireAuth, requireRole("manager", "supervisor"), async (req, res) => {
+  const [event] = await executeWithCircuitBreaker(() => db
+    .select()
+    .from(stormEventsTable)
+    .where(eq(stormEventsTable.id, String(req.params.id)))
+    .limit(1));
+  if (!event) {
+    res.status(404).json({ error: "Storm event not found." });
+    return;
+  }
+  res.json({ data: await loadStormEventDetails(event, req.auth!) });
 });
 
 router.post("/storm-patrol/events", requireAuth, requireRole("manager"), validateBody(z.object({ name: z.string().trim().min(1).max(200), activate: z.boolean().default(true), hourlyRateCents: z.number().int().min(0).optional() })), async (req, res) => {
@@ -840,7 +863,8 @@ router.delete("/storm-patrol/jobs/:id/photos/:photoId", requireAuth, async (req,
 router.get("/storm-patrol/events/:id/report", requireAuth, requireRole("manager", "supervisor"), async (req, res) => {
   const [event] = await executeWithCircuitBreaker(() => db.select().from(stormEventsTable).where(eq(stormEventsTable.id, String(req.params.id))).limit(1));
   if (!event) { res.status(404).json({ error: "Storm event not found" }); return; }
-  const jobs = await enrichedStormJobs(eq(stormJobsTable.eventId, event.id));
+  const details = await loadStormEventDetails(event, req.auth!);
+  const jobs = details.jobs;
   const minutes = sumStormPatrolActualMinutes(jobs);
   const report = { event, selectedCount: jobs.length, checkedCount: jobs.filter(j => ["completed", "too_dangerous"].includes(j.status)).length, totalMinutes: minutes, totalHours: minutes / 60, labourChargeCents: cents(minutes, event.hourlyRateCents), jobs };
   if (req.query.format === "csv") {
@@ -867,16 +891,10 @@ router.get("/storm-patrol/events/:id/report", requireAuth, requireRole("manager"
     res.type("text/csv").attachment(`storm-patrol-${event.id}.csv`).send([...summaryRows, "", headers.join(","), ...rows].join("\r\n")); return;
   }
   if (req.query.format === "pdf") {
-    const PDFDocument = (await import("pdfkit")).default; const doc = new PDFDocument({ margin: 48 });
+    const PDFDocument = (await import("pdfkit")).default;
+    const doc = new PDFDocument({ margin: 36, size: "A4", layout: "landscape", bufferPages: true });
     res.type("application/pdf").attachment(`storm-patrol-${event.id}.pdf`); doc.pipe(res);
-    doc.fontSize(20).text("Storm Patrol Report"); doc.moveDown().fontSize(13).text(event.name);
-    doc.fontSize(10).text(`Selected sites: ${report.selectedCount}   Checked: ${report.checkedCount}`);
-    doc.text(`Actual minutes: ${minutes}   Labour charge: $${(report.labourChargeCents / 100).toFixed(2)}`);
-    doc.moveDown().fontSize(11).text("Checks");
-    for (const job of jobs) {
-      const actualTime = job.actualTimeMins == null ? "No actual time recorded" : `${job.actualTimeMins} minutes`;
-      doc.fontSize(9).text(`${job.phase.toUpperCase()} — ${job.assetName} — ${job.teamName ?? "Unassigned"} — ${job.workerName ?? "Unclaimed"} — ${job.workTypes.join(", ") || "No work type"} — ${actualTime}`);
-    }
+    await writeStormPatrolPdf(doc, details);
     doc.end(); return;
   }
   res.json(report);

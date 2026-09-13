@@ -5280,6 +5280,93 @@ export const useCreateStormPatrolEvent = <
   return useMutation(getCreateStormPatrolEventMutationOptions(options));
 };
 
+/**
+ * @summary Read-only details for a Storm Patrol event
+ */
+export const getGetStormPatrolEventUrl = (id: string) => {
+  return `/api/storm-patrol/events/${id}`;
+};
+
+export const getStormPatrolEvent = async (
+  id: string,
+  options?: RequestInit,
+): Promise<StormCurrentResponse> => {
+  return customFetch<StormCurrentResponse>(getGetStormPatrolEventUrl(id), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetStormPatrolEventQueryKey = (id: string) => {
+  return [`/api/storm-patrol/events/${id}`] as const;
+};
+
+export const getGetStormPatrolEventQueryOptions = <
+  TData = Awaited<ReturnType<typeof getStormPatrolEvent>>,
+  TError = ErrorType<void>,
+>(
+  id: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getStormPatrolEvent>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetStormPatrolEventQueryKey(id);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getStormPatrolEvent>>
+  > = ({ signal }) => getStormPatrolEvent(id, { signal, ...requestOptions });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!id,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof getStormPatrolEvent>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetStormPatrolEventQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getStormPatrolEvent>>
+>;
+export type GetStormPatrolEventQueryError = ErrorType<void>;
+
+/**
+ * @summary Read-only details for a Storm Patrol event
+ */
+
+export function useGetStormPatrolEvent<
+  TData = Awaited<ReturnType<typeof getStormPatrolEvent>>,
+  TError = ErrorType<void>,
+>(
+  id: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getStormPatrolEvent>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetStormPatrolEventQueryOptions(id, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
 export const getCloseStormPatrolEventUrl = (id: string) => {
   return `/api/storm-patrol/events/${id}/close`;
 };

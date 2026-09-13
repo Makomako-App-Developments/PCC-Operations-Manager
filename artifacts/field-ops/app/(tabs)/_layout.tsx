@@ -239,12 +239,14 @@ function ClassicTabLayout({
           tabBarAccessibilityLabel: stormPresentation.accessibilityLabel,
           tabBarBadge: stormPresentation.classicBadge,
           tabBarBadgeStyle: {
-            minWidth: 10,
-            width: 10,
-            height: 10,
-            borderRadius: 5,
+            minWidth: 16,
+            width: 16,
+            height: 16,
+            borderRadius: 8,
             paddingHorizontal: 0,
-            fontSize: 0,
+            fontSize: 10,
+            lineHeight: 14,
+            color: "#FFFFFF",
             backgroundColor: colors.destructive,
           },
           tabBarIcon: ({ color }) =>
@@ -271,15 +273,15 @@ export default function TabLayout() {
   const { user, token } = useAuth();
   const isPrivileged = PRIVILEGED_ROLES.includes(user?.role ?? "");
   const isManager = user?.role === "manager";
-  const isFieldWorker = Boolean(user) && !isManager && !isPrivileged;
+  const stormBadgeEnabled = Boolean(user) && !isManager;
 
   const { data: badgeData } = useAuditBadge(token, isPrivileged);
   const auditBadge = badgeData?.outstanding ?? 0;
   if (Platform.OS !== "web") {
     const { isLiquidGlassAvailable } = require("expo-glass-effect") as typeof import("expo-glass-effect");
     if (isLiquidGlassAvailable()) {
-      return <NativeTabLayout isPrivileged={isPrivileged} isManager={isManager} auditBadge={auditBadge} stormBadgeEnabled={isFieldWorker} userId={user?.id ?? null} />;
+      return <NativeTabLayout isPrivileged={isPrivileged} isManager={isManager} auditBadge={auditBadge} stormBadgeEnabled={stormBadgeEnabled} userId={user?.id ?? null} />;
     }
   }
-  return <ClassicTabLayout isPrivileged={isPrivileged} isManager={isManager} auditBadge={auditBadge} stormBadgeEnabled={isFieldWorker} userId={user?.id ?? null} />;
+  return <ClassicTabLayout isPrivileged={isPrivileged} isManager={isManager} auditBadge={auditBadge} stormBadgeEnabled={stormBadgeEnabled} userId={user?.id ?? null} />;
 }

@@ -2,9 +2,11 @@ import React, { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { 
   useGetCurrentStormPatrol, 
+  useGetStormPatrolEvent,
   useListStormPatrolEvents, 
   useCreateStormPatrolEvent,
   getGetCurrentStormPatrolQueryKey,
+  getGetStormPatrolEventQueryKey,
   getListStormPatrolEventsQueryKey,
   getGetStormPatrolReportUrl,
 } from "@workspace/api-client-react";
@@ -32,6 +34,16 @@ export default function StormPatrol() {
   const [isCreating, setIsCreating] = useState(false);
   const [eventName, setEventName] = useState("");
   const [hourlyRate, setHourlyRate] = useState<number | "">("");
+  const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
+  const { data: selectedEventData, isLoading: selectedEventLoading } = useGetStormPatrolEvent(
+    selectedEventId ?? "",
+    {
+      query: {
+        enabled: selectedEventId !== null,
+        queryKey: getGetStormPatrolEventQueryKey(selectedEventId ?? ""),
+      },
+    },
+  );
 
   const handleCreateEvent = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -74,6 +86,25 @@ export default function StormPatrol() {
 
   if (activeEventData?.event) {
     return <CommandCenter data={activeEventData} />;
+  }
+
+  if (selectedEventId) {
+    if (selectedEventLoading) {
+      return (
+        <div className="flex-1 flex items-center justify-center bg-gradient-to-br from-[#0c6670] via-[#0e5360] to-[#124b59]">
+          <Loader2 className="w-8 h-8 animate-spin text-[#00AECD]" />
+        </div>
+      );
+    }
+    if (selectedEventData?.data) {
+      return (
+        <CommandCenter
+          data={selectedEventData.data}
+          readOnly
+          onBack={() => setSelectedEventId(null)}
+        />
+      );
+    }
   }
 
   return (
@@ -158,7 +189,19 @@ export default function StormPatrol() {
             ) : (
               <div className="space-y-3">
                 {eventsData.data.filter(e => e.status !== "active").map(event => (
-                  <div key={event.id} className="bg-black/20 border border-white/5 rounded-xl p-4 flex items-center justify-between group hover:bg-black/40 transition-colors">
+                  <div
+                    key={event.id}
+                    role="button"
+                    tabIndex={0}
+                    aria-label={`View archived event ${event.name}`}
+                    onClick={() => setSelectedEventId(event.id)}
+                    onKeyDown={(keyboardEvent) => {
+                      if (keyboardEvent.key !== "Enter" && keyboardEvent.key !== " ") return;
+                      keyboardEvent.preventDefault();
+                      setSelectedEventId(event.id);
+                    }}
+                    className="bg-black/20 border border-white/5 rounded-xl p-4 flex items-center justify-between group hover:bg-black/40 transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00AECD]"
+                  >
                     <div className="flex items-center gap-4">
                       <div className="w-10 h-10 rounded-lg bg-white/5 flex items-center justify-center flex-shrink-0">
                         <CloudLightning className="w-5 h-5 text-white/40" />
@@ -174,7 +217,10 @@ export default function StormPatrol() {
                     </div>
                     <div className="flex items-center gap-2">
                       <button 
-                        onClick={() => handleDownloadReport(event.id, "csv")}
+                        onClick={(clickEvent) => {
+                          clickEvent.stopPropagation();
+                          handleDownloadReport(event.id, "csv");
+                        }}
                         className="p-2 rounded-lg bg-white/5 text-white/60 hover:text-white hover:bg-white/10 transition-colors"
                         title="Download Report CSV"
                         data-testid={`btn-download-${event.id}`}
@@ -182,12 +228,16 @@ export default function StormPatrol() {
                         <Download className="w-4 h-4" />
                       </button>
                       <button
-                        onClick={() => handleDownloadReport(event.id, "pdf")}
+                        onClick={(clickEvent) => {
+                          clickEvent.stopPropagation();
+                          handleDownloadReport(event.id, "pdf");
+                        }}
                         className="px-2 rounded-lg bg-white/5 text-xs text-white/60 hover:text-white hover:bg-white/10 transition-colors"
                         title="Download Report PDF"
                       >
                         PDF
                       </button>
+                      <ArrowRight className="ml-1 h-4 w-4 text-white/35 transition-transform group-hover:translate-x-0.5 group-hover:text-white/70" />
                     </div>
                   </div>
                 ))}
