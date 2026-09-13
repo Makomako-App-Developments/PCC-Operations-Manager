@@ -19,6 +19,8 @@ export const infillJobsTable = pgTable("infill_jobs", {
   plannedDate:      date("planned_date"),
   estimatedMins:    integer("estimated_mins"),
   status:           infillJobStatusEnum("status").notNull().default("draft"),
+  completedAt:      timestamp("completed_at", { withTimezone: true }),
+  completedById:    uuid("completed_by_id").references(() => usersTable.id),
   createdAt:        timestamp("created_at").notNull().defaultNow(),
   updatedAt:        timestamp("updated_at").notNull().defaultNow(),
 }, (t) => [
@@ -74,6 +76,8 @@ export const mulchingRecordsTable = pgTable("mulching_records", {
   assetId:             uuid("asset_id").notNull().references(() => assetsTable.id),
   scheduledDate:       date("scheduled_date"),
   completedDate:       date("completed_date"),
+  completedAt:         timestamp("completed_at", { withTimezone: true }),
+  completedById:       uuid("completed_by_id").references(() => usersTable.id),
   volumeM3:            numeric("volume_m3", { precision: 8, scale: 2 }),
   status:              mulchingStatusEnum("status").notNull().default("due"),
   mulchType:           varchar("mulch_type", { length: 100 }),
@@ -105,9 +109,9 @@ export const mulchingRecordsTable = pgTable("mulching_records", {
   index("mulching_records_source_reading_id_idx").on(t.sourceReadingId),
 ]);
 
-export const insertInfillJobSchema      = createInsertSchema(infillJobsTable).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertInfillJobSchema      = createInsertSchema(infillJobsTable).omit({ id: true, completedAt: true, completedById: true, createdAt: true, updatedAt: true });
 export const insertInfillOrderSchema    = createInsertSchema(infillOrdersTable).omit({ id: true, createdAt: true, updatedAt: true });
-export const insertMulchingRecordSchema = createInsertSchema(mulchingRecordsTable).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertMulchingRecordSchema = createInsertSchema(mulchingRecordsTable).omit({ id: true, completedAt: true, completedById: true, createdAt: true, updatedAt: true });
 export const insertMulchDepthReadingSchema = createInsertSchema(mulchDepthReadingsTable).omit({ id: true, createdAt: true });
 export const selectInfillJobSchema      = createSelectSchema(infillJobsTable);
 export const selectInfillOrderSchema    = createSelectSchema(infillOrdersTable);

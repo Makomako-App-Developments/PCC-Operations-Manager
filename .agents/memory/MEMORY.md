@@ -42,3 +42,4 @@
 - [Storm Patrol photo visibility](storm-patrol-photo-visibility.md) — accepted uploads are not enough: reopened Field Ops jobs and desktop completed-work details must both render persisted before/after photos.
 - [Expo web PWA assets](expo-web-pwa-assets.md) — Expo web exports do not carry custom public PWA files in this setup; copy them into the export and serve them explicitly in development.
 - [Leaflet tile outage recovery](leaflet-tile-outage-recovery.md) — failed tiles do not retry automatically; remount the layer and clear fallback only after an error-free attempt.
+- [Photo cleanup integration test isolation](photo-cleanup-integration-test-isolation.md) — cleanup worker batch-count tests can become timing-sensitive in the full parallel API suite.

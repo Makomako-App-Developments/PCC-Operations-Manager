@@ -591,4 +591,71 @@ describe("audit-log isolation — programmes routes", () => {
       );
     });
   });
+
+  describe("programme completion compare-and-set", () => {
+    it("does not overwrite the first infill completion when a concurrent request wins", async () => {
+      const db = await getDb();
+      vi.mocked(db.select).mockReturnValue(makeChain([{
+        ...fakeInfillJob,
+        status: "in_progress",
+        completedAt: null,
+        completedById: null,
+      }]) as never);
+
+      let updateValues: Record<string, unknown> | undefined;
+      const updateChain: Record<string, any> = {};
+      updateChain.set = vi.fn((values: Record<string, unknown>) => {
+        updateValues = values;
+        return updateChain;
+      });
+      updateChain.where = vi.fn(() => updateChain);
+      updateChain.returning = vi.fn(() => Promise.resolve([]));
+      vi.mocked(db.update).mockReturnValue(updateChain as never);
+
+      const response = await request(app)
+        .patch(`/api/infill-jobs/${INFILL_JOB_ID}`)
+        .send({ status: "completed" });
+
+      expect(response.status).toBe(409);
+      expect(updateValues).toEqual(expect.objectContaining({
+        status: "completed",
+        completedAt: expect.any(Date),
+        completedById: USER_ID,
+      }));
+      expect(updateChain.where).toHaveBeenCalledTimes(1);
+    });
+
+    it("does not overwrite the first mulching completion when a concurrent request wins", async () => {
+      const db = await getDb();
+      vi.mocked(db.select).mockReturnValue(makeChain([{
+        ...fakeMulchingDraft,
+        status: "scheduled",
+        completedAt: null,
+        completedById: null,
+      }]) as never);
+
+      let updateValues: Record<string, unknown> | undefined;
+      const updateChain: Record<string, any> = {};
+      updateChain.set = vi.fn((values: Record<string, unknown>) => {
+        updateValues = values;
+        return updateChain;
+      });
+      updateChain.where = vi.fn(() => updateChain);
+      updateChain.returning = vi.fn(() => Promise.resolve([]));
+      vi.mocked(db.update).mockReturnValue(updateChain as never);
+
+      const response = await request(app)
+        .patch(`/api/mulching-records/${MULCHING_ID}`)
+        .send({ status: "completed" });
+
+      expect(response.status).toBe(409);
+      expect(updateValues).toEqual(expect.objectContaining({
+        status: "completed",
+        completedAt: expect.any(Date),
+        completedById: USER_ID,
+        completedDate: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
+      }));
+      expect(updateChain.where).toHaveBeenCalledTimes(1);
+    });
+  });
 });

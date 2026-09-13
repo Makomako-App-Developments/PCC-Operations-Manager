@@ -8,7 +8,7 @@ import {
   insertInfillJobSchema, insertInfillOrderSchema, insertMulchingRecordSchema,
   executeWithCircuitBreaker,
 } from "@workspace/db";
-import { eq, and, inArray, desc, gte, lte } from "drizzle-orm";
+import { eq, and, inArray, desc, gte, lte, isNull } from "drizzle-orm";
 import { requireAuth, requireRole } from "../middlewares/auth";
 import { validateBody } from "../middlewares/validate";
 import { z } from "zod/v4";
@@ -16,6 +16,7 @@ import { auditLog } from "../lib/audit";
 import {
   projectNextJobDate, STANDARD_DEPTH_MM, ACTION_THRESHOLD_MM, decayRateForType,
 } from "../lib/mulch-decay";
+import { mulchingCompletionAudit, programmeCompletionAudit } from "../lib/programme-completion";
 
 const router = Router();
 const mulchImportUpload = multer({
@@ -53,6 +54,8 @@ router.get("/infill-jobs", requireAuth, async (req, res) => {
       plannedDate:     infillJobsTable.plannedDate,
       estimatedMins:   infillJobsTable.estimatedMins,
       status:          infillJobsTable.status,
+      completedAt:     infillJobsTable.completedAt,
+      completedById:   infillJobsTable.completedById,
       createdAt:       infillJobsTable.createdAt,
       updatedAt:       infillJobsTable.updatedAt,
     })
@@ -199,11 +202,27 @@ router.patch(
         }
       }
 
+      const completionAudit = programmeCompletionAudit(
+        before.status,
+        patch.status,
+        req.auth!.userId,
+      );
+      const isFirstCompletion = "completedAt" in completionAudit;
       const [updated] = await executeWithCircuitBreaker(() => db
         .update(infillJobsTable)
-        .set({ ...patch, updatedAt: new Date() } as any)
-        .where(eq(infillJobsTable.id, id))
+        .set({ ...patch, ...completionAudit, updatedAt: new Date() } as any)
+        .where(isFirstCompletion
+          ? and(
+              eq(infillJobsTable.id, id),
+              eq(infillJobsTable.status, before.status),
+              isNull(infillJobsTable.completedAt),
+            )
+          : eq(infillJobsTable.id, id))
         .returning());
+      if (!updated) {
+        res.status(409).json({ error: "Infill job was completed by another user." });
+        return;
+      }
 
       await auditLog({
         tableName: "infill_jobs", recordId: id, action: "UPDATE",
@@ -327,6 +346,8 @@ router.get("/mulching-records", requireAuth, async (req, res) => {
       assetDescription:    assetsTable.description,
       scheduledDate:       mulchingRecordsTable.scheduledDate,
       completedDate:       mulchingRecordsTable.completedDate,
+      completedAt:         mulchingRecordsTable.completedAt,
+      completedById:       mulchingRecordsTable.completedById,
       volumeM3:            mulchingRecordsTable.volumeM3,
       status:              mulchingRecordsTable.status,
       mulchType:           mulchingRecordsTable.mulchType,
@@ -361,7 +382,15 @@ router.post(
   validateBody(insertMulchingRecordSchema),
   async (req, res) => {
     try {
-      const [created] = await executeWithCircuitBreaker(() => db.insert(mulchingRecordsTable).values(req.body).returning());
+      const completionAudit = mulchingCompletionAudit(
+        "due",
+        req.body.status,
+        req.auth!.userId,
+      );
+      const [created] = await executeWithCircuitBreaker(() => db
+        .insert(mulchingRecordsTable)
+        .values({ ...req.body, ...completionAudit })
+        .returning());
       res.status(201).json(created);
     } catch (err) {
       console.error("POST /mulching-records error:", err);
@@ -377,12 +406,36 @@ router.patch(
   async (req, res) => {
     try {
       const id = String(req.params.id);
+      const [before] = await executeWithCircuitBreaker(() => db
+        .select()
+        .from(mulchingRecordsTable)
+        .where(eq(mulchingRecordsTable.id, id))
+        .limit(1));
+      if (!before) { res.status(404).json({ error: "Mulching record not found" }); return; }
+      const patch = req.body as Record<string, unknown>;
+      delete patch.completedAt;
+      delete patch.completedById;
+      const completionAudit = mulchingCompletionAudit(
+        before.status,
+        patch.status,
+        req.auth!.userId,
+      );
+      const isFirstCompletion = "completedAt" in completionAudit;
       const [updated] = await executeWithCircuitBreaker(() => db
         .update(mulchingRecordsTable)
-        .set({ ...req.body, updatedAt: new Date() })
-        .where(eq(mulchingRecordsTable.id, id))
+        .set({ ...patch, ...completionAudit, updatedAt: new Date() })
+        .where(isFirstCompletion
+          ? and(
+              eq(mulchingRecordsTable.id, id),
+              eq(mulchingRecordsTable.status, before.status),
+              isNull(mulchingRecordsTable.completedAt),
+            )
+          : eq(mulchingRecordsTable.id, id))
         .returning());
-      if (!updated) { res.status(404).json({ error: "Mulching record not found" }); return; }
+      if (!updated) {
+        res.status(409).json({ error: "Mulching record was completed by another user." });
+        return;
+      }
       res.json(updated);
     } catch (err) {
       console.error("PATCH /mulching-records/:id error:", err);

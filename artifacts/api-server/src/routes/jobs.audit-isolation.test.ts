@@ -385,6 +385,141 @@ describe("audit-log isolation — jobs routes", () => {
       expect(vi.mocked(db.update)).toHaveBeenCalledTimes(1);
       expect(vi.mocked(auditLog)).toHaveBeenCalledTimes(1);
     });
+
+    it("does not overwrite the first mulching completion when a concurrent update wins", async () => {
+      const db = await getDb();
+      let selectCalls = 0;
+      vi.mocked(db.select).mockImplementation(() => {
+        selectCalls++;
+        return makeChain(selectCalls === 1 ? [] : [{
+          id: JOB_ID,
+          status: "scheduled",
+          assignedTeamId: TEAM_ID,
+          completedAt: null,
+        }]) as never;
+      });
+
+      let updateValues: Record<string, unknown> | undefined;
+      const updateChain: Record<string, any> = {};
+      updateChain.set = vi.fn((values: Record<string, unknown>) => {
+        updateValues = values;
+        return updateChain;
+      });
+      updateChain.where = vi.fn(() => updateChain);
+      updateChain.returning = vi.fn(() => Promise.resolve([]));
+      vi.mocked(db.update).mockReturnValue(updateChain as never);
+
+      const response = await request(app)
+        .patch(`/api/jobs/${JOB_ID}`)
+        .send({ status: "completed" });
+
+      expect(response.status).toBe(409);
+      expect(updateValues).toEqual(expect.objectContaining({
+        status: "completed",
+        completedAt: expect.any(Date),
+        completedById: USER_ID,
+        completedDate: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
+      }));
+      expect(updateChain.where).toHaveBeenCalledTimes(1);
+    });
+
+    it("allows completed mulching work to be reopened and completed again with a fresh audit", async () => {
+      const db = await getDb();
+      const auditLog = await getAuditLog();
+      vi.mocked(auditLog).mockResolvedValue(true as never);
+      const firstCompletion = new Date("2026-09-12T01:00:00Z");
+      let selectCalls = 0;
+      vi.mocked(db.select).mockImplementation(() => {
+        selectCalls++;
+        if (selectCalls === 1 || selectCalls === 3) return makeChain([]) as never;
+        if (selectCalls === 2) {
+          return makeChain([{
+            id: JOB_ID,
+            status: "completed",
+            assignedTeamId: TEAM_ID,
+            completedAt: firstCompletion,
+            completedById: OTHER_USER_ID,
+            completedDate: "2026-09-12",
+          }]) as never;
+        }
+        return makeChain([{
+          id: JOB_ID,
+          status: "scheduled",
+          assignedTeamId: TEAM_ID,
+          completedAt: null,
+          completedById: null,
+          completedDate: null,
+        }]) as never;
+      });
+
+      const updatePayloads: Record<string, unknown>[] = [];
+      vi.mocked(db.update).mockImplementation(() => {
+        const chain: Record<string, any> = {};
+        chain.set = vi.fn((values: Record<string, unknown>) => {
+          updatePayloads.push(values);
+          return chain;
+        });
+        chain.where = vi.fn(() => chain);
+        chain.returning = vi.fn(() => {
+          const values = updatePayloads.at(-1)!;
+          return Promise.resolve([{ id: JOB_ID, assignedTeamId: TEAM_ID, ...values }]);
+        });
+        return chain as never;
+      });
+
+      const reopened = await request(app)
+        .patch(`/api/jobs/${JOB_ID}`)
+        .send({ status: "pending" });
+      const recompleted = await request(app)
+        .patch(`/api/jobs/${JOB_ID}`)
+        .send({ status: "completed" });
+
+      expect(reopened.status).toBe(200);
+      expect(updatePayloads[0]).toEqual(expect.objectContaining({
+        status: "scheduled",
+        completedAt: null,
+        completedById: null,
+        completedDate: null,
+      }));
+      expect(recompleted.status).toBe(200);
+      expect(updatePayloads[1]).toEqual(expect.objectContaining({
+        status: "completed",
+        completedAt: expect.any(Date),
+        completedById: USER_ID,
+        completedDate: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
+      }));
+    });
+  });
+
+  describe("GET /api/jobs/:id — mulching completion audit", () => {
+    it("returns the exact completion instant and completing worker", async () => {
+      const db = await getDb();
+      const completedAt = new Date("2026-09-13T02:34:56Z");
+      let selectCalls = 0;
+      vi.mocked(db.select).mockImplementation(() => {
+        selectCalls++;
+        return makeChain(selectCalls === 1 ? [] : [{
+          id: JOB_ID,
+          assetId: ASSET_ID,
+          status: "completed",
+          teamId: TEAM_ID,
+          completedDate: "2026-09-13",
+          completedAt,
+          completedById: USER_ID,
+          assignedUserName: "Crew Member",
+        }]) as never;
+      });
+
+      const response = await request(app).get(`/api/jobs/${JOB_ID}`);
+
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual(expect.objectContaining({
+        completedAt: completedAt.toISOString(),
+        completedById: USER_ID,
+        assignedUserId: USER_ID,
+        assignedUserName: "Crew Member",
+      }));
+    });
   });
 
   describe("shared queue claiming — regular jobs", () => {

@@ -138,11 +138,11 @@ describe("completion report PDFs", () => {
     },
     {
       source: "infill_planting",
-      rows: [[common], [{ speciesName: "Hebe", quantity: 6, plantedDate: "2026-09-13" }]],
+      rows: [[{ ...common, workerName: "Infill Worker" }], [{ speciesName: "Hebe", quantity: 6, plantedDate: "2026-09-13" }]],
     },
     {
       source: "mulching",
-      rows: [[{ ...common, completedAt: "2026-09-13", mulchType: "Bark", volumeM3: "2.50", contractor: null, costNzd: "125.00" }], []],
+      rows: [[{ ...common, workerName: "Mulching Worker", mulchType: "Bark", volumeM3: "2.50", contractor: null, costNzd: "125.00" }], []],
     },
     {
       source: "storm_patrol",

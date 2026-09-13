@@ -10,6 +10,7 @@ import { auditLog } from "../lib/audit";
 import { notifyTeam, notifyUsers } from "../lib/push-notifications";
 import { objectStorageClient } from "../lib/objectStorage";
 import { checkDayCapacity, computeTotalScheduledMins } from "../lib/day-capacity";
+import { mulchingCompletionAudit } from "../lib/programme-completion";
 
 const LOGO_PATH = path.resolve(
   process.cwd(),
@@ -19,6 +20,15 @@ const LOGO_PATH = path.resolve(
 );
 
 const router = Router();
+const legacyInfillCompletionInstant = sql<Date>`
+  COALESCE(${infillJobsTable.completedAt}, ${infillJobsTable.updatedAt} AT TIME ZONE 'UTC')
+`;
+const legacyMulchingCompletionInstant = sql<Date>`
+  COALESCE(
+    ${mulchingRecordsTable.completedAt},
+    ${mulchingRecordsTable.completedDate}::timestamp AT TIME ZONE 'Pacific/Auckland'
+  )
+`;
 
 function isPrivilegedRole(role: string): boolean {
   return ["administrator", "manager", "supervisor"].includes(role);
@@ -422,7 +432,9 @@ router.get("/completed-works", requireAuth, validateQuery(completedWorksQuerySch
     .select({
       id: infillJobsTable.id,
       scheduledDate: infillJobsTable.plannedDate,
-      completedAt: infillJobsTable.updatedAt,
+      completedAt: legacyInfillCompletionInstant,
+      completedById: infillJobsTable.completedById,
+      assignedUserName: usersTable.name,
       estimatedTimeMins: infillJobsTable.estimatedMins,
       notes: infillJobsTable.assessmentNotes,
       teamId: infillJobsTable.assignedTeamId,
@@ -438,8 +450,9 @@ router.get("/completed-works", requireAuth, validateQuery(completedWorksQuerySch
     .from(infillJobsTable)
     .innerJoin(assetsTable, eq(infillJobsTable.assetId, assetsTable.id))
     .leftJoin(teamsTable, eq(infillJobsTable.assignedTeamId, teamsTable.id))
+    .leftJoin(usersTable, eq(infillJobsTable.completedById, usersTable.id))
     .where(and(...infillConditions))
-    .orderBy(desc(infillJobsTable.updatedAt))
+    .orderBy(desc(legacyInfillCompletionInstant))
     .limit(q.limit)) : [];
   const mappedInfill = infillRows.map(row => ({
     ...row,
@@ -449,7 +462,6 @@ router.get("/completed-works", requireAuth, validateQuery(completedWorksQuerySch
     actualTimeMins: null,
     crewStatus: null,
     isAllTeams: false,
-    assignedUserName: null,
     pdfAvailable: true,
     photoEndpoint: null,
   }));
@@ -469,6 +481,9 @@ router.get("/completed-works", requireAuth, validateQuery(completedWorksQuerySch
       id: mulchingRecordsTable.id,
       scheduledDate: mulchingRecordsTable.scheduledDate,
       completedDate: mulchingRecordsTable.completedDate,
+      completedAt: legacyMulchingCompletionInstant,
+      completedById: mulchingRecordsTable.completedById,
+      assignedUserName: usersTable.name,
       estimatedTimeMins: mulchingRecordsTable.estimatedMins,
       notes: mulchingRecordsTable.notes,
       teamId: mulchingRecordsTable.assignedTeamId,
@@ -487,19 +502,18 @@ router.get("/completed-works", requireAuth, validateQuery(completedWorksQuerySch
     .from(mulchingRecordsTable)
     .innerJoin(assetsTable, eq(mulchingRecordsTable.assetId, assetsTable.id))
     .leftJoin(teamsTable, eq(mulchingRecordsTable.assignedTeamId, teamsTable.id))
+    .leftJoin(usersTable, eq(mulchingRecordsTable.completedById, usersTable.id))
     .where(and(...mulchConditions))
-    .orderBy(desc(mulchingRecordsTable.completedDate))
+    .orderBy(desc(legacyMulchingCompletionInstant))
     .limit(q.limit)) : [];
   const mappedMulching = mulchRows.map(row => ({
     ...row,
     jobType: "mulching",
     workSource: "mulching",
-    completedAt: row.completedDate ? new Date(`${row.completedDate}T00:00:00Z`) : null,
     startedAt: null,
     actualTimeMins: null,
     crewStatus: null,
     isAllTeams: false,
-    assignedUserName: null,
     pdfAvailable: true,
     photoEndpoint: `/api/jobs/${row.id}/photos`,
   }));
@@ -616,13 +630,14 @@ async function sendAdditionalCompletionReport(
     }
   } else if (source === "infill_planting") {
     const [row] = await executeWithCircuitBreaker(() => db.select({
-      id: infillJobsTable.id, status: infillJobsTable.status, completedAt: infillJobsTable.updatedAt,
+      id: infillJobsTable.id, status: infillJobsTable.status, completedAt: legacyInfillCompletionInstant,
       scheduledDate: infillJobsTable.plannedDate, teamId: infillJobsTable.assignedTeamId,
-      teamName: teamsTable.name, notes: infillJobsTable.assessmentNotes,
+      teamName: teamsTable.name, workerName: usersTable.name, notes: infillJobsTable.assessmentNotes,
       siteName: assetsTable.name, siteDescription: assetsTable.description,
     }).from(infillJobsTable)
       .innerJoin(assetsTable, eq(infillJobsTable.assetId, assetsTable.id))
       .leftJoin(teamsTable, eq(infillJobsTable.assignedTeamId, teamsTable.id))
+      .leftJoin(usersTable, eq(infillJobsTable.completedById, usersTable.id))
       .where(and(eq(infillJobsTable.id, id), eq(infillJobsTable.status, "completed"))).limit(1));
     if (row) {
       const orders = await executeWithCircuitBreaker(() => db.select({
@@ -632,7 +647,7 @@ async function sendAdditionalCompletionReport(
       report = {
         sourceLabel: "Infill Planting", siteName: row.siteName, siteDescription: row.siteDescription,
         completedAt: row.completedAt, scheduledDate: row.scheduledDate, teamId: row.teamId,
-        teamName: row.teamName, workerName: null, notes: row.notes,
+        teamName: row.teamName, workerName: row.workerName, notes: row.notes,
         details: orders.map(order => [
           "Planting",
           `${order.quantity} × ${order.speciesName}${order.plantedDate ? ` — planted ${order.plantedDate}` : ""}`,
@@ -643,14 +658,16 @@ async function sendAdditionalCompletionReport(
   } else if (source === "mulching") {
     const [row] = await executeWithCircuitBreaker(() => db.select({
       id: mulchingRecordsTable.id, status: mulchingRecordsTable.status,
-      completedAt: mulchingRecordsTable.completedDate, scheduledDate: mulchingRecordsTable.scheduledDate,
+      completedAt: legacyMulchingCompletionInstant, scheduledDate: mulchingRecordsTable.scheduledDate,
       teamId: mulchingRecordsTable.assignedTeamId, teamName: teamsTable.name,
+      workerName: usersTable.name,
       notes: mulchingRecordsTable.notes, mulchType: mulchingRecordsTable.mulchType,
       volumeM3: mulchingRecordsTable.volumeM3, contractor: mulchingRecordsTable.contractor,
       costNzd: mulchingRecordsTable.costNzd, siteName: assetsTable.name, siteDescription: assetsTable.description,
     }).from(mulchingRecordsTable)
       .innerJoin(assetsTable, eq(mulchingRecordsTable.assetId, assetsTable.id))
       .leftJoin(teamsTable, eq(mulchingRecordsTable.assignedTeamId, teamsTable.id))
+      .leftJoin(usersTable, eq(mulchingRecordsTable.completedById, usersTable.id))
       .where(and(eq(mulchingRecordsTable.id, id), eq(mulchingRecordsTable.status, "completed"))).limit(1));
     if (row) {
       const photos = await executeWithCircuitBreaker(() => db.select({ blobUrl: jobPhotosTable.blobUrl, caption: jobPhotosTable.caption })
@@ -658,7 +675,7 @@ async function sendAdditionalCompletionReport(
       report = {
         sourceLabel: "Mulching", siteName: row.siteName, siteDescription: row.siteDescription,
         completedAt: row.completedAt, scheduledDate: row.scheduledDate, teamId: row.teamId,
-        teamName: row.teamName, workerName: null, notes: row.notes,
+        teamName: row.teamName, workerName: row.workerName, notes: row.notes,
         details: [
           ["Mulch type", row.mulchType],
           ["Volume", row.volumeM3 == null ? null : `${row.volumeM3} m³`],
@@ -1048,6 +1065,9 @@ router.get("/jobs/:id", requireAuth, async (req, res) => {
       teamId:            mulchingRecordsTable.assignedTeamId,
       scheduledDate:     mulchingRecordsTable.scheduledDate,
       completedDate:     mulchingRecordsTable.completedDate,
+      completedAt:       legacyMulchingCompletionInstant,
+      completedById:     mulchingRecordsTable.completedById,
+      assignedUserName:  usersTable.name,
       estimatedTimeMins: mulchingRecordsTable.estimatedMins,
       notes:             mulchingRecordsTable.notes,
       mulchType:         mulchingRecordsTable.mulchType,
@@ -1065,6 +1085,7 @@ router.get("/jobs/:id", requireAuth, async (req, res) => {
     })
     .from(mulchingRecordsTable)
     .innerJoin(assetsTable, eq(mulchingRecordsTable.assetId, assetsTable.id))
+    .leftJoin(usersTable, eq(mulchingRecordsTable.completedById, usersTable.id))
     .where(eq(mulchingRecordsTable.id, id))
     .limit(1));
 
@@ -1084,10 +1105,9 @@ router.get("/jobs/:id", requireAuth, async (req, res) => {
     jobType:           "mulching",
     status:            mulchStatusMap[mr.status] ?? "pending",
     isAllTeams:        false,
-    assignedUserId:    null,
+    assignedUserId:    mr.completedById,
     startedAt:         null,
     pausedAt:          null,
-    completedAt:       mr.completedDate ? new Date(`${mr.completedDate}T00:00:00Z`) : null,
     actualTimeMins:    null,
     pausedElapsedSecs: 0,
     crewStatus:        null,
@@ -1237,19 +1257,36 @@ router.patch("/jobs/:id", requireAuth, async (req, res) => {
 
     // Map field-app status → mulching_records status
     const mulchUpdates: Record<string, unknown> = { updatedAt: new Date() };
+    let isFirstCompletion = false;
     if (toStatus === "completed" && mr.status !== "completed") {
       mulchUpdates.status = "completed";
-      mulchUpdates.completedDate = new Date().toISOString().slice(0, 10);
+      const completionAudit = mulchingCompletionAudit(mr.status, toStatus, req.auth!.userId);
+      isFirstCompletion = "completedAt" in completionAudit;
+      Object.assign(mulchUpdates, completionAudit);
     } else if (toStatus === "pending" || toStatus === "in_progress") {
       // Allow re-opening (e.g. start → in_progress treated as still scheduled)
       mulchUpdates.status = "scheduled";
+      Object.assign(
+        mulchUpdates,
+        mulchingCompletionAudit(mr.status, "scheduled", req.auth!.userId),
+      );
     }
 
     const [updated] = await executeWithCircuitBreaker(() => db
       .update(mulchingRecordsTable)
       .set(mulchUpdates)
-      .where(eq(mulchingRecordsTable.id, id))
+      .where(isFirstCompletion
+        ? and(
+            eq(mulchingRecordsTable.id, id),
+            eq(mulchingRecordsTable.status, mr.status),
+            isNull(mulchingRecordsTable.completedAt),
+          )
+        : eq(mulchingRecordsTable.id, id))
       .returning());
+    if (!updated) {
+      res.status(409).json({ error: "Mulching record was completed by another user." });
+      return;
+    }
 
     // Audit log is written after the update commits so that a logging failure
     // cannot roll back the committed record change. auditLog() swallows errors.
@@ -1268,7 +1305,7 @@ router.patch("/jobs/:id", requireAuth, async (req, res) => {
       isAllTeams:        false,
       startedAt:         null,
       pausedAt:          null,
-      completedAt:       updated.completedDate ? new Date(`${updated.completedDate}T00:00:00Z`) : null,
+      completedAt:       updated.completedAt,
       actualTimeMins:    null,
       pausedElapsedSecs: 0,
       crewStatus:        null,
