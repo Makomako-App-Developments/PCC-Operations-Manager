@@ -249,8 +249,8 @@ describe("Storm Patrol work package asset filters", () => {
       assetDescription: "Stormwater inlet",
       streetAddress: "56 Bodmans Lane",
       suburb: "Ranui",
-      lat: -41.13,
-      lng: 174.83,
+      lat: "-41.13" as unknown as number,
+      lng: "174.83" as unknown as number,
       teamName: "Storm Team",
       workerName: "Alex Crew",
       phase: "mid",
@@ -272,6 +272,7 @@ describe("Storm Patrol work package asset filters", () => {
     expect(map).toHaveAttribute("data-center", "[-41.13,174.83]");
     const marker = within(map).getByTestId("storm-marker");
     expect(marker).toHaveAttribute("data-fill-color", "#f97316");
+    expect(within(dialog).getByText(/-41\.13000, 174\.83000/)).toBeVisible();
 
     const photo = await within(dialog).findByAltText("Urgent issue at Bodman SW grate");
     expect(photo).toHaveAttribute("src", "blob:authenticated-photo");

@@ -437,6 +437,8 @@ async function loadStormEventDetails(
   }
   const observationsWithPhotos = observations.map(observation => ({
     ...observation,
+    locationLat: Number(observation.locationLat),
+    locationLng: Number(observation.locationLng),
     photos: observation.reactiveJobId ? photosByReactiveJobId.get(observation.reactiveJobId) ?? [] : [],
   }));
   const jobsById = new Map(jobs.map(job => [job.id, job]));
@@ -452,8 +454,8 @@ async function loadStormEventDetails(
       assetDescription: job?.assetDescription ?? null,
       streetAddress: job?.streetAddress ?? null,
       suburb: job?.suburb ?? null,
-      lat: job?.lat ?? null,
-      lng: job?.lng ?? null,
+      lat: job?.lat == null ? null : Number(job.lat),
+      lng: job?.lng == null ? null : Number(job.lng),
       teamName: job?.teamName ?? null,
       workerName: job?.workerName ?? null,
       phase: job?.phase ?? null,

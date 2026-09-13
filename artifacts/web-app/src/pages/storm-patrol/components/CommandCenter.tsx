@@ -79,6 +79,12 @@ export function filterStormwaterAssets(
   });
 }
 
+function finiteCoordinate(value: unknown): number | null {
+  if (value == null || value === "") return null;
+  const coordinate = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(coordinate) ? coordinate : null;
+}
+
 const PRIORITY_STYLES: Record<StormwaterAssetDetails["priority"], string> = {
   High: "bg-orange-500/20 text-orange-300 border-orange-500/30",
   Medium: "bg-amber-500/15 text-amber-300 border-amber-500/25",
@@ -138,6 +144,10 @@ export default function CommandCenter({ data, readOnly = false, onBack }: Comman
   const [selectedCompletedJob, setSelectedCompletedJob] = useState<StormJob | null>(null);
   const [selectedUrgentIssue, setSelectedUrgentIssue] = useState<UrgentIssue | null>(null);
   const [selectedObservation, setSelectedObservation] = useState<StormObservation | null>(null);
+  const urgentIssueLat = finiteCoordinate(selectedUrgentIssue?.lat);
+  const urgentIssueLng = finiteCoordinate(selectedUrgentIssue?.lng);
+  const observationLat = finiteCoordinate(selectedObservation?.locationLat);
+  const observationLng = finiteCoordinate(selectedObservation?.locationLng);
   const [urgentIssueTilesFailed, setUrgentIssueTilesFailed] = useState(false);
   const [urgentIssueTileAttempt, setUrgentIssueTileAttempt] = useState(0);
   const urgentIssueTileAttemptHadError = useRef(false);
@@ -1066,7 +1076,7 @@ export default function CommandCenter({ data, readOnly = false, onBack }: Comman
                   ))}
                 </div>
 
-                {selectedUrgentIssue.lat != null && selectedUrgentIssue.lng != null && (
+                {urgentIssueLat != null && urgentIssueLng != null && (
                   <section>
                     <h3 className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-white/45">
                       <MapPin className="h-3.5 w-3.5" />
@@ -1074,7 +1084,7 @@ export default function CommandCenter({ data, readOnly = false, onBack }: Comman
                     </h3>
                     <div className="relative h-56 w-full overflow-hidden rounded-lg border border-white/10 bg-black/20 sm:h-64">
                       <MapContainer
-                        center={[selectedUrgentIssue.lat, selectedUrgentIssue.lng]}
+                        center={[urgentIssueLat, urgentIssueLng]}
                         zoom={17}
                         scrollWheelZoom
                         className="h-full w-full"
@@ -1095,7 +1105,7 @@ export default function CommandCenter({ data, readOnly = false, onBack }: Comman
                           }}
                         />
                         <CircleMarker
-                          center={[selectedUrgentIssue.lat, selectedUrgentIssue.lng]}
+                          center={[urgentIssueLat, urgentIssueLng]}
                           radius={9}
                           pathOptions={{ color: "#ffffff", weight: 3, fillColor: ORANGE, fillOpacity: 1 }}
                         >
@@ -1129,7 +1139,7 @@ export default function CommandCenter({ data, readOnly = false, onBack }: Comman
                     <p className="mt-2 text-xs text-white/45">
                       {[selectedUrgentIssue.streetAddress, selectedUrgentIssue.suburb].filter(Boolean).join(", ")}
                       {selectedUrgentIssue.streetAddress || selectedUrgentIssue.suburb ? " · " : ""}
-                      {selectedUrgentIssue.lat.toFixed(5)}, {selectedUrgentIssue.lng.toFixed(5)}
+                      {urgentIssueLat.toFixed(5)}, {urgentIssueLng.toFixed(5)}
                     </p>
                   </section>
                 )}
@@ -1329,7 +1339,7 @@ export default function CommandCenter({ data, readOnly = false, onBack }: Comman
           }}
         >
           <DialogContent className="max-h-[85vh] overflow-y-auto border-white/10 bg-[#0f2a36] text-white sm:max-w-xl">
-            {selectedObservation && (
+            {selectedObservation && observationLat != null && observationLng != null && (
               <>
                 <DialogHeader className="border-b border-white/10 pb-4 pr-8">
                   <div className="mb-1 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-[#65d8e8]">
@@ -1348,7 +1358,7 @@ export default function CommandCenter({ data, readOnly = false, onBack }: Comman
                   <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-white/45">Recorded location</h3>
                   <div className="relative h-52 w-full overflow-hidden rounded-lg border border-white/10 bg-black/20 sm:h-60">
                     <MapContainer
-                      center={[selectedObservation.locationLat, selectedObservation.locationLng]}
+                      center={[observationLat, observationLng]}
                       zoom={17}
                       scrollWheelZoom
                       className="h-full w-full"
@@ -1371,7 +1381,7 @@ export default function CommandCenter({ data, readOnly = false, onBack }: Comman
                         }}
                       />
                       <CircleMarker
-                        center={[selectedObservation.locationLat, selectedObservation.locationLng]}
+                        center={[observationLat, observationLng]}
                         radius={9}
                         pathOptions={{ color: "#ffffff", weight: 3, fillColor: BRAND, fillOpacity: 1 }}
                       >
@@ -1399,11 +1409,11 @@ export default function CommandCenter({ data, readOnly = false, onBack }: Comman
                 <div className="grid grid-cols-2 gap-3">
                   <div className="rounded-lg border border-white/10 bg-white/5 p-3">
                     <p className="text-[10px] font-semibold uppercase tracking-wider text-white/40">Latitude</p>
-                    <p className="mt-1 text-sm font-medium text-white/90">{selectedObservation.locationLat.toFixed(5)}</p>
+                    <p className="mt-1 text-sm font-medium text-white/90">{observationLat.toFixed(5)}</p>
                   </div>
                   <div className="rounded-lg border border-white/10 bg-white/5 p-3">
                     <p className="text-[10px] font-semibold uppercase tracking-wider text-white/40">Longitude</p>
-                    <p className="mt-1 text-sm font-medium text-white/90">{selectedObservation.locationLng.toFixed(5)}</p>
+                    <p className="mt-1 text-sm font-medium text-white/90">{observationLng.toFixed(5)}</p>
                   </div>
                 </div>
 
