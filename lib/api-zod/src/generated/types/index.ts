@@ -37,6 +37,8 @@ export * from "./degradedHealthResponse";
 export * from "./degradedHealthResponseCbState";
 export * from "./department";
 export * from "./departmentDetails";
+export * from "./downloadCompletionReportParams";
+export * from "./downloadCompletionReportSource";
 export * from "./errorResponse";
 export * from "./forbiddenResponse";
 export * from "./frequency";

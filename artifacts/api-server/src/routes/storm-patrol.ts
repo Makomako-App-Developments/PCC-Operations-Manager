@@ -755,6 +755,27 @@ router.post("/storm-patrol/alerts/:id/retry-email", requireAuth, requireRole("ma
   res.json(updated);
 });
 
+router.get("/storm-patrol/jobs/:id/photos", requireAuth, async (req, res) => {
+  const id = String(req.params.id);
+  const [job] = await executeWithCircuitBreaker(() => db.select({
+    id: stormJobsTable.id,
+    teamId: stormJobsTable.teamId,
+  }).from(stormJobsTable).where(eq(stormJobsTable.id, id)).limit(1));
+  if (!job) { res.status(404).json({ error: "Storm Patrol job not found" }); return; }
+  if (!["administrator", "manager", "supervisor"].includes(req.auth!.role) && job.teamId !== req.auth!.teamId) {
+    res.status(403).json({ error: "Forbidden" }); return;
+  }
+  const photos = await executeWithCircuitBreaker(() => db.select({
+    id: stormPhotosTable.id,
+    blobUrl: stormPhotosTable.blobUrl,
+    caption: stormPhotosTable.caption,
+    contentType: stormPhotosTable.contentType,
+    purpose: stormPhotosTable.purpose,
+    createdAt: stormPhotosTable.createdAt,
+  }).from(stormPhotosTable).where(eq(stormPhotosTable.stormJobId, id)));
+  res.json({ data: photos });
+});
+
 router.post("/storm-patrol/jobs/:id/photos", requireAuth, stormPhotoUpload, async (req, res) => {
   if (!req.file) {
     console.warn("[storm-photo-upload-missing]", JSON.stringify(safeUploadContext(req)));

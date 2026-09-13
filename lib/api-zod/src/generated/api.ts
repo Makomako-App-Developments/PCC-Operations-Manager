@@ -2133,6 +2133,17 @@ export const UploadJobPhotoBody = zod.object({
   idempotencyKey: zod.string().optional(),
 });
 
+export const DownloadCompletionReportParams = zod.object({
+  id: zod.coerce.string().uuid(),
+});
+
+export const DownloadCompletionReportQueryParams = zod.object({
+  source: zod
+    .enum(["unscheduled", "infill_planting", "mulching", "storm_patrol"])
+    .optional()
+    .describe("Omit for routine maintenance records."),
+});
+
 /**
  * @summary Validate and preview the authoritative Stormwater asset workbook
  */
@@ -2519,6 +2530,25 @@ export const CompleteStormPatrolJobResponse = zod.object({
   }),
   followUp: zod.record(zod.string(), zod.unknown()).nullish(),
   replayed: zod.boolean(),
+});
+
+export const ListStormPatrolJobPhotosParams = zod.object({
+  id: zod.coerce.string().uuid(),
+});
+
+export const ListStormPatrolJobPhotosResponse = zod.object({
+  data: zod.array(
+    zod.object({
+      id: zod.string().uuid(),
+      jobId: zod.string().uuid().nullish(),
+      reactiveJobId: zod.string().uuid().nullish(),
+      uploadedBy: zod.string().uuid(),
+      blobUrl: zod.string(),
+      contentType: zod.string().nullish(),
+      caption: zod.string().nullish(),
+      createdAt: zod.date(),
+    }),
+  ),
 });
 
 export const UploadStormPatrolJobPhotoParams = zod.object({

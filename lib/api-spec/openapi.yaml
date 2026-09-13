@@ -1177,6 +1177,32 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/JobPhoto"
+  /jobs/{id}/pdf:
+    get:
+      operationId: downloadCompletionReport
+      tags: [jobs]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - name: source
+          in: query
+          required: false
+          description: Omit for routine maintenance records.
+          schema:
+            type: string
+            enum: [unscheduled, infill_planting, mulching, storm_patrol]
+      responses:
+        "200":
+          description: Completion report PDF
+          content:
+            application/pdf:
+              schema: { type: string, format: binary }
+        "403":
+          description: Caller cannot access this team's completed work
+        "404":
+          description: Completed work not found
 
   # ─── Storm Patrol ────────────────────────────────────────────────────────────
   /storm-patrol/assets/import/preview:
@@ -1439,6 +1465,24 @@ paths:
             },
         }
   /storm-patrol/jobs/{id}/photos:
+    get:
+      operationId: listStormPatrolJobPhotos
+      tags: [storm-patrol]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Storm Patrol job photos
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/JobPhotoListResponse" }
+        "403":
+          description: Caller cannot access this team's Storm Patrol photos
+        "404":
+          description: Storm Patrol job not found
     post:
       operationId: uploadStormPatrolJobPhoto
       tags: [storm-patrol]

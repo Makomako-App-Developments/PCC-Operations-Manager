@@ -1,6 +1,6 @@
 import { Router } from "express";
 import path from "path";
-import { db, executeWithCircuitBreaker, jobsTable, reactiveJobsTable, insertJobSchema, insertReactiveJobSchema, assetsTable, teamsTable, usersTable, jobTeamCompletionsTable, jobTaskSkipReasonsTable, infillJobsTable, mulchingRecordsTable, jobPhotosTable, auditLogTable, stormJobsTable, stormEventsTable, stormCheckResultsTable } from "@workspace/db";
+import { db, executeWithCircuitBreaker, jobsTable, reactiveJobsTable, insertJobSchema, insertReactiveJobSchema, assetsTable, teamsTable, usersTable, jobTeamCompletionsTable, jobTaskSkipReasonsTable, infillJobsTable, infillOrdersTable, mulchingRecordsTable, jobPhotosTable, auditLogTable, stormJobsTable, stormEventsTable, stormCheckResultsTable, stormPhotosTable } from "@workspace/db";
 import { eq, and, inArray, notInArray, or, isNull, gte, lte, ilike, desc, sql } from "drizzle-orm";
 import { z } from "zod";
 import { z as zV4 } from "zod/v4";
@@ -404,7 +404,7 @@ router.get("/completed-works", requireAuth, validateQuery(completedWorksQuerySch
     workSource: "unscheduled",
     crewStatus: null,
     isAllTeams: false,
-    pdfAvailable: false,
+    pdfAvailable: true,
     photoEndpoint: `/api/reactive-jobs/${row.id}/photos`,
   }));
 
@@ -450,7 +450,7 @@ router.get("/completed-works", requireAuth, validateQuery(completedWorksQuerySch
     crewStatus: null,
     isAllTeams: false,
     assignedUserName: null,
-    pdfAvailable: false,
+    pdfAvailable: true,
     photoEndpoint: null,
   }));
 
@@ -500,7 +500,7 @@ router.get("/completed-works", requireAuth, validateQuery(completedWorksQuerySch
     crewStatus: null,
     isAllTeams: false,
     assignedUserName: null,
-    pdfAvailable: false,
+    pdfAvailable: true,
     photoEndpoint: `/api/jobs/${row.id}/photos`,
   }));
 
@@ -509,7 +509,7 @@ router.get("/completed-works", requireAuth, validateQuery(completedWorksQuerySch
   const stormConditions: any[] = [inArray(stormJobsTable.status, ["completed", "too_dangerous"] as any[])];
   if (q.teamId) stormConditions.push(eq(stormJobsTable.teamId, q.teamId));
   if (!isPrivilegedRole(req.auth!.role)) stormConditions.push(eq(stormJobsTable.teamId, req.auth!.teamId ?? ""));
-  const stormRows = q.workSource === "garden" ? [] : await executeWithCircuitBreaker(() => db
+  const stormRows = ["garden", "routine_maintenance", "unscheduled", "infill_planting", "mulching"].includes(q.workSource) ? [] : await executeWithCircuitBreaker(() => db
     .select({
       id: stormJobsTable.id, phase: stormJobsTable.phase, outcome: stormJobsTable.status,
       completedAt: stormJobsTable.completedAt, actualTimeMins: stormJobsTable.actualTimeMins,
@@ -533,8 +533,8 @@ router.get("/completed-works", requireAuth, validateQuery(completedWorksQuerySch
     workSource: "storm_patrol",
     workTypes: typesByJob.get(row.id) ?? [],
     chargeCents: Math.round((row.actualTimeMins ?? 0) * row.hourlyRateCents / 60),
-    pdfAvailable: false,
-    photoEndpoint: null,
+    pdfAvailable: true,
+    photoEndpoint: `/api/storm-patrol/jobs/${row.id}/photos`,
   }));
   const combined: any[] = [
     ...mappedJobs,
@@ -551,9 +551,222 @@ router.get("/completed-works", requireAuth, validateQuery(completedWorksQuerySch
   res.json({ data: combined.slice(0, q.limit), page: q.page, limit: q.limit });
 });
 
+type AdditionalReportSource = "unscheduled" | "infill_planting" | "mulching" | "storm_patrol";
+
+async function downloadReportImages(photos: { blobUrl: string; caption: string | null }[]) {
+  const imageExts = /\.(jpe?g|png|webp|gif)$/i;
+  const bucketId = process.env["DEFAULT_OBJECT_STORAGE_BUCKET_ID"] ?? "";
+  const buffers: { buf: Buffer; caption: string | null }[] = [];
+  for (const photo of photos) {
+    if (!imageExts.test(photo.blobUrl)) continue;
+    try {
+      const objectName = photo.blobUrl.replace(/^\/api\/uploads\//, "");
+      const [buf] = await objectStorageClient.bucket(bucketId).file(objectName).download();
+      buffers.push({ buf: buf as Buffer, caption: photo.caption });
+    } catch {
+      // A missing attachment must not prevent the completion record from downloading.
+    }
+  }
+  return buffers;
+}
+
+async function sendAdditionalCompletionReport(
+  source: AdditionalReportSource,
+  id: string,
+  req: Parameters<Parameters<typeof router.get>[2]>[0],
+  res: Parameters<Parameters<typeof router.get>[2]>[1],
+) {
+  let report: {
+    sourceLabel: string;
+    siteName: string;
+    siteDescription: string | null;
+    completedAt: Date | string | null;
+    scheduledDate: string | null;
+    teamId: string | null;
+    teamName: string | null;
+    workerName: string | null;
+    notes: string | null;
+    details: [string, string | null][];
+    photos: { blobUrl: string; caption: string | null }[];
+  } | null = null;
+
+  if (source === "unscheduled") {
+    const [row] = await executeWithCircuitBreaker(() => db.select({
+      id: reactiveJobsTable.id, status: reactiveJobsTable.status,
+      completedAt: reactiveJobsTable.completedAt, scheduledDate: reactiveJobsTable.scheduledDate,
+      teamId: reactiveJobsTable.assignedTeamId, teamName: teamsTable.name, workerName: usersTable.name,
+      notes: reactiveJobsTable.notes, issueType: reactiveJobsTable.issueType,
+      description: reactiveJobsTable.description, priority: reactiveJobsTable.priority,
+      siteName: assetsTable.name, siteDescription: assetsTable.description,
+    }).from(reactiveJobsTable)
+      .leftJoin(assetsTable, eq(reactiveJobsTable.assetId, assetsTable.id))
+      .leftJoin(teamsTable, eq(reactiveJobsTable.assignedTeamId, teamsTable.id))
+      .leftJoin(usersTable, eq(reactiveJobsTable.assignedUserId, usersTable.id))
+      .where(and(eq(reactiveJobsTable.id, id), eq(reactiveJobsTable.status, "completed"))).limit(1));
+    if (row) {
+      const photos = await executeWithCircuitBreaker(() => db.select({ blobUrl: jobPhotosTable.blobUrl, caption: jobPhotosTable.caption })
+        .from(jobPhotosTable).where(eq(jobPhotosTable.reactiveJobId, id)));
+      report = {
+        sourceLabel: "Unscheduled Work", siteName: row.siteName ?? "Unspecified Location",
+        siteDescription: row.siteDescription, completedAt: row.completedAt, scheduledDate: row.scheduledDate,
+        teamId: row.teamId, teamName: row.teamName, workerName: row.workerName, notes: row.notes,
+        details: [["Issue", row.issueType], ["Description", row.description], ["Priority", row.priority]],
+        photos,
+      };
+    }
+  } else if (source === "infill_planting") {
+    const [row] = await executeWithCircuitBreaker(() => db.select({
+      id: infillJobsTable.id, status: infillJobsTable.status, completedAt: infillJobsTable.updatedAt,
+      scheduledDate: infillJobsTable.plannedDate, teamId: infillJobsTable.assignedTeamId,
+      teamName: teamsTable.name, notes: infillJobsTable.assessmentNotes,
+      siteName: assetsTable.name, siteDescription: assetsTable.description,
+    }).from(infillJobsTable)
+      .innerJoin(assetsTable, eq(infillJobsTable.assetId, assetsTable.id))
+      .leftJoin(teamsTable, eq(infillJobsTable.assignedTeamId, teamsTable.id))
+      .where(and(eq(infillJobsTable.id, id), eq(infillJobsTable.status, "completed"))).limit(1));
+    if (row) {
+      const orders = await executeWithCircuitBreaker(() => db.select({
+        speciesName: infillOrdersTable.speciesName, quantity: infillOrdersTable.quantity,
+        plantedDate: infillOrdersTable.plantedDate,
+      }).from(infillOrdersTable).where(eq(infillOrdersTable.infillJobId, id)));
+      report = {
+        sourceLabel: "Infill Planting", siteName: row.siteName, siteDescription: row.siteDescription,
+        completedAt: row.completedAt, scheduledDate: row.scheduledDate, teamId: row.teamId,
+        teamName: row.teamName, workerName: null, notes: row.notes,
+        details: orders.map(order => [
+          "Planting",
+          `${order.quantity} × ${order.speciesName}${order.plantedDate ? ` — planted ${order.plantedDate}` : ""}`,
+        ]),
+        photos: [],
+      };
+    }
+  } else if (source === "mulching") {
+    const [row] = await executeWithCircuitBreaker(() => db.select({
+      id: mulchingRecordsTable.id, status: mulchingRecordsTable.status,
+      completedAt: mulchingRecordsTable.completedDate, scheduledDate: mulchingRecordsTable.scheduledDate,
+      teamId: mulchingRecordsTable.assignedTeamId, teamName: teamsTable.name,
+      notes: mulchingRecordsTable.notes, mulchType: mulchingRecordsTable.mulchType,
+      volumeM3: mulchingRecordsTable.volumeM3, contractor: mulchingRecordsTable.contractor,
+      costNzd: mulchingRecordsTable.costNzd, siteName: assetsTable.name, siteDescription: assetsTable.description,
+    }).from(mulchingRecordsTable)
+      .innerJoin(assetsTable, eq(mulchingRecordsTable.assetId, assetsTable.id))
+      .leftJoin(teamsTable, eq(mulchingRecordsTable.assignedTeamId, teamsTable.id))
+      .where(and(eq(mulchingRecordsTable.id, id), eq(mulchingRecordsTable.status, "completed"))).limit(1));
+    if (row) {
+      const photos = await executeWithCircuitBreaker(() => db.select({ blobUrl: jobPhotosTable.blobUrl, caption: jobPhotosTable.caption })
+        .from(jobPhotosTable).where(eq(jobPhotosTable.mulchingRecordId, id)));
+      report = {
+        sourceLabel: "Mulching", siteName: row.siteName, siteDescription: row.siteDescription,
+        completedAt: row.completedAt, scheduledDate: row.scheduledDate, teamId: row.teamId,
+        teamName: row.teamName, workerName: null, notes: row.notes,
+        details: [
+          ["Mulch type", row.mulchType],
+          ["Volume", row.volumeM3 == null ? null : `${row.volumeM3} m³`],
+          ["Contractor", row.contractor],
+          ["Cost", row.costNzd == null ? null : `$${row.costNzd}`],
+        ],
+        photos,
+      };
+    }
+  } else {
+    const [row] = await executeWithCircuitBreaker(() => db.select({
+      id: stormJobsTable.id, status: stormJobsTable.status, completedAt: stormJobsTable.completedAt,
+      teamId: stormJobsTable.teamId, teamName: teamsTable.name, workerName: usersTable.name,
+      notes: stormJobsTable.comments, phase: stormJobsTable.phase, actualTimeMins: stormJobsTable.actualTimeMins,
+      siteName: assetsTable.name, siteDescription: assetsTable.description, stormName: stormEventsTable.name,
+      hourlyRateCents: stormEventsTable.hourlyRateCents,
+    }).from(stormJobsTable)
+      .innerJoin(stormEventsTable, eq(stormJobsTable.eventId, stormEventsTable.id))
+      .innerJoin(assetsTable, eq(stormJobsTable.assetId, assetsTable.id))
+      .leftJoin(teamsTable, eq(stormJobsTable.teamId, teamsTable.id))
+      .leftJoin(usersTable, eq(stormJobsTable.assignedUserId, usersTable.id))
+      .where(and(eq(stormJobsTable.id, id), inArray(stormJobsTable.status, ["completed", "too_dangerous"] as any[]))).limit(1));
+    if (row) {
+      const [workTypes, photos] = await Promise.all([
+        executeWithCircuitBreaker(() => db.select({ workType: stormCheckResultsTable.workType })
+          .from(stormCheckResultsTable).where(eq(stormCheckResultsTable.stormJobId, id))),
+        executeWithCircuitBreaker(() => db.select({ blobUrl: stormPhotosTable.blobUrl, caption: stormPhotosTable.caption })
+          .from(stormPhotosTable).where(eq(stormPhotosTable.stormJobId, id))),
+      ]);
+      const charge = row.actualTimeMins == null ? null : `$${((row.actualTimeMins * row.hourlyRateCents) / 6000).toFixed(2)}`;
+      report = {
+        sourceLabel: "Storm Patrol", siteName: row.siteName, siteDescription: row.siteDescription,
+        completedAt: row.completedAt, scheduledDate: null, teamId: row.teamId, teamName: row.teamName,
+        workerName: row.workerName, notes: row.notes,
+        details: [
+          ["Storm", row.stormName], ["Outcome", row.status.replaceAll("_", " ")],
+          ["Phase", row.phase], ["Work performed", workTypes.map(item => item.workType.replaceAll("_", " ")).join(", ") || null],
+          ["Actual time", row.actualTimeMins == null ? null : `${row.actualTimeMins} minutes`], ["Labour charge", charge],
+        ],
+        photos,
+      };
+    }
+  }
+
+  if (!report) { res.status(404).json({ error: "Completed work not found" }); return; }
+  if (!isPrivilegedRole(req.auth!.role) && report.teamId !== req.auth!.teamId) {
+    res.status(403).json({ error: "Forbidden" }); return;
+  }
+
+  const photoBuffers = await downloadReportImages(report.photos);
+  const PDFDocument = (await import("pdfkit")).default;
+  const doc = new PDFDocument({ margin: 50, size: "A4" });
+  const safeSiteName = report.siteName.replace(/[\\/:*?"<>|]/g, "").trim();
+  const dateLabel = report.completedAt
+    ? new Date(report.completedAt).toISOString().slice(0, 10)
+    : report.scheduledDate ?? "unknown-date";
+  res.type("application/pdf").attachment(`${safeSiteName} - ${dateLabel}.pdf`);
+  doc.pipe(res);
+  const navy = "#0f2a36";
+  const grey = "#6b7280";
+  const teal = "#00AECD";
+  try { doc.image(LOGO_PATH, 415, 38, { width: 130 }); } catch { /* optional logo */ }
+  doc.fontSize(20).font("Helvetica-Bold").fillColor(navy).text("Completed Works Record", 50, 50);
+  doc.fontSize(10).font("Helvetica").fillColor(grey).text("Porirua City Council — Gardens Manager", 50, 75);
+  doc.moveTo(50, 105).lineTo(545, 105).strokeColor("#e5e7eb").stroke();
+  doc.fontSize(16).font("Helvetica-Bold").fillColor(navy).text(report.siteName, 50, 112);
+  if (report.siteDescription) doc.fontSize(9).font("Helvetica").fillColor(grey).text(report.siteDescription);
+  doc.moveDown();
+  const completed = report.completedAt
+    ? new Date(report.completedAt).toLocaleString("en-NZ", { dateStyle: "long", timeStyle: "short" })
+    : "—";
+  const summary: [string, string | null][] = [
+    ["Work type", report.sourceLabel], ["Completed", completed], ["Team", report.teamName],
+    ["Completed by", report.workerName], ...report.details,
+  ];
+  for (const [label, value] of summary) {
+    if (!value) continue;
+    doc.fontSize(8).font("Helvetica-Bold").fillColor(grey).text(label.toUpperCase());
+    doc.fontSize(10).font("Helvetica").fillColor(navy).text(value);
+    doc.moveDown(0.45);
+  }
+  if (report.notes) {
+    doc.moveDown(0.5).fontSize(12).font("Helvetica-Bold").fillColor(teal).text("Worker Notes");
+    doc.moveDown(0.3).fontSize(10).font("Helvetica").fillColor("#374151").text(report.notes);
+  }
+  if (photoBuffers.length) {
+    doc.moveDown().fontSize(12).font("Helvetica-Bold").fillColor(teal).text(`Photos (${photoBuffers.length})`);
+    for (const photo of photoBuffers) {
+      if (doc.y + 200 > doc.page.height - 70) doc.addPage();
+      try {
+        doc.moveDown(0.5).image(photo.buf, { fit: [495, 170], align: "center" });
+        if (photo.caption) doc.fontSize(8).font("Helvetica").fillColor(grey).text(photo.caption, { align: "center" });
+      } catch { /* skip invalid image bytes */ }
+    }
+  }
+  doc.fontSize(8).font("Helvetica").fillColor(grey)
+    .text(`Generated on ${new Date().toLocaleDateString("en-NZ")} — Porirua City Council Gardens Manager`, 50, doc.page.height - 60, { align: "center", width: 495 });
+  doc.end();
+}
+
 // GET /api/jobs/:id/pdf
 router.get("/jobs/:id/pdf", requireAuth, async (req, res) => {
   const id = String(req.params.id);
+  const source = req.query.source;
+  if (source === "unscheduled" || source === "infill_planting" || source === "mulching" || source === "storm_patrol") {
+    await sendAdditionalCompletionReport(source, id, req, res);
+    return;
+  }
 
   const [row] = await executeWithCircuitBreaker(() => db
     .select({

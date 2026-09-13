@@ -34,6 +34,7 @@ import type {
   CommitStormwaterAssetImportBody,
   DashboardSummary,
   DegradedHealthResponse,
+  DownloadCompletionReportParams,
   ErrorResponse,
   ForbiddenResponse,
   GetOverdueScheduleJobsParams,
@@ -4764,6 +4765,113 @@ export const useUploadJobPhoto = <
   return useMutation(getUploadJobPhotoMutationOptions(options));
 };
 
+export const getDownloadCompletionReportUrl = (
+  id: string,
+  params?: DownloadCompletionReportParams,
+) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/jobs/${id}/pdf?${stringifiedParams}`
+    : `/api/jobs/${id}/pdf`;
+};
+
+export const downloadCompletionReport = async (
+  id: string,
+  params?: DownloadCompletionReportParams,
+  options?: RequestInit,
+): Promise<Blob> => {
+  return customFetch<Blob>(getDownloadCompletionReportUrl(id, params), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getDownloadCompletionReportQueryKey = (
+  id: string,
+  params?: DownloadCompletionReportParams,
+) => {
+  return [`/api/jobs/${id}/pdf`, ...(params ? [params] : [])] as const;
+};
+
+export const getDownloadCompletionReportQueryOptions = <
+  TData = Awaited<ReturnType<typeof downloadCompletionReport>>,
+  TError = ErrorType<void>,
+>(
+  id: string,
+  params?: DownloadCompletionReportParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof downloadCompletionReport>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getDownloadCompletionReportQueryKey(id, params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof downloadCompletionReport>>
+  > = ({ signal }) =>
+    downloadCompletionReport(id, params, { signal, ...requestOptions });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!id,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof downloadCompletionReport>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type DownloadCompletionReportQueryResult = NonNullable<
+  Awaited<ReturnType<typeof downloadCompletionReport>>
+>;
+export type DownloadCompletionReportQueryError = ErrorType<void>;
+
+export function useDownloadCompletionReport<
+  TData = Awaited<ReturnType<typeof downloadCompletionReport>>,
+  TError = ErrorType<void>,
+>(
+  id: string,
+  params?: DownloadCompletionReportParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof downloadCompletionReport>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getDownloadCompletionReportQueryOptions(
+    id,
+    params,
+    options,
+  );
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
 /**
  * @summary Validate and preview the authoritative Stormwater asset workbook
  */
@@ -5642,6 +5750,88 @@ export const useCompleteStormPatrolJob = <
 > => {
   return useMutation(getCompleteStormPatrolJobMutationOptions(options));
 };
+
+export const getListStormPatrolJobPhotosUrl = (id: string) => {
+  return `/api/storm-patrol/jobs/${id}/photos`;
+};
+
+export const listStormPatrolJobPhotos = async (
+  id: string,
+  options?: RequestInit,
+): Promise<JobPhotoListResponse> => {
+  return customFetch<JobPhotoListResponse>(getListStormPatrolJobPhotosUrl(id), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getListStormPatrolJobPhotosQueryKey = (id: string) => {
+  return [`/api/storm-patrol/jobs/${id}/photos`] as const;
+};
+
+export const getListStormPatrolJobPhotosQueryOptions = <
+  TData = Awaited<ReturnType<typeof listStormPatrolJobPhotos>>,
+  TError = ErrorType<void>,
+>(
+  id: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listStormPatrolJobPhotos>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getListStormPatrolJobPhotosQueryKey(id);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof listStormPatrolJobPhotos>>
+  > = ({ signal }) =>
+    listStormPatrolJobPhotos(id, { signal, ...requestOptions });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!id,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof listStormPatrolJobPhotos>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListStormPatrolJobPhotosQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listStormPatrolJobPhotos>>
+>;
+export type ListStormPatrolJobPhotosQueryError = ErrorType<void>;
+
+export function useListStormPatrolJobPhotos<
+  TData = Awaited<ReturnType<typeof listStormPatrolJobPhotos>>,
+  TError = ErrorType<void>,
+>(
+  id: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listStormPatrolJobPhotos>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListStormPatrolJobPhotosQueryOptions(id, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
 
 export const getUploadStormPatrolJobPhotoUrl = (id: string) => {
   return `/api/storm-patrol/jobs/${id}/photos`;

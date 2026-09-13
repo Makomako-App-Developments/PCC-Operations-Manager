@@ -1565,6 +1565,23 @@ export type UploadJobPhotoBody = {
   idempotencyKey?: string;
 };
 
+export type DownloadCompletionReportParams = {
+  /**
+   * Omit for routine maintenance records.
+   */
+  source?: DownloadCompletionReportSource;
+};
+
+export type DownloadCompletionReportSource =
+  (typeof DownloadCompletionReportSource)[keyof typeof DownloadCompletionReportSource];
+
+export const DownloadCompletionReportSource = {
+  unscheduled: "unscheduled",
+  infill_planting: "infill_planting",
+  mulching: "mulching",
+  storm_patrol: "storm_patrol",
+} as const;
+
 export type PreviewStormwaterAssetImportBody = {
   workbook: Blob;
 };

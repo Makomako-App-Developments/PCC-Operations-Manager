@@ -181,16 +181,21 @@ export function CompletedWorkPhotos({ photos }: { photos: Photo[] }) {
 
 export function CompletedWorkPdfLink({
   jobId,
+  workSource = "routine_maintenance",
   compact = false,
   onClick,
 }: {
   jobId: string;
+  workSource?: CompletedWork["workSource"];
   compact?: boolean;
   onClick?: React.MouseEventHandler<HTMLButtonElement>;
 }) {
+  const sourceQuery = workSource === "garden" || workSource === "routine_maintenance"
+    ? ""
+    : `?source=${encodeURIComponent(workSource)}`;
   return (
     <AuthenticatedMediaLink
-      src={`/api/jobs/${jobId}/pdf`}
+      src={`/api/jobs/${jobId}/pdf${sourceQuery}`}
       onClick={onClick}
       className={compact
         ? "p-1 rounded hover:bg-gray-200 text-gray-400 hover:text-[#00AECD] transition-colors"
@@ -354,7 +359,7 @@ function DetailPanel({ job, onClose }: { job: CompletedWork; onClose: () => void
         {/* Download PDF */}
         {job.pdfAvailable !== false && (
           <div className="pt-1 pb-2">
-            <CompletedWorkPdfLink jobId={job.id} />
+            <CompletedWorkPdfLink jobId={job.id} workSource={job.workSource} />
           </div>
         )}
       </div>
@@ -883,6 +888,7 @@ export default function CompletedWorks() {
                             {row.pdfAvailable !== false && (
                               <CompletedWorkPdfLink
                                 jobId={row.id}
+                                workSource={row.workSource}
                                 compact
                                 onClick={e => e.stopPropagation()}
                               />
