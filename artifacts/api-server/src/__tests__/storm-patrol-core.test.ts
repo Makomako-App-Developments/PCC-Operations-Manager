@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { arePublishableStormwaterAssets, calculateStormChargeCents, escapeCsvCell, requiresStormVisualCheckComments, sumStormPatrolActualMinutes } from "../lib/storm-patrol";
+import { arePublishableStormwaterAssets, calculateStormChargeCents, requiresStormVisualCheckComments, sumStormPatrolActualMinutes } from "../lib/storm-patrol";
 
 describe("Storm Patrol core invariants", () => {
   it("accepts only complete active Stormwater selections for atomic publication", () => {
@@ -51,12 +51,6 @@ describe("Storm Patrol core invariants", () => {
     expect(source).toContain("tx.delete(stormCheckResultsTable)");
     expect(source).toContain("existingFollowUp");
     expect(source).toContain("tx.update(reactiveJobsTable)");
-  });
-
-  it("escapes report CSV fields containing commas, quotes and newlines", () => {
-    expect(escapeCsvCell("Plain site")).toBe("Plain site");
-    expect(escapeCsvCell('A, "quoted"\nsite')).toBe('"A, ""quoted""\nsite"');
-    expect(escapeCsvCell(null)).toBe("");
   });
 
   it("requires non-blank comments for visual-check-only completions", () => {

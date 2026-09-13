@@ -6815,8 +6815,8 @@ export const getStormPatrolReport = async (
   id: string,
   params?: GetStormPatrolReportParams,
   options?: RequestInit,
-): Promise<StormReport | string | Blob> => {
-  return customFetch<StormReport | string | Blob>(
+): Promise<StormReport | Blob> => {
+  return customFetch<StormReport | Blob>(
     getGetStormPatrolReportUrl(id, params),
     {
       ...options,

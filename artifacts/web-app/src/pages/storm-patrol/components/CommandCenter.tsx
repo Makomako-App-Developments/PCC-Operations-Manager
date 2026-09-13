@@ -431,13 +431,13 @@ export default function CommandCenter({ data, readOnly = false, onBack }: Comman
             className="bg-transparent border-white/10 text-white hover:bg-white/10"
             onClick={() => {
               const a = document.createElement("a");
-              a.href = `${getGetStormPatrolReportUrl(event.id)}?format=csv`;
+              a.href = getGetStormPatrolReportUrl(event.id, { format: "xlsx" });
               a.click();
             }}
             data-testid="btn-download-active-report"
           >
             <Download className="w-4 h-4 mr-2" />
-            CSV
+            Excel
           </Button>
           <Button
             variant="outline"

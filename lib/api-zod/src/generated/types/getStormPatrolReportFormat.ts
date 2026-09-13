@@ -10,6 +10,6 @@ export type GetStormPatrolReportFormat =
   (typeof GetStormPatrolReportFormat)[keyof typeof GetStormPatrolReportFormat];
 
 export const GetStormPatrolReportFormat = {
-  csv: "csv",
+  xlsx: "xlsx",
   pdf: "pdf",
 } as const;

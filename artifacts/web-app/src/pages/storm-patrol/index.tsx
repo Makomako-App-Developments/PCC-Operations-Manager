@@ -68,9 +68,9 @@ export default function StormPatrol() {
     }
   };
 
-  const handleDownloadReport = (eventId: string, format: "csv" | "pdf") => {
+  const handleDownloadReport = (eventId: string, format: "xlsx" | "pdf") => {
     const a = document.createElement("a");
-    a.href = `${getGetStormPatrolReportUrl(eventId)}?format=${format}`;
+    a.href = getGetStormPatrolReportUrl(eventId, { format });
     a.click();
   };
 
@@ -219,10 +219,10 @@ export default function StormPatrol() {
                       <button 
                         onClick={(clickEvent) => {
                           clickEvent.stopPropagation();
-                          handleDownloadReport(event.id, "csv");
+                          handleDownloadReport(event.id, "xlsx");
                         }}
                         className="p-2 rounded-lg bg-white/5 text-white/60 hover:text-white hover:bg-white/10 transition-colors"
-                        title="Download Report CSV"
+                        title="Download Report Excel"
                         data-testid={`btn-download-${event.id}`}
                       >
                         <Download className="w-4 h-4" />

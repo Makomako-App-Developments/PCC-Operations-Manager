@@ -2879,7 +2879,7 @@ export const GetStormPatrolReportParams = zod.object({
 });
 
 export const GetStormPatrolReportQueryParams = zod.object({
-  format: zod.enum(["csv", "pdf"]).optional(),
+  format: zod.enum(["xlsx", "pdf"]).optional(),
   photos: zod
     .enum(["include"])
     .optional()

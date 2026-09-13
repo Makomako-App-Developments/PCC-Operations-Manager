@@ -46,3 +46,4 @@
 - [Protected photo parents and report formats](protected-photo-parent-report-formats.md) — parent-linked files fail closed after parent loss; accepted report image types must match the PDF renderer.
 - [Container pnpm version pinning](container-pnpm-version-pinning.md) — pin container builds to the repository’s pnpm major; unpinned Corepack can select an incompatible release.
 - [Urgent issue acknowledgement](urgent-issue-acknowledgement.md) — opening a live Storm Patrol urgent issue acknowledges it; archived views remain read-only and failed writes remain visibly unacknowledged.
+- [Storm Patrol PDF design](storm-patrol-pdf-design.md) — the current PCC-branded landscape report is user-approved; preserve its layout and styling in future changes.

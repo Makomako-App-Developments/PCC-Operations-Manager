@@ -1754,7 +1754,7 @@ paths:
           {
             name: format,
             in: query,
-            schema: { type: string, enum: [csv, pdf] },
+            schema: { type: string, enum: [xlsx, pdf] },
           },
           {
             name: photos,
@@ -1767,12 +1767,13 @@ paths:
         {
           "200":
             {
-              description: JSON report or CSV when format=csv,
+              description: "JSON report, Excel workbook, or PDF",
               content:
                 {
                   application/json:
                     { schema: { $ref: "#/components/schemas/StormReport" } },
-                  text/csv: { schema: { type: string } },
+                  application/vnd.openxmlformats-officedocument.spreadsheetml.sheet:
+                    { schema: { type: string, format: binary } },
                   application/pdf: { schema: { type: string, format: binary } },
                 },
             },

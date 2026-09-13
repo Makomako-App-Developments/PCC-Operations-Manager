@@ -17,11 +17,6 @@ export function arePublishableStormwaterAssets(
     && assets.every(asset => asset.isActive && asset.department.toLowerCase() === "stormwater");
 }
 
-export function escapeCsvCell(value: unknown): string {
-  const text = value == null ? "" : String(value);
-  return /[",\r\n]/.test(text) ? `"${text.replace(/"/g, "\"\"")}"` : text;
-}
-
 export function requiresStormVisualCheckComments(
   workTypes: readonly string[],
   comments: string | undefined,

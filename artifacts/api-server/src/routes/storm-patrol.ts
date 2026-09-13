@@ -17,7 +17,8 @@ import { notifyUsers } from "../lib/push-notifications";
 import { objectStorageClient } from "../lib/objectStorage";
 import { reconcileUncommittedPhotoObject, removeUncommittedPhotoObject } from "../lib/photo-object-cleanup";
 import { writeStormPatrolPdf } from "../lib/storm-patrol-report-pdf";
-import { arePublishableStormwaterAssets, calculateStormChargeCents, escapeCsvCell, requiresStormVisualCheckComments, sumStormPatrolActualMinutes } from "../lib/storm-patrol";
+import { buildStormPatrolWorkbook } from "../lib/storm-patrol-report-xlsx";
+import { arePublishableStormwaterAssets, calculateStormChargeCents, requiresStormVisualCheckComments, sumStormPatrolActualMinutes } from "../lib/storm-patrol";
 import { deliverStormAlertEmail } from "../lib/storm-patrol-email";
 
 const router = Router();
@@ -883,28 +884,13 @@ router.get("/storm-patrol/events/:id/report", requireAuth, requireRole("manager"
   const jobs = details.jobs;
   const minutes = sumStormPatrolActualMinutes(jobs);
   const report = { event, selectedCount: jobs.length, checkedCount: jobs.filter(j => ["completed", "too_dangerous"].includes(j.status)).length, totalMinutes: minutes, totalHours: minutes / 60, labourChargeCents: cents(minutes, event.hourlyRateCents), jobs };
-  if (req.query.format === "csv") {
-    const headers = ["jobId", "storm", "phase", "status", "asset", "team", "worker", "workTypes", "comments", "minutes", "chargeCents"];
-    const rows = jobs.map(job => [
-      job.id,
-      event.name,
-      job.phase,
-      job.status,
-      job.assetName,
-      job.teamName,
-      job.workerName,
-      job.workTypes.join("; "),
-      job.comments,
-      job.actualTimeMins ?? "",
-      job.actualTimeMins == null ? "" : cents(job.actualTimeMins, event.hourlyRateCents),
-    ].map(escapeCsvCell).join(","));
-    const summaryRows = [
-      ["Report metric", "Value"],
-      ["Actual minutes total", report.totalMinutes],
-      ["Total hours", report.totalHours],
-      ["Labour charge cents", report.labourChargeCents],
-    ].map(row => row.map(escapeCsvCell).join(","));
-    res.type("text/csv").attachment(`storm-patrol-${event.id}.csv`).send([...summaryRows, "", headers.join(","), ...rows].join("\r\n")); return;
+  if (req.query.format === "xlsx") {
+    const workbook = buildStormPatrolWorkbook(event, jobs, report);
+    res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+    res.setHeader("Content-Disposition", `attachment; filename="storm-patrol-${event.id}.xlsx"`);
+    await workbook.xlsx.write(res);
+    res.end();
+    return;
   }
   if (req.query.format === "pdf") {
     const includePhotos = req.query.photos === "include";
