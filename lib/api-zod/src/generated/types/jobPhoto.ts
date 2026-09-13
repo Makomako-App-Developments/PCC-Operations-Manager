@@ -10,6 +10,7 @@ export interface JobPhoto {
   id: string;
   jobId?: string | null;
   reactiveJobId?: string | null;
+  infillJobId?: string | null;
   uploadedBy: string;
   blobUrl: string;
   contentType?: string | null;

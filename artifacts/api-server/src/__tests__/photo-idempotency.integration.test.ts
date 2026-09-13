@@ -20,7 +20,7 @@ const state = vi.hoisted(() => ({
 }));
 
 const tables = vi.hoisted(() => Object.fromEntries([
-  "jobPhotosTable", "jobsTable", "mulchingRecordsTable", "reactiveJobsTable",
+  "jobPhotosTable", "jobsTable", "infillJobsTable", "mulchingRecordsTable", "reactiveJobsTable",
   "auditsTable", "auditItemsTable", "auditPhotosTable", "teamsTable", "assetsTable",
   "usersTable", "stormJobsTable", "stormObservationsTable", "stormPhotosTable",
   "stormEventsTable", "stormWorkPackagesTable", "stormCheckResultsTable",
@@ -233,7 +233,11 @@ vi.mock("drizzle-orm", () => ({
 }));
 vi.mock("../middlewares/auth", () => ({
   requireAuth: (req: any, _res: any, next: any) => {
-    req.auth = { userId: "00000000-0000-0000-0000-000000000001", role: "manager", teamId: null };
+    req.auth = {
+      userId: "00000000-0000-0000-0000-000000000001",
+      role: req.headers["x-test-role"] ?? "manager",
+      teamId: req.headers["x-test-team"] ?? null,
+    };
     next();
   },
   requireRole: () => (_req: any, _res: any, next: any) => next(),
@@ -283,6 +287,7 @@ import {
 
 const ids = {
   job: "00000000-0000-0000-0000-000000000010",
+  infill: "00000000-0000-0000-0000-000000000017",
   reactive: "00000000-0000-0000-0000-000000000011",
   audit: "00000000-0000-0000-0000-000000000012",
   item: "00000000-0000-0000-0000-000000000013",
@@ -330,6 +335,7 @@ beforeEach(() => {
   state.breakerFailures = 0;
   process.env.DEFAULT_OBJECT_STORAGE_BUCKET_ID = "test-bucket";
   state.rows.set("jobsTable", [{ id: ids.job, teamId: null, isAllTeams: true, status: "published", assignedUserId: null }]);
+  state.rows.set("infillJobsTable", [{ id: ids.infill, assignedTeamId: "team-1", status: "in_progress" }]);
   state.rows.set("reactiveJobsTable", [{ id: ids.reactive, assignedTeamId: null, assignedUserId: null }]);
   state.rows.set("auditsTable", [{ id: ids.audit, teamId: null, auditorId: "manager" }]);
   state.rows.set("auditItemsTable", [{ id: ids.item, auditId: ids.audit }]);
@@ -416,6 +422,7 @@ describe("Storm Patrol report event closure", () => {
 
 const cases = [
   ["scheduled", `/api/jobs/${ids.job}/photos`, "jobPhotosTable", {}],
+  ["infill", `/api/infill-jobs/${ids.infill}/photos`, "jobPhotosTable", {}],
   ["reactive", `/api/reactive-jobs/${ids.reactive}/photos`, "jobPhotosTable", {}],
   ["audit", `/api/audits/${ids.audit}/items/${ids.item}/photos`, "auditPhotosTable", {}],
   ["Storm Patrol job", `/api/storm-patrol/jobs/${ids.stormJob}/photos`, "stormPhotosTable", { purpose: "before" }],
@@ -425,6 +432,60 @@ const cases = [
 const optionalKeyCases = cases.slice(0, 3);
 
 describe("photo routes: real multipart idempotency", () => {
+  it("does not expose infill photos to a different field team", async () => {
+    const response = await request(app())
+      .get(`/api/infill-jobs/${ids.infill}/photos`)
+      .set("x-test-role", "field_worker")
+      .set("x-test-team", "team-2");
+
+    expect(response.status).toBe(403);
+    expect(response.body).toEqual({ error: "Forbidden" });
+  });
+
+  it("does not let a different field team upload an infill photo", async () => {
+    const response = await multipart(
+      `/api/infill-jobs/${ids.infill}/photos`,
+      "wrong-team-infill-upload",
+    )
+      .set("x-test-role", "field_worker")
+      .set("x-test-team", "team-2");
+
+    expect(response.status).toBe(403);
+    expect(response.body).toEqual({ error: "Forbidden" });
+    expect(rowsFor(tables.jobPhotosTable)).toHaveLength(0);
+    expect(state.saves).not.toHaveBeenCalled();
+  });
+
+  it("lets the assigned field team upload an infill completion photo", async () => {
+    const response = await multipart(
+      `/api/infill-jobs/${ids.infill}/photos`,
+      "assigned-team-infill-upload",
+    )
+      .set("x-test-role", "field_worker")
+      .set("x-test-team", "team-1");
+
+    expect(response.status).toBe(201);
+    expect(response.body).toMatchObject({
+      infillJobId: ids.infill,
+      contentType: "image/jpeg",
+    });
+    expect(rowsFor(tables.jobPhotosTable)).toHaveLength(1);
+  });
+
+  it("rejects infill image formats that cannot appear in the completion PDF", async () => {
+    const response = await request(app())
+      .post(`/api/infill-jobs/${ids.infill}/photos`)
+      .attach("photo", Buffer.from("webp bytes"), {
+        filename: "photo.webp",
+        contentType: "image/webp",
+      });
+
+    expect(response.status).toBe(415);
+    expect(response.body).toEqual({ error: "Infill completion photos must be JPEG or PNG images" });
+    expect(rowsFor(tables.jobPhotosTable)).toHaveLength(0);
+    expect(state.saves).not.toHaveBeenCalled();
+  });
+
   it("persists and returns the media type for an extensionless reactive upload", async () => {
     const created = await multipart(
       `/api/reactive-jobs/${ids.reactive}/photos`,

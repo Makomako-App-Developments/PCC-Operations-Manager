@@ -7,7 +7,7 @@ import { jobTypeEnum, jobStatusEnum, reactivePriorityEnum, reactiveJobStatusEnum
 import { assetsTable } from "./assets";
 import { teamsTable } from "./teams";
 import { usersTable } from "./users";
-import { mulchingRecordsTable } from "./programmes";
+import { infillJobsTable, mulchingRecordsTable } from "./programmes";
 
 // Scheduled + recurring jobs
 export const jobsTable = pgTable("jobs", {
@@ -132,13 +132,16 @@ export const jobPhotosTable = pgTable("job_photos", {
   id:               uuid("id").primaryKey().defaultRandom(),
   jobId:            uuid("job_id").references(() => jobsTable.id),
   reactiveJobId:    uuid("reactive_job_id").references(() => reactiveJobsTable.id),
+  infillJobId:      uuid("infill_job_id").references(() => infillJobsTable.id, { onDelete: "set null" }),
   mulchingRecordId: uuid("mulching_record_id").references(() => mulchingRecordsTable.id),
   uploadedBy:       uuid("uploaded_by").notNull().references(() => usersTable.id),
   blobUrl:          text("blob_url").notNull(),
   contentType:      text("content_type"),
   caption:          text("caption"),
   createdAt:        timestamp("created_at").notNull().defaultNow(),
-});
+}, (t) => [
+  index("job_photos_infill_job_id_idx").on(t.infillJobId),
+]);
 
 export const insertJobSchema                  = createInsertSchema(jobsTable).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertReactiveJobSchema          = createInsertSchema(reactiveJobsTable).omit({ id: true, createdAt: true, updatedAt: true });

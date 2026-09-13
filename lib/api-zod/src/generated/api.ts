@@ -2111,6 +2111,7 @@ export const ListJobPhotosResponse = zod.object({
       id: zod.string().uuid(),
       jobId: zod.string().uuid().nullish(),
       reactiveJobId: zod.string().uuid().nullish(),
+      infillJobId: zod.string().uuid().nullish(),
       uploadedBy: zod.string().uuid(),
       blobUrl: zod.string(),
       contentType: zod.string().nullish(),
@@ -2128,6 +2129,42 @@ export const UploadJobPhotoParams = zod.object({
 });
 
 export const UploadJobPhotoBody = zod.object({
+  photo: zod.instanceof(File),
+  caption: zod.string().optional(),
+  idempotencyKey: zod.string().optional(),
+});
+
+/**
+ * @summary List photo evidence for an infill planting job
+ */
+export const ListInfillJobPhotosParams = zod.object({
+  id: zod.coerce.string().uuid(),
+});
+
+export const ListInfillJobPhotosResponse = zod.object({
+  data: zod.array(
+    zod.object({
+      id: zod.string().uuid(),
+      jobId: zod.string().uuid().nullish(),
+      reactiveJobId: zod.string().uuid().nullish(),
+      infillJobId: zod.string().uuid().nullish(),
+      uploadedBy: zod.string().uuid(),
+      blobUrl: zod.string(),
+      contentType: zod.string().nullish(),
+      caption: zod.string().nullish(),
+      createdAt: zod.date(),
+    }),
+  ),
+});
+
+/**
+ * @summary Upload a photo for an infill planting job (multipart)
+ */
+export const UploadInfillJobPhotoParams = zod.object({
+  id: zod.coerce.string().uuid(),
+});
+
+export const UploadInfillJobPhotoBody = zod.object({
   photo: zod.instanceof(File),
   caption: zod.string().optional(),
   idempotencyKey: zod.string().optional(),
@@ -2675,6 +2712,7 @@ export const ListStormPatrolJobPhotosResponse = zod.object({
       id: zod.string().uuid(),
       jobId: zod.string().uuid().nullish(),
       reactiveJobId: zod.string().uuid().nullish(),
+      infillJobId: zod.string().uuid().nullish(),
       uploadedBy: zod.string().uuid(),
       blobUrl: zod.string(),
       contentType: zod.string().nullish(),

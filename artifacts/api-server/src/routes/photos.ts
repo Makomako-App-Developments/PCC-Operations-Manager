@@ -2,7 +2,7 @@ import { Router, type Request } from "express";
 import multer from "multer";
 import path from "path";
 import { createHash, randomUUID } from "crypto";
-import { db, jobPhotosTable, jobsTable, mulchingRecordsTable, reactiveJobsTable, executeWithCircuitBreaker } from "@workspace/db";
+import { db, infillJobsTable, jobPhotosTable, jobsTable, mulchingRecordsTable, reactiveJobsTable, executeWithCircuitBreaker } from "@workspace/db";
 import { eq, sql } from "drizzle-orm";
 import { requireAuth } from "../middlewares/auth";
 import { objectStorageClient } from "../lib/objectStorage";
@@ -31,6 +31,7 @@ const ALLOWED_MIME_TYPES = new Set([
   "application/vnd.ms-excel",
   "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
 ]);
+const PDF_EMBEDDABLE_IMAGE_TYPES = new Set(["image/jpeg", "image/jpg", "image/png"]);
 
 const LEGACY_CONTENT_TYPES_BY_EXTENSION: Record<string, string> = {
   ".jpg": "image/jpeg",
@@ -247,6 +248,74 @@ router.post(
       : { jobId: id, uploadedBy: userId, caption };
 
     const photo = await saveJobPhotoIdempotently(req.file, values, `${kind}:${id}:${userId}`, idempotencyKey, "scheduled");
+    res.status(201).json(photo);
+  },
+);
+
+// ── Infill planting job attachments ───────────────────────────────────────────
+
+// Infill jobs have their own relationship because they are programme records,
+// rather than rows in the scheduled jobs table.  Keep this endpoint separate
+// from /jobs/:id/photos so an id can never be interpreted as another work type.
+router.get("/infill-jobs/:id/photos", requireAuth, async (req, res) => {
+  const id = String(req.params.id);
+  const [infillJob] = await executeWithCircuitBreaker(() => db
+    .select({ id: infillJobsTable.id, assignedTeamId: infillJobsTable.assignedTeamId })
+    .from(infillJobsTable)
+    .where(eq(infillJobsTable.id, id))
+    .limit(1));
+  if (!infillJob) { res.status(404).json({ error: "Infill job not found" }); return; }
+
+  if (
+    !isPrivilegedRole(req.auth!.role)
+    && (!infillJob.assignedTeamId || infillJob.assignedTeamId !== req.auth!.teamId)
+  ) {
+    res.status(403).json({ error: "Forbidden" }); return;
+  }
+
+  const photos = await executeWithCircuitBreaker(() => db
+    .select()
+    .from(jobPhotosTable)
+    .where(eq(jobPhotosTable.infillJobId, id)));
+  res.json({ data: await withResolvedContentTypes(photos) });
+});
+
+router.post(
+  "/infill-jobs/:id/photos",
+  requireAuth,
+  upload.single("photo"),
+  async (req, res) => {
+    const id = String(req.params.id);
+    if (!req.file) { logMissingAttachment(req); res.status(400).json({ error: "No file uploaded" }); return; }
+    const userId = req.auth?.userId;
+    if (!userId) { res.status(401).json({ error: "Unauthorised" }); return; }
+    if (!PDF_EMBEDDABLE_IMAGE_TYPES.has(req.file.mimetype.trim().toLowerCase())) {
+      res.status(415).json({ error: "Infill completion photos must be JPEG or PNG images" }); return;
+    }
+
+    const [infillJob] = await executeWithCircuitBreaker(() => db
+      .select({ id: infillJobsTable.id, assignedTeamId: infillJobsTable.assignedTeamId })
+      .from(infillJobsTable)
+      .where(eq(infillJobsTable.id, id))
+      .limit(1));
+    if (!infillJob) { res.status(404).json({ error: "Infill job not found" }); return; }
+
+    if (
+      !isPrivilegedRole(req.auth!.role)
+      && (!infillJob.assignedTeamId || infillJob.assignedTeamId !== req.auth!.teamId)
+    ) {
+      res.status(403).json({ error: "Forbidden" }); return;
+    }
+
+    const caption = typeof req.body.caption === "string" ? req.body.caption : null;
+    const idempotencyKey = typeof req.body.idempotencyKey === "string" ? req.body.idempotencyKey : undefined;
+    const photo = await saveJobPhotoIdempotently(
+      req.file,
+      { infillJobId: id, uploadedBy: userId, caption },
+      `infill-job:${id}:${userId}`,
+      idempotencyKey,
+      "scheduled",
+    );
     res.status(201).json(photo);
   },
 );

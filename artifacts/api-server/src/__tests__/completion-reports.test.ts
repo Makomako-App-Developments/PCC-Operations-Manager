@@ -3,6 +3,7 @@ import request from "supertest";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 let selectQueue: unknown[][] = [];
+const pdfImageMock = vi.hoisted(() => vi.fn());
 
 function makeChain(result: unknown[]) {
   const chain: Record<string, any> = {
@@ -61,7 +62,7 @@ vi.mock("pdfkit", () => {
     pipe(response: express.Response) { this.response = response; return response; }
     end() { this.response?.end("%PDF-1.4 completion report"); }
     addPage() { this.y = 50; return this; }
-    image() { this.y += 20; return this; }
+    image(...args: unknown[]) { pdfImageMock(...args); this.y += 20; return this; }
     text() { this.y += 10; return this; }
     moveDown() { this.y += 10; return this; }
     moveTo() { return this; }
@@ -96,6 +97,7 @@ const common = {
 
 beforeEach(() => {
   selectQueue = [];
+  pdfImageMock.mockClear();
 });
 
 describe("completion report PDFs", () => {
@@ -138,7 +140,14 @@ describe("completion report PDFs", () => {
     },
     {
       source: "infill_planting",
-      rows: [[{ ...common, workerName: "Infill Worker" }], [{ speciesName: "Hebe", quantity: 6, plantedDate: "2026-09-13" }]],
+      rows: [
+        [{ ...common, workerName: "Infill Worker" }],
+        [{ speciesName: "Hebe", quantity: 6, plantedDate: "2026-09-13" }],
+        [
+          { blobUrl: "/api/uploads/uploads/infill-photo-one", contentType: "image/jpeg", caption: "New planting" },
+          { blobUrl: "/api/uploads/uploads/infill-photo-two", contentType: "image/png", caption: "Finished bed" },
+        ],
+      ],
     },
     {
       source: "mulching",
@@ -158,5 +167,8 @@ describe("completion report PDFs", () => {
     expect(response.headers["content-disposition"]).toContain("Test Garden - 2026-09-13.pdf");
     expect(response.body.toString()).toContain("%PDF-1.4");
     expect(selectQueue).toHaveLength(0);
+    if (source === "infill_planting") {
+      expect(pdfImageMock.mock.calls.filter(([image]) => Buffer.isBuffer(image))).toHaveLength(2);
+    }
   });
 });

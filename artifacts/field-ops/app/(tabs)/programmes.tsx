@@ -1,9 +1,12 @@
 import { Feather } from "@expo/vector-icons";
+import * as ImagePicker from "expo-image-picker";
+import { requestCameraPermission, requestMediaLibraryPermission } from "@/hooks/usePhotoLibraryPermission";
 import React, { useState, useMemo, useEffect, useRef, useCallback } from "react";
 import {
   ActivityIndicator,
   Alert,
   FlatList,
+  Image,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -24,6 +27,12 @@ import { useFocusEffect, useLocalSearchParams } from "expo-router";
 import { useAuth } from "@/context/auth";
 import { useColors } from "@/hooks/useColors";
 import { getApiUrl } from "@/lib/api";
+import { pickWebCameraPhoto } from "@/lib/webPhotoPicker";
+import { PhotoQueueActions } from "@/components/PhotoQueueActions";
+import { AuthenticatedPhoto } from "@/components/AuthenticatedPhoto";
+import { useOfflinePhotoQueue } from "@/hooks/useOfflinePhotoQueue";
+import type { AttachmentSource } from "@/lib/attachmentUpload";
+import { enqueuePhoto, flushQueuedPhoto, type QueuedPhoto } from "@/lib/photoQueue";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -825,6 +834,198 @@ function NewAssessmentModal({ visible, token, onClose, onSuccess, initialAsset }
   );
 }
 
+// ─── Infill completion photos ─────────────────────────────────────────────────
+
+interface InfillPhoto {
+  id: string;
+  blobUrl: string;
+  caption?: string | null;
+  createdAt: string;
+}
+
+function InfillCompletionPhotos({
+  jobId,
+  token,
+}: {
+  jobId: string;
+  token: string | null;
+}) {
+  const colors = useColors();
+  const { data, isLoading, isError, refetch, isFetching } = useQuery<{ data: InfillPhoto[] }>({
+    queryKey: ["infill-job-photos", jobId],
+    queryFn: async () => {
+      const res = await fetch(getApiUrl(`/api/infill-jobs/${jobId}/photos`), {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) throw new Error("Failed to load completion photos");
+      return res.json();
+    },
+    enabled: !!token && !!jobId,
+  });
+  const { user } = useAuth();
+  const {
+    pending: queuedPhotos,
+    isFlushing,
+    track: trackQueuedPhoto,
+  } = useOfflinePhotoQueue("infill-job", jobId);
+  const uploadPhoto = useMutation({
+    mutationFn: async (source: AttachmentSource) => {
+      if (!user) throw new Error("Sign in again before saving this photo.");
+      const queued = await enqueuePhoto(user.id, "infill-job", jobId, source);
+      if (await flushQueuedPhoto(queued, user.id)) {
+        await refetch();
+        return { uploaded: true };
+      }
+      return { queued: true, item: queued };
+    },
+    onSuccess: result => {
+      if (result.queued) {
+        trackQueuedPhoto(result.item);
+        Alert.alert(
+          "Photo saved for sync",
+          "The photo is safe on this device and will upload automatically when the connection is available.",
+        );
+      }
+    },
+    onError: error => Alert.alert(
+      "Photo not saved",
+      error instanceof Error
+        ? error.message
+        : "GardenOps could not safely store this photo. Please select it again.",
+    ),
+  });
+  const photos = data?.data ?? [];
+  const totalCount = photos.length + queuedPhotos.length;
+
+  const addPhoto = (source: AttachmentSource) => {
+    const mimeType = source.mimeType?.trim().toLowerCase() || source.file?.type?.trim().toLowerCase();
+    const fileName = source.fileName?.trim().toLowerCase() || source.uri.split("?")[0]?.toLowerCase();
+    const isPdfCompatible = mimeType
+      ? mimeType === "image/jpeg" || mimeType === "image/jpg" || mimeType === "image/png"
+      : fileName?.endsWith(".jpg") || fileName?.endsWith(".jpeg") || fileName?.endsWith(".png");
+    if (!isPdfCompatible) {
+      Alert.alert(
+        "Choose a JPEG or PNG photo",
+        "Infill completion photos must be JPEG or PNG so they can be included in the completion PDF.",
+      );
+      return;
+    }
+    uploadPhoto.mutate(source);
+  };
+
+  const pickFromLibrary = async () => {
+    if (!(await requestMediaLibraryPermission())) return;
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ["images"],
+      quality: 0.7,
+      allowsEditing: false,
+    });
+    if (!result.canceled && result.assets[0]) {
+      const asset = result.assets[0];
+      addPhoto({ ...asset, file: asset.file });
+    }
+  };
+
+  const takePhoto = async () => {
+    if (Platform.OS === "web") {
+      try {
+        const source = await pickWebCameraPhoto();
+        if (source) addPhoto(source);
+      } catch {
+        Alert.alert(
+          "Camera unavailable",
+          "Chrome could not open the camera. Check the site camera permission, then try again. You can still choose a photo from the gallery.",
+        );
+      }
+      return;
+    }
+    if (!(await requestCameraPermission())) return;
+    try {
+      const result = await ImagePicker.launchCameraAsync({ mediaTypes: ["images"], quality: 0.7 });
+      if (!result.canceled && result.assets[0]) addPhoto(result.assets[0]);
+    } catch {
+      Alert.alert(
+        "Camera unavailable",
+        "GardenOps could not open your camera. You can still attach a photo from your library.",
+      );
+    }
+  };
+
+  return (
+    <View style={[styles.infillPhotos, { borderTopColor: colors.border }]}>
+      <View style={styles.infillPhotosHeader}>
+        <Feather name="camera" size={15} color={colors.primary} />
+        <Text style={[styles.infillPhotosTitle, { color: colors.foreground }]}>
+          Completion photos
+        </Text>
+        {totalCount > 0 && (
+          <Text style={[styles.infillPhotosCount, { color: colors.mutedForeground }]}>
+            {totalCount}
+          </Text>
+        )}
+        {(queuedPhotos.length > 0 || isFlushing) && (
+          <Text style={[styles.infillPhotosQueue, { color: "#b45309" }]}>
+            {isFlushing ? "Uploading…" : `${queuedPhotos.length} queued`}
+          </Text>
+        )}
+      </View>
+
+      {isError ? (
+        <View style={styles.infillPhotosError}>
+          <Text style={[styles.infillPhotosHint, { color: colors.mutedForeground }]}>
+            Photos are unavailable right now.
+          </Text>
+          <TouchableOpacity onPress={() => refetch()} disabled={isFetching}>
+            {isFetching
+              ? <ActivityIndicator size="small" color={colors.primary} />
+              : <Text style={[styles.infillPhotosRetry, { color: colors.primary }]}>Retry</Text>}
+          </TouchableOpacity>
+        </View>
+      ) : isLoading ? (
+        <ActivityIndicator color={colors.primary} style={{ marginVertical: 10 }} />
+      ) : totalCount > 0 ? (
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.infillPhotoRow}>
+          {photos.map(photo => (
+            <AuthenticatedPhoto
+              key={photo.id}
+              uri={getApiUrl(photo.blobUrl)}
+              token={token}
+              style={[styles.infillPhotoThumb, { borderRadius: colors.radius / 2 }]}
+              placeholderColor={colors.card}
+              iconColor={colors.mutedForeground}
+            />
+          ))}
+          {queuedPhotos.map((photo: QueuedPhoto) => (
+            <View key={photo.id} style={styles.infillPhotoPending}>
+              <Image
+                source={{ uri: photo.uri }}
+                style={[styles.infillPhotoThumb, { borderRadius: colors.radius / 2, opacity: 0.65 }]}
+              />
+              <View style={[styles.infillPhotoPendingOverlay, { borderRadius: colors.radius / 2 }]}>
+                <Feather name="clock" size={15} color="#fff" />
+              </View>
+            </View>
+          ))}
+        </ScrollView>
+      ) : (
+        <Text style={[styles.infillPhotosHint, { color: colors.mutedForeground }]}>
+          Add photos showing the completed planting work.
+        </Text>
+      )}
+
+      <PhotoQueueActions
+        containerStyle={styles.infillPhotoActions}
+        buttonStyle={[styles.infillPhotoButton, { borderColor: colors.border, borderRadius: colors.radius / 2 }]}
+        textStyle={[styles.infillPhotoButtonText, { color: colors.foreground }]}
+        iconColor={colors.primary}
+        isPending={uploadPhoto.isPending}
+        onTakePhoto={takePhoto}
+        onPickFromLibrary={pickFromLibrary}
+      />
+    </View>
+  );
+}
+
 // ─── Main Screen ──────────────────────────────────────────────────────────────
 
 type ActiveTab = "schedule" | "infill" | "mulch";
@@ -1363,6 +1564,10 @@ export default function ProgrammesScreen() {
                         <Text style={[styles.cardNotes, { color: colors.mutedForeground }]}>{job.assessmentNotes}</Text>
                       )}
 
+                      {job.status === "in_progress" && (
+                        <InfillCompletionPhotos jobId={job.id} token={token} />
+                      )}
+
                       {/* Action button */}
                       {action && (
                         <TouchableOpacity
@@ -1544,6 +1749,27 @@ const styles = StyleSheet.create({
   speciesDot: { width: 6, height: 6, borderRadius: 3 },
   speciesName: { fontFamily: "Inter_400Regular", fontSize: 13, flex: 1 },
   speciesQty: { fontFamily: "Inter_600SemiBold", fontSize: 13 },
+
+  infillPhotos: { marginTop: 12, paddingTop: 12, borderTopWidth: StyleSheet.hairlineWidth },
+  infillPhotosHeader: { flexDirection: "row", alignItems: "center", gap: 7 },
+  infillPhotosTitle: { fontFamily: "Inter_600SemiBold", fontSize: 13 },
+  infillPhotosCount: { fontFamily: "Inter_500Medium", fontSize: 12 },
+  infillPhotosQueue: { fontFamily: "Inter_500Medium", fontSize: 11, marginLeft: "auto" },
+  infillPhotosError: { flexDirection: "row", alignItems: "center", gap: 8, paddingVertical: 10 },
+  infillPhotosHint: { fontFamily: "Inter_400Regular", fontSize: 12, paddingVertical: 10 },
+  infillPhotosRetry: { fontFamily: "Inter_600SemiBold", fontSize: 12 },
+  infillPhotoRow: { gap: 8, paddingVertical: 10 },
+  infillPhotoThumb: { width: 72, height: 72 },
+  infillPhotoPending: { position: "relative" },
+  infillPhotoPendingOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(15,23,42,0.3)",
+  },
+  infillPhotoActions: { flexDirection: "row", gap: 8, paddingTop: 8 },
+  infillPhotoButton: { flex: 1, minHeight: 38, borderWidth: 1, justifyContent: "center" },
+  infillPhotoButtonText: { fontFamily: "Inter_500Medium", fontSize: 12 },
 
   advanceBtn: { marginTop: 12, paddingVertical: 11, alignItems: "center" },
   advanceBtnText: { fontFamily: "Inter_700Bold", fontSize: 14, color: "#fff" },

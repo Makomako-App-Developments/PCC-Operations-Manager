@@ -19,7 +19,7 @@ function withQueueMutation<T>(operation: () => Promise<T>): Promise<T> {
   return result;
 }
 
-export type PhotoJobType = "job" | "reactive-job" | "audit-item";
+export type PhotoJobType = "job" | "reactive-job" | "audit-item" | "infill-job";
 
 export interface PhotoQueueInput {
   ownerId: string;
@@ -64,7 +64,7 @@ function isQueuedPhoto(value: unknown): value is QueuedPhoto {
   if (!value || typeof value !== "object") return false;
   const item = value as Partial<QueuedPhoto>;
   return typeof item.id === "string"
-    && (item.jobType === "job" || item.jobType === "reactive-job" || item.jobType === "audit-item")
+    && (item.jobType === "job" || item.jobType === "reactive-job" || item.jobType === "audit-item" || item.jobType === "infill-job")
     && typeof item.jobId === "string"
     && typeof item.uri === "string"
     && typeof item.queuedAt === "string";
@@ -210,7 +210,9 @@ export async function attemptUpload(item: QueuedPhoto, authGuard?: AuthOwnerGuar
       ? `/api/jobs/${item.jobId}/photos`
       : item.jobType === "reactive-job"
         ? `/api/reactive-jobs/${item.jobId}/photos`
-        : `/api/audits/${item.auditId}/items/${item.jobId}/photos`;
+        : item.jobType === "infill-job"
+          ? `/api/infill-jobs/${item.jobId}/photos`
+          : `/api/audits/${item.auditId}/items/${item.jobId}/photos`;
     if (authGuard) {
       await uploadAttachment(endpoint, attachment, { caption: item.caption }, undefined, authGuard);
     } else {

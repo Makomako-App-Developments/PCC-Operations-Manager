@@ -1177,6 +1177,63 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/JobPhoto"
+  /infill-jobs/{id}/photos:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      operationId: listInfillJobPhotos
+      tags: [programmes]
+      summary: List photo evidence for an infill planting job
+      responses:
+        "200":
+          description: Photos
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/JobPhotoListResponse"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    post:
+      operationId: uploadInfillJobPhoto
+      tags: [programmes]
+      summary: Upload a photo for an infill planting job (multipart)
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                photo:
+                  type: string
+                  format: binary
+                caption:
+                  type: string
+                idempotencyKey:
+                  type: string
+              required: [photo]
+      responses:
+        "201":
+          description: Uploaded photo
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/JobPhoto"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "415":
+          description: The attachment is not a JPEG or PNG image
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /jobs/{id}/pdf:
     get:
       operationId: downloadCompletionReport
@@ -3203,6 +3260,7 @@ components:
         id: { type: string, format: uuid }
         jobId: { type: string, format: uuid, nullable: true }
         reactiveJobId: { type: string, format: uuid, nullable: true }
+        infillJobId: { type: string, format: uuid, nullable: true }
         uploadedBy: { type: string, format: uuid }
         blobUrl: { type: string }
         contentType: { type: string, nullable: true }

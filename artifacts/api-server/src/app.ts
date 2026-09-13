@@ -13,6 +13,7 @@ import { requireAuth } from "./middlewares/auth";
 import { dbCircuitBreakerMiddleware } from "./middlewares/dbCircuitBreaker";
 import {
   db,
+  infillJobsTable,
   jobPhotosTable,
   jobsTable,
   mulchingRecordsTable,
@@ -161,18 +162,20 @@ app.get("/api/uploads/*splat", requireAuth, async (req: Request, res: Response) 
 
     // ── Ownership check ──────────────────────────────────────────────────────
     // Reconstruct the blobUrl as stored in the DB and verify the caller is
-    // allowed to access the parent job, reactive job, mulching record, or audit.
+    // allowed to access the parent job, infill job, reactive job, mulching
+    // record, or audit.
     const blobUrl = `/api/uploads/${objectName}`;
     const callerRole    = req.auth!.role;
     const callerTeamId  = req.auth!.teamId ?? null;
     const callerId      = req.auth!.userId;
     const isPrivileged  = ["administrator", "manager", "supervisor"].includes(callerRole);
 
-    // 1. Check job_photos (covers jobs, reactive jobs, mulching records)
+    // 1. Check job_photos (covers jobs, infill jobs, reactive jobs, mulching records)
     const [jobPhoto] = await db
       .select({
         jobId:            jobPhotosTable.jobId,
         reactiveJobId:    jobPhotosTable.reactiveJobId,
+        infillJobId:      jobPhotosTable.infillJobId,
         mulchingRecordId: jobPhotosTable.mulchingRecordId,
       })
       .from(jobPhotosTable)
@@ -195,26 +198,39 @@ app.get("/api/uploads/*splat", requireAuth, async (req: Request, res: Response) 
         if (!isPrivileged && !job.isAllTeams && job.teamId !== callerTeamId) {
           res.status(403).json({ error: "Forbidden" }); return;
         }
-      } else if (!isPrivileged) {
-        if (jobPhoto.reactiveJobId) {
-          const [rj] = await db
-            .select({ assignedTeamId: reactiveJobsTable.assignedTeamId })
-            .from(reactiveJobsTable)
-            .where(eq(reactiveJobsTable.id, jobPhoto.reactiveJobId))
-            .limit(1);
-          if (rj && rj.assignedTeamId !== callerTeamId) {
-            res.status(403).json({ error: "Forbidden" }); return;
-          }
-        } else if (jobPhoto.mulchingRecordId) {
-          const [mr] = await db
-            .select({ assignedTeamId: mulchingRecordsTable.assignedTeamId })
-            .from(mulchingRecordsTable)
-            .where(eq(mulchingRecordsTable.id, jobPhoto.mulchingRecordId))
-            .limit(1);
-          if (mr && mr.assignedTeamId !== callerTeamId) {
-            res.status(403).json({ error: "Forbidden" }); return;
-          }
+      } else if (jobPhoto.infillJobId) {
+        const [infillJob] = await db
+          .select({ assignedTeamId: infillJobsTable.assignedTeamId })
+          .from(infillJobsTable)
+          .where(eq(infillJobsTable.id, jobPhoto.infillJobId))
+          .limit(1);
+        if (!infillJob) { res.status(404).json({ error: "Photo not found" }); return; }
+        if (!isPrivileged && (!infillJob.assignedTeamId || infillJob.assignedTeamId !== callerTeamId)) {
+          res.status(403).json({ error: "Forbidden" }); return;
         }
+      } else if (jobPhoto.reactiveJobId) {
+        const [rj] = await db
+          .select({ assignedTeamId: reactiveJobsTable.assignedTeamId })
+          .from(reactiveJobsTable)
+          .where(eq(reactiveJobsTable.id, jobPhoto.reactiveJobId))
+          .limit(1);
+        if (!rj) { res.status(404).json({ error: "Photo not found" }); return; }
+        if (!isPrivileged && rj.assignedTeamId !== callerTeamId) {
+          res.status(403).json({ error: "Forbidden" }); return;
+        }
+      } else if (jobPhoto.mulchingRecordId) {
+        const [mr] = await db
+          .select({ assignedTeamId: mulchingRecordsTable.assignedTeamId })
+          .from(mulchingRecordsTable)
+          .where(eq(mulchingRecordsTable.id, jobPhoto.mulchingRecordId))
+          .limit(1);
+        if (!mr) { res.status(404).json({ error: "Photo not found" }); return; }
+        if (!isPrivileged && mr.assignedTeamId !== callerTeamId) {
+          res.status(403).json({ error: "Forbidden" }); return;
+        }
+      } else {
+        // A photo whose parent was deleted must never become globally readable.
+        res.status(404).json({ error: "Photo not found" }); return;
       }
       // Access granted — fall through to serve the file
     } else {

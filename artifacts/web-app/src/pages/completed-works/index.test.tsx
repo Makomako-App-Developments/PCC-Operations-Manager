@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import CompletedWorks, { CompletedWorkPdfLink, completedWorkSourceLabel } from "./index";
 
@@ -42,10 +42,23 @@ beforeEach(() => {
           data: [
             { id: "routine-1", workSource: "routine_maintenance", jobType: "scheduled", completedAt: "2026-09-13T01:00:00.000Z", scheduledDate: "2026-09-13", assetName: "Routine Site", actualTimeMins: 20, pdfAvailable: true },
             { id: "reactive-1", workSource: "unscheduled", jobType: "reactive", completedAt: "2026-09-13T02:00:00.000Z", scheduledDate: "2026-09-13", assetName: "Reactive Site", issueType: "Broken branch", actualTimeMins: 15, pdfAvailable: true },
-            { id: "infill-1", workSource: "infill_planting", jobType: "infill_planting", completedAt: "2026-09-13T03:00:00.000Z", scheduledDate: "2026-09-13", assetName: "Infill Site", actualTimeMins: null, pdfAvailable: true },
+            { id: "infill-1", workSource: "infill_planting", jobType: "infill_planting", completedAt: "2026-09-13T03:00:00.000Z", scheduledDate: "2026-09-13", assetName: "Infill Site", actualTimeMins: null, pdfAvailable: true, photoEndpoint: "/api/infill-jobs/infill-1/photos" },
             { id: "mulch-1", workSource: "mulching", jobType: "mulching", completedAt: "2026-09-13T04:00:00.000Z", scheduledDate: "2026-09-13", assetName: "Mulch Site", mulchType: "Bark", volumeM3: "2.5", actualTimeMins: null, pdfAvailable: true },
             { id: "storm-1", workSource: "storm_patrol", completedAt: "2026-09-13T05:00:00.000Z", assetName: "Storm Site", stormName: "September Storm", workTypes: ["debris_clearance"], actualTimeMins: 10, pdfAvailable: true },
           ],
+        }),
+      };
+    }
+    if (url === "/api/infill-jobs/infill-1/photos") {
+      return {
+        ok: true,
+        json: async () => ({
+          data: [{
+            id: "infill-photo-1",
+            blobUrl: "/api/uploads/infill-complete.jpg",
+            caption: "Completed infill planting",
+            createdAt: "2026-09-13T03:01:00.000Z",
+          }],
         }),
       };
     }
@@ -82,6 +95,21 @@ describe("Completed Works sources", () => {
     expect(completedWorkSourceLabel({ workSource: "infill_planting", jobType: "infill_planting" })).toBe("Infill Planting");
     expect(completedWorkSourceLabel({ workSource: "mulching", jobType: "mulching" })).toBe("Mulching");
     expect(completedWorkSourceLabel({ workSource: "storm_patrol", stormName: "September Storm" })).toBe("September Storm");
+  });
+
+  it("loads and renders persisted photos in infill completion details", async () => {
+    renderPage();
+
+    fireEvent.click(await screen.findByText("Infill Site"));
+
+    expect(await screen.findByAltText("Completed infill planting")).toHaveAttribute(
+      "src",
+      "/api/uploads/infill-complete.jpg",
+    );
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/infill-jobs/infill-1/photos",
+      { credentials: "include" },
+    );
   });
 
   it.each([

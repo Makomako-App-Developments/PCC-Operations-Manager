@@ -463,7 +463,7 @@ router.get("/completed-works", requireAuth, validateQuery(completedWorksQuerySch
     crewStatus: null,
     isAllTeams: false,
     pdfAvailable: true,
-    photoEndpoint: null,
+    photoEndpoint: `/api/infill-jobs/${row.id}/photos`,
   }));
 
   const includeMulching = q.workSource === "all" || q.workSource === "mulching";
@@ -567,12 +567,13 @@ router.get("/completed-works", requireAuth, validateQuery(completedWorksQuerySch
 
 type AdditionalReportSource = "unscheduled" | "infill_planting" | "mulching" | "storm_patrol";
 
-async function downloadReportImages(photos: { blobUrl: string; caption: string | null }[]) {
+async function downloadReportImages(photos: { blobUrl: string; caption: string | null; contentType?: string | null }[]) {
   const imageExts = /\.(jpe?g|png|webp|gif)$/i;
   const bucketId = process.env["DEFAULT_OBJECT_STORAGE_BUCKET_ID"] ?? "";
   const buffers: { buf: Buffer; caption: string | null }[] = [];
   for (const photo of photos) {
-    if (!imageExts.test(photo.blobUrl)) continue;
+    const contentType = photo.contentType?.trim().toLowerCase();
+    if (!contentType?.startsWith("image/") && !imageExts.test(photo.blobUrl)) continue;
     try {
       const objectName = photo.blobUrl.replace(/^\/api\/uploads\//, "");
       const [buf] = await objectStorageClient.bucket(bucketId).file(objectName).download();
@@ -601,7 +602,7 @@ async function sendAdditionalCompletionReport(
     workerName: string | null;
     notes: string | null;
     details: [string, string | null][];
-    photos: { blobUrl: string; caption: string | null }[];
+    photos: { blobUrl: string; caption: string | null; contentType?: string | null }[];
   } | null = null;
 
   if (source === "unscheduled") {
@@ -618,7 +619,7 @@ async function sendAdditionalCompletionReport(
       .leftJoin(usersTable, eq(reactiveJobsTable.assignedUserId, usersTable.id))
       .where(and(eq(reactiveJobsTable.id, id), eq(reactiveJobsTable.status, "completed"))).limit(1));
     if (row) {
-      const photos = await executeWithCircuitBreaker(() => db.select({ blobUrl: jobPhotosTable.blobUrl, caption: jobPhotosTable.caption })
+      const photos = await executeWithCircuitBreaker(() => db.select({ blobUrl: jobPhotosTable.blobUrl, caption: jobPhotosTable.caption, contentType: jobPhotosTable.contentType })
         .from(jobPhotosTable).where(eq(jobPhotosTable.reactiveJobId, id)));
       report = {
         sourceLabel: "Unscheduled Work", siteName: row.siteName ?? "Unspecified Location",
@@ -644,6 +645,9 @@ async function sendAdditionalCompletionReport(
         speciesName: infillOrdersTable.speciesName, quantity: infillOrdersTable.quantity,
         plantedDate: infillOrdersTable.plantedDate,
       }).from(infillOrdersTable).where(eq(infillOrdersTable.infillJobId, id)));
+      const photos = await executeWithCircuitBreaker(() => db.select({
+        blobUrl: jobPhotosTable.blobUrl, caption: jobPhotosTable.caption, contentType: jobPhotosTable.contentType,
+      }).from(jobPhotosTable).where(eq(jobPhotosTable.infillJobId, id)));
       report = {
         sourceLabel: "Infill Planting", siteName: row.siteName, siteDescription: row.siteDescription,
         completedAt: row.completedAt, scheduledDate: row.scheduledDate, teamId: row.teamId,
@@ -652,7 +656,7 @@ async function sendAdditionalCompletionReport(
           "Planting",
           `${order.quantity} × ${order.speciesName}${order.plantedDate ? ` — planted ${order.plantedDate}` : ""}`,
         ]),
-        photos: [],
+        photos,
       };
     }
   } else if (source === "mulching") {
@@ -670,7 +674,7 @@ async function sendAdditionalCompletionReport(
       .leftJoin(usersTable, eq(mulchingRecordsTable.completedById, usersTable.id))
       .where(and(eq(mulchingRecordsTable.id, id), eq(mulchingRecordsTable.status, "completed"))).limit(1));
     if (row) {
-      const photos = await executeWithCircuitBreaker(() => db.select({ blobUrl: jobPhotosTable.blobUrl, caption: jobPhotosTable.caption })
+      const photos = await executeWithCircuitBreaker(() => db.select({ blobUrl: jobPhotosTable.blobUrl, caption: jobPhotosTable.caption, contentType: jobPhotosTable.contentType })
         .from(jobPhotosTable).where(eq(jobPhotosTable.mulchingRecordId, id)));
       report = {
         sourceLabel: "Mulching", siteName: row.siteName, siteDescription: row.siteDescription,
@@ -702,7 +706,7 @@ async function sendAdditionalCompletionReport(
       const [workTypes, photos] = await Promise.all([
         executeWithCircuitBreaker(() => db.select({ workType: stormCheckResultsTable.workType })
           .from(stormCheckResultsTable).where(eq(stormCheckResultsTable.stormJobId, id))),
-        executeWithCircuitBreaker(() => db.select({ blobUrl: stormPhotosTable.blobUrl, caption: stormPhotosTable.caption })
+        executeWithCircuitBreaker(() => db.select({ blobUrl: stormPhotosTable.blobUrl, caption: stormPhotosTable.caption, contentType: stormPhotosTable.contentType })
           .from(stormPhotosTable).where(eq(stormPhotosTable.stormJobId, id))),
       ]);
       const charge = row.actualTimeMins == null ? null : `$${((row.actualTimeMins * row.hourlyRateCents) / 6000).toFixed(2)}`;

@@ -173,6 +173,7 @@ export * from "./teamCreate";
 export * from "./teamJobCount";
 export * from "./unauthorisedResponse";
 export * from "./uploadAuditItemPhotoBody";
+export * from "./uploadInfillJobPhotoBody";
 export * from "./uploadJobPhotoBody";
 export * from "./uploadStormPatrolJobPhoto201";
 export * from "./uploadStormPatrolObservationPhoto201";

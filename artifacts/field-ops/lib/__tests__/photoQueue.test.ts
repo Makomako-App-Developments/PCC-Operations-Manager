@@ -311,6 +311,7 @@ describe("photo queue durability", () => {
     ["job", "job-one", undefined, "/api/jobs/job-one/photos"],
     ["reactive-job", "reactive-one", undefined, "/api/reactive-jobs/reactive-one/photos"],
     ["audit-item", "item-one", "audit-one", "/api/audits/audit-one/items/item-one/photos"],
+    ["infill-job", "infill-one", undefined, "/api/infill-jobs/infill-one/photos"],
   ] as const)("uses the durable upload path for %s photos", async (jobType, jobId, auditId, endpoint) => {
     const item = await enqueuePhoto(ownerId, jobType, jobId, {
       uri: `file:///${jobType}.jpg`,

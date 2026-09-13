@@ -242,10 +242,14 @@ function getJobPhotos(
 }
 
 function getKnownUpload(
-  { role = "manager", teamId }: { role?: string; teamId?: string } = {},
+  { role = "manager", teamId, path = "/api/uploads/uploads/known-draft-photo.jpg" }: {
+    role?: string;
+    teamId?: string;
+    path?: string;
+  } = {},
 ) {
   const req = request(app)
-    .get("/api/uploads/uploads/known-draft-photo.jpg")
+    .get(path)
     .set("x-test-role", role);
   return teamId ? req.set("x-test-team-id", teamId) : req;
 }
@@ -506,6 +510,76 @@ describe("GET /api/uploads/* Storm Patrol authorization", () => {
 
     expect(res.status).toBe(403);
     expect(res.body).toEqual({ error: "Forbidden" });
+  });
+});
+
+describe("GET /api/uploads/* infill photo authorization", () => {
+  const infillJobId = "00000000-0000-0000-0000-000000000070";
+  const infillTeamId = "00000000-0000-0000-0000-000000000071";
+  const path = "/api/uploads/uploads/infill-completion.jpg";
+  const photoRow = {
+    jobId: null,
+    reactiveJobId: null,
+    infillJobId,
+    mulchingRecordId: null,
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    selectImpl = null;
+    selectQueue = [];
+    process.env.DEFAULT_OBJECT_STORAGE_BUCKET_ID = "test-bucket";
+  });
+
+  async function makeStoredObjectAvailable() {
+    const { objectStorageClient } = await import("../lib/objectStorage");
+    vi.mocked(objectStorageClient.bucket).mockReturnValueOnce({
+      file: vi.fn().mockReturnValue({
+        exists: vi.fn().mockResolvedValue([true]),
+        getMetadata: vi.fn().mockResolvedValue([{ contentType: "image/jpeg" }]),
+        createReadStream: vi.fn(() => Readable.from(["photo"])),
+      }),
+    } as any);
+  }
+
+  it("serves an infill photo to its assigned field team", async () => {
+    await makeStoredObjectAvailable();
+    selectQueue = [[photoRow], [{ assignedTeamId: infillTeamId }]];
+
+    const res = await getKnownUpload({ role: "field_worker", teamId: infillTeamId, path });
+
+    expect(res.status).toBe(200);
+    expect(res.headers["content-type"]).toContain("image/jpeg");
+  });
+
+  it("denies an infill photo to a different field team", async () => {
+    selectQueue = [[photoRow], [{ assignedTeamId: infillTeamId }]];
+
+    const res = await getKnownUpload({ role: "field_worker", teamId: "different-team", path });
+
+    expect(res.status).toBe(403);
+    expect(res.body).toEqual({ error: "Forbidden" });
+  });
+
+  it("serves a valid infill photo to a privileged user", async () => {
+    await makeStoredObjectAvailable();
+    selectQueue = [[photoRow], [{ assignedTeamId: infillTeamId }]];
+
+    const res = await getKnownUpload({ role: "manager", path });
+
+    expect(res.status).toBe(200);
+  });
+
+  it.each([
+    ["a parentless photo row", [{ ...photoRow, infillJobId: null }]],
+    ["a photo whose infill parent was deleted", [photoRow], []],
+  ])("returns 404 for %s", async (_label, ...rows) => {
+    selectQueue = rows;
+
+    const res = await getKnownUpload({ role: "manager", path });
+
+    expect(res.status).toBe(404);
+    expect(res.body).toEqual({ error: "Photo not found" });
   });
 });
 

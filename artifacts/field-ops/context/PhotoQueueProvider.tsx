@@ -91,7 +91,9 @@ export function PhotoQueueProvider({ children }: { children: React.ReactNode }) 
                   ? ["job-photos", item.jobId]
                   : item.jobType === "reactive-job"
                     ? ["reactive-job-photos", item.jobId]
-                    : ["audit-item-photos", item.auditId, item.jobId];
+                    : item.jobType === "infill-job"
+                      ? ["infill-job-photos", item.jobId]
+                      : ["audit-item-photos", item.auditId, item.jobId];
               qc.invalidateQueries({ queryKey: key });
               anySuccess = true;
             }

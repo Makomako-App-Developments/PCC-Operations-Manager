@@ -109,6 +109,7 @@ import type {
   TeamCreate,
   UnauthorisedResponse,
   UploadAuditItemPhotoBody,
+  UploadInfillJobPhotoBody,
   UploadJobPhotoBody,
   UploadStormPatrolJobPhoto201,
   UploadStormPatrolObservationPhoto201,
@@ -4763,6 +4764,193 @@ export const useUploadJobPhoto = <
   TContext
 > => {
   return useMutation(getUploadJobPhotoMutationOptions(options));
+};
+
+/**
+ * @summary List photo evidence for an infill planting job
+ */
+export const getListInfillJobPhotosUrl = (id: string) => {
+  return `/api/infill-jobs/${id}/photos`;
+};
+
+export const listInfillJobPhotos = async (
+  id: string,
+  options?: RequestInit,
+): Promise<JobPhotoListResponse> => {
+  return customFetch<JobPhotoListResponse>(getListInfillJobPhotosUrl(id), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getListInfillJobPhotosQueryKey = (id: string) => {
+  return [`/api/infill-jobs/${id}/photos`] as const;
+};
+
+export const getListInfillJobPhotosQueryOptions = <
+  TData = Awaited<ReturnType<typeof listInfillJobPhotos>>,
+  TError = ErrorType<ForbiddenResponse | NotFoundResponse>,
+>(
+  id: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listInfillJobPhotos>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getListInfillJobPhotosQueryKey(id);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof listInfillJobPhotos>>
+  > = ({ signal }) => listInfillJobPhotos(id, { signal, ...requestOptions });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!id,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof listInfillJobPhotos>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListInfillJobPhotosQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listInfillJobPhotos>>
+>;
+export type ListInfillJobPhotosQueryError = ErrorType<
+  ForbiddenResponse | NotFoundResponse
+>;
+
+/**
+ * @summary List photo evidence for an infill planting job
+ */
+
+export function useListInfillJobPhotos<
+  TData = Awaited<ReturnType<typeof listInfillJobPhotos>>,
+  TError = ErrorType<ForbiddenResponse | NotFoundResponse>,
+>(
+  id: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listInfillJobPhotos>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListInfillJobPhotosQueryOptions(id, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Upload a photo for an infill planting job (multipart)
+ */
+export const getUploadInfillJobPhotoUrl = (id: string) => {
+  return `/api/infill-jobs/${id}/photos`;
+};
+
+export const uploadInfillJobPhoto = async (
+  id: string,
+  uploadInfillJobPhotoBody: UploadInfillJobPhotoBody,
+  options?: RequestInit,
+): Promise<JobPhoto> => {
+  const formData = new FormData();
+  formData.append(`photo`, uploadInfillJobPhotoBody.photo);
+  if (uploadInfillJobPhotoBody.caption !== undefined) {
+    formData.append(`caption`, uploadInfillJobPhotoBody.caption);
+  }
+  if (uploadInfillJobPhotoBody.idempotencyKey !== undefined) {
+    formData.append(`idempotencyKey`, uploadInfillJobPhotoBody.idempotencyKey);
+  }
+
+  return customFetch<JobPhoto>(getUploadInfillJobPhotoUrl(id), {
+    ...options,
+    method: "POST",
+    body: formData,
+  });
+};
+
+export const getUploadInfillJobPhotoMutationOptions = <
+  TError = ErrorType<ForbiddenResponse | NotFoundResponse | ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof uploadInfillJobPhoto>>,
+    TError,
+    { id: string; data: BodyType<UploadInfillJobPhotoBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof uploadInfillJobPhoto>>,
+  TError,
+  { id: string; data: BodyType<UploadInfillJobPhotoBody> },
+  TContext
+> => {
+  const mutationKey = ["uploadInfillJobPhoto"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof uploadInfillJobPhoto>>,
+    { id: string; data: BodyType<UploadInfillJobPhotoBody> }
+  > = (props) => {
+    const { id, data } = props ?? {};
+
+    return uploadInfillJobPhoto(id, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type UploadInfillJobPhotoMutationResult = NonNullable<
+  Awaited<ReturnType<typeof uploadInfillJobPhoto>>
+>;
+export type UploadInfillJobPhotoMutationBody =
+  BodyType<UploadInfillJobPhotoBody>;
+export type UploadInfillJobPhotoMutationError = ErrorType<
+  ForbiddenResponse | NotFoundResponse | ErrorResponse
+>;
+
+/**
+ * @summary Upload a photo for an infill planting job (multipart)
+ */
+export const useUploadInfillJobPhoto = <
+  TError = ErrorType<ForbiddenResponse | NotFoundResponse | ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof uploadInfillJobPhoto>>,
+    TError,
+    { id: string; data: BodyType<UploadInfillJobPhotoBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof uploadInfillJobPhoto>>,
+  TError,
+  { id: string; data: BodyType<UploadInfillJobPhotoBody> },
+  TContext
+> => {
+  return useMutation(getUploadInfillJobPhotoMutationOptions(options));
 };
 
 export const getDownloadCompletionReportUrl = (

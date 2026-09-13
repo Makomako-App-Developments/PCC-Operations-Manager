@@ -1424,6 +1424,7 @@ export interface JobPhoto {
   id: string;
   jobId?: string | null;
   reactiveJobId?: string | null;
+  infillJobId?: string | null;
   uploadedBy: string;
   blobUrl: string;
   contentType?: string | null;
@@ -1561,6 +1562,12 @@ export const ListSkippedJobsReviewed = {
 } as const;
 
 export type UploadJobPhotoBody = {
+  photo: Blob;
+  caption?: string;
+  idempotencyKey?: string;
+};
+
+export type UploadInfillJobPhotoBody = {
   photo: Blob;
   caption?: string;
   idempotencyKey?: string;
