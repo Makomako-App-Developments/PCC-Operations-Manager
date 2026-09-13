@@ -12,6 +12,21 @@ jobs:
     timeout-minutes: 30
     needs: []
 
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: pcc
+          POSTGRES_PASSWORD: pcc
+          POSTGRES_DB: pcc_deploy_validation
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
     env:
       REGISTRY: ${{ secrets.AZURE_REGISTRY }}
       API_IMAGE: pcc-gardens-api
@@ -56,8 +71,59 @@ jobs:
       - name: Build, validate & push API image
         run: |
           docker build -f artifacts/api-server/Dockerfile -t $REGISTRY/$API_IMAGE:$GITHUB_SHA -t $REGISTRY/$API_IMAGE:latest .
+
+          DATABASE_URL=postgresql://pcc:pcc@localhost:5432/pcc_deploy_validation \
+            pnpm --filter @workspace/db run push
+
+          container_name=api-deploy-validation
+          cleanup() {
+            docker logs "$container_name" > api-container-startup.log 2>&1 || true
+            docker rm -f "$container_name" >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+
+          docker run --detach \
+            --name "$container_name" \
+            --add-host host.docker.internal:host-gateway \
+            --publish 127.0.0.1:18080:8080 \
+            --env DATABASE_URL=postgresql://pcc:pcc@host.docker.internal:5432/pcc_deploy_validation \
+            --env JWT_SECRET=deploy-validation-only \
+            "$REGISTRY/$API_IMAGE:$GITHUB_SHA"
+
+          healthy=false
+          for attempt in $(seq 1 30); do
+            if ! docker inspect --format '{{.State.Running}}' "$container_name" | grep -qx true; then
+              echo "API container exited before becoming healthy."
+              exit 1
+            fi
+
+            if response=$(curl --fail --silent --show-error \
+              http://127.0.0.1:18080/api/health/live); then
+              if echo "$response" | grep -Eq '"status"[[:space:]]*:[[:space:]]*"ok"'; then
+                healthy=true
+                break
+              fi
+              echo "API liveness endpoint returned an unhealthy response: $response"
+              exit 1
+            fi
+            sleep 1
+          done
+
+          if [ "$healthy" != true ]; then
+            echo "Timed out waiting for the API liveness endpoint."
+            exit 1
+          fi
+
           docker push $REGISTRY/$API_IMAGE:$GITHUB_SHA
           docker push $REGISTRY/$API_IMAGE:latest
+
+      - name: Upload API startup logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: api-container-startup-${{ github.sha }}
+          path: api-container-startup.log
+          if-no-files-found: warn
 
       - name: Build & push web image
         run: |
