@@ -53,7 +53,7 @@ jobs:
           username: ${{ secrets.AZURE_REGISTRY_USERNAME }}
           password: ${{ secrets.AZURE_REGISTRY_PASSWORD }}
 
-      - name: Build & push API image
+      - name: Build, validate & push API image
         run: |
           docker build -f artifacts/api-server/Dockerfile -t $REGISTRY/$API_IMAGE:$GITHUB_SHA -t $REGISTRY/$API_IMAGE:latest .
           docker push $REGISTRY/$API_IMAGE:$GITHUB_SHA
