@@ -6,6 +6,7 @@ import CommandCenter, { filterStormwaterAssets } from "./CommandCenter";
 
 const mocks = vi.hoisted(() => ({
   publish: vi.fn(),
+  acknowledgeAlert: vi.fn(),
   cancelJob: vi.fn(),
   toast: vi.fn(),
   customFetch: vi.fn(),
@@ -78,7 +79,7 @@ vi.mock("@workspace/api-client-react", () => ({
   useCancelStormPatrolJob: () => ({ mutateAsync: mocks.cancelJob, isPending: false }),
   useCloseStormPatrolEvent: () => ({ mutateAsync: vi.fn(), isPending: false }),
   useCreateStormPatrolAlert: () => ({ mutateAsync: vi.fn(), isPending: false }),
-  useAcknowledgeStormPatrolAlert: () => ({ mutateAsync: vi.fn(), isPending: false }),
+  useAcknowledgeStormPatrolAlert: () => ({ mutateAsync: mocks.acknowledgeAlert, isPending: false }),
   useRetryStormPatrolAlertEmail: () => ({ mutateAsync: vi.fn(), isPending: false }),
   getGetStormPatrolReportUrl: mocks.reportUrl,
   getGetCurrentStormPatrolQueryKey: () => ["/api/storm-patrol/current"],
@@ -196,6 +197,11 @@ beforeEach(() => {
 
   mocks.publish.mockReset();
   mocks.publish.mockResolvedValue({ package: {}, jobs: [] });
+  mocks.acknowledgeAlert.mockReset();
+  mocks.acknowledgeAlert.mockResolvedValue({
+    acknowledgedAt: "2026-09-13T01:20:00.000Z",
+    acknowledgedByName: "Cameron Walker",
+  });
   mocks.reportUrl.mockReset();
   mocks.reportUrl.mockImplementation((_id, params) =>
     `/api/storm-patrol/report?${new URLSearchParams(params).toString()}`);
@@ -261,12 +267,15 @@ describe("Storm Patrol work package asset filters", () => {
     await user.click(screen.getByRole("button", { name: "Open urgent issue: Large tree blocking the culvert" }));
 
     const dialog = screen.getByRole("dialog");
+    await waitFor(() => expect(mocks.acknowledgeAlert).toHaveBeenCalledWith({ id: "alert-details" }));
     expect(within(dialog).getByRole("heading", { name: "Bodman SW grate" })).toBeVisible();
     expect(within(dialog).getByText("56 Bodmans Lane")).toBeVisible();
     expect(within(dialog).getByText("Large tree blocking the culvert")).toBeVisible();
     expect(within(dialog).getByText("Storm Team")).toBeVisible();
     expect(within(dialog).getByText("Alex Crew")).toBeVisible();
     expect(within(dialog).getByText("Email sent · 1 attempt")).toBeVisible();
+    expect(await within(dialog).findByText("Acknowledged at 01:20, 13 Sep 2026 by Cameron Walker")).toBeVisible();
+    expect(within(dialog).queryByRole("button", { name: "Acknowledge" })).not.toBeInTheDocument();
 
     const map = within(dialog).getByLabelText("Urgent issue location for Bodman SW grate");
     expect(map).toHaveAttribute("data-center", "[-41.13,174.83]");
@@ -276,6 +285,34 @@ describe("Storm Patrol work package asset filters", () => {
 
     const photo = await within(dialog).findByAltText("Urgent issue at Bodman SW grate");
     expect(photo).toHaveAttribute("src", "blob:authenticated-photo");
+  });
+
+  it("keeps an urgent issue unacknowledged when automatic acknowledgement fails", async () => {
+    const user = userEvent.setup();
+    mocks.acknowledgeAlert.mockRejectedValueOnce(new Error("Network unavailable"));
+    renderCommandCenter([], [], [], [{
+      id: "alert-failed-ack",
+      eventId: "event-1",
+      message: "Floodwater crossing the road",
+      emailStatus: "sent",
+      emailAttempts: 1,
+      acknowledgedAt: null,
+      assetName: "Main Road culvert",
+    }]);
+
+    expect(screen.getByText("Unacknowledged")).toBeVisible();
+    expect(screen.queryByRole("button", { name: "Ack" })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Open urgent issue: Floodwater crossing the road" }));
+
+    const dialog = screen.getByRole("dialog");
+    await waitFor(() => expect(mocks.acknowledgeAlert).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(mocks.toast).toHaveBeenCalledWith(expect.objectContaining({
+      title: "Urgent issue opened, but acknowledgement failed",
+      variant: "destructive",
+    })));
+    expect(within(dialog).getByText("Unacknowledged")).toBeVisible();
+    expect(mocks.acknowledgeAlert).toHaveBeenCalledTimes(1);
   });
 
   it("shows archived event details without any write controls", async () => {
@@ -309,6 +346,7 @@ describe("Storm Patrol work package asset filters", () => {
 
     await user.click(screen.getByRole("button", { name: "Open urgent issue: Archived urgent issue" }));
     expect(screen.getByRole("dialog")).toBeVisible();
+    expect(mocks.acknowledgeAlert).not.toHaveBeenCalled();
     expect(screen.queryByRole("button", { name: "Acknowledge" })).not.toBeInTheDocument();
   });
 

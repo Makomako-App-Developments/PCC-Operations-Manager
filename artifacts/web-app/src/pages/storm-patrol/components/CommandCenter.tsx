@@ -143,6 +143,8 @@ export default function CommandCenter({ data, readOnly = false, onBack }: Comman
   
   const [selectedCompletedJob, setSelectedCompletedJob] = useState<StormJob | null>(null);
   const [selectedUrgentIssue, setSelectedUrgentIssue] = useState<UrgentIssue | null>(null);
+  const [acknowledgingUrgentIssueId, setAcknowledgingUrgentIssueId] = useState<string | null>(null);
+  const acknowledgementAttempts = useRef(new Set<string>());
   const [selectedObservation, setSelectedObservation] = useState<StormObservation | null>(null);
   const urgentIssueLat = finiteCoordinate(selectedUrgentIssue?.lat);
   const urgentIssueLng = finiteCoordinate(selectedUrgentIssue?.lng);
@@ -188,6 +190,37 @@ export default function CommandCenter({ data, readOnly = false, onBack }: Comman
     setObservationTilesFailed(false);
     observationTileAttemptHadError.current = false;
   }, [selectedObservation?.id]);
+
+  useEffect(() => {
+    const issue = selectedUrgentIssue;
+    if (readOnly || !issue || issue.acknowledgedAt || acknowledgementAttempts.current.has(issue.id)) return;
+
+    acknowledgementAttempts.current.add(issue.id);
+    setAcknowledgingUrgentIssueId(issue.id);
+
+    void ackAlert.mutateAsync({ id: issue.id })
+      .then(async acknowledged => {
+        setSelectedUrgentIssue(current => current?.id === issue.id
+          ? {
+              ...current,
+              acknowledgedAt: acknowledged.acknowledgedAt ?? new Date().toISOString(),
+              acknowledgedByName: acknowledged.acknowledgedByName ?? null,
+            }
+          : current);
+        await queryClient.invalidateQueries({ queryKey: getGetCurrentStormPatrolQueryKey() });
+      })
+      .catch(error => {
+        console.error("Unable to acknowledge urgent issue:", error);
+        toast({
+          title: "Urgent issue opened, but acknowledgement failed",
+          description: "The issue remains unacknowledged. Please close it and try opening it again.",
+          variant: "destructive",
+        });
+      })
+      .finally(() => {
+        setAcknowledgingUrgentIssueId(current => current === issue.id ? null : current);
+      });
+  }, [ackAlert, queryClient, readOnly, selectedUrgentIssue, toast]);
 
   useEffect(() => {
     if (!observationTilesFailed) return;
@@ -506,27 +539,19 @@ export default function CommandCenter({ data, readOnly = false, onBack }: Comman
                             <p className={`text-sm ${!alert.acknowledgedAt ? "text-orange-100" : "text-white/60"}`}>{alert.message}</p>
                             {alert.assetName && <p className="mt-1 text-xs font-medium text-white/45">{alert.assetName}</p>}
                           </div>
-                          {!readOnly && !alert.acknowledgedAt && (
-                            <Button 
-                              size="sm" 
-                              variant="outline"
-                              onClick={async (event) => {
-                                event.stopPropagation();
-                                try {
-                                  await ackAlert.mutateAsync({ id: alert.id });
-                                  queryClient.invalidateQueries({ queryKey: getGetCurrentStormPatrolQueryKey() });
-                                } catch (e) {
-                                  console.error(e);
-                                }
-                              }}
-                              className="h-6 text-[10px] px-2 bg-orange-500/20 hover:bg-orange-500/30 text-orange-400 border-orange-500/30"
-                            >
-                              Ack
-                            </Button>
-                          )}
+                          <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                            alert.acknowledgedAt
+                              ? "bg-green-500/10 text-green-300"
+                              : "bg-orange-500/20 text-orange-300"
+                          }`}>
+                            {alert.acknowledgedAt ? "Acknowledged" : "Unacknowledged"}
+                          </span>
                         </div>
                         {alert.acknowledgedAt && (
-                          <p className="text-[10px] text-white/40 mt-1">Ack'd {format(new Date(alert.acknowledgedAt), "HH:mm")}</p>
+                          <p className="text-[10px] text-white/40 mt-1">
+                            Acknowledged at {format(new Date(alert.acknowledgedAt), "HH:mm")}
+                            {alert.acknowledgedByName ? ` by ${alert.acknowledgedByName}` : ""}
+                          </p>
                         )}
                         <div className="mt-2 flex items-center justify-between gap-2">
                           <p className={`text-[10px] ${alert.emailStatus === "sent" ? "text-green-400" : alert.emailStatus === "failed" ? "text-red-400" : "text-white/40"}`}>
@@ -1031,7 +1056,10 @@ export default function CommandCenter({ data, readOnly = false, onBack }: Comman
         <Dialog
           open={selectedUrgentIssue !== null}
           onOpenChange={(open) => {
-            if (!open) setSelectedUrgentIssue(null);
+            if (!open) {
+              if (selectedUrgentIssue) acknowledgementAttempts.current.delete(selectedUrgentIssue.id);
+              setSelectedUrgentIssue(null);
+            }
           }}
         >
           <DialogContent className="max-h-[88vh] overflow-y-auto border-white/10 bg-[#0f2a36] text-white sm:max-w-2xl">
@@ -1067,7 +1095,11 @@ export default function CommandCenter({ data, readOnly = false, onBack }: Comman
                     ["Phase", selectedUrgentIssue.phase ? selectedUrgentIssue.phase.toUpperCase() : "—"],
                     ["Team", selectedUrgentIssue.teamName || "—"],
                     ["Field worker", selectedUrgentIssue.workerName || "—"],
-                    ["Status", selectedUrgentIssue.acknowledgedAt ? "Acknowledged" : "Needs acknowledgement"],
+                    ["Status", selectedUrgentIssue.acknowledgedAt
+                      ? "Acknowledged"
+                      : acknowledgingUrgentIssueId === selectedUrgentIssue.id
+                        ? "Acknowledging…"
+                        : "Unacknowledged"],
                   ].map(([label, value]) => (
                     <div key={label} className="rounded-lg border border-white/10 bg-white/5 p-3">
                       <p className="text-[10px] font-semibold uppercase tracking-wider text-white/40">{label}</p>
@@ -1169,24 +1201,21 @@ export default function CommandCenter({ data, readOnly = false, onBack }: Comman
                     Email {selectedUrgentIssue.emailStatus}
                     {selectedUrgentIssue.emailAttempts ? ` · ${selectedUrgentIssue.emailAttempts} attempt${selectedUrgentIssue.emailAttempts === 1 ? "" : "s"}` : ""}
                   </p>
+                  {selectedUrgentIssue.acknowledgedAt && (
+                    <p className="text-xs text-green-300">
+                      Acknowledged at {format(new Date(selectedUrgentIssue.acknowledgedAt), "HH:mm, d MMM yyyy")}
+                      {selectedUrgentIssue.acknowledgedByName ? ` by ${selectedUrgentIssue.acknowledgedByName}` : ""}
+                    </p>
+                  )}
                   <div className="flex gap-2">
-                    {!readOnly && !selectedUrgentIssue.acknowledgedAt && (
-                      <Button
-                        type="button"
-                        variant="outline"
-                        disabled={ackAlert.isPending}
-                        onClick={async () => {
-                          await ackAlert.mutateAsync({ id: selectedUrgentIssue.id });
-                          await queryClient.invalidateQueries({ queryKey: getGetCurrentStormPatrolQueryKey() });
-                          setSelectedUrgentIssue(current => current ? { ...current, acknowledgedAt: new Date().toISOString() } : current);
-                        }}
-                        className="border-orange-500/30 bg-orange-500/10 text-orange-300 hover:bg-orange-500/20"
-                      >
-                        {ackAlert.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                        Acknowledge
-                      </Button>
-                    )}
-                    <Button type="button" onClick={() => setSelectedUrgentIssue(null)} className="bg-[#00AECD] text-white hover:bg-[#00AECD]/90">
+                    <Button
+                      type="button"
+                      onClick={() => {
+                        acknowledgementAttempts.current.delete(selectedUrgentIssue.id);
+                        setSelectedUrgentIssue(null);
+                      }}
+                      className="bg-[#00AECD] text-white hover:bg-[#00AECD]/90"
+                    >
                       Close
                     </Button>
                   </div>

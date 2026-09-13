@@ -163,6 +163,7 @@ export interface StormAlert {
   photoUrl?: string | null;
   createdAt?: string | null;
   acknowledgedAt?: string | null;
+  acknowledgedByName?: string | null;
   emailStatus: StormAlertEmailStatus;
   emailAttempts: number;
   emailLastError?: string | null;

@@ -16,6 +16,7 @@ export interface StormAlert {
   photoUrl?: string | null;
   createdAt?: Date | null;
   acknowledgedAt?: Date | null;
+  acknowledgedByName?: string | null;
   emailStatus: StormAlertEmailStatus;
   emailAttempts: number;
   emailLastError?: string | null;

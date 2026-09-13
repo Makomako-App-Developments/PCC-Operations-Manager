@@ -45,3 +45,4 @@
 - [Photo cleanup integration test isolation](photo-cleanup-integration-test-isolation.md) — cleanup worker batch-count tests can become timing-sensitive in the full parallel API suite.
 - [Protected photo parents and report formats](protected-photo-parent-report-formats.md) — parent-linked files fail closed after parent loss; accepted report image types must match the PDF renderer.
 - [Container pnpm version pinning](container-pnpm-version-pinning.md) — pin container builds to the repository’s pnpm major; unpinned Corepack can select an incompatible release.
+- [Urgent issue acknowledgement](urgent-issue-acknowledgement.md) — opening a live Storm Patrol urgent issue acknowledges it; archived views remain read-only and failed writes remain visibly unacknowledged.

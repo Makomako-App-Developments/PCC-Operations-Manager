@@ -410,7 +410,15 @@ async function loadStormEventDetails(
       .where(eq(stormObservationsTable.eventId, event.id))
       .orderBy(desc(stormObservationsTable.createdAt))),
     executeWithCircuitBreaker(() => db.select().from(reactiveJobsTable).where(and(eq(reactiveJobsTable.stormEventId, event.id), eq(reactiveJobsTable.origin, "storm_patrol"))).orderBy(desc(reactiveJobsTable.createdAt))),
-    executeWithCircuitBreaker(() => db.select().from(stormAlertsTable).where(eq(stormAlertsTable.eventId, event.id)).orderBy(desc(stormAlertsTable.createdAt))),
+    executeWithCircuitBreaker(() => db
+      .select({
+        ...getTableColumns(stormAlertsTable),
+        acknowledgedByName: usersTable.name,
+      })
+      .from(stormAlertsTable)
+      .leftJoin(usersTable, eq(stormAlertsTable.acknowledgedById, usersTable.id))
+      .where(eq(stormAlertsTable.eventId, event.id))
+      .orderBy(desc(stormAlertsTable.createdAt))),
   ]);
   const reactiveJobIds = observations
     .map(observation => observation.reactiveJobId)
@@ -769,7 +777,13 @@ router.post("/storm-patrol/alerts", requireAuth, validateBody(z.object({ eventId
 });
 router.post("/storm-patrol/alerts/:id/acknowledge", requireAuth, requireRole("manager"), async (req, res) => {
   const [alert] = await executeWithCircuitBreaker(() => db.update(stormAlertsTable).set({ acknowledgedAt: new Date(), acknowledgedById: req.auth!.userId }).where(eq(stormAlertsTable.id, String(req.params.id))).returning());
-  if (!alert) { res.status(404).json({ error: "Alert not found" }); return; } res.json(alert);
+  if (!alert) { res.status(404).json({ error: "Alert not found" }); return; }
+  const [acknowledger] = await executeWithCircuitBreaker(() => db
+    .select({ name: usersTable.name })
+    .from(usersTable)
+    .where(eq(usersTable.id, req.auth!.userId))
+    .limit(1));
+  res.json({ ...alert, acknowledgedByName: acknowledger?.name ?? null });
 });
 router.get("/storm-patrol/alerts", requireAuth, requireRole("manager", "supervisor"), validateQuery(z.object({ eventId: z.string().uuid().optional() })), async (_req, res) => {
   const eventId = res.locals.query.eventId as string | undefined;

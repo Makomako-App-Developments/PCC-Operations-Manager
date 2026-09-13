@@ -1976,6 +1976,7 @@ components:
         photoUrl: { type: string, nullable: true }
         createdAt: { type: string, format: date-time, nullable: true }
         acknowledgedAt: { type: string, format: date-time, nullable: true }
+        acknowledgedByName: { type: string, nullable: true }
         emailStatus: { type: string, enum: [pending, sent, failed] }
         emailAttempts: { type: integer }
         emailLastError: { type: string, nullable: true }
