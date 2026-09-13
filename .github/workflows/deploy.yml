@@ -138,6 +138,46 @@ jobs:
           publish-profile: ${{ secrets.AZURE_API_PUBLISH_PROFILE }}
           images: ${{ secrets.AZURE_REGISTRY }}/${{ env.API_IMAGE }}:${{ github.sha }}
 
+      - name: Wait for deployed API readiness
+        env:
+          API_APP_NAME: ${{ secrets.AZURE_API_APP_NAME }}
+        run: |
+          endpoint="https://${API_APP_NAME}.azurewebsites.net/api/health/ready"
+          response_file=$(mktemp)
+          trap 'rm -f "$response_file"' EXIT
+
+          ready=false
+          for attempt in $(seq 1 30); do
+            : > "$response_file"
+            http_status=$(curl --silent --show-error \
+              --connect-timeout 10 \
+              --max-time 15 \
+              --output "$response_file" \
+              --write-out '%{http_code}' \
+              "$endpoint") || http_status="request_failed"
+
+            response_status=$(jq -r 'if type == "object" then (.status // "missing") else "invalid" end' \
+              "$response_file" 2>/dev/null || echo "invalid")
+            cb_state=$(jq -r 'if type == "object" then (.cbState // "missing") else "invalid" end' \
+              "$response_file" 2>/dev/null || echo "invalid")
+
+            if [ "$http_status" = "200" ] && [ "$response_status" = "ready" ]; then
+              echo "Deployed API is ready (HTTP $http_status, status=$response_status, cbState=$cb_state)."
+              ready=true
+              break
+            fi
+
+            echo "Readiness attempt $attempt/30 was not ready (HTTP $http_status, status=$response_status, cbState=$cb_state)."
+            if [ "$attempt" -lt 30 ]; then
+              sleep 10
+            fi
+          done
+
+          if [ "$ready" != true ]; then
+            echo "Timed out waiting for deployed API readiness (HTTP $http_status, status=$response_status, cbState=$cb_state)."
+            exit 1
+          fi
+
       - name: Deploy web to Azure App Service
         uses: azure/webapps-deploy@v3
         with:
