@@ -273,7 +273,8 @@ describe("Storm Patrol work package asset filters", () => {
     expect(within(dialog).getByText("Large tree blocking the culvert")).toBeVisible();
     expect(within(dialog).getByText("Storm Team")).toBeVisible();
     expect(within(dialog).getByText("Alex Crew")).toBeVisible();
-    expect(within(dialog).getByText("Email sent · 1 attempt")).toBeVisible();
+    expect(within(dialog).getByText("Email sent")).toBeVisible();
+    expect(within(dialog).queryByText(/attempt/)).not.toBeInTheDocument();
     expect(await within(dialog).findByText("Acknowledged at 01:20, 13 Sep 2026 by Cameron Walker")).toBeVisible();
     expect(within(dialog).queryByRole("button", { name: "Acknowledge" })).not.toBeInTheDocument();
 

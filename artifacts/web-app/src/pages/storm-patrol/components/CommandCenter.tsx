@@ -539,13 +539,11 @@ export default function CommandCenter({ data, readOnly = false, onBack }: Comman
                             <p className={`text-sm ${!alert.acknowledgedAt ? "text-orange-100" : "text-white/60"}`}>{alert.message}</p>
                             {alert.assetName && <p className="mt-1 text-xs font-medium text-white/45">{alert.assetName}</p>}
                           </div>
-                          <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold ${
-                            alert.acknowledgedAt
-                              ? "bg-green-500/10 text-green-300"
-                              : "bg-orange-500/20 text-orange-300"
-                          }`}>
-                            {alert.acknowledgedAt ? "Acknowledged" : "Unacknowledged"}
-                          </span>
+                          {!alert.acknowledgedAt && (
+                            <span className="shrink-0 rounded-full bg-orange-500/20 px-2 py-0.5 text-[10px] font-semibold text-orange-300">
+                              Unacknowledged
+                            </span>
+                          )}
                         </div>
                         {alert.acknowledgedAt && (
                           <p className="text-[10px] text-white/40 mt-1">
@@ -555,7 +553,7 @@ export default function CommandCenter({ data, readOnly = false, onBack }: Comman
                         )}
                         <div className="mt-2 flex items-center justify-between gap-2">
                           <p className={`text-[10px] ${alert.emailStatus === "sent" ? "text-green-400" : alert.emailStatus === "failed" ? "text-red-400" : "text-white/40"}`}>
-                            Email {alert.emailStatus}{alert.emailAttempts ? ` · ${alert.emailAttempts} attempt${alert.emailAttempts === 1 ? "" : "s"}` : ""}
+                            Email {alert.emailStatus}
                           </p>
                           {!readOnly && alert.emailStatus === "failed" && (
                             <Button
@@ -1199,7 +1197,6 @@ export default function CommandCenter({ data, readOnly = false, onBack }: Comman
                 <div className="flex flex-wrap items-center justify-between gap-3 border-t border-white/10 pt-4">
                   <p className={`text-xs ${selectedUrgentIssue.emailStatus === "sent" ? "text-green-400" : selectedUrgentIssue.emailStatus === "failed" ? "text-red-400" : "text-white/45"}`}>
                     Email {selectedUrgentIssue.emailStatus}
-                    {selectedUrgentIssue.emailAttempts ? ` · ${selectedUrgentIssue.emailAttempts} attempt${selectedUrgentIssue.emailAttempts === 1 ? "" : "s"}` : ""}
                   </p>
                   {selectedUrgentIssue.acknowledgedAt && (
                     <p className="text-xs text-green-300">
