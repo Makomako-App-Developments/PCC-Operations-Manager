@@ -1,4 +1,5 @@
 import { defineConfig, InputTransformerFn } from "orval";
+import { readFile, writeFile } from "node:fs/promises";
 import path from "path";
 
 const root = path.resolve(__dirname, "..", "..");
@@ -9,6 +10,35 @@ const outputRoot = process.env.API_CODEGEN_OUTPUT_ROOT
   : root;
 const apiClientReactSrc = path.resolve(outputRoot, "lib", "api-client-react", "src");
 const apiZodSrc = path.resolve(outputRoot, "lib", "api-zod", "src");
+
+const stripGeneratedWorkspaceExports = async () => {
+  for (const indexPath of [
+    path.resolve(apiClientReactSrc, "index.ts"),
+    path.resolve(apiClientReactSrc, "generated", "api.ts"),
+    path.resolve(apiClientReactSrc, "generated", "api.schemas.ts"),
+    path.resolve(apiZodSrc, "index.ts"),
+    path.resolve(apiZodSrc, "generated", "api.ts"),
+    path.resolve(apiZodSrc, "generated", "types", "index.ts"),
+  ]) {
+    try {
+      const contents = await readFile(indexPath, "utf8");
+      const cleaned = `${contents
+        .split(/\r?\n/)
+        .filter(
+          (line) =>
+            !/^export \* from '\.\/generated\/(?:api|api\.schemas|types)';$/.test(
+              line,
+            ) &&
+            line !== "export * from './getStormPatrolReportParams';",
+        )
+        .join("\n")
+        .trimEnd()}\n`;
+      if (cleaned !== contents) await writeFile(indexPath, cleaned);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    }
+  }
+};
 
 // Our exports make assumptions about the title of the API being "Api" (i.e. generated output is `api.ts`).
 const titleTransformer: InputTransformerFn = (config) => {
@@ -44,6 +74,9 @@ export default defineConfig({
         },
       },
     },
+    hooks: {
+      afterAllFilesWrite: stripGeneratedWorkspaceExports,
+    },
   },
   zod: {
     input: {
@@ -62,6 +95,7 @@ export default defineConfig({
       prettier: true,
       override: {
         zod: {
+          version: 3,
           coerce: {
             query: ['boolean', 'number', 'string'],
             param: ['boolean', 'number', 'string'],
@@ -69,6 +103,9 @@ export default defineConfig({
         },
         useDates: true,
       },
+    },
+    hooks: {
+      afterAllFilesWrite: stripGeneratedWorkspaceExports,
     },
   },
 });

@@ -1,0 +1,13 @@
+diff --git a/dist/config-CotJKggp.mjs b/dist/config-CotJKggp.mjs
+index 2b8e924e8675a140515083f5b277aa3e7e7a5b7a..5d0beacb027be2b0c57aa5b2a934d6fca6b0cb77 100644
+--- a/dist/config-CotJKggp.mjs
++++ b/dist/config-CotJKggp.mjs
+@@ -6,7 +6,7 @@ import { fetchUrls, parseJson, parseYaml, readFiles } from "@scalar/json-magic/b
+ import { upgrade, validate } from "@scalar/openapi-parser";
+ import fs, { access, readFile } from "node:fs/promises";
+ import { isNullish as isNullish$1, pick, unique } from "remeda";
+-import jsYaml from "js-yaml";
++import * as jsYaml from "js-yaml";
+ import * as mock from "@orval/mock";
+ import { dedupeStrictMockTypeDeclarations, generateFakerForSchemas, generateMockImports, getDefaultMockOptionsForType } from "@orval/mock";
+ import angular from "@orval/angular";
