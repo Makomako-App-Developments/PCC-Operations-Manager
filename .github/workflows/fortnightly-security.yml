@@ -1,0 +1,59 @@
+name: Fortnightly security check
+
+on:
+  schedule:
+    # GitHub uses UTC. This is Tuesday morning in New Zealand.
+    # The eligibility step below limits the weekly trigger to every second week.
+    - cron: "15 20 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: fortnightly-security
+  cancel-in-progress: false
+
+jobs:
+  dependency-audit:
+    name: Dependency vulnerability audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Decide whether this is an audit week
+        id: schedule
+        shell: bash
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            weeks_since_epoch=$(( $(date -u +%s) / 604800 ))
+            if (( weeks_since_epoch % 2 == 0 )); then
+              echo "run=true" >> "$GITHUB_OUTPUT"
+            else
+              echo "run=false" >> "$GITHUB_OUTPUT"
+              echo "This is the alternating off-week; no audit is due."
+            fi
+          fi
+
+      - name: Check out project
+        if: steps.schedule.outputs.run == 'true'
+        uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        if: steps.schedule.outputs.run == 'true'
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Set up Node.js
+        if: steps.schedule.outputs.run == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Check for high or critical dependency vulnerabilities
+        if: steps.schedule.outputs.run == 'true'
+        run: pnpm audit --audit-level high
