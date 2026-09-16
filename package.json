@@ -57,6 +57,8 @@
       "expo-server-sdk>undici": "7.29.0"
     },
     "patchedDependencies": {
+      "metro@0.83.3": "patches/metro@0.83.3.patch",
+      "metro@0.83.7": "patches/metro@0.83.7.patch",
       "orval@8.22.0": "patches/orval@8.22.0.patch"
     }
   },
