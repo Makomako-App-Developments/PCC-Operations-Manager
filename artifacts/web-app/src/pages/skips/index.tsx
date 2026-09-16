@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { format, parseISO } from "date-fns";
 import {
   CheckCircle2, XCircle, ChevronDown, ChevronUp,
-  Filter, Loader2, ClipboardCheck, SkipForward, CalendarDays,
+  Filter, Loader2, ClipboardCheck, SkipForward, CalendarDays, Check, X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -244,7 +244,23 @@ function SkipCard({
 }) {
   const [expanded, setExpanded]     = useState(false);
   const [reviewing, setReviewing]   = useState(false);
+  const [quickReviewing, setQuickReviewing] = useState<"accepted" | "rejected" | null>(null);
+  const { toast } = useToast();
+  const qc = useQueryClient();
   const reviewed = !!job.skipReviewedAt;
+
+  async function handleQuickReview(outcome: "accepted" | "rejected") {
+    setQuickReviewing(outcome);
+    try {
+      await submitReview(job.id, outcome, "");
+      toast({ title: outcome === "accepted" ? "Skip accepted" : "Skip rejected" });
+      await qc.invalidateQueries({ predicate: q => String((q.queryKey as any[])[0]).includes("jobs") });
+    } catch (e: any) {
+      toast({ title: "Error", description: e.message, variant: "destructive" });
+    } finally {
+      setQuickReviewing(null);
+    }
+  }
 
   return (
     <div className={`bg-white rounded-2xl border shadow-sm overflow-hidden ${reviewed ? "border-gray-100" : "border-amber-200"}`}>
@@ -286,14 +302,39 @@ function SkipCard({
         {/* Expand / action buttons */}
         <div className="flex flex-col items-end gap-2 flex-shrink-0">
           {!reviewed && !reviewing && (
-            <Button
-              size="sm"
-              variant="outline"
-              className="text-[11px] h-7 px-2.5"
-              onClick={() => { setReviewing(true); setExpanded(true); }}
-            >
-              Review
-            </Button>
+            <div className="flex items-center gap-1.5">
+              <button
+                onClick={() => handleQuickReview("accepted")}
+                disabled={quickReviewing !== null}
+                title="Accept excuse"
+                aria-label={`Accept excuse for ${assetName}`}
+                className="w-7 h-7 rounded-full flex items-center justify-center bg-green-50 hover:bg-green-100 text-green-600 transition-colors disabled:opacity-40"
+              >
+                {quickReviewing === "accepted"
+                  ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  : <Check className="w-3.5 h-3.5" />}
+              </button>
+              <button
+                onClick={() => handleQuickReview("rejected")}
+                disabled={quickReviewing !== null}
+                title="Reject excuse"
+                aria-label={`Reject excuse for ${assetName}`}
+                className="w-7 h-7 rounded-full flex items-center justify-center bg-red-50 hover:bg-red-100 text-red-500 transition-colors disabled:opacity-40"
+              >
+                {quickReviewing === "rejected"
+                  ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  : <X className="w-3.5 h-3.5" />}
+              </button>
+              <Button
+                size="sm"
+                variant="outline"
+                className="text-[11px] h-7 px-2.5"
+                onClick={() => { setReviewing(true); setExpanded(true); }}
+                disabled={quickReviewing !== null}
+              >
+                Review
+              </Button>
+            </div>
           )}
           {reviewed && !reviewing && (
             <Button
@@ -502,7 +543,8 @@ export default function SkipsPage() {
   const unreviewed = jobs.filter(j => !j.skipReviewedAt).length;
 
   return (
-    <div className="max-w-3xl mx-auto px-4 py-6 space-y-5">
+    <div className="flex-1 min-h-0 overflow-y-auto">
+      <div className="max-w-3xl mx-auto px-4 py-6 space-y-5">
       {/* Page header */}
       <div className="flex items-center justify-between">
         <div>
@@ -629,6 +671,7 @@ export default function SkipsPage() {
           </div>
         )}
       </section>
+      </div>
     </div>
   );
 }
