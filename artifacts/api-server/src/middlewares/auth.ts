@@ -173,7 +173,10 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
   try {
     const [user] = await executeWithCircuitBreaker(() =>
       db
-        .select({ sessionVersion: usersTable.sessionVersion })
+        .select({
+          sessionVersion: usersTable.sessionVersion,
+          teamId: usersTable.teamId,
+        })
         .from(usersTable)
         .where(eq(usersTable.id, payload.userId))
         .limit(1),
@@ -183,7 +186,10 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
       res.status(401).json({ error: "Invalid or expired token" });
       return;
     }
-    req.auth = payload;
+    req.auth = {
+      ...payload,
+      teamId: user.teamId,
+    };
     next();
   } catch (error) {
     next(error);

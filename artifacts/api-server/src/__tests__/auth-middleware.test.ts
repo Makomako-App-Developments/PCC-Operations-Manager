@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from "vitest";
 import type { Request, Response, NextFunction } from "express";
 
 const { sessionRows, selectMock } = vi.hoisted(() => ({
-  sessionRows: [{ sessionVersion: 0 }],
+  sessionRows: [{ sessionVersion: 0, teamId: null as string | null }],
   selectMock: vi.fn(() => ({
     from: () => ({
       where: () => ({
@@ -20,6 +20,7 @@ vi.mock("@workspace/db", () => ({
   usersTable: {
     id: {},
     sessionVersion: {},
+    teamId: {},
   },
 }));
 
@@ -32,6 +33,7 @@ vi.mock("jsonwebtoken", () => ({
   default: {
     verify: vi.fn((token: string, _secret: string) => {
       if (token === "valid-token") return { userId: "user-1", role: "manager", teamId: null, sessionVersion: 0, tokenType: "access" };
+      if (token === "worker-token") return { userId: "worker-1", role: "field_worker", teamId: "11111111-1111-4111-8111-111111111111", sessionVersion: 0, tokenType: "access" };
       if (token === "refresh-token") return { userId: "user-1", role: "manager", teamId: null, sessionVersion: 0, tokenType: "refresh" };
       if (token === "legacy-token") return { userId: "user-1", role: "manager", teamId: null, tokenType: "access" };
       if (token === "string-session-version") return { userId: "user-1", role: "manager", teamId: null, sessionVersion: "0", tokenType: "access" };
@@ -182,7 +184,7 @@ describe("requireAuth middleware", () => {
 
   it("rejects an access token after its session version is revoked", async () => {
     const { requireAuth } = await import("../middlewares/auth");
-    sessionRows[0] = { sessionVersion: 1 };
+    sessionRows[0] = { sessionVersion: 1, teamId: null };
     const req = mockReq("Bearer valid-token");
     const res = mockRes();
     const n = vi.fn() as NextFunction;
@@ -191,7 +193,38 @@ describe("requireAuth middleware", () => {
 
     expect(n).not.toHaveBeenCalled();
     expect(res.status).toHaveBeenCalledWith(401);
-    sessionRows[0] = { sessionVersion: 0 };
+    sessionRows[0] = { sessionVersion: 0, teamId: null };
+  });
+
+  it("uses the current team assignment for an existing worker token after removal and reassignment", async () => {
+    const { requireAuth } = await import("../middlewares/auth");
+    const oldTeamId = "11111111-1111-4111-8111-111111111111";
+    const newTeamId = "22222222-2222-4222-8222-222222222222";
+
+    sessionRows[0] = { sessionVersion: 0, teamId: null };
+    const removedReq = mockReq("Bearer worker-token");
+    const removedNext = vi.fn() as NextFunction;
+    await requireAuth(removedReq, mockRes(), removedNext);
+
+    expect(removedNext).toHaveBeenCalledOnce();
+    expect(removedReq.auth).toMatchObject({
+      role: "field_worker",
+      teamId: null,
+    });
+    expect(removedReq.auth?.teamId).not.toBe(oldTeamId);
+
+    sessionRows[0] = { sessionVersion: 0, teamId: newTeamId };
+    const reassignedReq = mockReq("Bearer worker-token");
+    const reassignedNext = vi.fn() as NextFunction;
+    await requireAuth(reassignedReq, mockRes(), reassignedNext);
+
+    expect(reassignedNext).toHaveBeenCalledOnce();
+    expect(reassignedReq.auth).toMatchObject({
+      role: "field_worker",
+      teamId: newTeamId,
+    });
+
+    sessionRows[0] = { sessionVersion: 0, teamId: null };
   });
 });
 
