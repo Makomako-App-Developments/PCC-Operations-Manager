@@ -418,7 +418,10 @@ export default function StormPatrolScreen() {
       slips: selected.phase === "post" ? { present: slips, description: slipDescription, hasPhoto: photos.some(p => p.purpose === "new_slip") } : undefined,
     });
     if (missing.length > 0) {
-      Alert.alert("Complete these items", missing.map(item => `• ${item}`).join("\n"));
+      Alert.alert(
+        "Job cannot be completed",
+        `Fill out the following required items:\n\n${missing.map(item => `• ${item}`).join("\n")}`,
+      );
       return;
     }
     let stagedPhotos: Array<{ source: DurableAttachment; purpose: StormPhotoPurpose }> = [];
@@ -687,7 +690,7 @@ export default function StormPatrolScreen() {
       {(selected.photos ?? []).filter(photo => photo.purpose === "after" && !removedSavedPhotoIds.has(photo.id)).map(photo => <PhotoThumbnail key={photo.id} uri={resolveSavedPhotoUri(photo.blobUrl)} authenticated token={token} label="after" testID={`remove-saved-photo-${photo.id}`} onRemove={() => removeSavedPhoto(photo.id)} colors={colors}/>)}
       {photos.filter(photo => photo.purpose === "after").map((photo, i) => <PhotoThumbnail key={`${photo.source.uri}-${i}`} uri={photo.source.uri} label="after" testID={`remove-after-photo-${i}`} onRemove={() => removePendingPhoto(photo)} colors={colors}/>)}
     </View>}
-    <Button title={photoOperationInProgress ? "Saving…" : isCompletedJob(selected) ? "Save changes" : dangerous ? "Report dangerous site" : "Complete patrol"} icon="check-circle" onPress={() => { void runPhotoOperation(complete); }} color={dangerous ? colors.destructive : colors.success}/>
+    <Button testID="storm-job-complete" title={photoOperationInProgress ? "Saving…" : isCompletedJob(selected) ? "Save changes" : dangerous ? "Report dangerous site" : "Complete patrol"} icon="check-circle" onPress={() => { void runPhotoOperation(complete); }} color={dangerous ? colors.destructive : colors.success}/>
     <View style={[styles.sectionDivider, { backgroundColor: colors.border }]}/>
     <View style={[styles.urgentPanel, { backgroundColor: colors.destructive }]}>
       <Pressable

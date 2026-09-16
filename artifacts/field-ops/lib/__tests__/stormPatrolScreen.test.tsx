@@ -29,6 +29,7 @@ const mocks = vi.hoisted(() => ({
     refetch: vi.fn(),
   },
   customFetch: vi.fn(),
+  completionRequirements: vi.fn(),
 }));
 
 const failedQueue = [
@@ -176,7 +177,7 @@ vi.mock("@/lib/stormPatrolQueue", () => ({
   }),
   enqueueStormItems: mocks.enqueueStormItems,
   flushStormQueue: mocks.flushStormQueue,
-  getStormPatrolCompletionRequirements: vi.fn(() => []),
+  getStormPatrolCompletionRequirements: mocks.completionRequirements,
   isUnrecoverableQueuedStormPhoto: (item: { kind: string; lastError?: string }) =>
     item.kind === "photo" && Boolean(item.lastError?.includes("Photo is required")),
   loadStormQueue: mocks.loadStormQueue,
@@ -227,6 +228,7 @@ beforeEach(() => {
   mocks.currentResult.isLoading = false;
   mocks.currentResult.data.data.jobs = [];
   mocks.customFetch.mockReset().mockResolvedValue(new Blob(["photo"], { type: "image/jpeg" }));
+  mocks.completionRequirements.mockReset().mockReturnValue([]);
   mocks.alert.mockReset();
   mocks.claimMutate.mockReset();
   mocks.deletePhotoMutate.mockReset();
@@ -258,6 +260,41 @@ afterEach(() => {
   root = undefined;
   document.body.innerHTML = "";
   vi.clearAllMocks();
+});
+
+describe("Storm Patrol completion requirements", () => {
+  it("shows every missing required item when a worker tries to complete a job", async () => {
+    mocks.currentResult.data.data.jobs = [{
+      id: "incomplete-job",
+      eventId: "event-one",
+      assetId: "asset-one",
+      teamId: "team-one",
+      assetName: "Blocked culvert",
+      phase: "pre",
+      status: "in_progress",
+      routeOrder: 1,
+      startedAt: new Date().toISOString(),
+      photos: [],
+    }] as any;
+    mocks.completionRequirements.mockReturnValue([
+      "Add a before photo.",
+      "Select at least one Work completed option.",
+      "Add an after photo.",
+    ]);
+
+    await renderStormScreen();
+    act(() => (document.querySelector('[data-testid="storm-job-incomplete-job"]') as HTMLButtonElement).click());
+    await settle();
+    act(() => (document.querySelector('[data-testid="storm-job-complete"]') as HTMLButtonElement).click());
+    await settle();
+
+    expect(mocks.alert).toHaveBeenCalledWith(
+      "Job cannot be completed",
+      "Fill out the following required items:\n\n• Add a before photo.\n• Select at least one Work completed option.\n• Add an after photo.",
+    );
+    expect(mocks.requestLocation).not.toHaveBeenCalled();
+    expect(mocks.enqueueStormItems).not.toHaveBeenCalled();
+  });
 });
 
 describe("Storm Patrol blocked photo recovery", () => {
