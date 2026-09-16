@@ -546,6 +546,9 @@ export default function SkipsPage() {
   const [cleanupOpen, setCleanupOpen] = useState(false);
   const [cleanupConfirmation, setCleanupConfirmation] = useState("");
   const [cleanupBusy, setCleanupBusy] = useState(false);
+  const [awaitingOpen, setAwaitingOpen] = useState(true);
+  const [draftsOpen, setDraftsOpen] = useState(true);
+  const [reviewedOpen, setReviewedOpen] = useState(true);
 
   const { data: teamsData } = useListTeams({ query: { queryKey: getListTeamsQueryKey() } });
 
@@ -585,7 +588,9 @@ export default function SkipsPage() {
 
   const jobs   = skipsRaw?.data ?? [];
   const drafts = draftsRaw?.data ?? [];
-  const unreviewed = jobs.filter(j => !j.skipReviewedAt).length;
+  const unreviewedJobs = jobs.filter(j => !j.skipReviewedAt);
+  const reviewedJobs = jobs.filter(j => j.skipReviewedAt);
+  const unreviewed = unreviewedJobs.length;
   const cleanupPhrase = `DELETE ${cleanupCount} UNREVIEWED SKIPS`;
 
   async function handleCleanup() {
@@ -719,87 +724,118 @@ export default function SkipsPage() {
         </Select>
       </div>
 
-      {/* List */}
+      {/* Awaiting review */}
       {isLoading ? (
         <div className="flex justify-center py-16">
           <Loader2 className="w-6 h-6 animate-spin text-gray-300" />
         </div>
-      ) : jobs.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-16 text-gray-400">
-          <SkipForward className="w-8 h-8 mb-2 opacity-30" />
+      ) : unreviewedJobs.length > 0 ? (
+        <section className="space-y-3">
+          <button
+            type="button"
+            className="flex w-full items-center justify-between rounded-lg px-1 py-1 text-left"
+            aria-expanded={awaitingOpen}
+            onClick={() => setAwaitingOpen(open => !open)}
+          >
+            <span className="text-[10px] font-bold uppercase tracking-widest text-amber-500">
+              Awaiting review ({unreviewedJobs.length})
+            </span>
+            {awaitingOpen
+              ? <ChevronUp className="h-4 w-4 text-amber-500" />
+              : <ChevronDown className="h-4 w-4 text-amber-500" />}
+          </button>
+          {awaitingOpen && (
+            <div className="space-y-3">
+              {unreviewedJobs.map(j => (
+                <SkipCard
+                  key={j.id}
+                  job={j}
+                  assetName={assetName.get(j.assetId) ?? "Unknown site"}
+                  teamName={j.teamId ? (teamName.get(j.teamId) ?? "") : ""}
+                />
+              ))}
+            </div>
+          )}
+        </section>
+      ) : reviewedJobs.length === 0 ? (
+        <div className="flex flex-col items-center justify-center py-10 text-gray-400">
+          <SkipForward className="mb-2 h-8 w-8 opacity-30" />
           <p className="text-sm font-medium">No skipped jobs found</p>
-          <p className="text-[11px] mt-1">Try adjusting the filters above</p>
+          <p className="mt-1 text-[11px]">Try adjusting the filters above</p>
         </div>
-      ) : (
-        <div className="space-y-3">
-          {/* Unreviewed group */}
-          {jobs.filter(j => !j.skipReviewedAt).length > 0 && (
-            <>
-              <p className="text-[10px] font-bold text-amber-500 uppercase tracking-widest px-1">
-                Awaiting review ({jobs.filter(j => !j.skipReviewedAt).length})
-              </p>
-              {jobs
-                .filter(j => !j.skipReviewedAt)
-                .map(j => (
-                  <SkipCard
-                    key={j.id}
-                    job={j}
-                    assetName={assetName.get(j.assetId) ?? "Unknown site"}
-                    teamName={j.teamId ? (teamName.get(j.teamId) ?? "") : ""}
-                  />
-                ))}
-            </>
-          )}
-
-          {/* Reviewed group */}
-          {jobs.filter(j => j.skipReviewedAt).length > 0 && (
-            <>
-              <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest px-1 mt-4">
-                Reviewed ({jobs.filter(j => j.skipReviewedAt).length})
-              </p>
-              {jobs
-                .filter(j => j.skipReviewedAt)
-                .map(j => (
-                  <SkipCard
-                    key={j.id}
-                    job={j}
-                    assetName={assetName.get(j.assetId) ?? "Unknown site"}
-                    teamName={j.teamId ? (teamName.get(j.teamId) ?? "") : ""}
-                  />
-                ))}
-            </>
-          )}
-        </div>
-      )}
+      ) : null}
 
       {/* Accepted drafts are intentionally separate from skipped-history rows. */}
-      <section className="pt-3 space-y-3">
-        <div className="flex items-center justify-between px-1">
+      <section className="space-y-3 pt-3">
+        <button
+          type="button"
+          className="flex w-full items-center justify-between rounded-lg px-1 py-1 text-left"
+          aria-expanded={draftsOpen}
+          onClick={() => setDraftsOpen(open => !open)}
+        >
           <div>
             <h2 className="text-sm font-bold" style={{ color: NAVY }}>Draft work awaiting placement</h2>
             <p className="text-[11px] text-gray-400">Accepted skips stay out of worker schedules until deliberately placed.</p>
           </div>
-          <Badge variant="secondary" className="text-xs">{drafts.length}</Badge>
-        </div>
-        {draftsLoading ? (
-          <div className="flex justify-center py-6"><Loader2 className="h-5 w-5 animate-spin text-gray-300" /></div>
-        ) : drafts.length === 0 ? (
-          <div className="rounded-2xl border border-dashed border-gray-200 py-7 text-center text-xs text-gray-400">
-            No accepted skips are waiting for placement.
-          </div>
-        ) : (
-          <div className="space-y-3">
-            {drafts.map(draft => (
-              <DraftCard
-                key={draft.id}
-                draft={draft}
-                teams={teamsData ?? []}
-                teamName={teamName}
-              />
-            ))}
-          </div>
+          <span className="flex items-center gap-2">
+            <Badge variant="secondary" className="text-xs">{drafts.length}</Badge>
+            {draftsOpen
+              ? <ChevronUp className="h-4 w-4 text-gray-500" />
+              : <ChevronDown className="h-4 w-4 text-gray-500" />}
+          </span>
+        </button>
+        {draftsOpen && (
+          draftsLoading ? (
+            <div className="flex justify-center py-6"><Loader2 className="h-5 w-5 animate-spin text-gray-300" /></div>
+          ) : drafts.length === 0 ? (
+            <div className="rounded-2xl border border-dashed border-gray-200 py-7 text-center text-xs text-gray-400">
+              No accepted skips are waiting for placement.
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {drafts.map(draft => (
+                <DraftCard
+                  key={draft.id}
+                  draft={draft}
+                  teams={teamsData ?? []}
+                  teamName={teamName}
+                />
+              ))}
+            </div>
+          )
         )}
       </section>
+
+      {/* Reviewed skips deliberately follow drafts so active placement work stays prominent. */}
+      {!isLoading && reviewedJobs.length > 0 && (
+        <section className="space-y-3 pt-3">
+          <button
+            type="button"
+            className="flex w-full items-center justify-between rounded-lg px-1 py-1 text-left"
+            aria-expanded={reviewedOpen}
+            onClick={() => setReviewedOpen(open => !open)}
+          >
+            <span className="text-[10px] font-bold uppercase tracking-widest text-gray-400">
+              Reviewed ({reviewedJobs.length})
+            </span>
+            {reviewedOpen
+              ? <ChevronUp className="h-4 w-4 text-gray-400" />
+              : <ChevronDown className="h-4 w-4 text-gray-400" />}
+          </button>
+          {reviewedOpen && (
+            <div className="space-y-3">
+              {reviewedJobs.map(j => (
+                <SkipCard
+                  key={j.id}
+                  job={j}
+                  assetName={assetName.get(j.assetId) ?? "Unknown site"}
+                  teamName={j.teamId ? (teamName.get(j.teamId) ?? "") : ""}
+                />
+              ))}
+            </div>
+          )}
+        </section>
+      )}
       </div>
     </div>
   );
