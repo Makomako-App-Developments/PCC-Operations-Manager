@@ -175,6 +175,7 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
       db
         .select({
           sessionVersion: usersTable.sessionVersion,
+          role: usersTable.role,
           teamId: usersTable.teamId,
         })
         .from(usersTable)
@@ -188,6 +189,7 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
     }
     req.auth = {
       ...payload,
+      role: user.role,
       teamId: user.teamId,
     };
     next();

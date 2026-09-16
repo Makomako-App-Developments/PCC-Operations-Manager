@@ -2,7 +2,11 @@ import { describe, it, expect, vi } from "vitest";
 import type { Request, Response, NextFunction } from "express";
 
 const { sessionRows, selectMock } = vi.hoisted(() => ({
-  sessionRows: [{ sessionVersion: 0, teamId: null as string | null }],
+  sessionRows: [{
+    sessionVersion: 0,
+    role: "manager",
+    teamId: null as string | null,
+  }],
   selectMock: vi.fn(() => ({
     from: () => ({
       where: () => ({
@@ -20,6 +24,7 @@ vi.mock("@workspace/db", () => ({
   usersTable: {
     id: {},
     sessionVersion: {},
+    role: {},
     teamId: {},
   },
 }));
@@ -184,7 +189,7 @@ describe("requireAuth middleware", () => {
 
   it("rejects an access token after its session version is revoked", async () => {
     const { requireAuth } = await import("../middlewares/auth");
-    sessionRows[0] = { sessionVersion: 1, teamId: null };
+    sessionRows[0] = { sessionVersion: 1, role: "manager", teamId: null };
     const req = mockReq("Bearer valid-token");
     const res = mockRes();
     const n = vi.fn() as NextFunction;
@@ -193,7 +198,43 @@ describe("requireAuth middleware", () => {
 
     expect(n).not.toHaveBeenCalled();
     expect(res.status).toHaveBeenCalledWith(401);
-    sessionRows[0] = { sessionVersion: 0, teamId: null };
+    sessionRows[0] = { sessionVersion: 0, role: "manager", teamId: null };
+  });
+
+  it("uses the current database role when an existing privileged token is demoted", async () => {
+    const { requireAuth, requireRole } = await import("../middlewares/auth");
+    sessionRows[0] = { sessionVersion: 0, role: "field_worker", teamId: null };
+    const req = mockReq("Bearer valid-token");
+    const authNext = vi.fn() as NextFunction;
+
+    await requireAuth(req, mockRes(), authNext);
+
+    expect(authNext).toHaveBeenCalledOnce();
+    expect(req.auth?.role).toBe("field_worker");
+
+    const roleRes = mockRes();
+    const roleNext = vi.fn() as NextFunction;
+    requireRole("manager")(req, roleRes, roleNext);
+    expect(roleNext).not.toHaveBeenCalled();
+    expect(roleRes.status).toHaveBeenCalledWith(403);
+
+    sessionRows[0] = { sessionVersion: 0, role: "manager", teamId: null };
+  });
+
+  it("uses the current database role when an existing token is promoted", async () => {
+    const { requireAuth, requireRole } = await import("../middlewares/auth");
+    sessionRows[0] = { sessionVersion: 0, role: "manager", teamId: null };
+    const req = mockReq("Bearer worker-token");
+    const authNext = vi.fn() as NextFunction;
+
+    await requireAuth(req, mockRes(), authNext);
+
+    expect(authNext).toHaveBeenCalledOnce();
+    expect(req.auth?.role).toBe("manager");
+
+    const roleNext = vi.fn() as NextFunction;
+    requireRole("manager")(req, mockRes(), roleNext);
+    expect(roleNext).toHaveBeenCalledOnce();
   });
 
   it("uses the current team assignment for an existing worker token after removal and reassignment", async () => {
@@ -201,7 +242,7 @@ describe("requireAuth middleware", () => {
     const oldTeamId = "11111111-1111-4111-8111-111111111111";
     const newTeamId = "22222222-2222-4222-8222-222222222222";
 
-    sessionRows[0] = { sessionVersion: 0, teamId: null };
+    sessionRows[0] = { sessionVersion: 0, role: "field_worker", teamId: null };
     const removedReq = mockReq("Bearer worker-token");
     const removedNext = vi.fn() as NextFunction;
     await requireAuth(removedReq, mockRes(), removedNext);
@@ -213,7 +254,7 @@ describe("requireAuth middleware", () => {
     });
     expect(removedReq.auth?.teamId).not.toBe(oldTeamId);
 
-    sessionRows[0] = { sessionVersion: 0, teamId: newTeamId };
+    sessionRows[0] = { sessionVersion: 0, role: "field_worker", teamId: newTeamId };
     const reassignedReq = mockReq("Bearer worker-token");
     const reassignedNext = vi.fn() as NextFunction;
     await requireAuth(reassignedReq, mockRes(), reassignedNext);
@@ -224,7 +265,7 @@ describe("requireAuth middleware", () => {
       teamId: newTeamId,
     });
 
-    sessionRows[0] = { sessionVersion: 0, teamId: null };
+    sessionRows[0] = { sessionVersion: 0, role: "manager", teamId: null };
   });
 });
 
