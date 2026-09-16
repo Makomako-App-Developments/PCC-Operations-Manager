@@ -1,6 +1,6 @@
 import { Router } from "express";
 import path from "path";
-import { db, executeWithCircuitBreaker, jobsTable, reactiveJobsTable, insertJobSchema, insertReactiveJobSchema, assetsTable, teamsTable, usersTable, jobTeamCompletionsTable, jobTaskSkipReasonsTable, infillJobsTable, infillOrdersTable, mulchingRecordsTable, jobPhotosTable, auditLogTable, auditQuotaItemsTable, stormJobsTable, stormEventsTable, stormCheckResultsTable, stormPhotosTable } from "@workspace/db";
+import { db, executeWithCircuitBreaker, jobsTable, reactiveJobsTable, insertJobSchema, insertReactiveJobSchema, assetsTable, teamsTable, usersTable, jobTeamCompletionsTable, jobTaskSkipReasonsTable, infillJobsTable, infillOrdersTable, mulchingRecordsTable, jobPhotosTable, auditLogTable, auditQuotaItemsTable, stormJobsTable, stormEventsTable, stormCheckResultsTable, stormPhotosTable, teamMembersTable, teamAvailabilityTable } from "@workspace/db";
 import { eq, and, inArray, notInArray, or, isNull, gte, lte, ilike, desc, sql } from "drizzle-orm";
 import { z } from "zod";
 import { z as zV4 } from "zod/v4";
@@ -1816,14 +1816,63 @@ router.post("/jobs/:id/skip-review", requireAuth, requireRole("administrator", "
 const placeDraftSchema = z.object({
   teamId:        z.string().uuid(),
   scheduledDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-  force:         z.boolean().default(false),
+  pushForward:   z.boolean().default(false),
 });
+
+function nextWorkingDate(date: string, nonWorkingDays: Set<string>): string {
+  const next = new Date(`${date}T12:00:00Z`);
+  do {
+    next.setUTCDate(next.getUTCDate() + 1);
+  } while (
+    next.getUTCDay() === 0
+    || next.getUTCDay() === 6
+    || nonWorkingDays.has(next.toISOString().slice(0, 10))
+  );
+  return next.toISOString().slice(0, 10);
+}
+
+async function draftPlacementNonWorkingDays(teamId: string, fromDate: string): Promise<Set<string>> {
+  const until = new Date(`${fromDate}T12:00:00Z`);
+  until.setUTCDate(until.getUTCDate() + 60);
+  const toDate = until.toISOString().slice(0, 10);
+  const members = await executeWithCircuitBreaker(() => db
+    .select({ personName: teamMembersTable.personName })
+    .from(teamMembersTable)
+    .where(eq(teamMembersTable.teamId, teamId)));
+  const names = members.map(member => member.personName).filter((name): name is string => Boolean(name));
+  if (names.length === 0) return new Set();
+  const rows = await executeWithCircuitBreaker(() => db
+    .select()
+    .from(teamAvailabilityTable)
+    .where(and(
+      gte(teamAvailabilityTable.date, fromDate),
+      lte(teamAvailabilityTable.date, toDate),
+      inArray(teamAvailabilityTable.personName, names),
+    )));
+  const absences = new Map<string, Map<string, number>>();
+  for (const row of rows) {
+    if (row.status === "available") continue;
+    const byPerson = absences.get(row.date) ?? new Map<string, number>();
+    byPerson.set(row.personName, (byPerson.get(row.personName) ?? 0) + 1);
+    absences.set(row.date, byPerson);
+  }
+  return new Set([...absences].flatMap(([date, byPerson]) =>
+    names.every(name => (byPerson.get(name) ?? 0) >= 5) ? [date] : [],
+  ));
+}
+
+class DraftPlacementRaceError extends Error {}
+class DraftPushError extends Error {
+  constructor(readonly conflict: Record<string, unknown>) {
+    super("Not enough eligible route-tail maintenance could be moved safely");
+  }
+}
 
 // POST /api/jobs/:id/place-draft — manager deliberately returns an accepted
 // skip to a live schedule. Only a draft can make this one-way transition.
 router.post("/jobs/:id/place-draft", requireAuth, requireRole("administrator", "manager"), validateBody(placeDraftSchema), async (req, res) => {
   const id = String(req.params.id);
-  const { teamId, scheduledDate, force } = res.locals.body as z.infer<typeof placeDraftSchema>;
+  const { teamId, scheduledDate, pushForward } = res.locals.body as z.infer<typeof placeDraftSchema>;
 
   const [draft] = await executeWithCircuitBreaker(() => db
     .select()
@@ -1843,65 +1892,150 @@ router.post("/jobs/:id/place-draft", requireAuth, requireRole("administrator", "
 
   const now = new Date();
   let placed: typeof draft | undefined;
+  const [draftAsset] = pushForward
+    ? await executeWithCircuitBreaker(() => db
+      .select({ routeOrder: assetsTable.routeOrder, name: assetsTable.name })
+      .from(assetsTable)
+      .where(eq(assetsTable.id, draft.assetId))
+      .limit(1))
+    : [];
+  const insertionRouteOrder = draftAsset?.routeOrder ?? null;
+  const insertionAssetName = draftAsset?.name ?? null;
+  const nonWorkingDays = pushForward
+    ? await draftPlacementNonWorkingDays(teamId, scheduledDate)
+    : new Set<string>();
+  let newJobMins = draft.estimatedTimeMins ?? 0;
+  if (!newJobMins) {
+    const [asset] = await executeWithCircuitBreaker(() => db
+      .select({ serviceTimeMins: assetsTable.serviceTimeMins })
+      .from(assetsTable)
+      .where(eq(assetsTable.id, draft.assetId))
+      .limit(1));
+    newJobMins = asset?.serviceTimeMins ?? 0;
+  }
 
-  if (!force) {
-    let newJobMins = draft.estimatedTimeMins ?? 0;
-    if (!newJobMins) {
-      const [asset] = await executeWithCircuitBreaker(() => db
-        .select({ serviceTimeMins: assetsTable.serviceTimeMins })
-        .from(assetsTable)
-        .where(eq(assetsTable.id, draft.assetId))
-        .limit(1));
-      newJobMins = asset?.serviceTimeMins ?? 0;
-    }
-
-    if (newJobMins > 0) {
-      const result = await executeWithCircuitBreaker(() => db.transaction(async tx => {
-        // Serialize capacity decisions for a team/day. The lock lasts through
-        // the re-check and update, so two drafts cannot both consume the same
-        // remaining minutes unless the manager explicitly forces placement.
-        await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${teamId} || ':' || ${scheduledDate}))`);
-        const conflict = await checkDayCapacity(teamId, scheduledDate, newJobMins, tx as unknown as typeof db);
-        if (conflict) return { conflict };
-        const [updated] = await tx
-          .update(jobsTable)
-          .set({
-            status: "pending",
-            teamId,
-            scheduledDate,
-            isAllTeams: false,
-            updatedAt: now,
-          })
-          .where(and(eq(jobsTable.id, id), eq(jobsTable.status, "draft")))
-          .returning();
-        return { placed: updated };
-      }));
-
-      if (result.conflict) {
-        if (!result.conflict.capacityDataReliable) {
-          res.status(503).json({ error: "Capacity data is unreliable; placement has been blocked", capacity: result.conflict });
-          return;
-        }
-        res.status(409).json({ capacityConflict: true, capacity: result.conflict });
-        return;
+  let result: { placed?: typeof draft; moved: string[]; movedToDate?: string; conflict?: Awaited<ReturnType<typeof checkDayCapacity>> };
+  try {
+    result = await executeWithCircuitBreaker(() => db.transaction(async tx => {
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${teamId} || ':' || ${scheduledDate}))`);
+      const conflict = newJobMins > 0
+        ? await checkDayCapacity(teamId, scheduledDate, newJobMins, tx as unknown as typeof db)
+        : null;
+      if (conflict && !conflict.capacityDataReliable) return { conflict, moved: [] as string[] };
+      if (conflict && !pushForward) return { conflict, moved: [] as string[] };
+      if (conflict && insertionAssetName === null) {
+        throw new DraftPushError({ ...conflict, insertionPositionUnavailable: true });
       }
-      placed = result.placed;
+
+      // Claim the one-way draft transition before moving anything. Throwing on
+      // a concurrent winner rolls back both this update and every later move.
+      const [updated] = await tx
+        .update(jobsTable)
+        .set({ status: "pending", teamId, scheduledDate, isAllTeams: false, updatedAt: now })
+        .where(and(eq(jobsTable.id, id), eq(jobsTable.status, "draft")))
+        .returning();
+      if (!updated) throw new DraftPlacementRaceError();
+
+      const moved: string[] = [];
+      let movedToDate: string | undefined;
+      if (conflict) {
+        let currentDate = scheduledDate;
+        let minutesToFree = conflict.shortfallMins;
+        for (let iteration = 0; iteration < 14 && minutesToFree > 0; iteration++) {
+          const nextDate = nextWorkingDate(currentDate, nonWorkingDays);
+          // Lock both sides in chronological order before selecting or moving,
+          // preventing concurrent placement on a receiving day.
+          await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${teamId} || ':' || ${nextDate}))`);
+          const candidates = await tx
+            .select({
+              id: jobsTable.id,
+              routeOrder: assetsTable.routeOrder,
+              assetName: assetsTable.name,
+              estimatedTimeMins: jobsTable.estimatedTimeMins,
+              serviceTimeMins: assetsTable.serviceTimeMins,
+            })
+            .from(jobsTable)
+            .leftJoin(assetsTable, eq(jobsTable.assetId, assetsTable.id))
+            .where(and(
+              eq(jobsTable.teamId, teamId),
+              eq(jobsTable.scheduledDate, currentDate),
+              eq(jobsTable.status, "pending"),
+              eq(jobsTable.jobType, "scheduled"),
+              isNull(jobsTable.draftOriginalScheduledDate),
+            ))
+            .orderBy(sql`${assetsTable.routeOrder} DESC NULLS FIRST`, sql`${assetsTable.name} DESC`);
+
+          const eligibleCandidates = iteration === 0
+            ? candidates.filter(candidate => {
+              if (insertionRouteOrder === null) {
+                return candidate.routeOrder === null && candidate.assetName > insertionAssetName!;
+              }
+              if (candidate.routeOrder === null) return true;
+              return candidate.routeOrder > insertionRouteOrder
+                || (candidate.routeOrder === insertionRouteOrder && candidate.assetName > insertionAssetName!);
+            })
+            : candidates;
+          const toMove: string[] = [];
+          let freed = 0;
+          for (const candidate of eligibleCandidates) {
+            if (freed >= minutesToFree) break;
+            toMove.push(candidate.id);
+            freed += candidate.estimatedTimeMins ?? candidate.serviceTimeMins ?? 0;
+          }
+          if (freed < minutesToFree) {
+            throw new DraftPushError({ ...conflict, date: currentDate, insufficientEligibleMins: freed });
+          }
+          await tx.update(jobsTable)
+            .set({ scheduledDate: nextDate, updatedAt: now })
+            .where(and(
+              inArray(jobsTable.id, toMove),
+              eq(jobsTable.status, "pending"),
+              eq(jobsTable.jobType, "scheduled"),
+              isNull(jobsTable.draftOriginalScheduledDate),
+            ));
+          moved.push(...toMove);
+          movedToDate = nextDate;
+
+          const destinationConflict = await checkDayCapacity(
+            teamId,
+            nextDate,
+            0,
+            tx as unknown as typeof db,
+          );
+          if (!destinationConflict) break;
+          if (!destinationConflict.capacityDataReliable) throw new DraftPushError(destinationConflict as unknown as Record<string, unknown>);
+          currentDate = nextDate;
+          minutesToFree = destinationConflict.shortfallMins;
+          if (iteration === 13) throw new DraftPushError({ ...destinationConflict, cascadeLimitReached: true });
+        }
+      }
+      return { placed: updated, moved, movedToDate };
+    }));
+  } catch (error) {
+    if (error instanceof DraftPlacementRaceError) {
+      res.status(409).json({ error: "Job is no longer awaiting draft placement" });
+      return;
     }
+    if (error instanceof DraftPushError) {
+      res.status(409).json({ capacityConflict: true, capacity: error.conflict, error: error.message });
+      return;
+    }
+    throw error;
   }
 
-  if (!placed) {
-    [placed] = await executeWithCircuitBreaker(() => db
-      .update(jobsTable)
-      .set({
-        status: "pending",
-        teamId,
-        scheduledDate,
-        isAllTeams: false,
-        updatedAt: now,
-      })
-      .where(and(eq(jobsTable.id, id), eq(jobsTable.status, "draft")))
-      .returning());
+  if (result.conflict) {
+    if (!result.conflict.capacityDataReliable) {
+      res.status(503).json({ error: "Capacity data is unreliable; placement has been blocked", capacity: result.conflict });
+      return;
+    }
+    res.status(409).json({
+      capacityConflict: true,
+      capacity: result.conflict,
+      error: "Not enough eligible route-tail maintenance could be moved",
+    });
+    return;
   }
+  placed = result.placed;
 
   if (!placed) {
     res.status(409).json({ error: "Job is no longer awaiting draft placement" });
@@ -1914,11 +2048,16 @@ router.post("/jobs/:id/place-draft", requireAuth, requireRole("administrator", "
     action: "UPDATE",
     changedById: req.auth!.userId,
     oldData: draft as Record<string, unknown>,
-    newData: placed as Record<string, unknown>,
+    newData: {
+      ...(placed as Record<string, unknown>),
+      pushForward: result.moved.length > 0
+        ? { fromDate: scheduledDate, toDate: result.movedToDate, movedJobIds: result.moved }
+        : null,
+    },
     ipAddress: req.ip ?? null,
   });
 
-  res.json(placed);
+  res.json({ ...placed, pushedCount: result.moved.length });
 });
 
 // GET /api/jobs/:id/task-skip-reasons

@@ -161,13 +161,13 @@ async function placeDraft(
   jobId: string,
   teamId: string,
   scheduledDate: string,
-  force = false,
+  pushForward = false,
 ): Promise<DraftPlacementResult> {
   const res = await fetch(`/api/jobs/${jobId}/place-draft`, {
     method: "POST",
     credentials: "include",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ teamId, scheduledDate, force }),
+    body: JSON.stringify({ teamId, scheduledDate, pushForward }),
   });
   const body = await res.json().catch(() => ({}));
   if (!res.ok) {
@@ -438,11 +438,11 @@ function DraftPlacementForm({
   const { toast } = useToast();
   const qc = useQueryClient();
 
-  async function submit(force = false) {
+  async function submit(pushForward = false) {
     if (!teamId || !scheduledDate) return;
     setBusy(true);
     try {
-      const result = await placeDraft(draft.id, teamId, scheduledDate, force);
+      const result = await placeDraft(draft.id, teamId, scheduledDate, pushForward);
       if (result.conflict) {
         setConflict(result.conflict);
         return;
@@ -482,11 +482,19 @@ function DraftPlacementForm({
       </div>
       {conflict && (
         <div className="rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-2 text-[11px] text-amber-800">
-          This would exceed capacity by {conflict.shortfallMins ?? 0} minutes
-          {conflict.productiveTimeMins ? ` (${conflict.totalScheduledMins}/${conflict.productiveTimeMins} minutes already booked)` : ""}.
-          <Button className="ml-2 h-7 text-[11px]" size="sm" disabled={busy} onClick={() => submit(true)}>
-            Place anyway
-          </Button>
+          <p>
+            This would exceed capacity by {conflict.shortfallMins ?? 0} minutes
+            {conflict.productiveTimeMins ? ` (${conflict.totalScheduledMins}/${conflict.productiveTimeMins} minutes already booked)` : ""}.
+          </p>
+          <p className="mt-1">Push eligible pending maintenance from the route tail to the next working day, then place this draft?</p>
+          <div className="mt-2 flex justify-end gap-2">
+            <Button variant="ghost" className="h-7 text-[11px]" size="sm" disabled={busy} onClick={() => setConflict(null)}>
+              Cancel
+            </Button>
+            <Button className="h-7 text-[11px]" size="sm" disabled={busy} onClick={() => submit(true)}>
+              Push &amp; place
+            </Button>
+          </div>
         </div>
       )}
       <div className="flex justify-end gap-2">

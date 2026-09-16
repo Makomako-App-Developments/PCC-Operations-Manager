@@ -1273,6 +1273,7 @@ export default function CommandCenter({ data, readOnly = false, onBack }: Comman
                     ["Phase", selectedCompletedJob.phase.toUpperCase()],
                     ["Team", selectedCompletedJob.teamName || "Unknown Team"],
                     ["Completed by", selectedCompletedJob.workerName || "Team sign-off"],
+                    ["Route", selectedCompletedJob.routeOrder != null ? String(selectedCompletedJob.routeOrder) : "—"],
                     ["Suburb", selectedCompletedJob.suburb || "—"],
                     ["Actual time", selectedCompletedJob.actualTimeMins != null ? `${selectedCompletedJob.actualTimeMins} min` : "—"],
                   ].map(([label, value]) => (

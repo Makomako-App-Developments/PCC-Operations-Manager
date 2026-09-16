@@ -7,4 +7,4 @@ Accepted regular-job skips are manager-only drafts rather than worker-schedulabl
 
 **Why:** An accepted skip needs deliberate managerial placement, while a rejected skip must safely restore the original operational job. Treating accepted skips as ordinary pending work either leaks them to workers or allows duplicate recurring work.
 
-**How to apply:** Keep draft reads limited to managers/administrators and prevent all operational draft mutation outside the dedicated placement transition. For non-forced placement, serialize the capacity check and status update by target team/date so two drafts cannot overbook the same day.
+**How to apply:** Keep draft reads limited to managers/administrators and prevent all operational draft mutation outside the dedicated placement transition. Serialize capacity rechecks, any approved route-tail push, and the status update together by target team/date; never split a confirmed push and placement into separate requests or offer over-capacity force placement.

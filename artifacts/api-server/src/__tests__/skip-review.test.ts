@@ -86,6 +86,7 @@ vi.mock("@workspace/db", async (importOriginal) => {
       // Default transaction: provides a tx with a controllable update chain.
       const tx: Record<string, unknown> = {
         execute: vi.fn().mockResolvedValue([]),
+        select: vi.fn(() => makeChain(selectQueue.shift() ?? [])),
         update: vi.fn(() => ({
           set:       vi.fn().mockReturnThis(),
           where:     vi.fn().mockReturnThis(),
@@ -646,7 +647,7 @@ describe("POST /api/jobs/:id/place-draft", () => {
     expect(res.status).toBe(409);
   });
 
-  it("uses the capacity safeguard and requires an explicit force retry", async () => {
+  it("uses the capacity safeguard and requires an explicit push-forward retry", async () => {
     const { checkDayCapacity } = await import("../lib/day-capacity");
     vi.mocked(checkDayCapacity).mockResolvedValueOnce({
       teamId: placement.teamId,
@@ -667,9 +668,180 @@ describe("POST /api/jobs/:id/place-draft", () => {
     const placed = { ...draftJob, ...placement, status: "pending", isAllTeams: false };
     selectQueue = [[draftJob]];
     updateReturning = [placed];
-    const forced = await postPlaceDraft(JOB_ID, { ...placement, force: true });
-    expect(forced.status).toBe(200);
-    expect(forced.body.status).toBe("pending");
+    vi.mocked(checkDayCapacity).mockResolvedValueOnce(null);
+    const retried = await postPlaceDraft(JOB_ID, { ...placement, pushForward: true });
+    expect(retried.status).toBe(200);
+    expect(retried.body.status).toBe("pending");
+  });
+
+  it("moves route-tail maintenance and places the draft in one locked transaction", async () => {
+    const { checkDayCapacity } = await import("../lib/day-capacity");
+    const placed = { ...draftJob, ...placement, status: "pending", isAllTeams: false };
+    selectQueue = [
+      [draftJob],
+      [{ routeOrder: 50, name: "Draft asset" }],
+      [],
+      [{ id: "route-tail-job", routeOrder: 90, assetName: "Later asset", estimatedTimeMins: 40, serviceTimeMins: 40 }],
+    ];
+    updateReturning = [placed];
+    vi.mocked(checkDayCapacity)
+      .mockResolvedValueOnce({
+        teamId: placement.teamId,
+        date: placement.scheduledDate,
+        productiveTimeMins: 390,
+        totalScheduledMins: 380,
+        newJobMins: 45,
+        shortfallMins: 35,
+        pendingScheduledFromCount: 1,
+        capacityDataReliable: true,
+      })
+      .mockResolvedValueOnce(null);
+
+    const res = await postPlaceDraft(JOB_ID, { ...placement, pushForward: true });
+
+    expect(res.status).toBe(200);
+    expect(res.body.pushedCount).toBe(1);
+    const { db } = await import("@workspace/db");
+    expect(db.transaction).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not move route-tail work when a concurrent request wins the draft transition", async () => {
+    const { checkDayCapacity } = await import("../lib/day-capacity");
+    vi.mocked(checkDayCapacity).mockResolvedValueOnce({
+      teamId: placement.teamId,
+      date: placement.scheduledDate,
+      productiveTimeMins: 390,
+      totalScheduledMins: 380,
+      newJobMins: 45,
+      shortfallMins: 35,
+      pendingScheduledFromCount: 1,
+      capacityDataReliable: true,
+    });
+    selectQueue = [[draftJob], [{ routeOrder: 50, name: "Draft asset" }], []];
+    updateReturning = [];
+
+    const res = await postPlaceDraft(JOB_ID, { ...placement, pushForward: true });
+
+    expect(res.status).toBe(409);
+    const { db } = await import("@workspace/db");
+    const transactionCallback = vi.mocked(db.transaction).mock.calls[0]?.[0];
+    expect(transactionCallback).toBeDefined();
+    expect(selectQueue).toEqual([]);
+  });
+
+  it("cascades route-tail work when the receiving day is also over capacity", async () => {
+    const { checkDayCapacity } = await import("../lib/day-capacity");
+    const conflict = {
+      teamId: placement.teamId,
+      date: placement.scheduledDate,
+      productiveTimeMins: 390,
+      totalScheduledMins: 380,
+      newJobMins: 45,
+      shortfallMins: 35,
+      pendingScheduledFromCount: 2,
+      capacityDataReliable: true,
+    };
+    vi.mocked(checkDayCapacity)
+      .mockResolvedValueOnce(conflict)
+      .mockResolvedValueOnce({ ...conflict, date: "2026-08-17", newJobMins: 0, shortfallMins: 20 })
+      .mockResolvedValueOnce(null);
+    const placed = { ...draftJob, ...placement, status: "pending", isAllTeams: false };
+    selectQueue = [
+      [draftJob],
+      [{ routeOrder: 50, name: "Draft asset" }],
+      [],
+      [{ id: "first-tail-job", routeOrder: 90, assetName: "Later asset", estimatedTimeMins: 40, serviceTimeMins: 40 }],
+      [{ id: "second-tail-job", routeOrder: 20, assetName: "Cascade asset", estimatedTimeMins: 25, serviceTimeMins: 25 }],
+    ];
+    updateReturning = [placed];
+
+    const res = await postPlaceDraft(JOB_ID, { ...placement, pushForward: true });
+
+    expect(res.status).toBe(200);
+    expect(res.body.pushedCount).toBe(2);
+    expect(checkDayCapacity).toHaveBeenCalledTimes(3);
+  });
+
+  it("never moves work at or before the draft insertion point on the target day", async () => {
+    const { checkDayCapacity } = await import("../lib/day-capacity");
+    vi.mocked(checkDayCapacity).mockResolvedValueOnce({
+      teamId: placement.teamId,
+      date: placement.scheduledDate,
+      productiveTimeMins: 390,
+      totalScheduledMins: 380,
+      newJobMins: 45,
+      shortfallMins: 35,
+      pendingScheduledFromCount: 2,
+      capacityDataReliable: true,
+    });
+    selectQueue = [
+      [draftJob],
+      [{ routeOrder: 50, name: "Draft asset" }],
+      [],
+      [
+        { id: "later-tail-job", routeOrder: 80, assetName: "Later asset", estimatedTimeMins: 20, serviceTimeMins: 20 },
+        { id: "same-position-job", routeOrder: 50, assetName: "Draft asset", estimatedTimeMins: 30, serviceTimeMins: 30 },
+        { id: "earlier-job", routeOrder: 20, assetName: "Earlier asset", estimatedTimeMins: 30, serviceTimeMins: 30 },
+      ],
+    ];
+    updateReturning = [{ ...draftJob, ...placement, status: "pending", isAllTeams: false }];
+
+    const res = await postPlaceDraft(JOB_ID, { ...placement, pushForward: true });
+
+    expect(res.status).toBe(409);
+    expect(res.body.capacity.insufficientEligibleMins).toBe(20);
+  });
+
+  it("uses asset name to resolve duplicate route-order positions", async () => {
+    const { checkDayCapacity } = await import("../lib/day-capacity");
+    vi.mocked(checkDayCapacity)
+      .mockResolvedValueOnce({
+        teamId: placement.teamId, date: placement.scheduledDate,
+        productiveTimeMins: 390, totalScheduledMins: 380, newJobMins: 45,
+        shortfallMins: 35, pendingScheduledFromCount: 2, capacityDataReliable: true,
+      })
+      .mockResolvedValueOnce(null);
+    selectQueue = [
+      [draftJob],
+      [{ routeOrder: 50, name: "Middle asset" }],
+      [],
+      [
+        { id: "same-route-after", routeOrder: 50, assetName: "Zulu asset", estimatedTimeMins: 40, serviceTimeMins: 40 },
+        { id: "same-route-before", routeOrder: 50, assetName: "Alpha asset", estimatedTimeMins: 40, serviceTimeMins: 40 },
+      ],
+    ];
+    updateReturning = [{ ...draftJob, ...placement, status: "pending", isAllTeams: false }];
+
+    const res = await postPlaceDraft(JOB_ID, { ...placement, pushForward: true });
+
+    expect(res.status).toBe(200);
+    expect(res.body.pushedCount).toBe(1);
+  });
+
+  it("only moves later null-route assets when the draft route order is null", async () => {
+    const { checkDayCapacity } = await import("../lib/day-capacity");
+    vi.mocked(checkDayCapacity)
+      .mockResolvedValueOnce({
+        teamId: placement.teamId, date: placement.scheduledDate,
+        productiveTimeMins: 390, totalScheduledMins: 380, newJobMins: 45,
+        shortfallMins: 35, pendingScheduledFromCount: 2, capacityDataReliable: true,
+      })
+      .mockResolvedValueOnce(null);
+    selectQueue = [
+      [draftJob],
+      [{ routeOrder: null, name: "Middle unrouted asset" }],
+      [],
+      [
+        { id: "later-unrouted", routeOrder: null, assetName: "Zulu unrouted asset", estimatedTimeMins: 40, serviceTimeMins: 40 },
+        { id: "ordinary-routed", routeOrder: 999, assetName: "Routed asset", estimatedTimeMins: 40, serviceTimeMins: 40 },
+      ],
+    ];
+    updateReturning = [{ ...draftJob, ...placement, status: "pending", isAllTeams: false }];
+
+    const res = await postPlaceDraft(JOB_ID, { ...placement, pushForward: true });
+
+    expect(res.status).toBe(200);
+    expect(res.body.pushedCount).toBe(1);
   });
 
   it("returns 403 to a field worker", async () => {
