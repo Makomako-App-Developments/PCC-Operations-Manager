@@ -24,6 +24,15 @@ import { deliverStormAlertEmail } from "../lib/storm-patrol-email";
 const router = Router();
 const managers = ["administrator", "manager"];
 const privileged = (role: string) => ["administrator", "manager", "supervisor"].includes(role);
+const TEAM_ASSIGNMENT_REQUIRED_ERROR = "A team assignment is required to access Storm Patrol.";
+
+function requireFieldWorkerTeam(req: Request, res: Response, next: NextFunction) {
+  if (req.auth?.role === "field_worker" && !req.auth.teamId) {
+    res.status(403).json({ error: TEAM_ASSIGNMENT_REQUIRED_ERROR });
+    return;
+  }
+  next();
+}
 const phases = z.enum(["pre", "mid", "post"]);
 const workTypes = z.enum(["silt_clearance", "litter_clearance", "debris_clearance", "visual_check_only", "litter_debris_removed_from_site", "site_too_dangerous", "site_made_safe"]);
 const managerActionNoteUpdate = z.object({
@@ -505,7 +514,7 @@ async function loadStormEventDetails(
   return { event, jobs, observations: observationsWithPhotos, followUps, alerts: alertsWithDetails, summary: { selectedCount: jobs.length, checkedCount: completed.length, actualMinutes: minutes, workMinutes: minutes, labourChargeCents: cents(minutes, event.hourlyRateCents), tooDangerousCount: jobs.filter(j => j.status === "too_dangerous").length } };
 }
 
-router.get("/storm-patrol/current", requireAuth, async (req, res) => {
+router.get("/storm-patrol/current", requireAuth, requireFieldWorkerTeam, async (req, res) => {
   const event = await activeEvent();
   if (!event) { res.json({ data: null }); return; }
   res.json({ data: await loadStormEventDetails(event, req.auth!) });
@@ -622,7 +631,7 @@ router.post("/storm-patrol/events/:id/packages", requireAuth, requireRole("manag
   }
 });
 
-router.get("/storm-patrol/jobs", requireAuth, validateQuery(z.object({ eventId: z.string().uuid().optional(), phase: phases.optional(), status: z.enum(["pending", "in_progress", "completed", "too_dangerous"]).optional() })), async (req, res) => {
+router.get("/storm-patrol/jobs", requireAuth, requireFieldWorkerTeam, validateQuery(z.object({ eventId: z.string().uuid().optional(), phase: phases.optional(), status: z.enum(["pending", "in_progress", "completed", "too_dangerous"]).optional() })), async (req, res) => {
   const q = res.locals.query as any; const conditions: any[] = [];
   if (q.eventId) conditions.push(eq(stormJobsTable.eventId, q.eventId)); if (q.phase) conditions.push(eq(stormJobsTable.phase, q.phase)); if (q.status) conditions.push(eq(stormJobsTable.status, q.status));
   if (!privileged(req.auth!.role)) conditions.push(eq(stormJobsTable.teamId, req.auth!.teamId ?? ""));

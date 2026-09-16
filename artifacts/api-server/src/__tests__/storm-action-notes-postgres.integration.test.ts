@@ -27,6 +27,7 @@ describe.skipIf(!runWithPostgres).sequential(
       field_worker: randomUUID(),
     };
     const teamId = randomUUID();
+    const teamlessFieldWorkerId = randomUUID();
     const observationId = randomUUID();
     const alertId = randomUUID();
     let eventId = "";
@@ -37,6 +38,16 @@ describe.skipIf(!runWithPostgres).sequential(
         userId: userIds[role],
         role,
         teamId: role === "supervisor" || role === "field_worker" ? teamId : null,
+        sessionVersion: 0,
+        tokenType: "access",
+      }, jwtSecret, { expiresIn: "15m" });
+    }
+
+    function teamlessFieldWorkerToken(): string {
+      return jwt.sign({
+        userId: teamlessFieldWorkerId,
+        role: "field_worker",
+        teamId: null,
         sessionVersion: 0,
         tokenType: "access",
       }, jwtSecret, { expiresIn: "15m" });
@@ -65,6 +76,11 @@ describe.skipIf(!runWithPostgres).sequential(
           ],
         );
       }
+      await pool.query(
+        `INSERT INTO users (id, email, name, initials, password_hash, role, session_version, team_id)
+         VALUES ($1, $2, 'Teamless Field Worker', 'TF', 'not-used', 'field_worker', 0, null)`,
+        [teamlessFieldWorkerId, `storm-action-teamless-${testRun}@example.invalid`],
+      );
 
       const active = await pool.query<{ id: string }>(
         `SELECT id FROM storm_events WHERE status = 'active' ORDER BY created_at LIMIT 1`,
@@ -104,6 +120,7 @@ describe.skipIf(!runWithPostgres).sequential(
         await pool.query(`DELETE FROM storm_events WHERE id = $1`, [eventId]);
       }
       await pool.query(`DELETE FROM users WHERE id = ANY($1::uuid[])`, [Object.values(userIds)]);
+      await pool.query(`DELETE FROM users WHERE id = $1`, [teamlessFieldWorkerId]);
       await pool.query(`DELETE FROM teams WHERE id = $1`, [teamId]);
     });
 
@@ -186,6 +203,21 @@ describe.skipIf(!runWithPostgres).sequential(
         expect(row.managerActionNoteByName).toBeNull();
         expect(row.managerActionNoteAt).toBeNull();
         expect(row.managerActionNoteRevision).toBe(0);
+      }
+    });
+
+    it("returns a clear access error for teamless field-worker read requests", async () => {
+      const authorization = `Bearer ${teamlessFieldWorkerToken()}`;
+      const [current, jobs] = await Promise.all([
+        request(app).get("/api/storm-patrol/current").set("Authorization", authorization),
+        request(app).get("/api/storm-patrol/jobs").set("Authorization", authorization),
+      ]);
+
+      for (const response of [current, jobs]) {
+        expect(response.status).toBe(403);
+        expect(response.body).toEqual({
+          error: "A team assignment is required to access Storm Patrol.",
+        });
       }
     });
 
