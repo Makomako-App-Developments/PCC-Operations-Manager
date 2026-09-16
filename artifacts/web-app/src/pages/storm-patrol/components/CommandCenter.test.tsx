@@ -8,12 +8,15 @@ const mocks = vi.hoisted(() => ({
   publish: vi.fn(),
   acknowledgeAlert: vi.fn(),
   cancelJob: vi.fn(),
+  updateAlertActionNote: vi.fn(),
+  updateObservationActionNote: vi.fn(),
   toast: vi.fn(),
   customFetch: vi.fn(),
   reportUrl: vi.fn(),
   completionReportUrl: vi.fn(),
   tileLayerHandlers: { current: undefined as any },
   tileLayerRenderCount: { current: 0 },
+  currentRole: { current: "manager" },
 }));
 
 const assets = [
@@ -82,11 +85,17 @@ vi.mock("@workspace/api-client-react", () => ({
   useCreateStormPatrolAlert: () => ({ mutateAsync: vi.fn(), isPending: false }),
   useAcknowledgeStormPatrolAlert: () => ({ mutateAsync: mocks.acknowledgeAlert, isPending: false }),
   useRetryStormPatrolAlertEmail: () => ({ mutateAsync: vi.fn(), isPending: false }),
+  useUpdateStormPatrolAlertActionNote: () => ({ mutateAsync: mocks.updateAlertActionNote, isPending: false }),
+  useUpdateStormPatrolObservationActionNote: () => ({ mutateAsync: mocks.updateObservationActionNote, isPending: false }),
   getGetStormPatrolReportUrl: mocks.reportUrl,
   getDownloadCompletionReportUrl: mocks.completionReportUrl,
   getGetCurrentStormPatrolQueryKey: () => ["/api/storm-patrol/current"],
   getListStormPatrolEventsQueryKey: () => ["/api/storm-patrol/events"],
   customFetch: mocks.customFetch,
+}));
+
+vi.mock("@/lib/auth", () => ({
+  useAuth: () => ({ user: { role: mocks.currentRole.current } }),
 }));
 
 vi.mock("@/hooks/use-toast", () => ({
@@ -204,6 +213,19 @@ beforeEach(() => {
     acknowledgedAt: "2026-09-13T01:20:00.000Z",
     acknowledgedByName: "Cameron Walker",
   });
+  mocks.updateAlertActionNote.mockReset().mockResolvedValue({
+    managerActionNote: "Traffic management arranged.",
+    managerActionNoteByName: "Cameron Walker",
+    managerActionNoteAt: "2026-09-13T02:00:00.000Z",
+    managerActionNoteRevision: 1,
+  });
+  mocks.updateObservationActionNote.mockReset().mockResolvedValue({
+    managerActionNote: "Contractor dispatched.",
+    managerActionNoteByName: "Cameron Walker",
+    managerActionNoteAt: "2026-09-13T02:05:00.000Z",
+    managerActionNoteRevision: 1,
+  });
+  mocks.currentRole.current = "manager";
   mocks.reportUrl.mockReset();
   mocks.reportUrl.mockImplementation((_id, params) =>
     `/api/storm-patrol/report?${new URLSearchParams(params).toString()}`);
@@ -319,6 +341,57 @@ describe("Storm Patrol work package asset filters", () => {
     })));
     expect(within(dialog).getByText("Unacknowledged")).toBeVisible();
     expect(mocks.acknowledgeAlert).toHaveBeenCalledTimes(1);
+  });
+
+  it("lets a manager save an action note on an urgent issue", async () => {
+    const user = userEvent.setup();
+    renderCommandCenter([], [], [], [{
+      id: "alert-action-note",
+      eventId: "event-1",
+      message: "Road flooding near the inlet",
+      emailStatus: "sent",
+      emailAttempts: 1,
+      acknowledgedAt: "2026-09-13T01:30:00.000Z",
+      assetName: "Main Road inlet",
+    }]);
+
+    await user.click(screen.getByRole("button", { name: "Open urgent issue: Road flooding near the inlet" }));
+    const dialog = screen.getByRole("dialog");
+    const note = within(dialog).getByRole("textbox", { name: "Manager action taken for urgent issue" });
+    await user.type(note, "Traffic management arranged.");
+    await user.click(within(dialog).getByRole("button", { name: "Save action note" }));
+
+    expect(mocks.updateAlertActionNote).toHaveBeenCalledWith({
+      id: "alert-action-note",
+      data: {
+        managerActionNote: "Traffic management arranged.",
+        expectedManagerActionNoteRevision: 0,
+      },
+    });
+    expect(await within(dialog).findByText("Last updated 02:00, 13 Sep 2026 by Cameron Walker")).toBeVisible();
+  });
+
+  it("shows an urgent issue action note to supervisors without edit controls", async () => {
+    mocks.currentRole.current = "supervisor";
+    const user = userEvent.setup();
+    renderCommandCenter([], [], [], [{
+      id: "alert-supervisor-note",
+      eventId: "event-1",
+      message: "Debris blocking the channel",
+      emailStatus: "sent",
+      emailAttempts: 1,
+      acknowledgedAt: "2026-09-13T01:30:00.000Z",
+      managerActionNote: "Contractor notified and cones installed.",
+      managerActionNoteByName: "Cameron Walker",
+      managerActionNoteAt: "2026-09-13T02:00:00.000Z",
+    }]);
+
+    await user.click(screen.getByRole("button", { name: "Open urgent issue: Debris blocking the channel" }));
+    const dialog = screen.getByRole("dialog");
+    expect(within(dialog).getByText("Contractor notified and cones installed.")).toBeVisible();
+    expect(within(dialog).getByText("Recorded 02:00, 13 Sep 2026 by Cameron Walker")).toBeVisible();
+    expect(within(dialog).queryByRole("textbox", { name: "Manager action taken for urgent issue" })).not.toBeInTheDocument();
+    expect(within(dialog).queryByRole("button", { name: "Save action note" })).not.toBeInTheDocument();
   });
 
   it("shows archived event details without any write controls", async () => {
@@ -600,6 +673,36 @@ describe("Storm Patrol work package asset filters", () => {
 
     await user.click(within(dialog).getByRole("button", { name: "Close New Observation" }));
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("lets a manager save an action note on a new observation", async () => {
+    const user = userEvent.setup();
+    renderCommandCenter([], [{
+      id: "observation-action-note",
+      eventId: "event-1",
+      description: "Slip blocking the footpath",
+      notes: null,
+      locationLat: -41.12345,
+      locationLng: 174.98765,
+      createdAt: "2026-09-13T01:00:00.000Z",
+      reactiveJobId: null,
+      photos: [],
+    }]);
+
+    await user.click(screen.getByRole("button", { name: "Open New Observation: Slip blocking the footpath" }));
+    const dialog = screen.getByRole("dialog");
+    const note = within(dialog).getByRole("textbox", { name: "Manager action taken for new observation" });
+    await user.type(note, "Contractor dispatched.");
+    await user.click(within(dialog).getByRole("button", { name: "Save action note" }));
+
+    expect(mocks.updateObservationActionNote).toHaveBeenCalledWith({
+      id: "observation-action-note",
+      data: {
+        managerActionNote: "Contractor dispatched.",
+        expectedManagerActionNoteRevision: 0,
+      },
+    });
+    expect(await within(dialog).findByText("Last updated 02:05, 13 Sep 2026 by Cameron Walker")).toBeVisible();
   });
 
   it("keeps observation details available while map tiles fail and restores the map on recovery", async () => {

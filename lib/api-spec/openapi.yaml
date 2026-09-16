@@ -1654,6 +1654,30 @@ paths:
                 },
             },
         }
+  /storm-patrol/observations/{id}/action-note:
+    patch:
+      operationId: updateStormPatrolObservationActionNote
+      tags: [storm-patrol]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/StormManagerActionNoteUpdate" }
+      responses:
+        "200":
+          description: Updated manager action note
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/StormManagerActionNoteResult" }
+        "404":
+          description: Observation not found
+        "409":
+          description: Observation does not belong to an active event
   /storm-patrol/observations/photos:
     post:
       operationId: uploadStormPatrolObservationPhoto
@@ -1739,6 +1763,30 @@ paths:
                 },
             },
         }
+  /storm-patrol/alerts/{id}/action-note:
+    patch:
+      operationId: updateStormPatrolAlertActionNote
+      tags: [storm-patrol]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/StormManagerActionNoteUpdate" }
+      responses:
+        "200":
+          description: Updated manager action note
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/StormManagerActionNoteResult" }
+        "404":
+          description: Urgent issue not found
+        "409":
+          description: Urgent issue does not belong to an active event
   /storm-patrol/alerts/{id}/retry-email:
     post:
       operationId: retryStormPatrolAlertEmail
@@ -1925,6 +1973,10 @@ components:
         assetId: { type: string, format: uuid, nullable: true }
         description: { type: string }
         notes: { type: string, nullable: true }
+        managerActionNote: { type: string, nullable: true }
+        managerActionNoteByName: { type: string, nullable: true }
+        managerActionNoteAt: { type: string, format: date-time, nullable: true }
+        managerActionNoteRevision: { type: integer }
         observerName: { type: string, nullable: true }
         locationLat: { type: number }
         locationLng: { type: number }
@@ -2006,6 +2058,10 @@ components:
         stormJobId: { type: string, format: uuid, nullable: true }
         message: { type: string }
         photoUrl: { type: string, nullable: true }
+        managerActionNote: { type: string, nullable: true }
+        managerActionNoteByName: { type: string, nullable: true }
+        managerActionNoteAt: { type: string, format: date-time, nullable: true }
+        managerActionNoteRevision: { type: integer }
         createdAt: { type: string, format: date-time, nullable: true }
         acknowledgedAt: { type: string, format: date-time, nullable: true }
         acknowledgedByName: { type: string, nullable: true }
@@ -2025,6 +2081,24 @@ components:
         phase: { type: string, enum: [pre, mid, post], nullable: true }
         jobStatus: { type: string, nullable: true }
         routeOrder: { type: integer, nullable: true }
+    StormManagerActionNoteUpdate:
+      type: object
+      required: [managerActionNote, expectedManagerActionNoteRevision]
+      properties:
+        managerActionNote:
+          type: [string, "null"]
+          maxLength: 5000
+        expectedManagerActionNoteRevision:
+          type: integer
+          minimum: 0
+    StormManagerActionNoteResult:
+      type: object
+      required: [managerActionNote, managerActionNoteByName, managerActionNoteAt, managerActionNoteRevision]
+      properties:
+        managerActionNote: { type: [string, "null"] }
+        managerActionNoteByName: { type: [string, "null"] }
+        managerActionNoteAt: { type: [string, "null"], format: date-time }
+        managerActionNoteRevision: { type: integer }
     StormAlertCreate:
       type: object
       required: [eventId, message, idempotencyKey]

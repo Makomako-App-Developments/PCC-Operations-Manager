@@ -103,6 +103,8 @@ import type {
   StormJob,
   StormJobListResponse,
   StormJobPhotoUpload,
+  StormManagerActionNoteResult,
+  StormManagerActionNoteUpdate,
   StormObservationCreate,
   StormObservationPhotoUpload,
   StormObservationResponse,
@@ -5663,6 +5665,72 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
       return useMutation(getCreateStormPatrolObservationMutationOptions(options));
     }
 
+export const getUpdateStormPatrolObservationActionNoteUrl = (id: string,) => {
+
+
+
+
+  return `/api/storm-patrol/observations/${id}/action-note`
+}
+
+export const updateStormPatrolObservationActionNote = async (id: string,
+    stormManagerActionNoteUpdate: StormManagerActionNoteUpdate, options?: RequestInit): Promise<StormManagerActionNoteResult> => {
+
+  return customFetch<StormManagerActionNoteResult>(getUpdateStormPatrolObservationActionNoteUrl(id),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(stormManagerActionNoteUpdate)
+  }
+);}
+
+
+
+
+
+export const getUpdateStormPatrolObservationActionNoteMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateStormPatrolObservationActionNote>>, TError,{id: string;data: BodyType<StormManagerActionNoteUpdate>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateStormPatrolObservationActionNote>>, TError,{id: string;data: BodyType<StormManagerActionNoteUpdate>}, TContext> => {
+
+const mutationKey = ['updateStormPatrolObservationActionNote'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateStormPatrolObservationActionNote>>, {id: string;data: BodyType<StormManagerActionNoteUpdate>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  updateStormPatrolObservationActionNote(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateStormPatrolObservationActionNoteMutationResult = NonNullable<Awaited<ReturnType<typeof updateStormPatrolObservationActionNote>>>
+    export type UpdateStormPatrolObservationActionNoteMutationBody = BodyType<StormManagerActionNoteUpdate>
+    export type UpdateStormPatrolObservationActionNoteMutationError = ErrorType<void>
+
+    export const useUpdateStormPatrolObservationActionNote = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateStormPatrolObservationActionNote>>, TError,{id: string;data: BodyType<StormManagerActionNoteUpdate>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateStormPatrolObservationActionNote>>,
+        TError,
+        {id: string;data: BodyType<StormManagerActionNoteUpdate>},
+        TContext
+      > => {
+      return useMutation(getUpdateStormPatrolObservationActionNoteMutationOptions(options));
+    }
+
 export const getUploadStormPatrolObservationPhotoUrl = () => {
 
 
@@ -5938,6 +6006,72 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
         TContext
       > => {
       return useMutation(getAcknowledgeStormPatrolAlertMutationOptions(options));
+    }
+
+export const getUpdateStormPatrolAlertActionNoteUrl = (id: string,) => {
+
+
+
+
+  return `/api/storm-patrol/alerts/${id}/action-note`
+}
+
+export const updateStormPatrolAlertActionNote = async (id: string,
+    stormManagerActionNoteUpdate: StormManagerActionNoteUpdate, options?: RequestInit): Promise<StormManagerActionNoteResult> => {
+
+  return customFetch<StormManagerActionNoteResult>(getUpdateStormPatrolAlertActionNoteUrl(id),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(stormManagerActionNoteUpdate)
+  }
+);}
+
+
+
+
+
+export const getUpdateStormPatrolAlertActionNoteMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateStormPatrolAlertActionNote>>, TError,{id: string;data: BodyType<StormManagerActionNoteUpdate>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateStormPatrolAlertActionNote>>, TError,{id: string;data: BodyType<StormManagerActionNoteUpdate>}, TContext> => {
+
+const mutationKey = ['updateStormPatrolAlertActionNote'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateStormPatrolAlertActionNote>>, {id: string;data: BodyType<StormManagerActionNoteUpdate>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  updateStormPatrolAlertActionNote(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateStormPatrolAlertActionNoteMutationResult = NonNullable<Awaited<ReturnType<typeof updateStormPatrolAlertActionNote>>>
+    export type UpdateStormPatrolAlertActionNoteMutationBody = BodyType<StormManagerActionNoteUpdate>
+    export type UpdateStormPatrolAlertActionNoteMutationError = ErrorType<void>
+
+    export const useUpdateStormPatrolAlertActionNote = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateStormPatrolAlertActionNote>>, TError,{id: string;data: BodyType<StormManagerActionNoteUpdate>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateStormPatrolAlertActionNote>>,
+        TError,
+        {id: string;data: BodyType<StormManagerActionNoteUpdate>},
+        TContext
+      > => {
+      return useMutation(getUpdateStormPatrolAlertActionNoteMutationOptions(options));
     }
 
 export const getRetryStormPatrolAlertEmailUrl = (id: string,) => {

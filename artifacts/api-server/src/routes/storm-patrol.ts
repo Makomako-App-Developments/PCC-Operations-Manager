@@ -5,7 +5,7 @@ import { createHash, randomUUID } from "crypto";
 import {
   db, executeWithCircuitBreaker, stormEventsTable, stormWorkPackagesTable, stormJobsTable,
   stormCheckResultsTable, stormObservationsTable, stormAlertsTable, stormPatrolSettingsTable,
-  stormPhotosTable, reactiveJobsTable, assetsTable, teamsTable, usersTable,
+  stormPhotosTable, reactiveJobsTable, assetsTable, teamsTable, usersTable, auditLogTable,
 } from "@workspace/db";
 import { and, asc, desc, eq, getTableColumns, inArray, isNull, or, sql } from "drizzle-orm";
 import { z } from "zod";
@@ -26,6 +26,10 @@ const managers = ["administrator", "manager"];
 const privileged = (role: string) => ["administrator", "manager", "supervisor"].includes(role);
 const phases = z.enum(["pre", "mid", "post"]);
 const workTypes = z.enum(["silt_clearance", "litter_clearance", "debris_clearance", "visual_check_only", "litter_debris_removed_from_site", "site_too_dangerous", "site_made_safe"]);
+const managerActionNoteUpdate = z.object({
+  managerActionNote: z.string().max(5000).nullable(),
+  expectedManagerActionNoteRevision: z.number().int().nonnegative(),
+});
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 20 * 1024 * 1024 },
@@ -394,6 +398,7 @@ async function loadStormEventDetails(
   event: typeof stormEventsTable.$inferSelect,
   access: { role: string; teamId?: string | null },
 ) {
+  const canReadManagerActionNotes = privileged(access.role);
   const where = !privileged(access.role)
     ? and(eq(stormJobsTable.eventId, event.id), eq(stormJobsTable.teamId, access.teamId ?? ""))
     : eq(stormJobsTable.eventId, event.id);
@@ -421,6 +426,17 @@ async function loadStormEventDetails(
       .where(eq(stormAlertsTable.eventId, event.id))
       .orderBy(desc(stormAlertsTable.createdAt))),
   ]);
+  const actionNoteAuthorIds = [...new Set([
+    ...observations.map(observation => observation.managerActionNoteById),
+    ...alerts.map(alert => alert.managerActionNoteById),
+  ].filter((id): id is string => Boolean(id)))];
+  const actionNoteAuthors = actionNoteAuthorIds.length > 0
+    ? await executeWithCircuitBreaker(() => db
+      .select({ id: usersTable.id, name: usersTable.name })
+      .from(usersTable)
+      .where(inArray(usersTable.id, actionNoteAuthorIds)))
+    : [];
+  const actionNoteAuthorNames = new Map(actionNoteAuthors.map(author => [author.id, author.name]));
   const reactiveJobIds = observations
     .map(observation => observation.reactiveJobId)
     .filter((id): id is string => Boolean(id));
@@ -446,6 +462,13 @@ async function loadStormEventDetails(
   }
   const observationsWithPhotos = observations.map(observation => ({
     ...observation,
+    managerActionNote: canReadManagerActionNotes ? observation.managerActionNote : null,
+    managerActionNoteById: canReadManagerActionNotes ? observation.managerActionNoteById : null,
+    managerActionNoteAt: canReadManagerActionNotes ? observation.managerActionNoteAt : null,
+    managerActionNoteRevision: canReadManagerActionNotes ? observation.managerActionNoteRevision : 0,
+    managerActionNoteByName: canReadManagerActionNotes && observation.managerActionNoteById
+      ? actionNoteAuthorNames.get(observation.managerActionNoteById) ?? null
+      : null,
     locationLat: Number(observation.locationLat),
     locationLng: Number(observation.locationLng),
     photos: observation.reactiveJobId ? photosByReactiveJobId.get(observation.reactiveJobId) ?? [] : [],
@@ -458,6 +481,13 @@ async function loadStormEventDetails(
       .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0];
     return {
       ...alert,
+      managerActionNote: canReadManagerActionNotes ? alert.managerActionNote : null,
+      managerActionNoteById: canReadManagerActionNotes ? alert.managerActionNoteById : null,
+      managerActionNoteAt: canReadManagerActionNotes ? alert.managerActionNoteAt : null,
+      managerActionNoteRevision: canReadManagerActionNotes ? alert.managerActionNoteRevision : 0,
+      managerActionNoteByName: canReadManagerActionNotes && alert.managerActionNoteById
+        ? actionNoteAuthorNames.get(alert.managerActionNoteById) ?? null
+        : null,
       photoUrl: alert.photoUrl ?? urgentPhoto?.blobUrl ?? null,
       assetName: job?.assetName ?? null,
       assetDescription: job?.assetDescription ?? null,
@@ -736,6 +766,50 @@ router.post("/storm-patrol/observations", requireAuth, validateBody(z.object({ e
     res.status(result.replayed ? 200 : 201).json(result);
   } catch (e: any) { if (e?.code === "23505") { res.status(409).json({ error: "Duplicate observation." }); return; } throw e; }
 });
+router.patch("/storm-patrol/observations/:id/action-note", requireAuth, requireRole("manager"), validateBody(managerActionNoteUpdate), async (req, res) => {
+  const id = String(req.params.id);
+  const managerActionNote = (req.body.managerActionNote as string | null)?.trim() || null;
+  const expectedManagerActionNoteRevision = req.body.expectedManagerActionNoteRevision as number;
+  const result = await executeWithCircuitBreaker(() => db.transaction(async tx => {
+    const [target] = await tx.select({ eventId: stormObservationsTable.eventId }).from(stormObservationsTable).where(eq(stormObservationsTable.id, id)).limit(1);
+    if (!target) return { status: "not_found" as const };
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${"storm-event:" + target.eventId}))`);
+    const [existing] = await tx.select().from(stormObservationsTable).where(eq(stormObservationsTable.id, id)).limit(1);
+    if (!existing) return { status: "not_found" as const };
+    const [event] = await tx.select({ status: stormEventsTable.status }).from(stormEventsTable).where(eq(stormEventsTable.id, target.eventId)).limit(1);
+    if (event?.status !== "active") return { status: "inactive" as const };
+    if (existing.managerActionNoteRevision !== expectedManagerActionNoteRevision) {
+      return { status: "stale" as const };
+    }
+    const [updated] = await tx.update(stormObservationsTable).set({
+      managerActionNote,
+      managerActionNoteById: managerActionNote ? req.auth!.userId : null,
+      managerActionNoteAt: managerActionNote ? new Date() : null,
+      managerActionNoteRevision: existing.managerActionNoteRevision + 1,
+    }).where(eq(stormObservationsTable.id, id)).returning();
+    const [author] = managerActionNote
+      ? await tx.select({ name: usersTable.name }).from(usersTable).where(eq(usersTable.id, req.auth!.userId)).limit(1)
+      : [];
+    await tx.insert(auditLogTable).values({
+      tableName: "storm_observations",
+      recordId: id,
+      action: "UPDATE",
+      changedById: req.auth!.userId,
+      oldData: existing as any,
+      newData: updated as any,
+    });
+    return { status: "updated" as const, updated, managerActionNoteByName: author?.name ?? null };
+  }));
+  if (result.status === "not_found") { res.status(404).json({ error: "Observation not found." }); return; }
+  if (result.status === "inactive") { res.status(409).json({ error: "Manager action notes can only be changed during an active Storm Patrol event." }); return; }
+  if (result.status === "stale") { res.status(409).json({ error: "This manager action note was updated by someone else. Reopen the observation and try again." }); return; }
+  res.json({
+    managerActionNote: result.updated.managerActionNote,
+    managerActionNoteByName: result.managerActionNoteByName,
+    managerActionNoteAt: result.updated.managerActionNoteAt,
+    managerActionNoteRevision: result.updated.managerActionNoteRevision,
+  });
+});
 router.post("/storm-patrol/observations/photos", requireAuth, stormPhotoUpload, async (req, res) => {
   if (!req.file) {
     console.warn("[storm-photo-upload-missing]", JSON.stringify(safeUploadContext(req)));
@@ -796,6 +870,50 @@ router.post("/storm-patrol/alerts", requireAuth, validateBody(z.object({ eventId
   void notifyUsers(recipients.map(r => r.id), { title: "Urgent Storm Patrol issue", body: b.message, data: { eventId: b.eventId, alertId: alert.id } });
   void deliverStormAlertEmail(alert.id);
   res.status(201).json(alert);
+});
+router.patch("/storm-patrol/alerts/:id/action-note", requireAuth, requireRole("manager"), validateBody(managerActionNoteUpdate), async (req, res) => {
+  const id = String(req.params.id);
+  const managerActionNote = (req.body.managerActionNote as string | null)?.trim() || null;
+  const expectedManagerActionNoteRevision = req.body.expectedManagerActionNoteRevision as number;
+  const result = await executeWithCircuitBreaker(() => db.transaction(async tx => {
+    const [target] = await tx.select({ eventId: stormAlertsTable.eventId }).from(stormAlertsTable).where(eq(stormAlertsTable.id, id)).limit(1);
+    if (!target) return { status: "not_found" as const };
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${"storm-event:" + target.eventId}))`);
+    const [existing] = await tx.select().from(stormAlertsTable).where(eq(stormAlertsTable.id, id)).limit(1);
+    if (!existing) return { status: "not_found" as const };
+    const [event] = await tx.select({ status: stormEventsTable.status }).from(stormEventsTable).where(eq(stormEventsTable.id, target.eventId)).limit(1);
+    if (event?.status !== "active") return { status: "inactive" as const };
+    if (existing.managerActionNoteRevision !== expectedManagerActionNoteRevision) {
+      return { status: "stale" as const };
+    }
+    const [updated] = await tx.update(stormAlertsTable).set({
+      managerActionNote,
+      managerActionNoteById: managerActionNote ? req.auth!.userId : null,
+      managerActionNoteAt: managerActionNote ? new Date() : null,
+      managerActionNoteRevision: existing.managerActionNoteRevision + 1,
+    }).where(eq(stormAlertsTable.id, id)).returning();
+    const [author] = managerActionNote
+      ? await tx.select({ name: usersTable.name }).from(usersTable).where(eq(usersTable.id, req.auth!.userId)).limit(1)
+      : [];
+    await tx.insert(auditLogTable).values({
+      tableName: "storm_alerts",
+      recordId: id,
+      action: "UPDATE",
+      changedById: req.auth!.userId,
+      oldData: existing as any,
+      newData: updated as any,
+    });
+    return { status: "updated" as const, updated, managerActionNoteByName: author?.name ?? null };
+  }));
+  if (result.status === "not_found") { res.status(404).json({ error: "Urgent issue not found." }); return; }
+  if (result.status === "inactive") { res.status(409).json({ error: "Manager action notes can only be changed during an active Storm Patrol event." }); return; }
+  if (result.status === "stale") { res.status(409).json({ error: "This manager action note was updated by someone else. Reopen the urgent issue and try again." }); return; }
+  res.json({
+    managerActionNote: result.updated.managerActionNote,
+    managerActionNoteByName: result.managerActionNoteByName,
+    managerActionNoteAt: result.updated.managerActionNoteAt,
+    managerActionNoteRevision: result.updated.managerActionNoteRevision,
+  });
 });
 router.post("/storm-patrol/alerts/:id/acknowledge", requireAuth, requireRole("manager"), async (req, res) => {
   const [alert] = await executeWithCircuitBreaker(() => db.update(stormAlertsTable).set({ acknowledgedAt: new Date(), acknowledgedById: req.auth!.userId }).where(eq(stormAlertsTable.id, String(req.params.id))).returning());

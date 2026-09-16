@@ -11,6 +11,8 @@ import {
   useAcknowledgeStormPatrolAlert,
   useRetryStormPatrolAlertEmail,
   useCancelStormPatrolJob,
+  useUpdateStormPatrolAlertActionNote,
+  useUpdateStormPatrolObservationActionNote,
   getDownloadCompletionReportUrl,
   getGetStormPatrolReportUrl,
   getGetCurrentStormPatrolQueryKey,
@@ -24,6 +26,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
@@ -32,6 +35,7 @@ import StormwaterAssetImport from "./StormwaterAssetImport";
 import { format } from "date-fns";
 import { MapContainer, TileLayer, CircleMarker, Popup, useMap } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
+import { useAuth } from "@/lib/auth";
 
 const BRAND = "#00AECD";
 const RED = "#ef4444";
@@ -47,6 +51,10 @@ type StormObservation = {
   eventId: string;
   description: string;
   notes?: string | null;
+  managerActionNote?: string | null;
+  managerActionNoteByName?: string | null;
+  managerActionNoteAt?: string | null;
+  managerActionNoteRevision?: number;
   observerName?: string | null;
   locationLat: number;
   locationLng: number;
@@ -132,6 +140,8 @@ export default function CommandCenter({ data, readOnly = false, onBack }: Comman
   const actualTimeMinutes = summary.actualMinutes ?? jobs.reduce((total, job) => total + (job.actualTimeMins ?? 0), 0);
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const { user } = useAuth();
+  const canEditManagerActionNotes = !readOnly && (user?.role === "administrator" || user?.role === "manager");
 
   const { data: teamsData } = useListTeams();
   const { data: assetsData } = useListAssets({ department: "stormwater", limit: 2000 });
@@ -141,12 +151,18 @@ export default function CommandCenter({ data, readOnly = false, onBack }: Comman
   const ackAlert = useAcknowledgeStormPatrolAlert();
   const retryEmail = useRetryStormPatrolAlertEmail();
   const cancelJob = useCancelStormPatrolJob();
+  const updateAlertActionNote = useUpdateStormPatrolAlertActionNote();
+  const updateObservationActionNote = useUpdateStormPatrolObservationActionNote();
   
   const [selectedCompletedJob, setSelectedCompletedJob] = useState<StormJob | null>(null);
   const [selectedUrgentIssue, setSelectedUrgentIssue] = useState<UrgentIssue | null>(null);
+  const [urgentActionNoteDraft, setUrgentActionNoteDraft] = useState("");
+  const [urgentActionNoteDirty, setUrgentActionNoteDirty] = useState(false);
   const [acknowledgingUrgentIssueId, setAcknowledgingUrgentIssueId] = useState<string | null>(null);
   const acknowledgementAttempts = useRef(new Set<string>());
   const [selectedObservation, setSelectedObservation] = useState<StormObservation | null>(null);
+  const [observationActionNoteDraft, setObservationActionNoteDraft] = useState("");
+  const [observationActionNoteDirty, setObservationActionNoteDirty] = useState(false);
   const urgentIssueLat = finiteCoordinate(selectedUrgentIssue?.lat);
   const urgentIssueLng = finiteCoordinate(selectedUrgentIssue?.lng);
   const observationLat = finiteCoordinate(selectedObservation?.locationLat);
@@ -198,6 +214,74 @@ export default function CommandCenter({ data, readOnly = false, onBack }: Comman
   }, [selectedObservation?.id]);
 
   useEffect(() => {
+    setUrgentActionNoteDraft(selectedUrgentIssue?.managerActionNote ?? "");
+    setUrgentActionNoteDirty(false);
+  }, [selectedUrgentIssue?.id]);
+
+  useEffect(() => {
+    setObservationActionNoteDraft(selectedObservation?.managerActionNote ?? "");
+    setObservationActionNoteDirty(false);
+  }, [selectedObservation?.id]);
+
+  useEffect(() => {
+    if (!selectedUrgentIssue) return;
+    const freshIssue = data?.alerts?.find(issue => issue.id === selectedUrgentIssue.id);
+    if (!freshIssue) return;
+    if (urgentActionNoteDirty) {
+      if (
+        (freshIssue.managerActionNoteRevision ?? 0) === (selectedUrgentIssue.managerActionNoteRevision ?? 0)
+        && (freshIssue.managerActionNote ?? "") === urgentActionNoteDraft
+      ) {
+        setUrgentActionNoteDirty(false);
+      }
+      return;
+    }
+    setSelectedUrgentIssue(current => current ? {
+      ...current,
+      managerActionNote: freshIssue.managerActionNote,
+      managerActionNoteByName: freshIssue.managerActionNoteByName,
+      managerActionNoteAt: freshIssue.managerActionNoteAt,
+      managerActionNoteRevision: freshIssue.managerActionNoteRevision,
+    } : current);
+    setUrgentActionNoteDraft(freshIssue.managerActionNote ?? "");
+  }, [
+    data?.alerts,
+    selectedUrgentIssue?.id,
+    selectedUrgentIssue?.managerActionNoteRevision,
+    urgentActionNoteDirty,
+    urgentActionNoteDraft,
+  ]);
+
+  useEffect(() => {
+    if (!selectedObservation) return;
+    const freshObservation = observations.find(observation => observation.id === selectedObservation.id);
+    if (!freshObservation) return;
+    if (observationActionNoteDirty) {
+      if (
+        (freshObservation.managerActionNoteRevision ?? 0) === (selectedObservation.managerActionNoteRevision ?? 0)
+        && (freshObservation.managerActionNote ?? "") === observationActionNoteDraft
+      ) {
+        setObservationActionNoteDirty(false);
+      }
+      return;
+    }
+    setSelectedObservation(current => current ? {
+      ...current,
+      managerActionNote: freshObservation.managerActionNote,
+      managerActionNoteByName: freshObservation.managerActionNoteByName,
+      managerActionNoteAt: freshObservation.managerActionNoteAt,
+      managerActionNoteRevision: freshObservation.managerActionNoteRevision,
+    } : current);
+    setObservationActionNoteDraft(freshObservation.managerActionNote ?? "");
+  }, [
+    observationActionNoteDirty,
+    observationActionNoteDraft,
+    observations,
+    selectedObservation?.id,
+    selectedObservation?.managerActionNoteRevision,
+  ]);
+
+  useEffect(() => {
     const issue = selectedUrgentIssue;
     if (readOnly || !issue || issue.acknowledgedAt || acknowledgementAttempts.current.has(issue.id)) return;
 
@@ -227,6 +311,56 @@ export default function CommandCenter({ data, readOnly = false, onBack }: Comman
         setAcknowledgingUrgentIssueId(current => current === issue.id ? null : current);
       });
   }, [ackAlert, queryClient, readOnly, selectedUrgentIssue, toast]);
+
+  const saveUrgentActionNote = async () => {
+    if (!selectedUrgentIssue) return;
+    try {
+      const updated = await updateAlertActionNote.mutateAsync({
+        id: selectedUrgentIssue.id,
+        data: {
+          managerActionNote: urgentActionNoteDraft.trim() || null,
+          expectedManagerActionNoteRevision: selectedUrgentIssue.managerActionNoteRevision ?? 0,
+        },
+      });
+      setSelectedUrgentIssue(current => current?.id === selectedUrgentIssue.id
+        ? { ...current, ...updated }
+        : current);
+      setUrgentActionNoteDraft(updated.managerActionNote ?? "");
+      await queryClient.invalidateQueries({ queryKey: getGetCurrentStormPatrolQueryKey() });
+      toast({ title: updated.managerActionNote ? "Manager action note saved" : "Manager action note cleared" });
+    } catch (error) {
+      toast({
+        title: "Failed to save manager action note",
+        description: error instanceof Error ? error.message : "Please try again.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const saveObservationActionNote = async () => {
+    if (!selectedObservation) return;
+    try {
+      const updated = await updateObservationActionNote.mutateAsync({
+        id: selectedObservation.id,
+        data: {
+          managerActionNote: observationActionNoteDraft.trim() || null,
+          expectedManagerActionNoteRevision: selectedObservation.managerActionNoteRevision ?? 0,
+        },
+      });
+      setSelectedObservation(current => current?.id === selectedObservation.id
+        ? { ...current, ...updated }
+        : current);
+      setObservationActionNoteDraft(updated.managerActionNote ?? "");
+      await queryClient.invalidateQueries({ queryKey: getGetCurrentStormPatrolQueryKey() });
+      toast({ title: updated.managerActionNote ? "Manager action note saved" : "Manager action note cleared" });
+    } catch (error) {
+      toast({
+        title: "Failed to save manager action note",
+        description: error instanceof Error ? error.message : "Please try again.",
+        variant: "destructive",
+      });
+    }
+  };
 
   useEffect(() => {
     if (!observationTilesFailed) return;
@@ -1094,6 +1228,54 @@ export default function CommandCenter({ data, readOnly = false, onBack }: Comman
                   </p>
                 </section>
 
+                <section>
+                  <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-white/45">Manager action taken</h3>
+                  {canEditManagerActionNotes ? (
+                    <div className="space-y-2">
+                      <Textarea
+                        aria-label="Manager action taken for urgent issue"
+                        value={urgentActionNoteDraft}
+                        onChange={event => {
+                          setUrgentActionNoteDraft(event.target.value);
+                          setUrgentActionNoteDirty(true);
+                        }}
+                        maxLength={5000}
+                        placeholder="Record what action was taken, who was contacted, or the next step."
+                        className="min-h-24 border-white/10 bg-black/20 text-white placeholder:text-white/30"
+                      />
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <p className="text-xs text-white/45">
+                          {selectedUrgentIssue.managerActionNoteAt
+                            ? `Last updated ${format(new Date(selectedUrgentIssue.managerActionNoteAt), "HH:mm, d MMM yyyy")}${selectedUrgentIssue.managerActionNoteByName ? ` by ${selectedUrgentIssue.managerActionNoteByName}` : ""}`
+                            : "No manager action recorded yet."}
+                        </p>
+                        <Button
+                          type="button"
+                          size="sm"
+                          disabled={updateAlertActionNote.isPending}
+                          onClick={() => { void saveUrgentActionNote(); }}
+                          className="bg-[#00AECD] text-white hover:bg-[#00AECD]/90"
+                        >
+                          {updateAlertActionNote.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                          Save action note
+                        </Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="rounded-lg border border-white/10 bg-black/15 p-3">
+                      <p className="text-sm leading-relaxed text-white/80">
+                        {selectedUrgentIssue.managerActionNote || "No manager action recorded."}
+                      </p>
+                      {selectedUrgentIssue.managerActionNoteAt && (
+                        <p className="mt-2 text-xs text-white/45">
+                          Recorded {format(new Date(selectedUrgentIssue.managerActionNoteAt), "HH:mm, d MMM yyyy")}
+                          {selectedUrgentIssue.managerActionNoteByName ? ` by ${selectedUrgentIssue.managerActionNoteByName}` : ""}
+                        </p>
+                      )}
+                    </div>
+                  )}
+                </section>
+
                 <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
                   {[
                     ["Phase", selectedUrgentIssue.phase ? selectedUrgentIssue.phase.toUpperCase() : "—"],
@@ -1541,6 +1723,54 @@ export default function CommandCenter({ data, readOnly = false, onBack }: Comman
                   <div className="rounded-lg border border-white/10 bg-black/15 p-3 text-sm leading-relaxed text-white/80">
                     {selectedObservation.notes || "No additional notes recorded."}
                   </div>
+                </section>
+
+                <section>
+                  <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-white/45">Manager action taken</h3>
+                  {canEditManagerActionNotes ? (
+                    <div className="space-y-2">
+                      <Textarea
+                        aria-label="Manager action taken for new observation"
+                        value={observationActionNoteDraft}
+                        onChange={event => {
+                          setObservationActionNoteDraft(event.target.value);
+                          setObservationActionNoteDirty(true);
+                        }}
+                        maxLength={5000}
+                        placeholder="Record what action was taken, who was contacted, or the next step."
+                        className="min-h-24 border-white/10 bg-black/20 text-white placeholder:text-white/30"
+                      />
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <p className="text-xs text-white/45">
+                          {selectedObservation.managerActionNoteAt
+                            ? `Last updated ${format(new Date(selectedObservation.managerActionNoteAt), "HH:mm, d MMM yyyy")}${selectedObservation.managerActionNoteByName ? ` by ${selectedObservation.managerActionNoteByName}` : ""}`
+                            : "No manager action recorded yet."}
+                        </p>
+                        <Button
+                          type="button"
+                          size="sm"
+                          disabled={updateObservationActionNote.isPending}
+                          onClick={() => { void saveObservationActionNote(); }}
+                          className="bg-[#00AECD] text-white hover:bg-[#00AECD]/90"
+                        >
+                          {updateObservationActionNote.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                          Save action note
+                        </Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="rounded-lg border border-white/10 bg-black/15 p-3">
+                      <p className="text-sm leading-relaxed text-white/80">
+                        {selectedObservation.managerActionNote || "No manager action recorded."}
+                      </p>
+                      {selectedObservation.managerActionNoteAt && (
+                        <p className="mt-2 text-xs text-white/45">
+                          Recorded {format(new Date(selectedObservation.managerActionNoteAt), "HH:mm, d MMM yyyy")}
+                          {selectedObservation.managerActionNoteByName ? ` by ${selectedObservation.managerActionNoteByName}` : ""}
+                        </p>
+                      )}
+                    </div>
+                  )}
                 </section>
 
                 <section>

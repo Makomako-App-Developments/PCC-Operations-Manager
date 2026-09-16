@@ -14,6 +14,10 @@ export interface StormObservation {
   assetId?: string | null;
   description: string;
   notes?: string | null;
+  managerActionNote?: string | null;
+  managerActionNoteByName?: string | null;
+  managerActionNoteAt?: Date | null;
+  managerActionNoteRevision?: number;
   observerName?: string | null;
   locationLat: number;
   locationLng: number;

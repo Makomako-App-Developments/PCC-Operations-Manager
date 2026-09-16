@@ -1833,6 +1833,10 @@ export const GetCurrentStormPatrolResponse = zod.object({
   "assetId": zod.string().uuid().nullish(),
   "description": zod.string(),
   "notes": zod.string().nullish(),
+  "managerActionNote": zod.string().nullish(),
+  "managerActionNoteByName": zod.string().nullish(),
+  "managerActionNoteAt": zod.date().nullish(),
+  "managerActionNoteRevision": zod.number().optional(),
   "observerName": zod.string().nullish(),
   "locationLat": zod.number(),
   "locationLng": zod.number(),
@@ -1853,6 +1857,10 @@ export const GetCurrentStormPatrolResponse = zod.object({
   "stormJobId": zod.string().uuid().nullish(),
   "message": zod.string(),
   "photoUrl": zod.string().nullish(),
+  "managerActionNote": zod.string().nullish(),
+  "managerActionNoteByName": zod.string().nullish(),
+  "managerActionNoteAt": zod.date().nullish(),
+  "managerActionNoteRevision": zod.number().optional(),
   "createdAt": zod.date().nullish(),
   "acknowledgedAt": zod.date().nullish(),
   "acknowledgedByName": zod.string().nullish(),
@@ -1973,6 +1981,10 @@ export const GetStormPatrolEventResponse = zod.object({
   "assetId": zod.string().uuid().nullish(),
   "description": zod.string(),
   "notes": zod.string().nullish(),
+  "managerActionNote": zod.string().nullish(),
+  "managerActionNoteByName": zod.string().nullish(),
+  "managerActionNoteAt": zod.date().nullish(),
+  "managerActionNoteRevision": zod.number().optional(),
   "observerName": zod.string().nullish(),
   "locationLat": zod.number(),
   "locationLng": zod.number(),
@@ -1993,6 +2005,10 @@ export const GetStormPatrolEventResponse = zod.object({
   "stormJobId": zod.string().uuid().nullish(),
   "message": zod.string(),
   "photoUrl": zod.string().nullish(),
+  "managerActionNote": zod.string().nullish(),
+  "managerActionNoteByName": zod.string().nullish(),
+  "managerActionNoteAt": zod.date().nullish(),
+  "managerActionNoteRevision": zod.number().optional(),
   "createdAt": zod.date().nullish(),
   "acknowledgedAt": zod.date().nullish(),
   "acknowledgedByName": zod.string().nullish(),
@@ -2277,6 +2293,29 @@ export const CreateStormPatrolObservationResponse = zod.object({
 })
 
 
+export const UpdateStormPatrolObservationActionNoteParams = zod.object({
+  "id": zod.coerce.string().uuid()
+})
+
+export const updateStormPatrolObservationActionNoteBodyManagerActionNoteMax = 5000;
+
+export const updateStormPatrolObservationActionNoteBodyExpectedManagerActionNoteRevisionMin = 0;
+
+
+
+export const UpdateStormPatrolObservationActionNoteBody = zod.object({
+  "managerActionNote": zod.string().max(updateStormPatrolObservationActionNoteBodyManagerActionNoteMax).nullable(),
+  "expectedManagerActionNoteRevision": zod.number().min(updateStormPatrolObservationActionNoteBodyExpectedManagerActionNoteRevisionMin)
+})
+
+export const UpdateStormPatrolObservationActionNoteResponse = zod.object({
+  "managerActionNote": zod.string().nullable(),
+  "managerActionNoteByName": zod.string().nullable(),
+  "managerActionNoteAt": zod.date().nullable(),
+  "managerActionNoteRevision": zod.number()
+})
+
+
 export const UploadStormPatrolObservationPhotoBody = zod.object({
   "photo": zod.instanceof(File),
   "observationIdempotencyKey": zod.string(),
@@ -2297,6 +2336,10 @@ export const ListStormPatrolAlertsResponse = zod.object({
   "stormJobId": zod.string().uuid().nullish(),
   "message": zod.string(),
   "photoUrl": zod.string().nullish(),
+  "managerActionNote": zod.string().nullish(),
+  "managerActionNoteByName": zod.string().nullish(),
+  "managerActionNoteAt": zod.date().nullish(),
+  "managerActionNoteRevision": zod.number().optional(),
   "createdAt": zod.date().nullish(),
   "acknowledgedAt": zod.date().nullish(),
   "acknowledgedByName": zod.string().nullish(),
@@ -2339,6 +2382,10 @@ export const CreateStormPatrolAlertResponse = zod.object({
   "stormJobId": zod.string().uuid().nullish(),
   "message": zod.string(),
   "photoUrl": zod.string().nullish(),
+  "managerActionNote": zod.string().nullish(),
+  "managerActionNoteByName": zod.string().nullish(),
+  "managerActionNoteAt": zod.date().nullish(),
+  "managerActionNoteRevision": zod.number().optional(),
   "createdAt": zod.date().nullish(),
   "acknowledgedAt": zod.date().nullish(),
   "acknowledgedByName": zod.string().nullish(),
@@ -2371,6 +2418,10 @@ export const AcknowledgeStormPatrolAlertResponse = zod.object({
   "stormJobId": zod.string().uuid().nullish(),
   "message": zod.string(),
   "photoUrl": zod.string().nullish(),
+  "managerActionNote": zod.string().nullish(),
+  "managerActionNoteByName": zod.string().nullish(),
+  "managerActionNoteAt": zod.date().nullish(),
+  "managerActionNoteRevision": zod.number().optional(),
   "createdAt": zod.date().nullish(),
   "acknowledgedAt": zod.date().nullish(),
   "acknowledgedByName": zod.string().nullish(),
@@ -2393,6 +2444,29 @@ export const AcknowledgeStormPatrolAlertResponse = zod.object({
 })
 
 
+export const UpdateStormPatrolAlertActionNoteParams = zod.object({
+  "id": zod.coerce.string().uuid()
+})
+
+export const updateStormPatrolAlertActionNoteBodyManagerActionNoteMax = 5000;
+
+export const updateStormPatrolAlertActionNoteBodyExpectedManagerActionNoteRevisionMin = 0;
+
+
+
+export const UpdateStormPatrolAlertActionNoteBody = zod.object({
+  "managerActionNote": zod.string().max(updateStormPatrolAlertActionNoteBodyManagerActionNoteMax).nullable(),
+  "expectedManagerActionNoteRevision": zod.number().min(updateStormPatrolAlertActionNoteBodyExpectedManagerActionNoteRevisionMin)
+})
+
+export const UpdateStormPatrolAlertActionNoteResponse = zod.object({
+  "managerActionNote": zod.string().nullable(),
+  "managerActionNoteByName": zod.string().nullable(),
+  "managerActionNoteAt": zod.date().nullable(),
+  "managerActionNoteRevision": zod.number()
+})
+
+
 export const RetryStormPatrolAlertEmailParams = zod.object({
   "id": zod.coerce.string().uuid()
 })
@@ -2403,6 +2477,10 @@ export const RetryStormPatrolAlertEmailResponse = zod.object({
   "stormJobId": zod.string().uuid().nullish(),
   "message": zod.string(),
   "photoUrl": zod.string().nullish(),
+  "managerActionNote": zod.string().nullish(),
+  "managerActionNoteByName": zod.string().nullish(),
+  "managerActionNoteAt": zod.date().nullish(),
+  "managerActionNoteRevision": zod.number().optional(),
   "createdAt": zod.date().nullish(),
   "acknowledgedAt": zod.date().nullish(),
   "acknowledgedByName": zod.string().nullish(),

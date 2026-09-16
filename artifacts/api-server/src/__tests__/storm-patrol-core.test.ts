@@ -42,6 +42,14 @@ describe("Storm Patrol core invariants", () => {
     expect(source).toContain('router.post("/storm-patrol/events", requireAuth, requireRole("manager", "supervisor")');
   });
 
+  it("keeps manager action notes restricted to active events and manager roles", async () => {
+    const source = await readFile(fileURLToPath(new URL("../routes/storm-patrol.ts", import.meta.url)), "utf8");
+    expect(source).toContain('router.patch("/storm-patrol/observations/:id/action-note", requireAuth, requireRole("manager")');
+    expect(source).toContain('router.patch("/storm-patrol/alerts/:id/action-note", requireAuth, requireRole("manager")');
+    expect(source).toContain('event?.status !== "active"');
+    expect(source).toContain('managerActionNoteRevision: existing.managerActionNoteRevision + 1');
+  });
+
   it("cancels only a transaction-locked pending job", async () => {
     const source = await readFile(fileURLToPath(new URL("../routes/storm-patrol.ts", import.meta.url)), "utf8");
     expect(source).toContain('router.delete("/storm-patrol/jobs/:id", requireAuth, requireRole("manager")');

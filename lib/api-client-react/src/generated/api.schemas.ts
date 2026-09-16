@@ -121,6 +121,10 @@ export interface StormObservation {
   assetId?: string | null;
   description: string;
   notes?: string | null;
+  managerActionNote?: string | null;
+  managerActionNoteByName?: string | null;
+  managerActionNoteAt?: string | null;
+  managerActionNoteRevision?: number;
   observerName?: string | null;
   locationLat: number;
   locationLng: number;
@@ -165,6 +169,10 @@ export interface StormAlert {
   stormJobId?: string | null;
   message: string;
   photoUrl?: string | null;
+  managerActionNote?: string | null;
+  managerActionNoteByName?: string | null;
+  managerActionNoteAt?: string | null;
+  managerActionNoteRevision?: number;
   createdAt?: string | null;
   acknowledgedAt?: string | null;
   acknowledgedByName?: string | null;
@@ -222,6 +230,26 @@ export interface StormObservationResponse {
   observation: StormObservationResponseObservation;
   reactiveJob?: StormObservationResponseReactiveJob;
   replayed: boolean;
+}
+
+export interface StormManagerActionNoteUpdate {
+  /**
+     * @maxLength 5000
+     * @nullable
+     */
+  managerActionNote: string | null;
+  /** @minimum 0 */
+  expectedManagerActionNoteRevision: number;
+}
+
+export interface StormManagerActionNoteResult {
+  /** @nullable */
+  managerActionNote: string | null;
+  /** @nullable */
+  managerActionNoteByName: string | null;
+  /** @nullable */
+  managerActionNoteAt: string | null;
+  managerActionNoteRevision: number;
 }
 
 export interface StormAlertCreate {

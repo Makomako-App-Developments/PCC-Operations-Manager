@@ -14,6 +14,10 @@ export interface StormAlert {
   stormJobId?: string | null;
   message: string;
   photoUrl?: string | null;
+  managerActionNote?: string | null;
+  managerActionNoteByName?: string | null;
+  managerActionNoteAt?: Date | null;
+  managerActionNoteRevision?: number;
   createdAt?: Date | null;
   acknowledgedAt?: Date | null;
   acknowledgedByName?: string | null;

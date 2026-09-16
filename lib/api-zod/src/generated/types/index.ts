@@ -150,6 +150,8 @@ export * from './stormJobPhase';
 export * from './stormJobPhotoUpload';
 export * from './stormJobPhotoUploadPurpose';
 export * from './stormJobStatus';
+export * from './stormManagerActionNoteResult';
+export * from './stormManagerActionNoteUpdate';
 export * from './stormObservation';
 export * from './stormObservationCreate';
 export * from './stormObservationPhoto';
