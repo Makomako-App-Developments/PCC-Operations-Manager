@@ -5,6 +5,7 @@ import { eq, and, inArray, notInArray, or, isNull, gte, lte, ilike, desc, sql } 
 import { z } from "zod";
 import { z as zV4 } from "zod/v4";
 import { requireAuth, requireRole } from "../middlewares/auth";
+import { requireFieldWorkerTeam } from "../middlewares/field-team";
 import { validateBody, validateQuery } from "../middlewares/validate";
 import { auditLog } from "../lib/audit";
 import { notifyTeam, notifyUsers } from "../lib/push-notifications";
@@ -366,7 +367,7 @@ router.get("/jobs/drafts", requireAuth, requireRole("administrator", "manager"),
 });
 
 // GET /api/jobs
-router.get("/jobs", requireAuth, validateQuery(jobQuerySchema), async (req, res) => {
+router.get("/jobs", requireAuth, requireFieldWorkerTeam, validateQuery(jobQuerySchema), async (req, res) => {
   const { assetId, status, page, limit } = res.locals.query as JobQuery;
   let { teamId } = res.locals.query as JobQuery;
   const offset = (page - 1) * limit;
@@ -416,7 +417,7 @@ const completedWorksQuerySchema = z.object({
   limit:      z.coerce.number().int().min(1).max(1000).default(100),
 });
 
-router.get("/completed-works", requireAuth, validateQuery(completedWorksQuerySchema), async (req, res) => {
+router.get("/completed-works", requireAuth, requireFieldWorkerTeam, validateQuery(completedWorksQuerySchema), async (req, res) => {
   const q = res.locals.query as z.infer<typeof completedWorksQuerySchema>;
 
   // Non-privileged users may only see their own team's completed work
@@ -1026,7 +1027,7 @@ async function sendAdditionalCompletionReport(
 }
 
 // GET /api/jobs/:id/pdf
-router.get("/jobs/:id/pdf", requireAuth, async (req, res) => {
+router.get("/jobs/:id/pdf", requireAuth, requireFieldWorkerTeam, async (req, res) => {
   const id = String(req.params.id);
   const source = req.query.source;
   if (source === "unscheduled" || source === "infill_planting" || source === "mulching" || source === "storm_patrol") {
@@ -1286,7 +1287,7 @@ router.get("/jobs/:id/pdf", requireAuth, async (req, res) => {
 
 // GET /api/jobs/:id
 // Falls through to mulching_records when the id is not in the jobs table.
-router.get("/jobs/:id", requireAuth, async (req, res) => {
+router.get("/jobs/:id", requireAuth, requireFieldWorkerTeam, async (req, res) => {
   const id = String(req.params.id);
   const [job] = await executeWithCircuitBreaker(() => db.select().from(jobsTable).where(eq(jobsTable.id, id)).limit(1));
   if (job) {
@@ -1479,7 +1480,7 @@ router.post(
 );
 
 // PATCH /api/jobs/:id
-router.patch("/jobs/:id", requireAuth, async (req, res) => {
+router.patch("/jobs/:id", requireAuth, requireFieldWorkerTeam, async (req, res) => {
   const id = String(req.params.id);
   const [before] = await executeWithCircuitBreaker(() => db.select().from(jobsTable).where(eq(jobsTable.id, id)).limit(1));
 
@@ -2061,7 +2062,7 @@ router.post("/jobs/:id/place-draft", requireAuth, requireRole("administrator", "
 });
 
 // GET /api/jobs/:id/task-skip-reasons
-router.get("/jobs/:id/task-skip-reasons", requireAuth, async (req, res) => {
+router.get("/jobs/:id/task-skip-reasons", requireAuth, requireFieldWorkerTeam, async (req, res) => {
   const id = String(req.params.id);
 
   // Authorization: verify the caller can read this job
@@ -2085,7 +2086,7 @@ router.get("/jobs/:id/task-skip-reasons", requireAuth, async (req, res) => {
 });
 
 // POST /api/jobs/:id/task-skip-reasons
-router.post("/jobs/:id/task-skip-reasons", requireAuth, async (req, res) => {
+router.post("/jobs/:id/task-skip-reasons", requireAuth, requireFieldWorkerTeam, async (req, res) => {
   const id = String(req.params.id);
 
   // Authorization: verify the caller can act on this job
@@ -2122,7 +2123,7 @@ router.post("/jobs/:id/task-skip-reasons", requireAuth, async (req, res) => {
 });
 
 // POST /api/jobs/:id/team-complete — sign off a team's time on an All Teams job
-router.post("/jobs/:id/team-complete", requireAuth, async (req, res) => {
+router.post("/jobs/:id/team-complete", requireAuth, requireFieldWorkerTeam, async (req, res) => {
   const id = String(req.params.id);
   const userId = req.auth!.userId;
   const { actualTimeMins, notes } = req.body as { actualTimeMins?: number; notes?: string };
@@ -2192,7 +2193,7 @@ router.post("/jobs/:id/team-complete", requireAuth, async (req, res) => {
 // ── Reactive jobs ────────────────────────────────────────────────────────────
 
 // GET /api/reactive-jobs
-router.get("/reactive-jobs", requireAuth, async (req, res) => {
+router.get("/reactive-jobs", requireAuth, requireFieldWorkerTeam, async (req, res) => {
   const assetId = req.query.assetId as string | undefined;
   const statusFilter = req.query.status as string | undefined;
   const conditions: any[] = [];
@@ -2288,7 +2289,7 @@ router.post("/reactive-jobs", requireAuth, validateBody(insertReactiveJobSchema.
 });
 
 // GET /api/reactive-jobs/:id
-router.get("/reactive-jobs/:id", requireAuth, async (req, res) => {
+router.get("/reactive-jobs/:id", requireAuth, requireFieldWorkerTeam, async (req, res) => {
   const id = String(req.params.id);
   const [row] = await executeWithCircuitBreaker(() => db
     .select({
@@ -2315,7 +2316,7 @@ router.get("/reactive-jobs/:id", requireAuth, async (req, res) => {
 });
 
 // PATCH /api/reactive-jobs/:id
-router.patch("/reactive-jobs/:id", requireAuth, async (req, res) => {
+router.patch("/reactive-jobs/:id", requireAuth, requireFieldWorkerTeam, async (req, res) => {
   const id = String(req.params.id);
   const [before] = await executeWithCircuitBreaker(() => db.select().from(reactiveJobsTable).where(eq(reactiveJobsTable.id, id)).limit(1));
   if (!before) { res.status(404).json({ error: "Reactive job not found" }); return; }

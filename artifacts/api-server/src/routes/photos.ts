@@ -5,6 +5,7 @@ import { createHash, randomUUID } from "crypto";
 import { db, infillJobsTable, jobPhotosTable, jobsTable, mulchingRecordsTable, reactiveJobsTable, executeWithCircuitBreaker } from "@workspace/db";
 import { and, eq, sql } from "drizzle-orm";
 import { requireAuth } from "../middlewares/auth";
+import { requireFieldWorkerTeam } from "../middlewares/field-team";
 import { objectStorageClient } from "../lib/objectStorage";
 import { reconcileUncommittedPhotoObject, removeUncommittedPhotoObject } from "../lib/photo-object-cleanup";
 
@@ -173,7 +174,7 @@ async function resolveJobKind(id: string): Promise<"job" | "mulching" | "unknown
 // ── Regular / mulching job photos ─────────────────────────────────────────────
 
 // GET /api/jobs/:id/photos
-router.get("/jobs/:id/photos", requireAuth, async (req, res) => {
+router.get("/jobs/:id/photos", requireAuth, requireFieldWorkerTeam, async (req, res) => {
   const id = String(req.params.id);
   const kind = await resolveJobKind(id);
   if (kind === "unknown") { res.status(404).json({ error: "Job or mulching record not found" }); return; }
@@ -210,6 +211,7 @@ router.get("/jobs/:id/photos", requireAuth, async (req, res) => {
 router.post(
   "/jobs/:id/photos",
   requireAuth,
+  requireFieldWorkerTeam,
   upload.single("photo"),
   async (req, res) => {
     const id = String(req.params.id);
@@ -257,7 +259,7 @@ router.post(
 // Infill jobs have their own relationship because they are programme records,
 // rather than rows in the scheduled jobs table.  Keep this endpoint separate
 // from /jobs/:id/photos so an id can never be interpreted as another work type.
-router.get("/infill-jobs/:id/photos", requireAuth, async (req, res) => {
+router.get("/infill-jobs/:id/photos", requireAuth, requireFieldWorkerTeam, async (req, res) => {
   const id = String(req.params.id);
   const [infillJob] = await executeWithCircuitBreaker(() => db
     .select({ id: infillJobsTable.id, assignedTeamId: infillJobsTable.assignedTeamId })
@@ -283,6 +285,7 @@ router.get("/infill-jobs/:id/photos", requireAuth, async (req, res) => {
 router.post(
   "/infill-jobs/:id/photos",
   requireAuth,
+  requireFieldWorkerTeam,
   upload.single("photo"),
   async (req, res) => {
     const id = String(req.params.id);
@@ -320,7 +323,7 @@ router.post(
   },
 );
 
-router.delete("/infill-jobs/:id/photos/:photoId", requireAuth, async (req, res) => {
+router.delete("/infill-jobs/:id/photos/:photoId", requireAuth, requireFieldWorkerTeam, async (req, res) => {
   const id = String(req.params.id);
   const photoId = String(req.params.photoId);
   const [infillJob] = await executeWithCircuitBreaker(() => db
@@ -356,7 +359,7 @@ router.delete("/infill-jobs/:id/photos/:photoId", requireAuth, async (req, res) 
 // ── Reactive job attachments ───────────────────────────────────────────────────
 
 // GET /api/reactive-jobs/:id/photos
-router.get("/reactive-jobs/:id/photos", requireAuth, async (req, res) => {
+router.get("/reactive-jobs/:id/photos", requireAuth, requireFieldWorkerTeam, async (req, res) => {
   const id = String(req.params.id);
   const [rj] = await executeWithCircuitBreaker(() => db.select({ id: reactiveJobsTable.id, assignedTeamId: reactiveJobsTable.assignedTeamId }).from(reactiveJobsTable).where(eq(reactiveJobsTable.id, id)).limit(1));
   if (!rj) { res.status(404).json({ error: "Reactive job not found" }); return; }
@@ -376,6 +379,7 @@ router.get("/reactive-jobs/:id/photos", requireAuth, async (req, res) => {
 router.post(
   "/reactive-jobs/:id/photos",
   requireAuth,
+  requireFieldWorkerTeam,
   upload.single("photo"),
   async (req, res) => {
     const id = String(req.params.id);

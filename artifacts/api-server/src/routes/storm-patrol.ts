@@ -1,4 +1,4 @@
-import { Router, type NextFunction, type Request, type Response } from "express";
+import { Router, type Request, type Response } from "express";
 import multer from "multer";
 import * as XLSX from "xlsx";
 import { createHash, randomUUID } from "crypto";
@@ -11,6 +11,7 @@ import { and, asc, desc, eq, getTableColumns, inArray, isNull, or, sql } from "d
 import { z } from "zod";
 import { STORM_PATROL_ERROR_CODES } from "@workspace/asset-definitions";
 import { requireAuth, requireRole } from "../middlewares/auth";
+import { requireFieldWorkerTeam } from "../middlewares/field-team";
 import { validateBody, validateQuery } from "../middlewares/validate";
 import { auditLog } from "../lib/audit";
 import { notifyUsers } from "../lib/push-notifications";
@@ -24,15 +25,6 @@ import { deliverStormAlertEmail } from "../lib/storm-patrol-email";
 const router = Router();
 const managers = ["administrator", "manager"];
 const privileged = (role: string) => ["administrator", "manager", "supervisor"].includes(role);
-const TEAM_ASSIGNMENT_REQUIRED_ERROR = "A team assignment is required to access Storm Patrol.";
-
-function requireFieldWorkerTeam(req: Request, res: Response, next: NextFunction) {
-  if (req.auth?.role === "field_worker" && !req.auth.teamId) {
-    res.status(403).json({ error: TEAM_ASSIGNMENT_REQUIRED_ERROR });
-    return;
-  }
-  next();
-}
 const phases = z.enum(["pre", "mid", "post"]);
 const workTypes = z.enum(["silt_clearance", "litter_clearance", "debris_clearance", "visual_check_only", "litter_debris_removed_from_site", "site_too_dangerous", "site_made_safe"]);
 const managerActionNoteUpdate = z.object({

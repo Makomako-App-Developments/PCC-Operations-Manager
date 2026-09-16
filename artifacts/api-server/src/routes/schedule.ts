@@ -7,6 +7,7 @@ import {
 import { eq, and, or, gte, lte, lt, inArray, sql, notInArray, isNull, isNotNull } from "drizzle-orm";
 import { z } from "zod";
 import { requireAuth, requireRole } from "../middlewares/auth";
+import { requireFieldWorkerTeam } from "../middlewares/field-team";
 import { validateBody, validateQuery } from "../middlewares/validate";
 import { FREQ_DAYS, calcCrewAdjustment, loadSystemSettings, buildAbsenceDataForTeamDate, type CrewStatus } from "../lib/crew-utils";
 import { checkDayCapacity } from "../lib/day-capacity";
@@ -756,6 +757,7 @@ export function isOverdueScheduleJobEligible(job: {
 router.get(
   "/schedule/overdue",
   requireAuth,
+  requireFieldWorkerTeam,
   validateQuery(overdueQuerySchema),
   async (req, res): Promise<void> => {
     const { before } = res.locals.query as z.infer<typeof overdueQuerySchema>;
@@ -989,6 +991,7 @@ router.post(
 router.get(
   "/schedule/week",
   requireAuth,
+  requireFieldWorkerTeam,
   validateQuery(weekQuerySchema),
   async (req, res) => {
     const { week } = res.locals.query as z.infer<typeof weekQuerySchema>;
@@ -1467,6 +1470,7 @@ const rangeQuerySchema = z.object({
 router.get(
   "/schedule/range",
   requireAuth,
+  requireFieldWorkerTeam,
   validateQuery(rangeQuerySchema),
   async (req, res) => {
     const { from, to } = res.locals.query as z.infer<typeof rangeQuerySchema>;

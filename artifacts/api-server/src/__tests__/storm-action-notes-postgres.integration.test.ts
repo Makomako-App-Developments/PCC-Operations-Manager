@@ -43,11 +43,11 @@ describe.skipIf(!runWithPostgres).sequential(
       }, jwtSecret, { expiresIn: "15m" });
     }
 
-    function teamlessFieldWorkerToken(): string {
+    function teamlessFieldWorkerToken(teamId: string | null = null): string {
       return jwt.sign({
         userId: teamlessFieldWorkerId,
         role: "field_worker",
-        teamId: null,
+        teamId,
         sessionVersion: 0,
         tokenType: "access",
       }, jwtSecret, { expiresIn: "15m" });
@@ -206,19 +206,36 @@ describe.skipIf(!runWithPostgres).sequential(
       }
     });
 
-    it("returns a clear access error for teamless field-worker read requests", async () => {
+    it("returns a clear access error for teamless workers across team-filtered field routes", async () => {
       const authorization = `Bearer ${teamlessFieldWorkerToken()}`;
-      const [current, jobs] = await Promise.all([
-        request(app).get("/api/storm-patrol/current").set("Authorization", authorization),
-        request(app).get("/api/storm-patrol/jobs").set("Authorization", authorization),
-      ]);
+      const fieldRoutes = [
+        "/api/jobs",
+        "/api/completed-works",
+        "/api/reactive-jobs",
+        "/api/schedule/overdue?before=2026-09-16",
+        "/api/schedule/week?week=2026-09-14",
+        "/api/schedule/range?from=2026-09-14&to=2026-09-20",
+        "/api/storm-patrol/current",
+        "/api/storm-patrol/jobs",
+      ];
+      const responses = await Promise.all(fieldRoutes.map(path =>
+        request(app).get(path).set("Authorization", authorization),
+      ));
 
-      for (const response of [current, jobs]) {
+      for (const response of responses) {
         expect(response.status).toBe(403);
         expect(response.body).toEqual({
-          error: "A team assignment is required to access Storm Patrol.",
+          error: "A team assignment is required to access field work.",
         });
       }
+
+      const malformedClaim = await request(app)
+        .get("/api/jobs")
+        .set("Authorization", `Bearer ${teamlessFieldWorkerToken("not-a-team-id")}`);
+      expect(malformedClaim.status).toBe(403);
+      expect(malformedClaim.body).toEqual({
+        error: "A team assignment is required to access field work.",
+      });
     });
 
     it("rejects stale revisions after both a save and a clear", async () => {

@@ -250,9 +250,10 @@ function getJobPhotos(
   jobId: string,
   { role = "manager" }: { role?: string } = {},
 ) {
-  return request(app)
+  const req = request(app)
     .get(`/api/jobs/${jobId}/photos`)
     .set("x-test-role", role);
+  return role === "field_worker" ? req.set("x-test-team-id", skippedJob.teamId) : req;
 }
 
 function getKnownUpload(
@@ -272,10 +273,11 @@ function postTeamComplete(
   jobId: string,
   { role = "field_worker" }: { role?: string } = {},
 ) {
-  return request(app)
+  const req = request(app)
     .post(`/api/jobs/${jobId}/team-complete`)
     .set("x-test-role", role)
-    .send({});
+  if (role === "field_worker") req.set("x-test-team-id", skippedJob.teamId);
+  return req.send({});
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
