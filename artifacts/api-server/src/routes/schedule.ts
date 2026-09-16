@@ -2128,6 +2128,7 @@ const insertJobBodySchema = z.object({
   estimatedMins: z.number().int().positive(),
   notes:         z.string().nullable().optional(),
   force:         z.boolean().default(false),
+  pushForward:   z.boolean().default(false),
   schedulingPolicy: z.enum(["unscheduled_first", "scheduled_first"]).default("unscheduled_first"),
 });
 
@@ -2137,12 +2138,259 @@ router.post(
   requireRole("manager", "supervisor"),
   validateBody(insertJobBodySchema),
   async (req, res) => {
-    const { jobType, assetId, teamId, date, estimatedMins, notes, force, schedulingPolicy } =
+    const { jobType, assetId, teamId, date, estimatedMins, notes, force, pushForward, schedulingPolicy } =
       res.locals.body as z.infer<typeof insertJobBodySchema>;
 
     // Supervisors may only insert jobs for their own team
     if (req.auth!.role === "supervisor" && teamId !== req.auth!.teamId) {
       res.status(403).json({ error: "Supervisors may only insert jobs for their own team" });
+      return;
+    }
+
+    // A confirmed "Make room & place" action must recheck capacity and move
+    // route-tail work under the same team/day lock as the insert. The initial
+    // capacity preview is advisory; another manager may have changed the day
+    // before this request arrives.
+    if (pushForward) {
+      if (!teamId) {
+        res.status(400).json({ error: "A team is required when pushing scheduled work forward" });
+        return;
+      }
+      if (schedulingPolicy !== "unscheduled_first") {
+        res.status(409).json({ error: "Push-forward placement requires unscheduled work first" });
+        return;
+      }
+
+      const nonWorkingDays = await buildTeamNonWorkingDays(teamId, date, addDays(date, 60));
+      const now = new Date();
+      class CombinedInsertPushError extends Error {
+        constructor(readonly conflict: Record<string, unknown>) {
+          super("Not enough eligible route-tail maintenance could be moved safely");
+        }
+      }
+
+      let result: {
+        created: Record<string, unknown>;
+        moved: string[];
+        movedToDate?: string;
+      };
+      try {
+        result = await executeWithCircuitBreaker(() => db.transaction(async tx => {
+          await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${teamId} || ':' || ${date}))`);
+
+          const conflict = await checkDayCapacity(teamId, date, estimatedMins, tx as unknown as typeof db);
+          if (!conflict) {
+            // The preview may have become valid while the dialog was open. In
+            // that case, still commit the insert under the same lock.
+            const [created] = jobType === "infill"
+              ? await tx.insert(infillJobsTable).values({
+                assetId,
+                assignedTeamId:  teamId,
+                assessmentDate:  new Date().toISOString().slice(0, 10),
+                assessmentNotes: notes ?? null,
+                plannedDate:     date,
+                estimatedMins,
+                status:          "scheduled",
+                assessedById:    req.auth!.userId,
+              }).returning()
+              : await tx.insert(mulchingRecordsTable).values({
+                assetId,
+                assignedTeamId: teamId,
+                scheduledDate:  date,
+                estimatedMins,
+                notes:          notes ?? null,
+                status:          "scheduled",
+              }).returning();
+            return { created: created as Record<string, unknown>, moved: [] as string[] };
+          }
+          if (!conflict.capacityDataReliable) {
+            throw new CombinedInsertPushError({
+              ...conflict,
+              capacityDataUnreliable: true,
+            });
+          }
+
+          const [insertionAsset] = await tx
+            .select({ routeOrder: assetsTable.routeOrder, name: assetsTable.name })
+            .from(assetsTable)
+            .where(eq(assetsTable.id, assetId))
+            .limit(1);
+          if (!insertionAsset) {
+            throw new CombinedInsertPushError({ ...conflict, insertionAssetMissing: true });
+          }
+
+          const moved: string[] = [];
+          let movedToDate: string | undefined;
+          let currentDate = date;
+          let minutesToFree = conflict.shortfallMins;
+
+          for (let iteration = 0; iteration < 14 && minutesToFree > 0; iteration++) {
+            const nextDate = addWorkingDays(currentDate, 1, nonWorkingDays);
+            // Lock the receiving day before selecting or moving its route tail.
+            // The target day is already locked above; locks are acquired in
+            // chronological order during the cascade.
+            await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${teamId} || ':' || ${nextDate}))`);
+
+            const candidates = await tx
+              .select({
+                id: jobsTable.id,
+                routeOrder: assetsTable.routeOrder,
+                assetName: assetsTable.name,
+                estimatedTimeMins: jobsTable.estimatedTimeMins,
+                serviceTimeMins: assetsTable.serviceTimeMins,
+              })
+              .from(jobsTable)
+              .leftJoin(assetsTable, eq(jobsTable.assetId, assetsTable.id))
+              .where(and(
+                eq(jobsTable.teamId, teamId),
+                eq(jobsTable.scheduledDate, currentDate),
+                eq(jobsTable.status, "pending"),
+                eq(jobsTable.jobType, "scheduled"),
+                isNull(jobsTable.draftOriginalScheduledDate),
+              ))
+              .orderBy(sql`${assetsTable.routeOrder} DESC NULLS FIRST`, sql`${assetsTable.name} DESC`);
+
+            const eligibleCandidates = iteration === 0
+              ? candidates.filter(candidate => {
+                if (insertionAsset.routeOrder === null) {
+                  return candidate.routeOrder === null && candidate.assetName > insertionAsset.name;
+                }
+                if (candidate.routeOrder === null) return true;
+                return candidate.routeOrder > insertionAsset.routeOrder
+                  || (candidate.routeOrder === insertionAsset.routeOrder && candidate.assetName > insertionAsset.name);
+              })
+              : candidates;
+
+            const toMove: string[] = [];
+            let freed = 0;
+            for (const candidate of eligibleCandidates) {
+              if (freed >= minutesToFree) break;
+              toMove.push(candidate.id);
+              freed += candidate.estimatedTimeMins ?? candidate.serviceTimeMins ?? 0;
+            }
+            if (freed < minutesToFree) {
+              throw new CombinedInsertPushError({
+                ...conflict,
+                date: currentDate,
+                insufficientEligibleMins: freed,
+              });
+            }
+
+            await tx.update(jobsTable)
+              .set({ scheduledDate: nextDate, updatedAt: now })
+              .where(and(
+                inArray(jobsTable.id, toMove),
+                eq(jobsTable.status, "pending"),
+                eq(jobsTable.jobType, "scheduled"),
+                isNull(jobsTable.draftOriginalScheduledDate),
+              ));
+            moved.push(...toMove);
+            movedToDate = nextDate;
+
+            const destinationConflict = await checkDayCapacity(
+              teamId,
+              nextDate,
+              0,
+              tx as unknown as typeof db,
+            );
+            if (!destinationConflict) break;
+            if (!destinationConflict.capacityDataReliable) {
+              throw new CombinedInsertPushError({
+                ...destinationConflict,
+                capacityDataUnreliable: true,
+              });
+            }
+            currentDate = nextDate;
+            minutesToFree = destinationConflict.shortfallMins;
+            if (iteration === 13) {
+              throw new CombinedInsertPushError({
+                ...destinationConflict,
+                cascadeLimitReached: true,
+              });
+            }
+          }
+
+          const [created] = jobType === "infill"
+            ? await tx.insert(infillJobsTable).values({
+              assetId,
+              assignedTeamId:  teamId,
+              assessmentDate:  new Date().toISOString().slice(0, 10),
+              assessmentNotes: notes ?? null,
+              plannedDate:     date,
+              estimatedMins,
+              status:          "scheduled",
+              assessedById:    req.auth!.userId,
+            }).returning()
+            : await tx.insert(mulchingRecordsTable).values({
+              assetId,
+              assignedTeamId: teamId,
+              scheduledDate:  date,
+              estimatedMins,
+              notes:          notes ?? null,
+              status:          "scheduled",
+            }).returning();
+          return { created: created as Record<string, unknown>, moved, movedToDate };
+        }));
+      } catch (error) {
+        if (error instanceof CombinedInsertPushError) {
+          if (error.conflict.capacityDataUnreliable) {
+            res.status(503).json({
+              error: "Capacity data is temporarily unreliable — scheduling blocked to prevent over-commitment",
+              capacity: error.conflict,
+            });
+            return;
+          }
+          res.status(409).json({
+            capacityConflict: true,
+            capacity: error.conflict,
+            error: error.message,
+          });
+          return;
+        }
+        throw error;
+      }
+
+      const auditData = {
+        ...result.created,
+        schedulingPolicy,
+        pushForward: result.moved.length > 0
+          ? { fromDate: date, toDate: result.movedToDate, movedJobIds: result.moved }
+          : null,
+      };
+      await auditLog({
+        tableName: jobType === "infill" ? "infill_jobs" : "mulching_records",
+        recordId: String(result.created.id),
+        action: "INSERT",
+        changedById: req.auth?.userId ?? null,
+        newData: auditData,
+        ipAddress: req.ip ?? null,
+      });
+      if (result.moved.length > 0) {
+        await auditLog({
+          tableName: "schedule",
+          recordId: null,
+          action: "push_forward",
+          changedById: req.auth?.userId ?? null,
+          newData: {
+            teamId,
+            fromDate: date,
+            minutesToFree: estimatedMins,
+            insertionAssetId: assetId,
+            affectedCount: result.moved.length,
+            movedJobIds: result.moved,
+            toDate: result.movedToDate,
+            combinedInsert: true,
+          },
+          ipAddress: req.ip ?? null,
+        });
+      }
+      res.status(201).json({
+        jobType,
+        schedulingPolicy,
+        pushedCount: result.moved.length,
+        pushedToDate: result.movedToDate,
+        ...result.created,
+      });
       return;
     }
 

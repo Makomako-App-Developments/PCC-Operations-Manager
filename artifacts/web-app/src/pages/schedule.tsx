@@ -1672,7 +1672,7 @@ export default function Schedule() {
    * When force=false the server checks capacity; it returns { capacityConflict: true, capacity: {...} }
    * if the day would be over-capacity. With force=true it always creates.
    */
-  const callInsertJobApi = async (force: boolean): Promise<{ ok: boolean; conflict?: any }> => {
+  const callInsertJobApi = async (force: boolean, pushForward = false): Promise<{ ok: boolean; conflict?: any; data?: any }> => {
     if (!insertAsset) return { ok: false };
     const estMins = parseInt(insertMins);
     if (isNaN(estMins) || estMins <= 0) return { ok: false };
@@ -1689,6 +1689,7 @@ export default function Schedule() {
         estimatedMins: estMins,
         notes:         insertNotes || null,
         force,
+        pushForward,
         schedulingPolicy: insertSchedulingPolicy,
       }),
     });
@@ -1699,7 +1700,7 @@ export default function Schedule() {
     if (data.capacityConflict) {
       return { ok: false, conflict: data.capacity };
     }
-    return { ok: true };
+    return { ok: true, data };
   };
 
   /** Submit the insert job form — server checks capacity, shows push dialog if needed. */
@@ -1741,40 +1742,26 @@ export default function Schedule() {
     }
   };
 
-  /** "Push & Place" — call push-forward then force-create the job. */
+  /** "Push & Place" — commit the route-tail move and job insert together. */
   const handlePushAndPlace = async () => {
     if (!pendingInsert || !pushCapacity) return;
     setPushLoading(true);
     try {
-      const pushRes = await fetch("/api/schedule/push-forward", {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          teamId:    pendingInsert.teamId,
-          fromDate:  pendingInsert.date,
-          minutesToFree: pushCapacity.shortfallMins,
-        }),
-      });
-      if (!pushRes.ok) throw new Error("Push failed");
-      const pushData = await pushRes.json();
-
-      // Force-create: capacity conflict already shown; user approved the push
-      const result = await callInsertJobApi(true);
+      const result = await callInsertJobApi(false, true);
       if (result.ok) {
         setPushOpen(false);
         setPendingInsert(null);
         toast({
           title: `${jobTypeLabel} job placed`,
-          description: `${pushData.affectedCount} pending maintenance job${pushData.affectedCount !== 1 ? "s" : ""} moved from the route tail to make room.`,
+          description: `${result.data?.pushedCount ?? 0} pending maintenance job${result.data?.pushedCount !== 1 ? "s" : ""} moved from the route tail to make room.`,
         });
         queryClient.invalidateQueries({ queryKey: ["/api/schedule/week"] });
         queryClient.invalidateQueries({ queryKey: ["/api/schedule/range"] });
       } else {
-        toast({ title: "Push succeeded but job creation failed", variant: "destructive" });
+        toast({ title: "Could not make room and place the job", variant: "destructive" });
       }
     } catch {
-      toast({ title: "Failed to push schedule", variant: "destructive" });
+      toast({ title: "Failed to make room and place the job", variant: "destructive" });
     } finally {
       setPushLoading(false);
     }
