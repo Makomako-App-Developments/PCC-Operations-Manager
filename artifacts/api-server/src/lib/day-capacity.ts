@@ -122,53 +122,40 @@ export async function computeTotalScheduledMins(
   ]);
 
   // ── Silent empty-array guard ────────────────────────────────────────────────
-  // If a DB middleware layer swallows an error and resolves with [] instead of
-  // rejecting, queryJobTypeMins will NOT throw — so the check above cannot catch
-  // it. We detect the failure by looking for asymmetry: if at least one
-  // sub-query returned rows but another returned zero rows, the empty result is
-  // suspicious and likely indicates a silent failure rather than a genuinely
-  // empty schedule. Warn loudly so the under-count is operator-visible.
+  // Empty job categories are normal, so asymmetry alone cannot prove a query
+  // failed. Cross-check every empty category with independent counts and only
+  // mark the result unreliable when those counts contradict the returned rows.
   const rowCounts = [
     { jobType: "regular-jobs",     count: regularRows.length },
     { jobType: "infill-jobs",      count: infillRows.length  },
     { jobType: "mulching-records", count: mulchRows.length   },
   ];
-  const anyNonEmpty = rowCounts.some((r) => r.count > 0);
   const emptyTypes  = rowCounts.filter((r) => r.count === 0).map((r) => r.jobType);
 
-  let capacityDataReliable = !(anyNonEmpty && emptyTypes.length > 0);
-
-  if (!capacityDataReliable) {
-    console.warn(
-      `[day-capacity] sub-query returned empty results while other sub-queries returned data — possible silent middleware failure; capacity may be under-counted`,
-      { teamId, date, emptySubQueries: emptyTypes, nonEmptySubQueries: rowCounts.filter((r) => r.count > 0).map((r) => r.jobType) },
-    );
-  }
+  let capacityDataReliable = true;
 
   const total =
     regularRows.reduce((s, r) => s + Number(r.mins), 0) +
     infillRows.reduce((s, r)  => s + Number(r.mins), 0) +
     mulchRows.reduce((s, r)   => s + Number(r.mins), 0);
 
-  // ── Full-silent-empty cross-reference guard ─────────────────────────────────
-  // The asymmetry guard above is blind when ALL THREE sub-queries silently
-  // return [] — there is no asymmetry to detect, so it returns
-  // { total: 0, capacityDataReliable: true }, which looks like a free day.
-  //
-  // To close this gap, when all three row arrays are empty (zero rows returned,
-  // not merely zero minutes — jobs can legitimately have null/0 estimatedMins
-  // and still produce rows) we issue a lightweight COUNT query across all three
-  // job tables. If the count is > 0 the day is NOT genuinely empty, so
-  // capacityDataReliable is set to false and a structured warn is emitted to
-  // make the silent failure operator-visible.
-  const allRowArraysEmpty =
-    regularRows.length === 0 && infillRows.length === 0 && mulchRows.length === 0;
-
-  if (allRowArraysEmpty && capacityDataReliable) {
+  if (emptyTypes.length > 0) {
     const [countRow] = await queryJobTypeMins("total-job-count", teamId, date, () =>
       executeWithCircuitBreaker(() =>
         queryDb
           .select({
+            regularCount: sql<number>`(SELECT count(*) FROM ${jobsTable}
+              WHERE ${eq(jobsTable.teamId, teamId)}
+                AND ${eq(jobsTable.scheduledDate, date)}
+                AND ${notInArray(jobsTable.status, ["completed", "skipped", "draft"])})`,
+            infillCount: sql<number>`(SELECT count(*) FROM ${infillJobsTable}
+              WHERE ${eq(infillJobsTable.assignedTeamId, teamId)}
+                AND ${eq(infillJobsTable.plannedDate, date)}
+                AND ${notInArray(infillJobsTable.status, ["completed", "cancelled"])})`,
+            mulchCount: sql<number>`(SELECT count(*) FROM ${mulchingRecordsTable}
+              WHERE ${eq(mulchingRecordsTable.assignedTeamId, teamId)}
+                AND ${eq(mulchingRecordsTable.scheduledDate, date)}
+                AND ${notInArray(mulchingRecordsTable.status, ["completed", "not_required"])})`,
             totalCount: sql<number>`(
               (SELECT count(*) FROM ${jobsTable}
                 WHERE ${eq(jobsTable.teamId, teamId)}
@@ -188,12 +175,25 @@ export async function computeTotalScheduledMins(
       ),
     );
 
+    const crossRefCounts: Record<string, number> = {
+      "regular-jobs": Number(countRow?.regularCount ?? 0),
+      "infill-jobs": Number(countRow?.infillCount ?? 0),
+      "mulching-records": Number(countRow?.mulchCount ?? 0),
+    };
+    let contradictedEmptyTypes = emptyTypes.filter(jobType => crossRefCounts[jobType] > 0);
+
+    // Preserve fail-closed behavior if all detail queries were empty and the
+    // aggregate count proves at least one of them omitted rows.
     const crossRefCount = Number(countRow?.totalCount ?? 0);
-    if (crossRefCount > 0) {
+    if (emptyTypes.length === rowCounts.length && crossRefCount > 0 && contradictedEmptyTypes.length === 0) {
+      contradictedEmptyTypes = emptyTypes;
+    }
+
+    if (!countRow || contradictedEmptyTypes.length > 0) {
       capacityDataReliable = false;
       console.warn(
-        `[day-capacity] all sub-queries returned empty results but cross-reference count is ${crossRefCount} — possible full-silent-empty middleware failure; capacity may be severely under-counted`,
-        { teamId, date, crossRefCount },
+        `[day-capacity] empty sub-query contradicted by cross-reference count — possible silent middleware failure; capacity may be under-counted`,
+        { teamId, date, emptySubQueries: emptyTypes, contradictedEmptySubQueries: contradictedEmptyTypes, crossRefCounts, crossRefCount },
       );
     }
   }

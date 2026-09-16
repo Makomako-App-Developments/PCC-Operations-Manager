@@ -186,7 +186,8 @@ describe("computeTotalScheduledMins — asymmetric empty-array result (silent un
     mockExecuteWithCircuitBreaker
       .mockResolvedValueOnce([])                // regular-jobs → silently empty
       .mockResolvedValueOnce([{ mins: 45 }])   // infill-jobs  → 45 mins
-      .mockResolvedValueOnce([{ mins: 30 }]);  // mulching-records → 30 mins
+      .mockResolvedValueOnce([{ mins: 30 }])   // mulching-records → 30 mins
+      .mockResolvedValueOnce([{ regularCount: 1, infillCount: 1, mulchCount: 1, totalCount: 3 }]);
 
     const { computeTotalScheduledMins } = await import("../lib/day-capacity");
 
@@ -213,7 +214,8 @@ describe("computeTotalScheduledMins — asymmetric empty-array result (silent un
     mockExecuteWithCircuitBreaker
       .mockResolvedValueOnce([{ mins: 60 }])   // regular-jobs     → 60 mins
       .mockResolvedValueOnce([])               // infill-jobs      → silently empty
-      .mockResolvedValueOnce([{ mins: 50 }]); // mulching-records → 50 mins
+      .mockResolvedValueOnce([{ mins: 50 }])  // mulching-records → 50 mins
+      .mockResolvedValueOnce([{ regularCount: 1, infillCount: 1, mulchCount: 1, totalCount: 3 }]);
 
     const { computeTotalScheduledMins } = await import("../lib/day-capacity");
 
@@ -237,7 +239,8 @@ describe("computeTotalScheduledMins — asymmetric empty-array result (silent un
     mockExecuteWithCircuitBreaker
       .mockResolvedValueOnce([{ mins: 80 }])   // regular-jobs     → 80 mins
       .mockResolvedValueOnce([{ mins: 40 }])   // infill-jobs      → 40 mins
-      .mockResolvedValueOnce([]);              // mulching-records → silently empty
+      .mockResolvedValueOnce([])               // mulching-records → silently empty
+      .mockResolvedValueOnce([{ regularCount: 1, infillCount: 1, mulchCount: 1, totalCount: 3 }]);
 
     const { computeTotalScheduledMins } = await import("../lib/day-capacity");
 
@@ -261,7 +264,8 @@ describe("computeTotalScheduledMins — asymmetric empty-array result (silent un
     mockExecuteWithCircuitBreaker
       .mockResolvedValueOnce([])               // regular-jobs     → silently empty
       .mockResolvedValueOnce([])               // infill-jobs      → silently empty
-      .mockResolvedValueOnce([{ mins: 90 }]); // mulching-records → 90 mins
+      .mockResolvedValueOnce([{ mins: 90 }])  // mulching-records → 90 mins
+      .mockResolvedValueOnce([{ regularCount: 1, infillCount: 1, mulchCount: 1, totalCount: 3 }]);
 
     const { computeTotalScheduledMins } = await import("../lib/day-capacity");
 
@@ -306,6 +310,20 @@ describe("computeTotalScheduledMins — full-silent-empty cross-reference guard"
     warnSpy.mockRestore();
   });
 
+  it("accepts legitimately empty infill and mulching categories when regular jobs exist", async () => {
+    mockExecuteWithCircuitBreaker
+      .mockResolvedValueOnce([{ mins: 60 }])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([{ regularCount: 1, infillCount: 0, mulchCount: 0, totalCount: 1 }]);
+
+    const { computeTotalScheduledMins } = await import("../lib/day-capacity");
+    const result = await computeTotalScheduledMins(TEAM_ID, DATE);
+
+    expect(result).toEqual({ total: 60, capacityDataReliable: true });
+    expect(warnSpy).not.toHaveBeenCalled();
+  });
+
   it("returns capacityDataReliable:false and emits a warn when all three sub-queries silently return [] but the cross-reference count is > 0", async () => {
     // All three main sub-queries silently return [] — no asymmetry for the
     // first guard to catch.  The cross-reference count query reveals 4 active
@@ -324,7 +342,7 @@ describe("computeTotalScheduledMins — full-silent-empty cross-reference guard"
     expect(result.capacityDataReliable).toBe(false);
     expect(warnSpy).toHaveBeenCalledOnce();
     const [message, meta] = warnSpy.mock.calls[0] as [string, Record<string, unknown>];
-    expect(message).toContain("full-silent-empty");
+    expect(message).toContain("contradicted by cross-reference");
     expect(meta).toMatchObject({ teamId: TEAM_ID, date: DATE, crossRefCount: 4 });
   });
 
@@ -471,7 +489,10 @@ describe("checkDayCapacity — loud failure on sub-query error", () => {
     // productiveTimeMins=390 (default), totalScheduledMins=0, newJobMins=30 → no conflict
     mockExecuteWithCircuitBreaker
       .mockResolvedValueOnce([])               // system-settings → no row, uses default 390
-      .mockResolvedValue([]);                  // all computeTotalScheduledMins sub-queries
+      .mockResolvedValueOnce([])               // regular-jobs
+      .mockResolvedValueOnce([])               // infill-jobs
+      .mockResolvedValueOnce([])               // mulching-records
+      .mockResolvedValueOnce([{ regularCount: 0, infillCount: 0, mulchCount: 0, totalCount: 0 }]);
 
     const { checkDayCapacity } = await import("../lib/day-capacity");
 

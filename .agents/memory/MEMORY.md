@@ -49,3 +49,4 @@
 - [Urgent issue acknowledgement](urgent-issue-acknowledgement.md) — opening a live Storm Patrol urgent issue acknowledges it; archived views remain read-only and failed writes remain visibly unacknowledged.
 - [Storm Patrol PDF design](storm-patrol-pdf-design.md) — the current PCC-branded landscape report is user-approved; preserve its layout and styling in future changes.
 - [Secure Orval upgrades](secure-orval-upgrades.md) — patched Orval releases need explicit Zod 3 output and a js-yaml namespace-import patch in this workspace.
+- [Capacity empty-category validation](capacity-empty-category-validation.md) — empty work categories are normal; only independent count contradictions should mark capacity data unreliable.

@@ -410,6 +410,7 @@ describe("day-capacity — no module-level memoisation", () => {
     currentDb = makeSelectiveDb(new Map([
       [0, [{ productiveTimeMins: 390 }]], // system-settings
       // calls 1-3: default [] → 0 mins each
+      [4, [{ regularCount: 0, infillCount: 0, mulchCount: 0, totalCount: 0 }]],
     ]));
 
     const noConflictResult = await checkDayCapacity(TEAM_ID, DATE, 120);
@@ -437,9 +438,11 @@ describe("day-capacity CB integration — all sub-queries succeed", () => {
   });
 
   it("resolves with null and no warn when all sub-queries succeed and capacity is fine", async () => {
-    // Empty map → every db.select() call resolves with [].
+    // Main capacity queries are empty; the cross-reference confirms zero rows.
     // totalScheduledMins = 0, newJobMins = 30, productiveTimeMins = 390 → no conflict.
-    currentDb = makeSelectiveDb(new Map());
+    currentDb = makeSelectiveDb(new Map([
+      [4, [{ regularCount: 0, infillCount: 0, mulchCount: 0, totalCount: 0 }]],
+    ]));
 
     const cb = await getCb();
     const { checkDayCapacity } = await import("../lib/day-capacity");
