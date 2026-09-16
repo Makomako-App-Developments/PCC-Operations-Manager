@@ -519,7 +519,7 @@ router.get("/storm-patrol/events/:id", requireAuth, requireRole("manager", "supe
   res.json({ data: await loadStormEventDetails(event, req.auth!) });
 });
 
-router.post("/storm-patrol/events", requireAuth, requireRole("manager"), validateBody(z.object({ name: z.string().trim().min(1).max(200), activate: z.boolean().default(true), hourlyRateCents: z.number().int().min(0).optional() })), async (req, res) => {
+router.post("/storm-patrol/events", requireAuth, requireRole("manager", "supervisor"), validateBody(z.object({ name: z.string().trim().min(1).max(200), activate: z.boolean().default(true), hourlyRateCents: z.number().int().min(0).optional() })), async (req, res) => {
   const body = req.body as { name: string; activate: boolean; hourlyRateCents?: number };
   try {
     const event = await executeWithCircuitBreaker(() => db.transaction(async tx => {

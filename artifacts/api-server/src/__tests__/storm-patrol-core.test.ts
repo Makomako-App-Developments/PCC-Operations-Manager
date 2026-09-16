@@ -37,6 +37,11 @@ describe("Storm Patrol core invariants", () => {
     expect(source).toContain('idempotencyKey, body.idempotencyKey');
   });
 
+  it("allows supervisors to start a new Storm Patrol event", async () => {
+    const source = await readFile(fileURLToPath(new URL("../routes/storm-patrol.ts", import.meta.url)), "utf8");
+    expect(source).toContain('router.post("/storm-patrol/events", requireAuth, requireRole("manager", "supervisor")');
+  });
+
   it("cancels only a transaction-locked pending job", async () => {
     const source = await readFile(fileURLToPath(new URL("../routes/storm-patrol.ts", import.meta.url)), "utf8");
     expect(source).toContain('router.delete("/storm-patrol/jobs/:id", requireAuth, requireRole("manager")');
