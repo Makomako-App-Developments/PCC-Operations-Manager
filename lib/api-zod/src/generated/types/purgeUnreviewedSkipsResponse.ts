@@ -5,11 +5,9 @@
  * Porirua City Council – Garden Asset Management API
  * OpenAPI spec version: 0.1.0
  */
-import type { SkippedJob } from './skippedJob';
 
-export interface SkippedJobListResponse {
-  data: SkippedJob[];
-  page: number;
-  limit: number;
-  total: number;
+export interface PurgeUnreviewedSkipsResponse {
+  deletedCount: number;
+  deletedPhotoCount: number;
+  clearedAuditQuotaReferences: number;
 }

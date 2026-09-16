@@ -76,6 +76,8 @@ import type {
   OverdueScheduleJobsResponse,
   PreviewMulchDepthImportBody,
   PreviewStormwaterAssetImportBody,
+  PurgeUnreviewedSkipsRequest,
+  PurgeUnreviewedSkipsResponse,
   ReactiveJob,
   ReactiveJobCreate,
   ReactiveJobListResponse,
@@ -4009,6 +4011,77 @@ export function useListSkippedJobs<TData = Awaited<ReturnType<typeof listSkipped
 
 
 
+
+export const getPurgeUnreviewedSkippedJobsUrl = () => {
+
+
+
+
+  return `/api/jobs/skips/purge-unreviewed`
+}
+
+/**
+ * @summary Permanently delete all unreviewed scheduled skips (administrator only)
+ */
+export const purgeUnreviewedSkippedJobs = async (purgeUnreviewedSkipsRequest: PurgeUnreviewedSkipsRequest, options?: RequestInit): Promise<PurgeUnreviewedSkipsResponse> => {
+
+  return customFetch<PurgeUnreviewedSkipsResponse>(getPurgeUnreviewedSkippedJobsUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(purgeUnreviewedSkipsRequest)
+  }
+);}
+
+
+
+
+
+export const getPurgeUnreviewedSkippedJobsMutationOptions = <TError = ErrorType<BadRequestResponse | ForbiddenResponse | void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof purgeUnreviewedSkippedJobs>>, TError,{data: BodyType<PurgeUnreviewedSkipsRequest>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof purgeUnreviewedSkippedJobs>>, TError,{data: BodyType<PurgeUnreviewedSkipsRequest>}, TContext> => {
+
+const mutationKey = ['purgeUnreviewedSkippedJobs'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof purgeUnreviewedSkippedJobs>>, {data: BodyType<PurgeUnreviewedSkipsRequest>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  purgeUnreviewedSkippedJobs(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type PurgeUnreviewedSkippedJobsMutationResult = NonNullable<Awaited<ReturnType<typeof purgeUnreviewedSkippedJobs>>>
+    export type PurgeUnreviewedSkippedJobsMutationBody = BodyType<PurgeUnreviewedSkipsRequest>
+    export type PurgeUnreviewedSkippedJobsMutationError = ErrorType<BadRequestResponse | ForbiddenResponse | void>
+
+    /**
+ * @summary Permanently delete all unreviewed scheduled skips (administrator only)
+ */
+export const usePurgeUnreviewedSkippedJobs = <TError = ErrorType<BadRequestResponse | ForbiddenResponse | void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof purgeUnreviewedSkippedJobs>>, TError,{data: BodyType<PurgeUnreviewedSkipsRequest>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof purgeUnreviewedSkippedJobs>>,
+        TError,
+        {data: BodyType<PurgeUnreviewedSkipsRequest>},
+        TContext
+      > => {
+      return useMutation(getPurgeUnreviewedSkippedJobsMutationOptions(options));
+    }
 
 export const getReviewSkippedJobUrl = (id: string,) => {
 

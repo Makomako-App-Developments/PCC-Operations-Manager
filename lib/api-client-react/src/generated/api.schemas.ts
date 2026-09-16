@@ -811,6 +811,21 @@ export interface SkipReviewRequest {
   notes?: string;
 }
 
+export interface PurgeUnreviewedSkipsRequest {
+  /**
+     * @minimum 1
+     * @maximum 10000
+     */
+  expectedCount: number;
+  confirmation: string;
+}
+
+export interface PurgeUnreviewedSkipsResponse {
+  deletedCount: number;
+  deletedPhotoCount: number;
+  clearedAuditQuotaReferences: number;
+}
+
 export interface TaskSkipReason {
   id: string;
   jobId: string;
@@ -845,6 +860,7 @@ export interface SkippedJobListResponse {
   data: SkippedJob[];
   page: number;
   limit: number;
+  total: number;
 }
 
 export interface JobListResponse {

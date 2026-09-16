@@ -1581,7 +1581,27 @@ export const ListSkippedJobsResponse = zod.object({
 }))
 })),
   "page": zod.number(),
-  "limit": zod.number()
+  "limit": zod.number(),
+  "total": zod.number()
+})
+
+
+/**
+ * @summary Permanently delete all unreviewed scheduled skips (administrator only)
+ */
+export const purgeUnreviewedSkippedJobsBodyExpectedCountMax = 10000;
+
+
+
+export const PurgeUnreviewedSkippedJobsBody = zod.object({
+  "expectedCount": zod.number().min(1).max(purgeUnreviewedSkippedJobsBodyExpectedCountMax),
+  "confirmation": zod.string()
+})
+
+export const PurgeUnreviewedSkippedJobsResponse = zod.object({
+  "deletedCount": zod.number(),
+  "deletedPhotoCount": zod.number(),
+  "clearedAuditQuotaReferences": zod.number()
 })
 
 

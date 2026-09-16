@@ -1,6 +1,6 @@
 import { Router } from "express";
 import path from "path";
-import { db, executeWithCircuitBreaker, jobsTable, reactiveJobsTable, insertJobSchema, insertReactiveJobSchema, assetsTable, teamsTable, usersTable, jobTeamCompletionsTable, jobTaskSkipReasonsTable, infillJobsTable, infillOrdersTable, mulchingRecordsTable, jobPhotosTable, auditLogTable, stormJobsTable, stormEventsTable, stormCheckResultsTable, stormPhotosTable } from "@workspace/db";
+import { db, executeWithCircuitBreaker, jobsTable, reactiveJobsTable, insertJobSchema, insertReactiveJobSchema, assetsTable, teamsTable, usersTable, jobTeamCompletionsTable, jobTaskSkipReasonsTable, infillJobsTable, infillOrdersTable, mulchingRecordsTable, jobPhotosTable, auditLogTable, auditQuotaItemsTable, stormJobsTable, stormEventsTable, stormCheckResultsTable, stormPhotosTable } from "@workspace/db";
 import { eq, and, inArray, notInArray, or, isNull, gte, lte, ilike, desc, sql } from "drizzle-orm";
 import { z } from "zod";
 import { z as zV4 } from "zod/v4";
@@ -11,6 +11,7 @@ import { notifyTeam, notifyUsers } from "../lib/push-notifications";
 import { objectStorageClient } from "../lib/objectStorage";
 import { checkDayCapacity, computeTotalScheduledMins } from "../lib/day-capacity";
 import { mulchingCompletionAudit } from "../lib/programme-completion";
+import { removeUncommittedPhotoObject } from "../lib/photo-object-cleanup";
 
 const LOGO_PATH = path.resolve(
   process.cwd(),
@@ -174,6 +175,142 @@ router.get("/jobs/skips", requireAuth, requireRole("administrator", "manager"), 
 
   res.json({ data, page, limit, total: countRow?.count ?? data.length });
 });
+
+const purgeUnreviewedSkipsSchema = z.object({
+  expectedCount: z.number().int().positive().max(10_000),
+  confirmation: z.string(),
+});
+
+// POST /api/jobs/skips/purge-unreviewed — destructive administrator-only cleanup.
+// Must be declared before /jobs/:id so Express does not treat "skips" as an id.
+router.post(
+  "/jobs/skips/purge-unreviewed",
+  requireAuth,
+  requireRole("administrator"),
+  validateBody(purgeUnreviewedSkipsSchema),
+  async (req, res) => {
+    const { expectedCount, confirmation } = res.locals.body as z.infer<typeof purgeUnreviewedSkipsSchema>;
+    const requiredConfirmation = `DELETE ${expectedCount} UNREVIEWED SKIPS`;
+    if (confirmation !== requiredConfirmation) {
+      res.status(400).json({ error: `Type "${requiredConfirmation}" to confirm permanent deletion` });
+      return;
+    }
+
+    const callerId = req.auth!.userId;
+    const ip = req.ip ?? null;
+
+    type PurgeResult = {
+      deletedCount: number;
+      deletedPhotoCount: number;
+      clearedAuditQuotaReferences: number;
+      photoBlobUrls: string[];
+    };
+
+    let result: PurgeResult;
+    try {
+      result = await executeWithCircuitBreaker(() => db.transaction(async tx => {
+        const targetRows = await tx
+          .select({ id: jobsTable.id })
+          .from(jobsTable)
+          .where(and(
+            eq(jobsTable.status, "skipped"),
+            eq(jobsTable.jobType, "scheduled"),
+            isNull(jobsTable.skipReviewedAt),
+          ))
+          .for("update");
+
+        if (targetRows.length !== expectedCount) {
+          const err = Object.assign(
+            new Error(`Cleanup stopped because the backlog changed from ${expectedCount} to ${targetRows.length}`),
+            { statusCode: 409, currentCount: targetRows.length },
+          );
+          throw err;
+        }
+
+        const targetIds = targetRows.map(row => row.id);
+        const photoRows = await tx
+          .select({ blobUrl: jobPhotosTable.blobUrl })
+          .from(jobPhotosTable)
+          .where(inArray(jobPhotosTable.jobId, targetIds));
+
+        const clearedAuditRows = await tx
+          .update(auditQuotaItemsTable)
+          .set({ sourceJobId: null })
+          .where(inArray(auditQuotaItemsTable.sourceJobId, targetIds))
+          .returning({ id: auditQuotaItemsTable.id });
+
+        const deletedPhotos = await tx
+          .delete(jobPhotosTable)
+          .where(inArray(jobPhotosTable.jobId, targetIds))
+          .returning({ id: jobPhotosTable.id });
+
+        const deletedJobs = await tx
+          .delete(jobsTable)
+          .where(and(
+            inArray(jobsTable.id, targetIds),
+            eq(jobsTable.status, "skipped"),
+            eq(jobsTable.jobType, "scheduled"),
+            isNull(jobsTable.skipReviewedAt),
+          ))
+          .returning({ id: jobsTable.id });
+
+        if (deletedJobs.length !== expectedCount) {
+          throw Object.assign(
+            new Error("Cleanup stopped because one or more skips changed during deletion"),
+            { statusCode: 409, currentCount: deletedJobs.length },
+          );
+        }
+
+        return {
+          deletedCount: deletedJobs.length,
+          deletedPhotoCount: deletedPhotos.length,
+          clearedAuditQuotaReferences: clearedAuditRows.length,
+          photoBlobUrls: photoRows.map(row => row.blobUrl),
+        };
+      }));
+    } catch (err: any) {
+      if (err?.statusCode === 409) {
+        res.status(409).json({ error: err.message, currentCount: err.currentCount });
+        return;
+      }
+      throw err;
+    }
+
+    const logged = await auditLog({
+      tableName: "jobs",
+      action: "DELETE",
+      changedById: callerId,
+      oldData: {
+        cleanup: "unreviewed scheduled skips",
+        deletedCount: result.deletedCount,
+        deletedPhotoCount: result.deletedPhotoCount,
+        clearedAuditQuotaReferences: result.clearedAuditQuotaReferences,
+      },
+      newData: { remainingCount: 0 },
+      ipAddress: ip,
+    });
+    if (!logged) {
+      console.warn(`[skip-purge] Audit log failed after deleting ${result.deletedCount} jobs`);
+    }
+
+    const bucketId = process.env["DEFAULT_OBJECT_STORAGE_BUCKET_ID"];
+    if (bucketId) {
+      await Promise.allSettled(result.photoBlobUrls
+        .filter(blobUrl => blobUrl.startsWith("/api/uploads/"))
+        .map(blobUrl => removeUncommittedPhotoObject(
+          bucketId,
+          blobUrl.slice("/api/uploads/".length),
+          "scheduled",
+        )));
+    }
+
+    res.json({
+      deletedCount: result.deletedCount,
+      deletedPhotoCount: result.deletedPhotoCount,
+      clearedAuditQuotaReferences: result.clearedAuditQuotaReferences,
+    });
+  },
+);
 
 // GET /api/jobs/drafts — accepted skips awaiting deliberate placement.
 // Must be declared before /jobs/:id to avoid route shadowing.

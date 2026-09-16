@@ -34,6 +34,7 @@ function makeChain(result: unknown) {
     set:       vi.fn(),
     values:    vi.fn(),
     returning: vi.fn().mockResolvedValue(Array.isArray(result) ? result : [result]),
+    for:        vi.fn(),
     then(resolve: (v: unknown) => unknown, reject?: (e: unknown) => unknown) {
       return Promise.resolve(result).then(resolve, reject);
     },
@@ -47,6 +48,7 @@ function makeChain(result: unknown) {
   chain.offset.mockReturnValue(chain);
   chain.set.mockReturnValue(chain);
   chain.values.mockReturnValue(chain);
+  chain.for.mockResolvedValue(result);
   return chain;
 }
 
@@ -187,6 +189,17 @@ function postSkipReview(
 ) {
   return request(app)
     .post(`/api/jobs/${jobId}/skip-review`)
+    .set("x-test-role", role)
+    .set("x-test-user-id", userId)
+    .send(body);
+}
+
+function postPurgeUnreviewedSkips(
+  body: Record<string, unknown>,
+  { role = "administrator", userId = "admin-1" }: { role?: string; userId?: string } = {},
+) {
+  return request(app)
+    .post("/api/jobs/skips/purge-unreviewed")
     .set("x-test-role", role)
     .set("x-test-user-id", userId)
     .send(body);
@@ -853,5 +866,98 @@ describe("GET /api/jobs/skips", () => {
     expect(job.skipReviewedAt).toBeNull();
     expect(job.reviewerName).toBeNull();
     expect(job.reviewerInitials).toBeNull();
+  });
+});
+
+describe("POST /api/jobs/skips/purge-unreviewed", () => {
+  beforeEach(() => {
+    selectImpl = null;
+    selectQueue = [];
+    transactionImpl = null;
+    updateReturning = [];
+    vi.clearAllMocks();
+  });
+
+  it("is restricted to administrators", async () => {
+    const res = await postPurgeUnreviewedSkips(
+      { expectedCount: 2, confirmation: "DELETE 2 UNREVIEWED SKIPS" },
+      { role: "manager" },
+    );
+
+    expect(res.status).toBe(403);
+    const { db } = await import("@workspace/db");
+    expect(db.transaction).not.toHaveBeenCalled();
+  });
+
+  it("requires the exact typed confirmation", async () => {
+    const res = await postPurgeUnreviewedSkips({
+      expectedCount: 2,
+      confirmation: "delete them",
+    });
+
+    expect(res.status).toBe(400);
+    const { db } = await import("@workspace/db");
+    expect(db.transaction).not.toHaveBeenCalled();
+  });
+
+  it("rolls back without deleting when the backlog count has changed", async () => {
+    transactionImpl = async fn => {
+      const targetSelect = makeChain([{ id: JOB_ID }]);
+      const tx = {
+        select: vi.fn(() => targetSelect),
+        update: vi.fn(),
+        delete: vi.fn(),
+      };
+      return fn(tx);
+    };
+
+    const res = await postPurgeUnreviewedSkips({
+      expectedCount: 2,
+      confirmation: "DELETE 2 UNREVIEWED SKIPS",
+    });
+
+    expect(res.status).toBe(409);
+    expect(res.body.currentCount).toBe(1);
+    const { db } = await import("@workspace/db");
+    const tx = vi.mocked(db.transaction).mock.calls[0]?.[0];
+    expect(tx).toBeDefined();
+  });
+
+  it("deletes exactly the locked target rows and reports related cleanup", async () => {
+    const secondJobId = "00000000-0000-0000-0000-000000000003";
+    const targetRows = [{ id: JOB_ID }, { id: secondJobId }];
+    let selectCall = 0;
+    let deleteCall = 0;
+
+    transactionImpl = async fn => {
+      const tx = {
+        select: vi.fn(() => {
+          selectCall++;
+          return selectCall === 1
+            ? makeChain(targetRows)
+            : makeChain([{ blobUrl: "/api/uploads/uploads/test-photo.jpg" }]);
+        }),
+        update: vi.fn(() => makeChain([{ id: "quota-1" }])),
+        delete: vi.fn(() => {
+          deleteCall++;
+          return deleteCall === 1
+            ? makeChain([{ id: "photo-1" }])
+            : makeChain(targetRows);
+        }),
+      };
+      return fn(tx);
+    };
+
+    const res = await postPurgeUnreviewedSkips({
+      expectedCount: 2,
+      confirmation: "DELETE 2 UNREVIEWED SKIPS",
+    });
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({
+      deletedCount: 2,
+      deletedPhotoCount: 1,
+      clearedAuditQuotaReferences: 1,
+    });
   });
 });

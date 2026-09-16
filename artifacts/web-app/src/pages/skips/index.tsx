@@ -3,17 +3,19 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { format, parseISO } from "date-fns";
 import {
   CheckCircle2, XCircle, ChevronDown, ChevronUp,
-  Filter, Loader2, ClipboardCheck, SkipForward, CalendarDays, Check, X,
+  Filter, Loader2, ClipboardCheck, SkipForward, CalendarDays, Check, X, Trash2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import {
   useListTeams, getListTeamsQueryKey,
 } from "@workspace/api-client-react";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/lib/auth";
 
 const NAVY  = "#0f2a36";
 const BRAND = "#00AECD";
@@ -119,6 +121,38 @@ async function fetchAllDrafts(): Promise<{ data: DraftJob[]; page: number; limit
   const res = await fetch("/api/jobs/drafts?limit=100", { credentials: "include" });
   if (!res.ok) throw new Error("Failed to load draft jobs");
   return res.json();
+}
+
+async function fetchUnreviewedSkipCount(): Promise<number> {
+  const res = await fetch("/api/jobs/skips?reviewed=no&limit=1", { credentials: "include" });
+  if (!res.ok) throw new Error("Failed to load the unreviewed skip count");
+  const body = await res.json() as { total?: number; data?: unknown[] };
+  return body.total ?? body.data?.length ?? 0;
+}
+
+async function purgeUnreviewedSkips(expectedCount: number, confirmation: string): Promise<{
+  deletedCount: number;
+  deletedPhotoCount: number;
+  clearedAuditQuotaReferences: number;
+}> {
+  const res = await fetch("/api/jobs/skips/purge-unreviewed", {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ expectedCount, confirmation }),
+  });
+  const body = await res.json().catch(() => ({})) as {
+    error?: string;
+    deletedCount?: number;
+    deletedPhotoCount?: number;
+    clearedAuditQuotaReferences?: number;
+  };
+  if (!res.ok) throw new Error(body.error ?? "Failed to clear the unreviewed skips");
+  return {
+    deletedCount: body.deletedCount ?? 0,
+    deletedPhotoCount: body.deletedPhotoCount ?? 0,
+    clearedAuditQuotaReferences: body.clearedAuditQuotaReferences ?? 0,
+  };
 }
 
 type DraftPlacementResult = { conflict?: any };
@@ -504,8 +538,14 @@ function DraftCard({
 
 // ─── Page ──────────────────────────────────────────────────────────────────
 export default function SkipsPage() {
+  const { user } = useAuth();
+  const { toast } = useToast();
+  const qc = useQueryClient();
   const [teamFilter,     setTeamFilter]     = useState<string>("all");
   const [reviewedFilter, setReviewedFilter] = useState<"all" | "no" | "yes">("all");
+  const [cleanupOpen, setCleanupOpen] = useState(false);
+  const [cleanupConfirmation, setCleanupConfirmation] = useState("");
+  const [cleanupBusy, setCleanupBusy] = useState(false);
 
   const { data: teamsData } = useListTeams({ query: { queryKey: getListTeamsQueryKey() } });
 
@@ -525,6 +565,11 @@ export default function SkipsPage() {
     queryKey: ["jobs-drafts"],
     queryFn: fetchAllDrafts,
   });
+  const { data: cleanupCount = 0 } = useQuery({
+    queryKey: ["jobs-skips-cleanup-count"],
+    queryFn: fetchUnreviewedSkipCount,
+    enabled: user?.role === "administrator",
+  });
 
   const assetName = useMemo(() => {
     const m = new Map<string, string>();
@@ -541,6 +586,29 @@ export default function SkipsPage() {
   const jobs   = skipsRaw?.data ?? [];
   const drafts = draftsRaw?.data ?? [];
   const unreviewed = jobs.filter(j => !j.skipReviewedAt).length;
+  const cleanupPhrase = `DELETE ${cleanupCount} UNREVIEWED SKIPS`;
+
+  async function handleCleanup() {
+    if (cleanupConfirmation !== cleanupPhrase || cleanupCount < 1) return;
+    setCleanupBusy(true);
+    try {
+      const result = await purgeUnreviewedSkips(cleanupCount, cleanupConfirmation);
+      await qc.invalidateQueries({ predicate: q => String((q.queryKey as any[])[0]).includes("jobs") });
+      toast({
+        title: `${result.deletedCount} unreviewed skips permanently deleted`,
+        description: result.deletedPhotoCount > 0
+          ? `${result.deletedPhotoCount} attached photo${result.deletedPhotoCount === 1 ? "" : "s"} sent for secure cleanup.`
+          : undefined,
+      });
+      setCleanupOpen(false);
+      setCleanupConfirmation("");
+    } catch (e: any) {
+      toast({ title: "Cleanup stopped", description: e.message, variant: "destructive" });
+      await qc.invalidateQueries({ queryKey: ["jobs-skips-cleanup-count"] });
+    } finally {
+      setCleanupBusy(false);
+    }
+  }
 
   return (
     <div className="flex-1 min-h-0 overflow-y-auto">
@@ -555,13 +623,74 @@ export default function SkipsPage() {
               : `${jobs.length} skip${jobs.length !== 1 ? "s" : ""} · all reviewed`}
           </p>
         </div>
-        {unreviewed > 0 && (
-          <span className="flex items-center gap-1 text-[11px] font-bold px-2.5 py-1 rounded-full bg-amber-50 text-amber-600 border border-amber-200">
-            <ClipboardCheck className="w-3.5 h-3.5" />
-            {unreviewed} pending
-          </span>
-        )}
+        <div className="flex items-center gap-2">
+          {user?.role === "administrator" && cleanupCount > 0 && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-8 border-red-200 text-[11px] font-bold text-red-600 hover:bg-red-50 hover:text-red-700"
+              onClick={() => setCleanupOpen(true)}
+            >
+              <Trash2 className="mr-1.5 h-3.5 w-3.5" />
+              Clear test backlog
+            </Button>
+          )}
+          {unreviewed > 0 && (
+            <span className="flex items-center gap-1 text-[11px] font-bold px-2.5 py-1 rounded-full bg-amber-50 text-amber-600 border border-amber-200">
+              <ClipboardCheck className="w-3.5 h-3.5" />
+              {unreviewed} pending
+            </span>
+          )}
+        </div>
       </div>
+
+      <Dialog open={cleanupOpen} onOpenChange={(open) => {
+        if (!cleanupBusy) {
+          setCleanupOpen(open);
+          if (!open) setCleanupConfirmation("");
+        }
+      }}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="text-red-700">Permanently clear the testing backlog?</DialogTitle>
+            <DialogDescription className="space-y-3 pt-2 text-left">
+              <span className="block">
+                This will permanently delete all <strong>{cleanupCount.toLocaleString()}</strong> unreviewed
+                scheduled skips and their task-level excuses. This cannot be undone.
+              </span>
+              <span className="block">
+                The cleanup stops without deleting anything if the backlog count changes before confirmation.
+              </span>
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2 py-2">
+            <label htmlFor="cleanup-confirmation" className="text-xs font-semibold text-gray-700">
+              Type <span className="font-mono text-red-700">{cleanupPhrase}</span> to confirm
+            </label>
+            <Input
+              id="cleanup-confirmation"
+              value={cleanupConfirmation}
+              onChange={event => setCleanupConfirmation(event.target.value)}
+              disabled={cleanupBusy}
+              autoComplete="off"
+              className="font-mono text-xs"
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCleanupOpen(false)} disabled={cleanupBusy}>
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleCleanup}
+              disabled={cleanupBusy || cleanupCount < 1 || cleanupConfirmation !== cleanupPhrase}
+            >
+              {cleanupBusy && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Permanently delete {cleanupCount.toLocaleString()}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Filters */}
       <div className="flex gap-2 flex-wrap">
