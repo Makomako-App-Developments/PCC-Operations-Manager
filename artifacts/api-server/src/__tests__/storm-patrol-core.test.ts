@@ -42,6 +42,14 @@ describe("Storm Patrol core invariants", () => {
     expect(source).toContain('router.post("/storm-patrol/events", requireAuth, requireRole("manager", "supervisor")');
   });
 
+  it("limits supervisor job lists to jobs assigned to that supervisor", async () => {
+    const source = await readFile(fileURLToPath(new URL("../routes/storm-patrol.ts", import.meta.url)), "utf8");
+    expect(source).toContain('access.role === "supervisor"');
+    expect(source).toContain("eq(stormJobsTable.assignedUserId, access.userId)");
+    expect(source).toContain('req.auth!.role === "supervisor"');
+    expect(source).toContain("eq(stormJobsTable.assignedUserId, req.auth!.userId)");
+  });
+
   it("keeps manager action notes restricted to active events and manager roles", async () => {
     const source = await readFile(fileURLToPath(new URL("../routes/storm-patrol.ts", import.meta.url)), "utf8");
     expect(source).toContain('router.patch("/storm-patrol/observations/:id/action-note", requireAuth, requireRole("manager")');

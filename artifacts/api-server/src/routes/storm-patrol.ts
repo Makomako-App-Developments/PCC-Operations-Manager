@@ -397,12 +397,14 @@ router.post("/storm-patrol/assets/import/commit", requireAuth, requireRole("mana
 
 async function loadStormEventDetails(
   event: typeof stormEventsTable.$inferSelect,
-  access: { role: string; teamId?: string | null },
+  access: { role: string; userId: string; teamId?: string | null },
 ) {
   const canReadManagerActionNotes = privileged(access.role);
-  const where = !privileged(access.role)
-    ? and(eq(stormJobsTable.eventId, event.id), eq(stormJobsTable.teamId, access.teamId ?? ""))
-    : eq(stormJobsTable.eventId, event.id);
+  const where = access.role === "supervisor"
+    ? and(eq(stormJobsTable.eventId, event.id), eq(stormJobsTable.assignedUserId, access.userId))
+    : managers.includes(access.role)
+      ? eq(stormJobsTable.eventId, event.id)
+      : and(eq(stormJobsTable.eventId, event.id), eq(stormJobsTable.teamId, access.teamId ?? ""));
   const jobs = await enrichedStormJobs(where);
   const completed = jobs.filter(j => j.status === "completed" || j.status === "too_dangerous");
   const minutes = sumStormPatrolActualMinutes(jobs);
@@ -626,7 +628,8 @@ router.post("/storm-patrol/events/:id/packages", requireAuth, requireRole("manag
 router.get("/storm-patrol/jobs", requireAuth, requireFieldWorkerTeam, validateQuery(z.object({ eventId: z.string().uuid().optional(), phase: phases.optional(), status: z.enum(["pending", "in_progress", "completed", "too_dangerous"]).optional() })), async (req, res) => {
   const q = res.locals.query as any; const conditions: any[] = [];
   if (q.eventId) conditions.push(eq(stormJobsTable.eventId, q.eventId)); if (q.phase) conditions.push(eq(stormJobsTable.phase, q.phase)); if (q.status) conditions.push(eq(stormJobsTable.status, q.status));
-  if (!privileged(req.auth!.role)) conditions.push(eq(stormJobsTable.teamId, req.auth!.teamId ?? ""));
+  if (req.auth!.role === "supervisor") conditions.push(eq(stormJobsTable.assignedUserId, req.auth!.userId));
+  else if (!managers.includes(req.auth!.role)) conditions.push(eq(stormJobsTable.teamId, req.auth!.teamId ?? ""));
   res.json({ data: await enrichedStormJobs(conditions.length ? and(...conditions) : undefined) });
 });
 
