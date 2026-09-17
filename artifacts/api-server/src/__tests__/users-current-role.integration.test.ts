@@ -2,7 +2,7 @@ import express from "express";
 import request from "supertest";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { state, selectMock, updateMock, insertMock } = vi.hoisted(() => ({
+const { state, selectMock, updateMock, insertMock, hashPasswordMock } = vi.hoisted(() => ({
   state: {
     user: {
       id: "11111111-1111-4111-8111-111111111111",
@@ -21,6 +21,7 @@ const { state, selectMock, updateMock, insertMock } = vi.hoisted(() => ({
   selectMock: vi.fn(),
   updateMock: vi.fn(),
   insertMock: vi.fn(),
+  hashPasswordMock: vi.fn(async () => "hashed-password"),
 }));
 
 vi.mock("@workspace/db", async (importOriginal) => {
@@ -37,10 +38,15 @@ vi.mock("@workspace/db", async (importOriginal) => {
   };
 });
 
+vi.mock("../lib/password", () => ({
+  hashPassword: hashPasswordMock,
+}));
+
 process.env["JWT_SECRET"] = "test-secret";
 
 const { default: usersRouter } = await import("../routes/users");
 const { signTokens } = await import("../middlewares/auth");
+const { auditLogTable, usersTable } = await import("@workspace/db");
 
 const app = express();
 app.use(express.json());
@@ -202,7 +208,11 @@ describe("users routes use the current database role", () => {
       initials: "NA",
       role: "administrator",
     });
+    expect(hashPasswordMock).toHaveBeenCalledOnce();
+    expect(hashPasswordMock).toHaveBeenCalledWith("password123");
     expect(insertMock).toHaveBeenCalledTimes(2);
+    expect(insertMock).toHaveBeenNthCalledWith(1, usersTable);
+    expect(insertMock).toHaveBeenNthCalledWith(2, auditLogTable);
   });
 
   it("prevents administrator account creation after an administrator is demoted", async () => {
@@ -231,6 +241,7 @@ describe("users routes use the current database role", () => {
     expect(response.body).toEqual({
       error: "Managers cannot create administrator accounts",
     });
+    expect(hashPasswordMock).not.toHaveBeenCalled();
     expect(insertMock).not.toHaveBeenCalled();
   });
 });
