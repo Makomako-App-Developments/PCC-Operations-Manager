@@ -2,7 +2,7 @@ import express from "express";
 import request from "supertest";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { state, selectMock } = vi.hoisted(() => ({
+const { state, selectMock, updateMock, insertMock } = vi.hoisted(() => ({
   state: {
     user: {
       id: "11111111-1111-4111-8111-111111111111",
@@ -19,6 +19,8 @@ const { state, selectMock } = vi.hoisted(() => ({
     },
   },
   selectMock: vi.fn(),
+  updateMock: vi.fn(),
+  insertMock: vi.fn(),
 }));
 
 vi.mock("@workspace/db", async (importOriginal) => {
@@ -28,6 +30,8 @@ vi.mock("@workspace/db", async (importOriginal) => {
     db: {
       ...real.db,
       select: selectMock,
+      update: updateMock,
+      insert: insertMock,
     },
     executeWithCircuitBreaker: async <T>(operation: () => Promise<T>) => operation(),
   };
@@ -51,10 +55,21 @@ function configureUserQueries() {
       orderBy: async () => [state.user],
     }),
   }));
+  updateMock.mockImplementation(() => ({
+    set: (updates: Record<string, unknown>) => ({
+      where: () => ({
+        returning: async () => [{ ...state.user, ...updates }],
+      }),
+    }),
+  }));
+  insertMock.mockImplementation(() => ({
+    values: async () => undefined,
+  }));
 }
 
 describe("users routes use the current database role", () => {
   beforeEach(() => {
+    vi.clearAllMocks();
     state.user.role = "manager";
     configureUserQueries();
   });
@@ -102,5 +117,51 @@ describe("users routes use the current database role", () => {
       .set("Authorization", `Bearer ${accessToken}`);
     expect(allowed.status).toBe(200);
     expect(allowed.body).toMatchObject({ total: 1 });
+  });
+
+  it("applies administrator editing rules after a manager is promoted", async () => {
+    const { accessToken } = signTokens({
+      userId: state.user.id,
+      role: "manager",
+      teamId: null,
+      sessionVersion: state.user.sessionVersion,
+    });
+
+    state.user.role = "administrator";
+
+    const response = await request(app)
+      .patch(`/users/${state.user.id}`)
+      .set("Authorization", `Bearer ${accessToken}`)
+      .send({ role: "administrator" });
+
+    expect(response.status).toBe(200);
+    expect(response.body).toMatchObject({
+      id: state.user.id,
+      role: "administrator",
+    });
+    expect(updateMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("applies manager editing rules after an administrator is demoted", async () => {
+    state.user.role = "administrator";
+    const { accessToken } = signTokens({
+      userId: state.user.id,
+      role: "administrator",
+      teamId: null,
+      sessionVersion: state.user.sessionVersion,
+    });
+
+    state.user.role = "manager";
+
+    const response = await request(app)
+      .patch(`/users/${state.user.id}`)
+      .set("Authorization", `Bearer ${accessToken}`)
+      .send({ role: "administrator" });
+
+    expect(response.status).toBe(403);
+    expect(response.body).toEqual({
+      error: "Managers cannot assign the administrator role",
+    });
+    expect(updateMock).not.toHaveBeenCalled();
   });
 });
