@@ -186,6 +186,38 @@ describe("Storm Patrol report downloads", () => {
   });
 });
 
+describe("Storm Patrol event phase icon", () => {
+  it("shows the storm icon before post-storm work is allocated", () => {
+    renderCommandCenter([{
+      id: "pre-job",
+      phase: "pre",
+      status: "pending",
+      assetId: "asset-1",
+      teamId: "team-1",
+    }]);
+
+    const icon = screen.getByTestId("storm-event-weather-icon");
+    expect(icon).toHaveAccessibleName("Storm phase underway");
+    expect(icon.querySelector(".lucide-cloud-lightning")).not.toBeNull();
+    expect(icon.querySelector(".lucide-rainbow")).toBeNull();
+  });
+
+  it("shows a rainbow as soon as the first post-storm job is allocated", () => {
+    renderCommandCenter([{
+      id: "post-job",
+      phase: "post",
+      status: "pending",
+      assetId: "asset-1",
+      teamId: "team-1",
+    }]);
+
+    const icon = screen.getByTestId("storm-event-weather-icon");
+    expect(icon).toHaveAccessibleName("Post-storm phase underway");
+    expect(icon.querySelector(".lucide-rainbow")).not.toBeNull();
+    expect(icon.querySelector(".lucide-cloud-lightning")).toBeNull();
+  });
+});
+
 async function chooseSelect(
   user: ReturnType<typeof userEvent.setup>,
   label: string,

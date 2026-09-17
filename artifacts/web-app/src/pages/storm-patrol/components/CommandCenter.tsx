@@ -20,7 +20,7 @@ import {
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { 
-  CloudLightning, Loader2, Plus, Users, MapPin, Search, Check, ChevronDown, ChevronUp,
+  CloudLightning, Rainbow, Loader2, Plus, Users, MapPin, Search, Check, ChevronDown, ChevronUp,
   AlertTriangle, Eye, ArrowLeft, ArrowRight, Save, Download, Navigation, Clock, ClipboardCheck, X
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -137,6 +137,7 @@ interface CommandCenterProps {
 
 export default function CommandCenter({ data, readOnly = false, onBack }: CommandCenterProps) {
   const { event, jobs, summary } = data!;
+  const hasPostStormJobs = jobs.some(job => job.phase === "post");
   const actualTimeMinutes = summary.actualMinutes ?? jobs.reduce((total, job) => total + (job.actualTimeMins ?? 0), 0);
   const queryClient = useQueryClient();
   const { toast } = useToast();
@@ -537,8 +538,18 @@ export default function CommandCenter({ data, readOnly = false, onBack }: Comman
       {/* Header */}
       <header className="px-6 py-5 border-b border-white/10 flex-shrink-0 flex items-center justify-between bg-black/20">
         <div className="flex items-center gap-4">
-          <div className="w-12 h-12 rounded-xl bg-red-500/20 flex items-center justify-center border border-red-500/30">
-            <CloudLightning className="w-6 h-6 text-red-500 animate-pulse" />
+          <div
+            data-testid="storm-event-weather-icon"
+            aria-label={hasPostStormJobs ? "Post-storm phase underway" : "Storm phase underway"}
+            className={`w-12 h-12 rounded-xl flex items-center justify-center border ${
+              hasPostStormJobs
+                ? "bg-gradient-to-br from-red-500/25 via-yellow-400/20 to-sky-400/25 border-yellow-300/40"
+                : "bg-red-500/20 border-red-500/30"
+            }`}
+          >
+            {hasPostStormJobs
+              ? <Rainbow className="w-7 h-7 text-yellow-300" />
+              : <CloudLightning className="w-6 h-6 text-red-500 animate-pulse" />}
           </div>
           <div>
             <div className="flex items-center gap-3">
