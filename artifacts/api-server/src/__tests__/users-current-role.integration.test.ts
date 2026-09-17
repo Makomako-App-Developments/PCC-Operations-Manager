@@ -63,7 +63,16 @@ function configureUserQueries() {
     }),
   }));
   insertMock.mockImplementation(() => ({
-    values: async () => undefined,
+    values: (values: Record<string, unknown>) => ({
+      returning: async () => [
+        {
+          id: "22222222-2222-4222-8222-222222222222",
+          ...values,
+          createdAt: new Date("2026-09-17T00:00:00.000Z"),
+          updatedAt: new Date("2026-09-17T00:00:00.000Z"),
+        },
+      ],
+    }),
   }));
 }
 
@@ -163,5 +172,65 @@ describe("users routes use the current database role", () => {
       error: "Managers cannot assign the administrator role",
     });
     expect(updateMock).not.toHaveBeenCalled();
+  });
+
+  it("allows administrator account creation after a manager is promoted", async () => {
+    const { accessToken } = signTokens({
+      userId: state.user.id,
+      role: "manager",
+      teamId: null,
+      sessionVersion: state.user.sessionVersion,
+    });
+
+    state.user.role = "administrator";
+
+    const response = await request(app)
+      .post("/users")
+      .set("Authorization", `Bearer ${accessToken}`)
+      .send({
+        email: "new-admin@example.test",
+        name: "New Administrator",
+        initials: "NA",
+        password: "password123",
+        role: "administrator",
+      });
+
+    expect(response.status).toBe(201);
+    expect(response.body).toMatchObject({
+      email: "new-admin@example.test",
+      name: "New Administrator",
+      initials: "NA",
+      role: "administrator",
+    });
+    expect(insertMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("prevents administrator account creation after an administrator is demoted", async () => {
+    state.user.role = "administrator";
+    const { accessToken } = signTokens({
+      userId: state.user.id,
+      role: "administrator",
+      teamId: null,
+      sessionVersion: state.user.sessionVersion,
+    });
+
+    state.user.role = "manager";
+
+    const response = await request(app)
+      .post("/users")
+      .set("Authorization", `Bearer ${accessToken}`)
+      .send({
+        email: "blocked-admin@example.test",
+        name: "Blocked Administrator",
+        initials: "BA",
+        password: "password123",
+        role: "administrator",
+      });
+
+    expect(response.status).toBe(403);
+    expect(response.body).toEqual({
+      error: "Managers cannot create administrator accounts",
+    });
+    expect(insertMock).not.toHaveBeenCalled();
   });
 });
