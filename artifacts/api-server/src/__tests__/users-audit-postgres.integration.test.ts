@@ -33,6 +33,7 @@ describe.skipIf(!runWithPostgres).sequential(
     const functionName = `fail_user_audit_${suffix}`;
     const triggerName = `fail_user_audit_trigger_${suffix}`;
     const createdUserEmail = `user-audit-created-${testRun}@example.invalid`;
+    const successfulUserEmail = `user-audit-success-${testRun}@example.invalid`;
     const originalPasswordHash = "integration-original-password-hash";
 
     async function storedUser() {
@@ -109,12 +110,17 @@ describe.skipIf(!runWithPostgres).sequential(
       await pool.query(`DROP FUNCTION IF EXISTS ${functionName}()`);
       await pool.query(
         `DELETE FROM audit_log
-          WHERE changed_by_id = $1 OR record_id = $2`,
-        [actorId, targetId],
+          WHERE changed_by_id = $1
+             OR record_id = $2
+             OR new_data->>'email' = $3`,
+        [actorId, targetId, successfulUserEmail],
       );
-      await pool.query(`DELETE FROM users WHERE id = ANY($1::uuid[])`, [
-        [actorId, targetId],
-      ]);
+      await pool.query(
+        `DELETE FROM users
+          WHERE id = ANY($1::uuid[])
+             OR email = $2`,
+        [[actorId, targetId], successfulUserEmail],
+      );
     });
 
     it.each([
@@ -174,6 +180,58 @@ describe.skipIf(!runWithPostgres).sequential(
           accountCreated: false,
         },
       );
+    });
+
+    it("persists a matching audit row when an account is created successfully", async () => {
+      const response = await request(app).post("/api/users").send({
+        email: successfulUserEmail,
+        name: "Successfully Audited User",
+        initials: "SA",
+        password: "password123",
+        role: "manager",
+      });
+
+      expect(response.status).toBe(201);
+      expect(response.body).toMatchObject({
+        email: successfulUserEmail,
+        name: "Successfully Audited User",
+        role: "manager",
+      });
+
+      const result = await pool.query<{
+        user_id: string;
+        audit_count: string;
+        changed_by_id: string;
+        audited_record_id: string;
+        audited_user_id: string;
+        audited_email: string;
+      }>(
+        `SELECT u.id AS user_id,
+                COUNT(a.id)::text AS audit_count,
+                MIN(a.changed_by_id::text) AS changed_by_id,
+                MIN(a.record_id::text) AS audited_record_id,
+                MIN(a.new_data->>'id') AS audited_user_id,
+                MIN(a.new_data->>'email') AS audited_email
+           FROM users u
+           JOIN audit_log a
+             ON a.table_name = 'users'
+            AND a.action = 'INSERT'
+            AND a.record_id = u.id
+          WHERE u.email = $1
+          GROUP BY u.id`,
+        [successfulUserEmail],
+      );
+
+      expect(result.rows).toEqual([
+        {
+          user_id: response.body.id,
+          audit_count: "1",
+          changed_by_id: actorId,
+          audited_record_id: response.body.id,
+          audited_user_id: response.body.id,
+          audited_email: successfulUserEmail,
+        },
+      ]);
     });
 
     it("rolls back account reactivation when the audit insert fails", async () => {
