@@ -138,6 +138,7 @@ describe("users routes use the current database role", () => {
     state.committedUpdates = [];
     state.failAuditWrite = false;
     state.user.role = "manager";
+    state.user.isActive = true;
     configureUserQueries();
   });
 
@@ -338,6 +339,71 @@ describe("users routes use the current database role", () => {
     expect(transactionMock).toHaveBeenCalledOnce();
     expect(state.committedUpdates).toEqual([]);
     expect(updateMock).not.toHaveBeenCalled();
+  });
+
+  it("rolls back account reactivation when its audit write fails", async () => {
+    state.user.role = "administrator";
+    state.user.isActive = false;
+    const { accessToken } = signTokens({
+      userId: state.user.id,
+      role: "administrator",
+      teamId: null,
+      sessionVersion: state.user.sessionVersion,
+    });
+    state.failAuditWrite = true;
+
+    const response = await request(app)
+      .patch(`/users/${state.user.id}`)
+      .set("Authorization", `Bearer ${accessToken}`)
+      .send({ isActive: true });
+
+    expect(response.status).toBe(500);
+    expect(transactionMock).toHaveBeenCalledOnce();
+    expect(state.committedUpdates).toEqual([]);
+    expect(updateMock).not.toHaveBeenCalled();
+  });
+
+  it("requires mandatory auditing for activation even when the earlier read was active", async () => {
+    state.user.role = "administrator";
+    state.user.isActive = true;
+    const { accessToken } = signTokens({
+      userId: state.user.id,
+      role: "administrator",
+      teamId: null,
+      sessionVersion: state.user.sessionVersion,
+    });
+    state.failAuditWrite = true;
+
+    const response = await request(app)
+      .patch(`/users/${state.user.id}`)
+      .set("Authorization", `Bearer ${accessToken}`)
+      .send({ isActive: true });
+
+    expect(response.status).toBe(500);
+    expect(transactionMock).toHaveBeenCalledOnce();
+    expect(state.committedUpdates).toEqual([]);
+    expect(updateMock).not.toHaveBeenCalled();
+  });
+
+  it("allows urgent administrator demotion when audit storage is unavailable", async () => {
+    state.user.role = "administrator";
+    const { accessToken } = signTokens({
+      userId: state.user.id,
+      role: "administrator",
+      teamId: null,
+      sessionVersion: state.user.sessionVersion,
+    });
+    state.failAuditWrite = true;
+
+    const response = await request(app)
+      .patch(`/users/${state.user.id}`)
+      .set("Authorization", `Bearer ${accessToken}`)
+      .send({ role: "manager" });
+
+    expect(response.status).toBe(200);
+    expect(response.body).toMatchObject({ role: "manager" });
+    expect(transactionMock).not.toHaveBeenCalled();
+    expect(state.committedUpdates).toHaveLength(1);
   });
 
   it("keeps best-effort auditing for a low-risk profile update", async () => {

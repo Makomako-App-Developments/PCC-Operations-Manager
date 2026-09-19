@@ -53,9 +53,12 @@ const updateUserSchema = z.object({
 function requiresMandatoryUserAudit(
   update: z.infer<typeof updateUserSchema>,
 ): boolean {
+  // Access-granting and credential-changing mutations require durable audit
+  // history. Administrator demotion deliberately remains best-effort so an
+  // audit-storage outage cannot prevent urgent privilege removal.
   return (
     update.password !== undefined ||
-    update.isActive === false ||
+    update.isActive !== undefined ||
     update.role === "administrator"
   );
 }
