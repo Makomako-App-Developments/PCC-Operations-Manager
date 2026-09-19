@@ -53,6 +53,7 @@ jobs:
         with:
           node-version: 22
           cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
 
       - name: Check for high or critical dependency vulnerabilities
         if: steps.schedule.outputs.run == 'true'
