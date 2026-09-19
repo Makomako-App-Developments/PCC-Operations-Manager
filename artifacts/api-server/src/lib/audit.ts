@@ -3,6 +3,13 @@ import type { WriteAuditLog } from "@workspace/db/schema";
 
 type AuditWriter = Pick<typeof db, "insert">;
 
+export class AuditStorageUnavailableError extends Error {
+  constructor(options?: ErrorOptions) {
+    super("Required audit entry could not be stored", options);
+    this.name = "AuditStorageUnavailableError";
+  }
+}
+
 function auditValues(entry: WriteAuditLog) {
   return {
     tableName: entry.tableName,
@@ -23,7 +30,11 @@ export async function writeAuditLogOrThrow(
   writer: AuditWriter,
   entry: WriteAuditLog,
 ): Promise<void> {
-  await writer.insert(auditLogTable).values(auditValues(entry));
+  try {
+    await writer.insert(auditLogTable).values(auditValues(entry));
+  } catch (error) {
+    throw new AuditStorageUnavailableError({ cause: error });
+  }
 }
 
 /**

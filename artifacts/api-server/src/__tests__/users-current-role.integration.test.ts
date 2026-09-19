@@ -268,6 +268,7 @@ describe("users routes use the current database role", () => {
   });
 
   it("rolls back a newly created account when its audit write fails", async () => {
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
     const { accessToken } = signTokens({
       userId: state.user.id,
       role: "manager",
@@ -287,9 +288,31 @@ describe("users routes use the current database role", () => {
         role: "manager",
       });
 
-    expect(response.status).toBe(500);
+    expect(response.status).toBe(503);
+    expect(response.body).toEqual({
+      error:
+        "Account was not created because audit storage is temporarily unavailable. Please retry later.",
+      code: "AUDIT_STORAGE_TEMPORARILY_UNAVAILABLE",
+      retryable: true,
+      accountCreated: false,
+    });
     expect(transactionMock).toHaveBeenCalledOnce();
     expect(state.createdUsers).toEqual([]);
+    expect(consoleError).toHaveBeenCalledWith(
+      "[user-create-audit-unavailable]",
+      {
+        actorUserId: state.user.id,
+        actorRole: "manager",
+        requestedRole: "manager",
+        accountCreated: false,
+      },
+    );
+    expect(JSON.stringify(consoleError.mock.calls)).not.toContain(
+      "unaudited@example.test",
+    );
+    expect(JSON.stringify(consoleError.mock.calls)).not.toContain(
+      "Unaudited User",
+    );
   });
 
   it.each([

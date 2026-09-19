@@ -4,7 +4,11 @@ import { eq, sql } from "drizzle-orm";
 import { z } from "zod";
 import { requireAuth, requireRole } from "../middlewares/auth";
 import { validateBody } from "../middlewares/validate";
-import { auditLog, writeAuditLogOrThrow } from "../lib/audit";
+import {
+  AuditStorageUnavailableError,
+  auditLog,
+  writeAuditLogOrThrow,
+} from "../lib/audit";
 import { hashPassword } from "../lib/password";
 import {
   canChangeUserPassword,
@@ -85,23 +89,44 @@ router.post(
       return;
     }
     const passwordHash = await hashPassword(password);
-    const user = await executeWithCircuitBreaker(() =>
-      db.transaction(async (tx) => {
-        const [created] = await tx
-          .insert(usersTable)
-          .values({ ...rest, passwordHash, isActive: true })
-          .returning(SAFE_COLS);
-        await writeAuditLogOrThrow(tx, {
-          tableName: "users",
-          recordId: created.id,
-          action: "INSERT",
-          changedById: req.auth?.userId ?? null,
-          newData: created as Record<string, unknown>,
-          ipAddress: req.ip ?? null,
-        });
-        return created;
-      }),
-    );
+    let user;
+    try {
+      user = await executeWithCircuitBreaker(() =>
+        db.transaction(async (tx) => {
+          const [created] = await tx
+            .insert(usersTable)
+            .values({ ...rest, passwordHash, isActive: true })
+            .returning(SAFE_COLS);
+          await writeAuditLogOrThrow(tx, {
+            tableName: "users",
+            recordId: created.id,
+            action: "INSERT",
+            changedById: req.auth?.userId ?? null,
+            newData: created as Record<string, unknown>,
+            ipAddress: req.ip ?? null,
+          });
+          return created;
+        }),
+      );
+    } catch (error) {
+      if (!(error instanceof AuditStorageUnavailableError)) {
+        throw error;
+      }
+      console.error("[user-create-audit-unavailable]", {
+        actorUserId: req.auth?.userId ?? null,
+        actorRole: req.auth?.role ?? null,
+        requestedRole: rest.role,
+        accountCreated: false,
+      });
+      res.status(503).json({
+        error:
+          "Account was not created because audit storage is temporarily unavailable. Please retry later.",
+        code: "AUDIT_STORAGE_TEMPORARILY_UNAVAILABLE",
+        retryable: true,
+        accountCreated: false,
+      });
+      return;
+    }
     res.status(201).json(user);
   },
 );
