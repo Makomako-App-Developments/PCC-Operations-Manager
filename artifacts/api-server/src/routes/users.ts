@@ -4,7 +4,7 @@ import { eq, sql } from "drizzle-orm";
 import { z } from "zod";
 import { requireAuth, requireRole } from "../middlewares/auth";
 import { validateBody } from "../middlewares/validate";
-import { auditLog } from "../lib/audit";
+import { auditLog, writeAuditLogOrThrow } from "../lib/audit";
 import { hashPassword } from "../lib/password";
 import {
   canChangeUserPassword,
@@ -75,20 +75,23 @@ router.post(
       return;
     }
     const passwordHash = await hashPassword(password);
-    const [user] = await executeWithCircuitBreaker(() =>
-      db
-        .insert(usersTable)
-        .values({ ...rest, passwordHash, isActive: true })
-        .returning(SAFE_COLS),
+    const user = await executeWithCircuitBreaker(() =>
+      db.transaction(async (tx) => {
+        const [created] = await tx
+          .insert(usersTable)
+          .values({ ...rest, passwordHash, isActive: true })
+          .returning(SAFE_COLS);
+        await writeAuditLogOrThrow(tx, {
+          tableName: "users",
+          recordId: created.id,
+          action: "INSERT",
+          changedById: req.auth?.userId ?? null,
+          newData: created as Record<string, unknown>,
+          ipAddress: req.ip ?? null,
+        });
+        return created;
+      }),
     );
-    await auditLog({
-      tableName: "users",
-      recordId: user.id,
-      action: "INSERT",
-      changedById: req.auth?.userId ?? null,
-      newData: user as Record<string, unknown>,
-      ipAddress: req.ip ?? null,
-    });
     res.status(201).json(user);
   },
 );

@@ -2,8 +2,10 @@ import express from "express";
 import request from "supertest";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { state, selectMock, updateMock, insertMock, hashPasswordMock } = vi.hoisted(() => ({
+const { state, selectMock, updateMock, insertMock, transactionMock, hashPasswordMock } = vi.hoisted(() => ({
   state: {
+    createdUsers: [] as Array<Record<string, unknown>>,
+    failAuditWrite: false,
     user: {
       id: "11111111-1111-4111-8111-111111111111",
       email: "role-test@example.test",
@@ -21,6 +23,7 @@ const { state, selectMock, updateMock, insertMock, hashPasswordMock } = vi.hoist
   selectMock: vi.fn(),
   updateMock: vi.fn(),
   insertMock: vi.fn(),
+  transactionMock: vi.fn(),
   hashPasswordMock: vi.fn(async () => "hashed-password"),
 }));
 
@@ -33,6 +36,7 @@ vi.mock("@workspace/db", async (importOriginal) => {
       select: selectMock,
       update: updateMock,
       insert: insertMock,
+      transaction: transactionMock,
     },
     executeWithCircuitBreaker: async <T>(operation: () => Promise<T>) => operation(),
   };
@@ -68,23 +72,54 @@ function configureUserQueries() {
       }),
     }),
   }));
-  insertMock.mockImplementation(() => ({
-    values: (values: Record<string, unknown>) => ({
-      returning: async () => [
-        {
-          id: "22222222-2222-4222-8222-222222222222",
-          ...values,
-          createdAt: new Date("2026-09-17T00:00:00.000Z"),
-          updatedAt: new Date("2026-09-17T00:00:00.000Z"),
-        },
-      ],
-    }),
+  insertMock.mockImplementation((table) => ({
+    values: (values: Record<string, unknown>) => {
+      if (table === auditLogTable) {
+        return state.failAuditWrite
+          ? Promise.reject(new Error("audit write failed"))
+          : Promise.resolve([]);
+      }
+      const user = {
+        id: "22222222-2222-4222-8222-222222222222",
+        ...values,
+        createdAt: new Date("2026-09-17T00:00:00.000Z"),
+        updatedAt: new Date("2026-09-17T00:00:00.000Z"),
+      };
+      return { returning: async () => [user] };
+    },
   }));
+  transactionMock.mockImplementation(async (operation) => {
+    const pendingUsers: Array<Record<string, unknown>> = [];
+    const tx = {
+      insert: vi.fn((table) => ({
+        values: (values: Record<string, unknown>) => {
+          if (table === auditLogTable) {
+            return state.failAuditWrite
+              ? Promise.reject(new Error("audit write failed"))
+              : Promise.resolve([]);
+          }
+          const user = {
+            id: "22222222-2222-4222-8222-222222222222",
+            ...values,
+            createdAt: new Date("2026-09-17T00:00:00.000Z"),
+            updatedAt: new Date("2026-09-17T00:00:00.000Z"),
+          };
+          pendingUsers.push(user);
+          return { returning: async () => [user] };
+        },
+      })),
+    };
+    const result = await operation(tx);
+    state.createdUsers.push(...pendingUsers);
+    return result;
+  });
 }
 
 describe("users routes use the current database role", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    state.createdUsers = [];
+    state.failAuditWrite = false;
     state.user.role = "manager";
     configureUserQueries();
   });
@@ -210,9 +245,33 @@ describe("users routes use the current database role", () => {
     });
     expect(hashPasswordMock).toHaveBeenCalledOnce();
     expect(hashPasswordMock).toHaveBeenCalledWith("password123");
-    expect(insertMock).toHaveBeenCalledTimes(2);
-    expect(insertMock).toHaveBeenNthCalledWith(1, usersTable);
-    expect(insertMock).toHaveBeenNthCalledWith(2, auditLogTable);
+    expect(transactionMock).toHaveBeenCalledOnce();
+    expect(state.createdUsers).toHaveLength(1);
+  });
+
+  it("rolls back a newly created account when its audit write fails", async () => {
+    const { accessToken } = signTokens({
+      userId: state.user.id,
+      role: "manager",
+      teamId: null,
+      sessionVersion: state.user.sessionVersion,
+    });
+    state.failAuditWrite = true;
+
+    const response = await request(app)
+      .post("/users")
+      .set("Authorization", `Bearer ${accessToken}`)
+      .send({
+        email: "unaudited@example.test",
+        name: "Unaudited User",
+        initials: "UU",
+        password: "password123",
+        role: "manager",
+      });
+
+    expect(response.status).toBe(500);
+    expect(transactionMock).toHaveBeenCalledOnce();
+    expect(state.createdUsers).toEqual([]);
   });
 
   it("prevents administrator account creation after an administrator is demoted", async () => {
