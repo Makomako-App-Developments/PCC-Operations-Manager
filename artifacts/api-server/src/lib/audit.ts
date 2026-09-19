@@ -29,24 +29,39 @@ function auditValues(entry: WriteAuditLog) {
 export async function writeAuditLogOrThrow(
   writer: AuditWriter,
   entry: WriteAuditLog,
+  options: { countFailure?: boolean } = {},
 ): Promise<void> {
   try {
     await writer.insert(auditLogTable).values(auditValues(entry));
   } catch (error) {
+    if (options.countFailure !== false) {
+      requiredAuditFailureCount++;
+    }
     throw new AuditStorageUnavailableError({ cause: error });
   }
 }
 
 /**
- * Running total of auditLog() failures since the process started.
- * Exposed via getAuditFailureCount() so health endpoints and metrics
- * can surface silent write failures without requiring log access.
+ * Running totals of audit-storage failures since the process started.
+ * Required and best-effort writes are kept separate so callers can avoid
+ * double-counting the required writer used internally by auditLog().
  */
-let auditFailureCount = 0;
+let requiredAuditFailureCount = 0;
+let bestEffortAuditFailureCount = 0;
 
-/** Returns the number of times auditLog() has returned false since startup. */
+/** Returns the combined number of failed audit writes since startup. */
 export function getAuditFailureCount(): number {
-  return auditFailureCount;
+  return requiredAuditFailureCount + bestEffortAuditFailureCount;
+}
+
+export function getAuditFailureCounts(): {
+  required: number;
+  bestEffort: number;
+} {
+  return {
+    required: requiredAuditFailureCount,
+    bestEffort: bestEffortAuditFailureCount,
+  };
 }
 
 /**
@@ -56,12 +71,12 @@ export function getAuditFailureCount(): number {
 export async function auditLog(entry: WriteAuditLog): Promise<boolean> {
   try {
     await executeWithCircuitBreaker(() =>
-      writeAuditLogOrThrow(db, entry),
+      writeAuditLogOrThrow(db, entry, { countFailure: false }),
     );
     return true;
   } catch (err) {
     console.error("[audit] Failed to write audit log entry:", err);
-    auditFailureCount++;
+    bestEffortAuditFailureCount++;
     return false;
   }
 }

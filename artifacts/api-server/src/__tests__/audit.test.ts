@@ -1,5 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { auditLog, getAuditFailureCount } from "../lib/audit";
+import {
+  auditLog,
+  getAuditFailureCount,
+  getAuditFailureCounts,
+  writeAuditLogOrThrow,
+} from "../lib/audit";
 import { resolveAuditTeamId } from "../routes/audits";
 
 vi.mock("@workspace/db", () => ({
@@ -115,6 +120,61 @@ describe("auditLog()", () => {
     await auditLog({ tableName: "assets", recordId: null, action: "UPDATE", changedById: null });
 
     expect(getAuditFailureCount()).toBe(before);
+  });
+
+  it("increments only the required counter when a required audit write fails", async () => {
+    const values = vi.fn().mockRejectedValueOnce(new Error("db error"));
+    const writer = { insert: vi.fn().mockReturnValue({ values }) };
+    const before = getAuditFailureCounts();
+
+    await expect(
+      writeAuditLogOrThrow(writer as never, {
+        tableName: "users",
+        recordId: null,
+        action: "UPDATE",
+        changedById: null,
+      }),
+    ).rejects.toMatchObject({ name: "AuditStorageUnavailableError" });
+
+    expect(getAuditFailureCounts()).toEqual({
+      required: before.required + 1,
+      bestEffort: before.bestEffort,
+    });
+  });
+
+  it("does not increment either counter when a required audit write succeeds", async () => {
+    const values = vi.fn().mockResolvedValue(undefined);
+    const writer = { insert: vi.fn().mockReturnValue({ values }) };
+    const before = getAuditFailureCounts();
+
+    await writeAuditLogOrThrow(writer as never, {
+      tableName: "users",
+      recordId: null,
+      action: "UPDATE",
+      changedById: null,
+    });
+
+    expect(getAuditFailureCounts()).toEqual(before);
+  });
+
+  it("counts a failed best-effort write once and not as a required failure", async () => {
+    const { db } = await import("@workspace/db");
+    vi.mocked(db.insert).mockReturnValue({
+      values: vi.fn().mockRejectedValueOnce(new Error("db error")),
+    } as never);
+    const before = getAuditFailureCounts();
+
+    await auditLog({
+      tableName: "assets",
+      recordId: null,
+      action: "UPDATE",
+      changedById: null,
+    });
+
+    expect(getAuditFailureCounts()).toEqual({
+      required: before.required,
+      bestEffort: before.bestEffort + 1,
+    });
   });
 
   it("persists push_forward action with schedule metadata", async () => {

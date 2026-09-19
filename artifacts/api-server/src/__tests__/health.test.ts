@@ -31,6 +31,10 @@ vi.mock("@workspace/db", () => ({
 // Mock the audit module so health tests can control the failure counter.
 vi.mock("../lib/audit", () => ({
   getAuditFailureCount: vi.fn().mockReturnValue(0),
+  getAuditFailureCounts: vi.fn().mockReturnValue({
+    required: 0,
+    bestEffort: 0,
+  }),
 }));
 
 vi.mock("../lib/push-notifications", () => ({
@@ -660,12 +664,17 @@ describe("GET /health — auditFailures counter", () => {
   });
 
   it("includes auditFailures with the current count when failures have occurred", async () => {
-    const { getAuditFailureCount } = vi.mocked(await import("../lib/audit"));
+    const { getAuditFailureCount, getAuditFailureCounts } = vi.mocked(
+      await import("../lib/audit"),
+    );
     getAuditFailureCount.mockReturnValue(7);
+    getAuditFailureCounts.mockReturnValue({ required: 2, bestEffort: 5 });
 
     const res = await request(buildApp()).get("/health");
     expect(res.status).toBe(200);
     expect(res.body).toHaveProperty("auditFailures", 7);
+    expect(res.body).toHaveProperty("auditRequiredFailures", 2);
+    expect(res.body).toHaveProperty("auditBestEffortFailures", 5);
   });
 
   it("includes auditFailures in the degraded (503) response as well", async () => {

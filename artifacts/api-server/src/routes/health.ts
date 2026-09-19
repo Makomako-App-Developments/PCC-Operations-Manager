@@ -2,7 +2,7 @@ import { Router, type IRouter } from "express";
 import { db, dbCircuitBreaker, executeWithCircuitBreaker } from "@workspace/db";
 import { sql } from "drizzle-orm";
 import circuitBreakerRouter from "./health-circuit-breaker";
-import { getAuditFailureCount } from "../lib/audit";
+import { getAuditFailureCount, getAuditFailureCounts } from "../lib/audit";
 import {
   getPhotoObjectCleanupAlertState,
   getPhotoObjectCleanupCounts,
@@ -87,6 +87,10 @@ router.use(circuitBreakerRouter);
 // GET /api/health — combined status (version, uptime, db)
 router.get("/health", async (_req, res) => {
   const uptimeMs = Date.now() - startTime;
+  const auditFailureCounts = getAuditFailureCounts() ?? {
+    required: 0,
+    bestEffort: 0,
+  };
   try {
     const t0 = Date.now();
     await executeWithCircuitBreaker(() => db.execute(sql`SELECT 1`));
@@ -113,6 +117,8 @@ router.get("/health", async (_req, res) => {
       nodeVersion: process.version,
       cbState: dbCircuitBreaker.getState(),
       auditFailures: getAuditFailureCount(),
+      auditRequiredFailures: auditFailureCounts.required,
+      auditBestEffortFailures: auditFailureCounts.bestEffort,
       photoCleanupPending: photoCleanup.pending,
       photoCleanupPermanentFailures: photoCleanup.permanentlyFailed,
       photoCleanupAlert: getPhotoObjectCleanupAlertState(),
@@ -127,6 +133,8 @@ router.get("/health", async (_req, res) => {
       db: "unreachable",
       cbState,
       auditFailures: getAuditFailureCount(),
+      auditRequiredFailures: auditFailureCounts.required,
+      auditBestEffortFailures: auditFailureCounts.bestEffort,
       photoCleanupAlert: getPhotoObjectCleanupAlertState(),
       ...(openedAt != null && {
         openedAt: new Date(openedAt).toISOString(),

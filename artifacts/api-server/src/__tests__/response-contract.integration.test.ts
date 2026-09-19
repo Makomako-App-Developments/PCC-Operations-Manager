@@ -30,6 +30,10 @@ vi.mock("@workspace/db", () => ({
 
 vi.mock("../lib/audit", () => ({
   getAuditFailureCount: vi.fn().mockReturnValue(0),
+  getAuditFailureCounts: vi.fn().mockReturnValue({
+    required: 0,
+    bestEffort: 0,
+  }),
 }));
 
 function buildHealthApp() {
