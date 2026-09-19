@@ -5,6 +5,7 @@ import { pool } from "@workspace/db";
 
 const runWithPostgres = Boolean(process.env.DATABASE_URL);
 const actorId = randomUUID();
+let actorRole: "administrator" | "manager" = "administrator";
 
 vi.mock("../middlewares/auth", async (importOriginal) => {
   const real = await importOriginal<typeof import("../middlewares/auth")>();
@@ -13,7 +14,7 @@ vi.mock("../middlewares/auth", async (importOriginal) => {
     requireAuth: (req: any, _res: unknown, next: () => void) => {
       req.auth = {
         userId: actorId,
-        role: "administrator",
+        role: actorRole,
         teamId: null,
         tokenType: "access",
       };
@@ -34,6 +35,7 @@ describe.skipIf(!runWithPostgres).sequential(
     const triggerName = `fail_user_audit_trigger_${suffix}`;
     const createdUserEmail = `user-audit-created-${testRun}@example.invalid`;
     const successfulUserEmail = `user-audit-success-${testRun}@example.invalid`;
+    const managerCreatedUserEmail = `user-audit-manager-created-${testRun}@example.invalid`;
     const originalPasswordHash = "integration-original-password-hash";
 
     async function storedUser() {
@@ -94,6 +96,10 @@ describe.skipIf(!runWithPostgres).sequential(
     });
 
     beforeEach(async () => {
+      actorRole = "administrator";
+      await pool.query(`UPDATE users SET role = 'administrator' WHERE id = $1`, [
+        actorId,
+      ]);
       await pool.query(
         `UPDATE users
             SET role = 'manager',
@@ -112,14 +118,21 @@ describe.skipIf(!runWithPostgres).sequential(
         `DELETE FROM audit_log
           WHERE changed_by_id = $1
              OR record_id = $2
-             OR new_data->>'email' = $3`,
-        [actorId, targetId, successfulUserEmail],
+             OR new_data->>'email' = ANY($3::text[])`,
+        [
+          actorId,
+          targetId,
+          [successfulUserEmail, managerCreatedUserEmail],
+        ],
       );
       await pool.query(
         `DELETE FROM users
           WHERE id = ANY($1::uuid[])
-             OR email = $2`,
-        [[actorId, targetId], successfulUserEmail],
+              OR email = ANY($2::text[])`,
+        [
+          [actorId, targetId],
+          [successfulUserEmail, managerCreatedUserEmail],
+        ],
       );
     });
 
@@ -232,6 +245,83 @@ describe.skipIf(!runWithPostgres).sequential(
           audited_email: successfulUserEmail,
         },
       ]);
+    });
+
+    it("records a manager as the actor when they create an allowed account", async () => {
+      actorRole = "manager";
+      await pool.query(`UPDATE users SET role = 'manager' WHERE id = $1`, [
+        actorId,
+      ]);
+
+      const response = await request(app).post("/api/users").send({
+        email: managerCreatedUserEmail,
+        name: "Manager Created User",
+        initials: "MC",
+        password: "password123",
+        role: "field_worker",
+      });
+
+      expect(response.status).toBe(201);
+      expect(response.body).toMatchObject({
+        email: managerCreatedUserEmail,
+        name: "Manager Created User",
+        role: "field_worker",
+      });
+
+      const result = await pool.query<{
+        user_id: string;
+        audit_count: string;
+        changed_by_id: string;
+        audited_record_id: string;
+        audited_user_id: string;
+        audited_email: string;
+      }>(
+        `SELECT u.id AS user_id,
+                COUNT(a.id)::text AS audit_count,
+                MIN(a.changed_by_id::text) AS changed_by_id,
+                MIN(a.record_id::text) AS audited_record_id,
+                MIN(a.new_data->>'id') AS audited_user_id,
+                MIN(a.new_data->>'email') AS audited_email
+           FROM users u
+           JOIN audit_log a
+             ON a.table_name = 'users'
+            AND a.action = 'INSERT'
+            AND a.record_id = u.id
+          WHERE u.email = $1
+          GROUP BY u.id`,
+        [managerCreatedUserEmail],
+      );
+
+      expect(result.rows).toEqual([
+        {
+          user_id: response.body.id,
+          audit_count: "1",
+          changed_by_id: actorId,
+          audited_record_id: response.body.id,
+          audited_user_id: response.body.id,
+          audited_email: managerCreatedUserEmail,
+        },
+      ]);
+    });
+
+    it("still prevents managers from creating administrator accounts", async () => {
+      actorRole = "manager";
+      await pool.query(`UPDATE users SET role = 'manager' WHERE id = $1`, [
+        actorId,
+      ]);
+
+      const response = await request(app).post("/api/users").send({
+        email: `user-audit-manager-admin-${testRun}@example.invalid`,
+        name: "Forbidden Administrator",
+        initials: "FA",
+        password: "password123",
+        role: "administrator",
+      });
+
+      expect(response.status).toBe(403);
+      expect(response.body).toEqual({
+        error: "Managers cannot create administrator accounts",
+      });
     });
 
     it("rolls back account reactivation when the audit insert fails", async () => {
