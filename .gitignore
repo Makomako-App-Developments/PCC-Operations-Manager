@@ -47,3 +47,11 @@ Thumbs.db
 # Replit
 .cache/
 .local/
+
+# User-provided working attachments are not source files. Keep only the
+# authoritative workbook used by scripts/seed-assets.mjs.
+/attached_assets/*
+!/attached_assets/Porirua_garden_assets_for_replit_22_May_2026_1779491491810.xlsx
+
+# Runtime uploads belong in object storage and must never enter Git.
+/artifacts/api-server/uploads/
