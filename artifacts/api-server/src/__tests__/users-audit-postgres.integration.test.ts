@@ -365,6 +365,54 @@ describe.skipIf(!runWithPostgres).sequential(
       );
     });
 
+    it("rolls back an allowed manager edit when the audit insert fails", async () => {
+      actorRole = "manager";
+      await pool.query(`UPDATE users SET role = 'manager' WHERE id = $1`, [
+        actorId,
+      ]);
+      const consoleError = vi
+        .spyOn(console, "error")
+        .mockImplementation(() => {});
+
+      const response = await patchTarget({
+        password: "manager-replacement-password",
+      });
+
+      expect(response.status).toBe(503);
+      expect(response.body).toEqual({
+        error:
+          "User change was not committed because audit storage is temporarily unavailable. Please retry later.",
+        code: "AUDIT_STORAGE_TEMPORARILY_UNAVAILABLE",
+        retryable: true,
+        userChangeCommitted: false,
+      });
+      expect(await storedUser()).toEqual({
+        role: "manager",
+        is_active: true,
+        password_hash: originalPasswordHash,
+        session_version: 7,
+      });
+
+      const auditResult = await pool.query<{ count: string }>(
+        `SELECT COUNT(*)::text AS count
+           FROM audit_log
+          WHERE table_name = 'users'
+            AND record_id = $1
+            AND changed_by_id = $2`,
+        [targetId, actorId],
+      );
+      expect(auditResult.rows[0]?.count).toBe("0");
+      expect(consoleError).toHaveBeenCalledWith(
+        "[user-update-audit-unavailable]",
+        {
+          actorUserId: actorId,
+          actorRole: "manager",
+          mutationCategory: "password_change",
+          userChangeCommitted: false,
+        },
+      );
+    });
+
     it("still prevents managers from creating administrator accounts", async () => {
       actorRole = "manager";
       await pool.query(`UPDATE users SET role = 'manager' WHERE id = $1`, [
@@ -382,6 +430,31 @@ describe.skipIf(!runWithPostgres).sequential(
       expect(response.status).toBe(403);
       expect(response.body).toEqual({
         error: "Managers cannot create administrator accounts",
+      });
+    });
+
+    it("still prevents managers from editing administrator accounts", async () => {
+      actorRole = "manager";
+      await pool.query(`UPDATE users SET role = 'manager' WHERE id = $1`, [
+        actorId,
+      ]);
+      await pool.query(`UPDATE users SET role = 'administrator' WHERE id = $1`, [
+        targetId,
+      ]);
+
+      const response = await patchTarget({
+        password: "forbidden-manager-password",
+      });
+
+      expect(response.status).toBe(403);
+      expect(response.body).toEqual({
+        error: "Managers cannot change administrator passwords",
+      });
+      expect(await storedUser()).toEqual({
+        role: "administrator",
+        is_active: true,
+        password_hash: originalPasswordHash,
+        session_version: 7,
       });
     });
 
