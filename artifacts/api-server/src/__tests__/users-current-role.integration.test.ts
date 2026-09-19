@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const { state, selectMock, updateMock, insertMock, transactionMock, hashPasswordMock } = vi.hoisted(() => ({
   state: {
     createdUsers: [] as Array<Record<string, unknown>>,
+    committedUpdates: [] as Array<Record<string, unknown>>,
     failAuditWrite: false,
     user: {
       id: "11111111-1111-4111-8111-111111111111",
@@ -68,7 +69,10 @@ function configureUserQueries() {
   updateMock.mockImplementation(() => ({
     set: (updates: Record<string, unknown>) => ({
       where: () => ({
-        returning: async () => [{ ...state.user, ...updates }],
+        returning: async () => {
+          state.committedUpdates.push(updates);
+          return [{ ...state.user, ...updates }];
+        },
       }),
     }),
   }));
@@ -90,6 +94,7 @@ function configureUserQueries() {
   }));
   transactionMock.mockImplementation(async (operation) => {
     const pendingUsers: Array<Record<string, unknown>> = [];
+    const pendingUpdates: Array<Record<string, unknown>> = [];
     const tx = {
       insert: vi.fn((table) => ({
         values: (values: Record<string, unknown>) => {
@@ -108,9 +113,20 @@ function configureUserQueries() {
           return { returning: async () => [user] };
         },
       })),
+      update: vi.fn(() => ({
+        set: (updates: Record<string, unknown>) => ({
+          where: () => ({
+            returning: async () => {
+              pendingUpdates.push(updates);
+              return [{ ...state.user, ...updates }];
+            },
+          }),
+        }),
+      })),
     };
     const result = await operation(tx);
     state.createdUsers.push(...pendingUsers);
+    state.committedUpdates.push(...pendingUpdates);
     return result;
   });
 }
@@ -119,6 +135,7 @@ describe("users routes use the current database role", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     state.createdUsers = [];
+    state.committedUpdates = [];
     state.failAuditWrite = false;
     state.user.role = "manager";
     configureUserQueries();
@@ -189,7 +206,8 @@ describe("users routes use the current database role", () => {
       id: state.user.id,
       role: "administrator",
     });
-    expect(updateMock).toHaveBeenCalledTimes(1);
+    expect(transactionMock).toHaveBeenCalledTimes(1);
+    expect(state.committedUpdates).toHaveLength(1);
   });
 
   it("applies manager editing rules after an administrator is demoted", async () => {
@@ -272,6 +290,51 @@ describe("users routes use the current database role", () => {
     expect(response.status).toBe(500);
     expect(transactionMock).toHaveBeenCalledOnce();
     expect(state.createdUsers).toEqual([]);
+  });
+
+  it.each([
+    ["administrator role assignment", { role: "administrator" }],
+    ["account deactivation", { isActive: false }],
+    ["password replacement", { password: "replacement-password" }],
+  ])("rolls back %s when its audit write fails", async (_name, body) => {
+    state.user.role = "administrator";
+    const { accessToken } = signTokens({
+      userId: state.user.id,
+      role: "administrator",
+      teamId: null,
+      sessionVersion: state.user.sessionVersion,
+    });
+    state.failAuditWrite = true;
+
+    const response = await request(app)
+      .patch(`/users/${state.user.id}`)
+      .set("Authorization", `Bearer ${accessToken}`)
+      .send(body);
+
+    expect(response.status).toBe(500);
+    expect(transactionMock).toHaveBeenCalledOnce();
+    expect(state.committedUpdates).toEqual([]);
+    expect(updateMock).not.toHaveBeenCalled();
+  });
+
+  it("keeps best-effort auditing for a low-risk profile update", async () => {
+    const { accessToken } = signTokens({
+      userId: state.user.id,
+      role: "manager",
+      teamId: null,
+      sessionVersion: state.user.sessionVersion,
+    });
+    state.failAuditWrite = true;
+
+    const response = await request(app)
+      .patch(`/users/${state.user.id}`)
+      .set("Authorization", `Bearer ${accessToken}`)
+      .send({ name: "Updated Name" });
+
+    expect(response.status).toBe(200);
+    expect(response.body).toMatchObject({ name: "Updated Name" });
+    expect(transactionMock).not.toHaveBeenCalled();
+    expect(state.committedUpdates).toHaveLength(1);
   });
 
   it("prevents administrator account creation after an administrator is demoted", async () => {

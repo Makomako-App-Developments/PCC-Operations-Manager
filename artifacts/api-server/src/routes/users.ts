@@ -46,6 +46,16 @@ const updateUserSchema = z.object({
   password: z.string().min(8).optional(),
 });
 
+function requiresMandatoryUserAudit(
+  update: z.infer<typeof updateUserSchema>,
+): boolean {
+  return (
+    update.password !== undefined ||
+    update.isActive === false ||
+    update.role === "administrator"
+  );
+}
+
 // GET /api/users
 router.get(
   "/users",
@@ -142,25 +152,44 @@ router.patch(
       updates.passwordHash = await hashPassword(password);
       updates.sessionVersion = sql`${usersTable.sessionVersion} + 1`;
     }
-    const [updated] = await executeWithCircuitBreaker(() =>
-      db
-        .update(usersTable)
-        .set(updates)
-        .where(eq(usersTable.id, id))
-        .returning(SAFE_COLS),
-    );
-    await auditLog({
+    const auditEntry = (updated: Record<string, unknown>) => ({
       tableName: "users",
       recordId: id,
-      action: "UPDATE",
+      action: "UPDATE" as const,
       changedById: req.auth?.userId ?? null,
       oldData: before as Record<string, unknown>,
       newData: passwordChangeAuditData(
-        updated as Record<string, unknown>,
+        updated,
         Boolean(password),
       ),
       ipAddress: req.ip ?? null,
     });
+    let updated;
+    if (requiresMandatoryUserAudit({ password, ...rest })) {
+      updated = await executeWithCircuitBreaker(() =>
+        db.transaction(async (tx) => {
+          const [changed] = await tx
+            .update(usersTable)
+            .set(updates)
+            .where(eq(usersTable.id, id))
+            .returning(SAFE_COLS);
+          await writeAuditLogOrThrow(
+            tx,
+            auditEntry(changed as Record<string, unknown>),
+          );
+          return changed;
+        }),
+      );
+    } else {
+      [updated] = await executeWithCircuitBreaker(() =>
+        db
+          .update(usersTable)
+          .set(updates)
+          .where(eq(usersTable.id, id))
+          .returning(SAFE_COLS),
+      );
+      await auditLog(auditEntry(updated as Record<string, unknown>));
+    }
     res.json(updated);
   },
 );

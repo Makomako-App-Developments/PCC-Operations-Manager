@@ -22,6 +22,9 @@ vi.mock("@workspace/db", async (importOriginal) => {
       ...real.db,
       select: selectMock,
       update: updateMock,
+      transaction: async <T>(
+        operation: (tx: { update: typeof updateMock }) => Promise<T>,
+      ) => operation({ update: updateMock }),
     },
     executeWithCircuitBreaker: async <T>(fn: () => Promise<T>) => fn(),
   };
@@ -29,6 +32,7 @@ vi.mock("@workspace/db", async (importOriginal) => {
 
 vi.mock("../lib/audit", () => ({
   auditLog: vi.fn().mockResolvedValue(true),
+  writeAuditLogOrThrow: vi.fn().mockResolvedValue(undefined),
 }));
 
 process.env["JWT_SECRET"] = "test-secret";
