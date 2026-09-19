@@ -36,6 +36,7 @@ describe.skipIf(!runWithPostgres).sequential(
     const createdUserEmail = `user-audit-created-${testRun}@example.invalid`;
     const successfulUserEmail = `user-audit-success-${testRun}@example.invalid`;
     const managerCreatedUserEmail = `user-audit-manager-created-${testRun}@example.invalid`;
+    const managerFailedUserEmail = `user-audit-manager-failed-${testRun}@example.invalid`;
     const originalPasswordHash = "integration-original-password-hash";
 
     async function storedUser() {
@@ -79,7 +80,10 @@ describe.skipIf(!runWithPostgres).sequential(
             NEW.record_id = '${targetId}'::uuid
             OR (
               NEW.action = 'INSERT'
-              AND NEW.new_data->>'email' = '${createdUserEmail}'
+               AND NEW.new_data->>'email' IN (
+                 '${createdUserEmail}',
+                 '${managerFailedUserEmail}'
+               )
             )
           ) THEN
             RAISE EXCEPTION 'forced user audit failure';
@@ -122,7 +126,11 @@ describe.skipIf(!runWithPostgres).sequential(
         [
           actorId,
           targetId,
-          [successfulUserEmail, managerCreatedUserEmail],
+          [
+            successfulUserEmail,
+            managerCreatedUserEmail,
+            managerFailedUserEmail,
+          ],
         ],
       );
       await pool.query(
@@ -131,7 +139,11 @@ describe.skipIf(!runWithPostgres).sequential(
               OR email = ANY($2::text[])`,
         [
           [actorId, targetId],
-          [successfulUserEmail, managerCreatedUserEmail],
+          [
+            successfulUserEmail,
+            managerCreatedUserEmail,
+            managerFailedUserEmail,
+          ],
         ],
       );
     });
@@ -302,6 +314,55 @@ describe.skipIf(!runWithPostgres).sequential(
           audited_email: managerCreatedUserEmail,
         },
       ]);
+    });
+
+    it("rolls back a manager-created account when the audit insert fails", async () => {
+      actorRole = "manager";
+      await pool.query(`UPDATE users SET role = 'manager' WHERE id = $1`, [
+        actorId,
+      ]);
+      const consoleError = vi
+        .spyOn(console, "error")
+        .mockImplementation(() => {});
+
+      const response = await request(app).post("/api/users").send({
+        email: managerFailedUserEmail,
+        name: "Manager Failed User",
+        initials: "MF",
+        password: "password123",
+        role: "field_worker",
+      });
+
+      expect(response.status).toBe(503);
+      expect(response.body).toEqual({
+        error:
+          "Account was not created because audit storage is temporarily unavailable. Please retry later.",
+        code: "AUDIT_STORAGE_TEMPORARILY_UNAVAILABLE",
+        retryable: true,
+        accountCreated: false,
+      });
+
+      const result = await pool.query<{
+        user_count: string;
+        audit_count: string;
+      }>(
+        `SELECT
+           (SELECT COUNT(*)::text FROM users WHERE email = $1) AS user_count,
+           (SELECT COUNT(*)::text
+              FROM audit_log
+             WHERE new_data->>'email' = $1) AS audit_count`,
+        [managerFailedUserEmail],
+      );
+      expect(result.rows).toEqual([{ user_count: "0", audit_count: "0" }]);
+      expect(consoleError).toHaveBeenCalledWith(
+        "[user-create-audit-unavailable]",
+        {
+          actorUserId: actorId,
+          actorRole: "manager",
+          requestedRole: "field_worker",
+          accountCreated: false,
+        },
+      );
     });
 
     it("still prevents managers from creating administrator accounts", async () => {
