@@ -63,6 +63,18 @@ function requiresMandatoryUserAudit(
   );
 }
 
+function mandatoryUserMutationCategory(
+  update: z.infer<typeof updateUserSchema>,
+): string {
+  const categories: string[] = [];
+  if (update.role === "administrator")
+    categories.push("administrator_role_assignment");
+  if (update.isActive !== undefined)
+    categories.push("account_activation_change");
+  if (update.password !== undefined) categories.push("password_change");
+  return categories.join("+");
+}
+
 // GET /api/users
 router.get(
   "/users",
@@ -186,28 +198,46 @@ router.patch(
       action: "UPDATE" as const,
       changedById: req.auth?.userId ?? null,
       oldData: before as Record<string, unknown>,
-      newData: passwordChangeAuditData(
-        updated,
-        Boolean(password),
-      ),
+      newData: passwordChangeAuditData(updated, Boolean(password)),
       ipAddress: req.ip ?? null,
     });
     let updated;
-    if (requiresMandatoryUserAudit({ password, ...rest })) {
-      updated = await executeWithCircuitBreaker(() =>
-        db.transaction(async (tx) => {
-          const [changed] = await tx
-            .update(usersTable)
-            .set(updates)
-            .where(eq(usersTable.id, id))
-            .returning(SAFE_COLS);
-          await writeAuditLogOrThrow(
-            tx,
-            auditEntry(changed as Record<string, unknown>),
-          );
-          return changed;
-        }),
-      );
+    const requestedUpdate = { password, ...rest };
+    if (requiresMandatoryUserAudit(requestedUpdate)) {
+      try {
+        updated = await executeWithCircuitBreaker(() =>
+          db.transaction(async (tx) => {
+            const [changed] = await tx
+              .update(usersTable)
+              .set(updates)
+              .where(eq(usersTable.id, id))
+              .returning(SAFE_COLS);
+            await writeAuditLogOrThrow(
+              tx,
+              auditEntry(changed as Record<string, unknown>),
+            );
+            return changed;
+          }),
+        );
+      } catch (error) {
+        if (!(error instanceof AuditStorageUnavailableError)) {
+          throw error;
+        }
+        console.error("[user-update-audit-unavailable]", {
+          actorUserId: req.auth?.userId ?? null,
+          actorRole: req.auth?.role ?? null,
+          mutationCategory: mandatoryUserMutationCategory(requestedUpdate),
+          userChangeCommitted: false,
+        });
+        res.status(503).json({
+          error:
+            "User change was not committed because audit storage is temporarily unavailable. Please retry later.",
+          code: "AUDIT_STORAGE_TEMPORARILY_UNAVAILABLE",
+          retryable: true,
+          userChangeCommitted: false,
+        });
+        return;
+      }
     } else {
       [updated] = await executeWithCircuitBreaker(() =>
         db

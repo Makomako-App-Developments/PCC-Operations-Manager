@@ -2,7 +2,14 @@ import express from "express";
 import request from "supertest";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { state, selectMock, updateMock, insertMock, transactionMock, hashPasswordMock } = vi.hoisted(() => ({
+const {
+  state,
+  selectMock,
+  updateMock,
+  insertMock,
+  transactionMock,
+  hashPasswordMock,
+} = vi.hoisted(() => ({
   state: {
     createdUsers: [] as Array<Record<string, unknown>>,
     committedUpdates: [] as Array<Record<string, unknown>>,
@@ -29,7 +36,8 @@ const { state, selectMock, updateMock, insertMock, transactionMock, hashPassword
 }));
 
 vi.mock("@workspace/db", async (importOriginal) => {
-  const real = await importOriginal<typeof import("../../../../lib/db/src/index")>();
+  const real =
+    await importOriginal<typeof import("../../../../lib/db/src/index")>();
   return {
     ...real,
     db: {
@@ -39,7 +47,8 @@ vi.mock("@workspace/db", async (importOriginal) => {
       insert: insertMock,
       transaction: transactionMock,
     },
-    executeWithCircuitBreaker: async <T>(operation: () => Promise<T>) => operation(),
+    executeWithCircuitBreaker: async <T>(operation: () => Promise<T>) =>
+      operation(),
   };
 });
 
@@ -269,7 +278,9 @@ describe("users routes use the current database role", () => {
   });
 
   it("rolls back a newly created account when its audit write fails", async () => {
-    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+    const consoleError = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
     const { accessToken } = signTokens({
       userId: state.user.id,
       role: "manager",
@@ -317,29 +328,65 @@ describe("users routes use the current database role", () => {
   });
 
   it.each([
-    ["administrator role assignment", { role: "administrator" }],
-    ["account deactivation", { isActive: false }],
-    ["password replacement", { password: "replacement-password" }],
-  ])("rolls back %s when its audit write fails", async (_name, body) => {
-    state.user.role = "administrator";
-    const { accessToken } = signTokens({
-      userId: state.user.id,
-      role: "administrator",
-      teamId: null,
-      sessionVersion: state.user.sessionVersion,
-    });
-    state.failAuditWrite = true;
+    [
+      "administrator role assignment",
+      { role: "administrator" },
+      "administrator_role_assignment",
+    ],
+    ["account deactivation", { isActive: false }, "account_activation_change"],
+    [
+      "password replacement",
+      { password: "replacement-password" },
+      "password_change",
+    ],
+  ])(
+    "returns a retryable response and rolls back %s when its audit write fails",
+    async (_name, body, mutationCategory) => {
+      const consoleError = vi
+        .spyOn(console, "error")
+        .mockImplementation(() => {});
+      state.user.role = "administrator";
+      const { accessToken } = signTokens({
+        userId: state.user.id,
+        role: "administrator",
+        teamId: null,
+        sessionVersion: state.user.sessionVersion,
+      });
+      state.failAuditWrite = true;
 
-    const response = await request(app)
-      .patch(`/users/${state.user.id}`)
-      .set("Authorization", `Bearer ${accessToken}`)
-      .send(body);
+      const response = await request(app)
+        .patch(`/users/${state.user.id}`)
+        .set("Authorization", `Bearer ${accessToken}`)
+        .send(body);
 
-    expect(response.status).toBe(500);
-    expect(transactionMock).toHaveBeenCalledOnce();
-    expect(state.committedUpdates).toEqual([]);
-    expect(updateMock).not.toHaveBeenCalled();
-  });
+      expect(response.status).toBe(503);
+      expect(response.body).toEqual({
+        error:
+          "User change was not committed because audit storage is temporarily unavailable. Please retry later.",
+        code: "AUDIT_STORAGE_TEMPORARILY_UNAVAILABLE",
+        retryable: true,
+        userChangeCommitted: false,
+      });
+      expect(transactionMock).toHaveBeenCalledOnce();
+      expect(state.committedUpdates).toEqual([]);
+      expect(updateMock).not.toHaveBeenCalled();
+      expect(consoleError).toHaveBeenCalledWith(
+        "[user-update-audit-unavailable]",
+        {
+          actorUserId: state.user.id,
+          actorRole: "administrator",
+          mutationCategory,
+          userChangeCommitted: false,
+        },
+      );
+      expect(JSON.stringify(consoleError.mock.calls)).not.toContain(
+        state.user.email,
+      );
+      expect(JSON.stringify(consoleError.mock.calls)).not.toContain(
+        state.user.name,
+      );
+    },
+  );
 
   it("rolls back account reactivation when its audit write fails", async () => {
     state.user.role = "administrator";
@@ -357,7 +404,11 @@ describe("users routes use the current database role", () => {
       .set("Authorization", `Bearer ${accessToken}`)
       .send({ isActive: true });
 
-    expect(response.status).toBe(500);
+    expect(response.status).toBe(503);
+    expect(response.body).toMatchObject({
+      retryable: true,
+      userChangeCommitted: false,
+    });
     expect(transactionMock).toHaveBeenCalledOnce();
     expect(state.committedUpdates).toEqual([]);
     expect(updateMock).not.toHaveBeenCalled();
@@ -379,7 +430,7 @@ describe("users routes use the current database role", () => {
       .set("Authorization", `Bearer ${accessToken}`)
       .send({ isActive: true });
 
-    expect(response.status).toBe(500);
+    expect(response.status).toBe(503);
     expect(transactionMock).toHaveBeenCalledOnce();
     expect(state.committedUpdates).toEqual([]);
     expect(updateMock).not.toHaveBeenCalled();
