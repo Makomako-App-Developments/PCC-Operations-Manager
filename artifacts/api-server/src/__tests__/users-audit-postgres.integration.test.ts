@@ -32,6 +32,7 @@ describe.skipIf(!runWithPostgres).sequential(
     const suffix = testRun.replaceAll("-", "");
     const functionName = `fail_user_audit_${suffix}`;
     const triggerName = `fail_user_audit_trigger_${suffix}`;
+    const createdUserEmail = `user-audit-created-${testRun}@example.invalid`;
     const originalPasswordHash = "integration-original-password-hash";
 
     async function storedUser() {
@@ -71,7 +72,13 @@ describe.skipIf(!runWithPostgres).sequential(
       await pool.query(`
         CREATE FUNCTION ${functionName}() RETURNS trigger AS $$
         BEGIN
-          IF NEW.table_name = 'users' AND NEW.record_id = '${targetId}'::uuid THEN
+          IF NEW.table_name = 'users' AND (
+            NEW.record_id = '${targetId}'::uuid
+            OR (
+              NEW.action = 'INSERT'
+              AND NEW.new_data->>'email' = '${createdUserEmail}'
+            )
+          ) THEN
             RAISE EXCEPTION 'forced user audit failure';
           END IF;
           RETURN NEW;
@@ -129,6 +136,44 @@ describe.skipIf(!runWithPostgres).sequential(
         password_hash: originalPasswordHash,
         session_version: 7,
       });
+    });
+
+    it("rolls back a newly created account when the audit insert fails", async () => {
+      const consoleError = vi
+        .spyOn(console, "error")
+        .mockImplementation(() => {});
+
+      const response = await request(app).post("/api/users").send({
+        email: createdUserEmail,
+        name: "Audit Transaction Created User",
+        initials: "AC",
+        password: "password123",
+        role: "manager",
+      });
+
+      expect(response.status).toBe(503);
+      expect(response.body).toEqual({
+        error:
+          "Account was not created because audit storage is temporarily unavailable. Please retry later.",
+        code: "AUDIT_STORAGE_TEMPORARILY_UNAVAILABLE",
+        retryable: true,
+        accountCreated: false,
+      });
+
+      const stored = await pool.query<{ count: string }>(
+        `SELECT COUNT(*)::text AS count FROM users WHERE email = $1`,
+        [createdUserEmail],
+      );
+      expect(stored.rows[0]?.count).toBe("0");
+      expect(consoleError).toHaveBeenCalledWith(
+        "[user-create-audit-unavailable]",
+        {
+          actorUserId: actorId,
+          actorRole: "administrator",
+          requestedRole: "manager",
+          accountCreated: false,
+        },
+      );
     });
 
     it("rolls back account reactivation when the audit insert fails", async () => {
