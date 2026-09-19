@@ -46,6 +46,7 @@
 - [Photo cleanup integration test isolation](photo-cleanup-integration-test-isolation.md) — cleanup worker batch-count tests can become timing-sensitive in the full parallel API suite.
 - [Protected photo parents and report formats](protected-photo-parent-report-formats.md) — parent-linked files fail closed after parent loss; accepted report image types must match the PDF renderer.
 - [Container pnpm version pinning](container-pnpm-version-pinning.md) — pin container builds to the repository’s pnpm major; unpinned Corepack can select an incompatible release.
+- [Reinstated GitHub repository pushes](github-repository-reinstatement.md) — large first pushes may require a temporary manual deploy key; OAuth-created keys cannot update workflow files without workflow scope.
 - [Urgent issue acknowledgement](urgent-issue-acknowledgement.md) — opening a live Storm Patrol urgent issue acknowledges it; archived views remain read-only and failed writes remain visibly unacknowledged.
 - [Storm Patrol PDF design](storm-patrol-pdf-design.md) — the current PCC-branded landscape report is user-approved; preserve its layout and styling in future changes.
 - [Secure Orval upgrades](secure-orval-upgrades.md) — patched Orval releases need explicit Zod 3 output and a js-yaml namespace-import patch in this workspace.
