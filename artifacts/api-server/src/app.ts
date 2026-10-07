@@ -7,6 +7,7 @@ import path from "path";
 import fs from "fs";
 import { Readable } from "stream";
 import router from "./routes";
+import photoBackupRouter from "./routes/photo-backup";
 import { initSentry, Sentry } from "./lib/sentry";
 import { objectStorageClient } from "./lib/objectStorage";
 import { requireAuth } from "./middlewares/auth";
@@ -51,6 +52,10 @@ app.use(cors({ origin: allowedOrigins, credentials: true }));
 app.use(express.json({ limit: "1mb" }));
 app.use(express.urlencoded({ extended: true, limit: "1mb" }));
 app.use(cookieParser());
+
+// Keyless, read-only machine API. Its own failed-auth limiter and two-stream cap
+// avoid the user API's 300-request limit and do not require database availability.
+app.use("/api/internal/photo-backup", photoBackupRouter);
 
 // ── Rate limiting ─────────────────────────────────────────────────────────────
 const generalLimiter = rateLimit({

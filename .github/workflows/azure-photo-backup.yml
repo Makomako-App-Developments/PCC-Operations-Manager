@@ -1,0 +1,87 @@
+name: Independent photo backups to Azure
+
+on:
+  workflow_dispatch:
+    inputs:
+      operation:
+        description: "Start with inventory; then backup; then verify. Prune deletes only expired, unreferenced backup copies."
+        type: choice
+        options: [inventory, backup, verify, prune]
+        default: inventory
+      snapshot_manifest:
+        description: "For verify only: existing snapshots/...json path. Leave blank for newest."
+        type: string
+        default: ""
+  schedule:
+    - cron: "27 14 * * *"
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: independent-photo-backups
+  cancel-in-progress: false
+
+jobs:
+  photos:
+    # Scheduled copies stay disabled until production source + first restore are verified.
+    if: github.ref == 'refs/heads/master' && (github.event_name == 'workflow_dispatch' || vars.AZURE_PHOTO_BACKUP_ENABLED == 'true')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      AZURE_BACKUP_STORAGE_ACCOUNT: ${{ vars.AZURE_BACKUP_STORAGE_ACCOUNT }}
+      AZURE_PHOTO_BACKUP_CONTAINER: photo-backups
+      PHOTO_BACKUP_SOURCE_URL: https://porirua-garden-manager.replit.app
+      PHOTO_BACKUP_SOURCE_ID: ${{ vars.PHOTO_BACKUP_SOURCE_ID }}
+      PHOTO_BACKUP_MANIFEST: ${{ inputs.snapshot_manifest }}
+      OPERATION: ${{ github.event_name == 'schedule' && 'backup' || inputs.operation }}
+    steps:
+      - name: Check backup configuration
+        shell: bash
+        env:
+          AZURE_BACKUP_CLIENT_ID: ${{ vars.AZURE_BACKUP_CLIENT_ID }}
+          AZURE_BACKUP_TENANT_ID: ${{ vars.AZURE_BACKUP_TENANT_ID }}
+          AZURE_BACKUP_SUBSCRIPTION_ID: ${{ vars.AZURE_BACKUP_SUBSCRIPTION_ID }}
+        run: |
+          set -euo pipefail
+          for key in AZURE_BACKUP_STORAGE_ACCOUNT AZURE_BACKUP_CLIENT_ID \
+            AZURE_BACKUP_TENANT_ID AZURE_BACKUP_SUBSCRIPTION_ID; do
+            [[ -n "${!key}" ]] || { echo "::error::Missing backup variable: $key"; exit 1; }
+          done
+          [[ "$OPERATION" =~ ^(inventory|backup|verify|prune)$ ]]
+          if [[ "$OPERATION" != "inventory" ]]; then
+            [[ "$PHOTO_BACKUP_SOURCE_ID" =~ ^[0-9a-f]{64}$ ]] ||
+              { echo "::error::Run inventory, confirm the production source, and set PHOTO_BACKUP_SOURCE_ID first."; exit 1; }
+          fi
+
+      - name: Read only the backup scripts
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          ref: master
+          persist-credentials: false
+          sparse-checkout: scripts/operations
+
+      - name: Sign in to Azure without a password
+        uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906
+        with:
+          client-id: ${{ vars.AZURE_BACKUP_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_BACKUP_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_BACKUP_SUBSCRIPTION_ID }}
+          audience: api://AzureADTokenExchange
+
+      - name: Run the selected read-only source operation
+        shell: bash
+        env:
+          AZURE_CORE_OUTPUT: none
+        run: |
+          set -euo pipefail
+          umask 077
+          python3 scripts/operations/photo_backups.py "$OPERATION"
+
+      - name: Report failure without exposing private files
+        if: failure()
+        shell: bash
+        run: |
+          echo "## Photo backup operation failed" >>"$GITHUB_STEP_SUMMARY"
+          echo "Do not count this run as a new verified recovery point. Production files were not modified." >>"$GITHUB_STEP_SUMMARY"

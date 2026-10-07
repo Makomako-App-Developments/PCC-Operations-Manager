@@ -51,9 +51,12 @@ without repository activity. Check runs regularly and enable GitHub Actions
 failure notifications; a missed or disabled schedule might not produce a failed
 run notification. GitHub: https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#schedule
 
-No automatic blob deletion is configured. The proposed Azure lifecycle retention
-still requires agreement. Soft deletion and versioning are not normal backup
-retention and can continue charging for retained deleted objects/versions.
+The user-configured Azure lifecycle rule applies to `db-backups/postgresql/`:
+current block blobs expire after modification age exceeds 30 days; previous
+versions/snapshots after creation age exceeds 30 days. Actual lifecycle deletions
+remain unverified. Do not reuse that age-based rule for incremental photo copies;
+see `azure-photo-backups.md`. Soft deletion and versioning can continue charging
+for retained deleted objects/versions.
 Budget alerts are not a spending cap.
 
 The database dump does not include object-storage photo/file bytes, database

@@ -1,0 +1,74 @@
+openapi: 3.1.0
+info:
+  title: Internal photo backup service
+  version: 1.0.0
+  description: Machine-only API, deliberately separate from user-client codegen and user JWT authentication.
+security:
+  - GitHubOidc: []
+paths:
+  /api/internal/photo-backup/inventory:
+    post:
+      operationId: photoBackupInventory
+      description: Production only; trusted immutable repository IDs, master ref, and azure-photo-backup.yml workflow are mandatory.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                pageToken: { type: string, maxLength: 8192 }
+      responses:
+        "200":
+          description: A complete bounded page; any metadata failure fails the page.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [sourceId, objects, nextPageToken]
+                properties:
+                  sourceId: { type: string, pattern: "^[0-9a-f]{64}$" }
+                  nextPageToken: { type: [string, "null"] }
+                  objects:
+                    type: array
+                    items:
+                      type: object
+                      required: [name, generation, bytes, md5, contentType]
+                      properties:
+                        name: { type: string, maxLength: 1024 }
+                        generation: { type: string, pattern: "^[0-9]{1,30}$" }
+                        bytes: { type: integer, minimum: 0, maximum: 268435456 }
+                        md5: { type: string, pattern: "^[A-Za-z0-9+/]{22}==$" }
+                        contentType: { type: string, maxLength: 255 }
+        "401": { description: Missing or invalid service identity }
+        "403": { description: Not a production deployment }
+        "503": { description: Unreadable or unverifiable storage page }
+  /api/internal/photo-backup/download:
+    post:
+      operationId: photoBackupDownload
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, generation]
+              properties:
+                name: { type: string, maxLength: 1024 }
+                generation: { type: string, pattern: "^[0-9]{1,30}$" }
+      responses:
+        "200":
+          description: Original generation-pinned file bytes; aborted transfers are not success.
+          content:
+            application/octet-stream:
+              schema: { type: string, format: binary }
+        "400": { description: Unsafe object path or invalid generation }
+        "401": { description: Invalid service identity }
+        "429": { description: Two concurrent download limit reached }
+        "503": { description: Source unavailable }
+components:
+  securitySchemes:
+    GitHubOidc:
+      type: http
+      scheme: bearer
+      bearerFormat: GitHub OIDC JWT
