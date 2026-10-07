@@ -69,10 +69,42 @@ Verify tables, representative row counts, relationships and application access.
 The existing `scripts/restore-db.ts` drops the public schema: do not use it
 against production or reuse it for an unreviewed restore test.
 
+## Manual isolated restore test
+
+Open **Actions → Isolated Azure database restore test → Run workflow** and
+select `master`. Leave `backup_manifest` blank to choose the newest completed
+manifest, or enter an existing `postgresql/...json` manifest to test an older copy.
+This workflow is manual only; preparing it does not execute a restore.
+
+It authenticates using the same Azure identity but performs only blob list and
+download operations. It does not use the production connection secret, modify
+the backup manifests, or delete Azure copies. It checks manifest format, archive
+size, SHA-256, archive readability and the expected assets table before restoring.
+
+The target is a fresh, loopback-only PostgreSQL 16 GitHub service database named
+`pcc_restore_validation`. The restore runs in one transaction with
+`--exit-on-error --no-owner --no-acl`, without `--create` or `--clean`.
+The test checks restored table/foreign-key counts against the archive, nonempty
+assets data, and validated foreign-key/check constraints. SQL errors and row data
+are withheld from both client and service logs; only aggregate counts appear.
+Archives and database contents are not published as GitHub artifacts.
+
+The runner and service are temporary and discarded after the job; downloaded
+files are removed on exit. Temporary processing may occur outside Australia;
+Azure in Australia East remains the permanent backup destination. This is not
+a complete application recovery test or a photo/file recovery test. It does not
+compare row counts to today's changing production database. A green run establishes
+that the specific archive named in its summary was restored and validated.
+
 ## Offline regression check
 
 `python3 scripts/tests/test_azure_db_backup.py`
 
+`python3 scripts/tests/test_azure_db_restore.py`
+
 This runs fake PostgreSQL/Azure clients, including export, empty/corrupt archive,
 wrong database, upload/download/checksum/manifest failures, cleanup, and secret
 redaction cases. It does not access the production secret or any external data.
+Restore checks likewise use fake clients and dummy bytes to exercise target
+isolation, wrong/nonempty databases, manifest selection, corrupt downloads,
+failed restores, table/data/foreign-key validation, cleanup and private-log guards.

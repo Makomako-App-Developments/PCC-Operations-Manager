@@ -1,0 +1,241 @@
+name: Isolated Azure database restore test
+
+# Manual only. Temporary GitHub runner processing may be outside Australia.
+on:
+  workflow_dispatch:
+    inputs:
+      backup_manifest:
+        description: "Optional postgresql/...json manifest name; blank selects the newest verified backup."
+        required: false
+        type: string
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: isolated-azure-database-restore-test
+  cancel-in-progress: false
+
+jobs:
+  restore-test:
+    if: github.ref == 'refs/heads/master'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    services:
+      postgres:
+        # Official PostgreSQL 16-alpine immutable multi-platform image digest.
+        image: postgres:16-alpine@sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea
+        env:
+          POSTGRES_USER: restore_check
+          POSTGRES_PASSWORD: temporary-restore-test-only
+          POSTGRES_DB: pcc_restore_validation
+        ports:
+          - "127.0.0.1:5432:5432"
+        options: >-
+          --health-cmd "pg_isready -U restore_check -d pcc_restore_validation"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      PG_BIN: /usr/lib/postgresql/16/bin
+      PGHOST: "127.0.0.1"
+      PGPORT: "5432"
+      PGDATABASE: pcc_restore_validation
+      PGUSER: restore_check
+      PGPASSWORD: temporary-restore-test-only
+      PGSSLMODE: disable
+      PGCONNECT_TIMEOUT: "15"
+      # Suppress row-bearing SQL errors in service-container logs as well as client logs.
+      PGOPTIONS: "-c log_min_messages=panic -c log_min_error_statement=panic -c log_error_verbosity=terse -c log_statement=none"
+      AZURE_BACKUP_STORAGE_ACCOUNT: ${{ vars.AZURE_BACKUP_STORAGE_ACCOUNT }}
+      AZURE_BACKUP_CONTAINER: ${{ vars.AZURE_BACKUP_CONTAINER }}
+    steps:
+      - name: Check Azure configuration
+        shell: bash
+        env:
+          AZURE_BACKUP_CLIENT_ID: ${{ vars.AZURE_BACKUP_CLIENT_ID }}
+          AZURE_BACKUP_TENANT_ID: ${{ vars.AZURE_BACKUP_TENANT_ID }}
+          AZURE_BACKUP_SUBSCRIPTION_ID: ${{ vars.AZURE_BACKUP_SUBSCRIPTION_ID }}
+        run: |
+          set -euo pipefail
+          for key in AZURE_BACKUP_CLIENT_ID AZURE_BACKUP_TENANT_ID \
+            AZURE_BACKUP_SUBSCRIPTION_ID AZURE_BACKUP_STORAGE_ACCOUNT AZURE_BACKUP_CONTAINER; do
+            [[ -n "${!key}" ]] || { echo "::error::Missing repository variable: $key"; exit 1; }
+          done
+
+      - name: Install PostgreSQL 16 client
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends postgresql-client-16
+
+      - name: Sign in to Azure without a password
+        uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906
+        with:
+          client-id: ${{ vars.AZURE_BACKUP_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_BACKUP_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_BACKUP_SUBSCRIPTION_ID }}
+          audience: api://AzureADTokenExchange
+
+      - name: Download and restore into the isolated test database
+        shell: bash
+        env:
+          AZURE_CORE_OUTPUT: none
+          BACKUP_MANIFEST_INPUT: ${{ inputs.backup_manifest }}
+        run: |
+          # BEGIN RESTORE TEST SCRIPT (also exercised by the offline tests)
+          set -euo pipefail
+          umask 077
+          fail() { echo "::error::$1"; exit 1; }
+          # This workflow NEVER receives a production database connection secret.
+          [[ -z "${DATABASE_URL:-}" ]] || fail "DATABASE_URL must not be supplied to a restore test."
+          [[ "$PGHOST" == "127.0.0.1" && "$PGPORT" == "5432" &&
+             "$PGDATABASE" == "pcc_restore_validation" && "$PGUSER" == "restore_check" ]] ||
+            fail "Restore target must be the fixed, local, disposable test service."
+          # Prevent libpq alternative connection settings from overriding loopback.
+          unset PGHOSTADDR PGSERVICE PGSERVICEFILE
+          work_dir=$(mktemp -d "$RUNNER_TEMP/pcc-restore-test.XXXXXX")
+          trap 'rm -rf -- "$work_dir"' EXIT
+          target=$("$PG_BIN/psql" --no-psqlrc --no-password --quiet -At \
+            --dbname="$PGDATABASE" -c 'SELECT current_database();' 2>"$work_dir/connection.log") ||
+            fail "Cannot connect to the isolated test database."
+          [[ "$target" == "pcc_restore_validation" ]] || fail "Unexpected restore database."
+          initial_tables=$("$PG_BIN/psql" --no-psqlrc --no-password --quiet -At \
+            --dbname="$PGDATABASE" -c "SELECT count(*) FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='public' AND c.relkind IN ('r','p');" \
+            2>"$work_dir/connection.log") || fail "Cannot check the isolated database."
+          [[ "$initial_tables" == "0" ]] || fail "The isolated database must be empty before restoring."
+
+          storage_args=(--account-name "$AZURE_BACKUP_STORAGE_ACCOUNT"
+            --container-name "$AZURE_BACKUP_CONTAINER" --auth-mode login --only-show-errors)
+          timeout 120s az storage blob list "${storage_args[@]}" --prefix postgresql/ \
+            --query '[].name' --output json >"$work_dir/blob-names.json"
+          # Strict filenames prevent traversal, option injection, and arbitrary blob selection.
+          python3 - "$work_dir/blob-names.json" "$work_dir/manifest-name" <<'PY'
+          import json, os, re, sys
+          pattern = re.compile(r"postgresql/pcc-production-\d{8}T\d{6}Z-\d+-\d+\.json")
+          with open(sys.argv[1]) as f:
+              names = json.load(f)
+          if not isinstance(names, list) or not all(isinstance(n, str) for n in names):
+              raise SystemExit("Invalid Azure blob listing.")
+          requested = os.environ.get("BACKUP_MANIFEST_INPUT", "")
+          candidates = sorted(n for n in names if pattern.fullmatch(n))
+          if requested:
+              if not pattern.fullmatch(requested) or requested not in candidates:
+                  raise SystemExit("Requested manifest is invalid or not present.")
+              selected = requested
+          else:
+              if not candidates:
+                  raise SystemExit("No completed backup manifests exist.")
+              selected = candidates[-1]
+          with open(sys.argv[2], "w") as f:
+              f.write(selected)
+          PY
+          manifest_name=$(cat "$work_dir/manifest-name")
+          timeout 120s az storage blob download "${storage_args[@]}" \
+            --name "$manifest_name" --file "$work_dir/manifest.json" --output none
+          python3 - "$work_dir/manifest.json" "$manifest_name" "$work_dir/metadata" <<'PY'
+          import json, re, sys
+          with open(sys.argv[1]) as f:
+              m = json.load(f)
+          if not isinstance(m, dict):
+              raise SystemExit("Invalid backup manifest.")
+          digest, size = m.get("sha256"), m.get("bytes")
+          expected_blob = sys.argv[2][:-5] + ".dump"
+          if (m.get("format") != "postgresql-custom" or
+                  m.get("postgresql_client_major") != 16 or
+                  m.get("azure_readback_verified") is not True or
+                  m.get("blob") != expected_blob or
+                  not isinstance(digest, str) or not re.fullmatch(r"[0-9a-f]{64}", digest) or
+                  type(size) is not int or not 0 < size <= 4 * 1024**3):
+              raise SystemExit("Backup manifest is not a valid, verified PostgreSQL 16 copy.")
+          with open(sys.argv[3], "w") as f:
+              f.write(f"{expected_blob}\n{digest}\n{size}\n")
+          PY
+          mapfile -t metadata < "$work_dir/metadata"
+          blob=${metadata[0]}
+          timeout 300s az storage blob download "${storage_args[@]}" \
+            --name "$blob" --file "$work_dir/backup.dump" --output none
+          [[ "$(stat -c %s "$work_dir/backup.dump")" == "${metadata[2]}" ]] ||
+            fail "Downloaded archive size does not match its manifest."
+          [[ "$(sha256sum "$work_dir/backup.dump" | cut -d ' ' -f 1)" == "${metadata[1]}" ]] ||
+            fail "Downloaded archive checksum does not match its manifest."
+          "$PG_BIN/pg_restore" --list "$work_dir/backup.dump" \
+            >"$work_dir/toc" 2>"$work_dir/restore.log" ||
+            fail "The archive cannot be read by PostgreSQL 16."
+          grep -Eq ' TABLE DATA public assets ' "$work_dir/toc" ||
+            fail "The archive lacks the expected assets table data."
+          expected_tables=$(grep -Ec '; [0-9]+ [0-9]+ TABLE public ' "$work_dir/toc" || true)
+          [[ "$expected_tables" -gt 0 ]] || fail "The archive contains no public tables."
+          expected_foreign_keys=$(grep -Ec '; [0-9]+ [0-9]+ FK CONSTRAINT public ' "$work_dir/toc" || true)
+
+          # No --create, --clean, or production URI. Restore only to the fresh local service.
+          echo "Restoring the checksum-verified archive into the disposable database."
+          if ! timeout 10m "$PG_BIN/pg_restore" --no-password \
+            --dbname="$PGDATABASE" --no-owner --no-acl \
+            --exit-on-error --single-transaction "$work_dir/backup.dump" \
+            >"$work_dir/restore.log" 2>&1; then
+            fail "Isolated restore failed. Raw SQL errors are withheld to protect row data. Check required extensions and PostgreSQL compatibility."
+          fi
+          cat >"$work_dir/validate.sql" <<'SQL'
+          DO $check$
+          BEGIN
+            IF current_database() <> 'pcc_restore_validation' THEN
+              RAISE EXCEPTION 'Unexpected test database';
+            END IF;
+            IF to_regclass('public.assets') IS NULL THEN
+              RAISE EXCEPTION 'Missing restored assets table';
+            END IF;
+            IF NOT EXISTS (SELECT 1 FROM public.assets) THEN
+              RAISE EXCEPTION 'Restored assets table is empty';
+            END IF;
+            IF EXISTS (
+              SELECT 1 FROM pg_constraint c JOIN pg_namespace n ON n.oid=c.connamespace
+              WHERE n.nspname='public' AND c.contype IN ('f','c') AND NOT c.convalidated
+            ) THEN
+              RAISE EXCEPTION 'Restored database has unvalidated foreign-key or check constraints';
+            END IF;
+          END
+          $check$;
+          SELECT
+            (SELECT count(*) FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+             WHERE n.nspname='public' AND c.relkind IN ('r','p')),
+            (SELECT count(*) FROM public.assets),
+            (SELECT count(*) FROM pg_constraint c JOIN pg_namespace n ON n.oid=c.connamespace
+             WHERE n.nspname='public' AND c.contype='f');
+          SQL
+          "$PG_BIN/psql" --no-psqlrc --no-password --quiet -At --field-separator='|' \
+            --set=ON_ERROR_STOP=1 --dbname="$PGDATABASE" --file="$work_dir/validate.sql" \
+            >"$work_dir/counts" 2>"$work_dir/validation.log" ||
+            fail "The restored database failed table, data, or constraint validation."
+          IFS='|' read -r tables assets foreign_keys < "$work_dir/counts"
+          # Extensions can create additional public tables or inherited constraints.
+          [[ "$tables" =~ ^[0-9]+$ && "$assets" =~ ^[0-9]+$ &&
+             "$foreign_keys" =~ ^[0-9]+$ && "$tables" -ge "$expected_tables" &&
+             "$foreign_keys" -ge "$expected_foreign_keys" && "$assets" -gt 0 ]] ||
+            fail "Restored table counts do not match the archive or assets data is empty."
+          {
+            echo "## Isolated database restore test passed"
+            echo ""
+            echo "- Backup: \`$blob\`"
+            echo "- Archive checksum matched its verified Azure manifest."
+            echo "- Full PostgreSQL 16 restore completed in one transaction."
+            echo "- Public tables restored: $tables (archive defines $expected_tables)."
+            echo "- Asset rows restored: $assets."
+            echo "- Foreign-key constraints restored: $foreign_keys."
+            echo "- Foreign-key/check constraints are validated."
+            echo "- Production was not connected to or changed; Azure copies were not modified."
+            echo "- Temporary files are removed; the test service is discarded at job end."
+            echo "- Application-level recovery and photo/file bytes are not tested."
+          } >>"$GITHUB_STEP_SUMMARY"
+          # END RESTORE TEST SCRIPT
+
+      - name: Report a failed restore check
+        if: failure()
+        shell: bash
+        run: |
+          {
+            echo "## Isolated restore test failed"
+            echo "Do not treat this archive as restore-tested. Production and Azure copies were not changed."
+          } >>"$GITHUB_STEP_SUMMARY"
