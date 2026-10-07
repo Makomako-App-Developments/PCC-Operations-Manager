@@ -46,6 +46,13 @@ verified manifest and provider metadata. Raw rows, file names and tokens are not
 printed as operational logs or uploaded as public GitHub artifacts. Summary paths
 are hashed private-backup identifiers, not original uploaded-file names.
 
+Operational logs expose only aggregate file/byte counts, fixed processing stages,
+and allowlisted error categories (such as HTTP status or Azure permission failure).
+Raw exception text, provider response bodies, tokens and original file paths
+remain withheld. A failed copy may leave immutable partial objects; a retry
+checks their actual bytes before using them and never claims an incomplete
+manifest as a completed recovery point.
+
 **Do not add an age-based Azure lifecycle delete rule to `photo-backups`.**
 That would delete backups of old photos still used by the app. Reference-aware
 cleanup runs after a successful backup, retaining objects referenced by any

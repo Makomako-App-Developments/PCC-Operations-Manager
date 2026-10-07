@@ -7,6 +7,7 @@ from pathlib import Path
 import re
 import time
 import urllib.request
+from photo_backup_diagnostics import set_phase
 
 AUDIENCE = "pcc-operations-manager-photo-backup"
 
@@ -27,6 +28,7 @@ class PhotoSource:
 
     def _identity(self):
         if time.time() - self.token_at > 120:
+            set_phase("source-identity")
             url = os.environ["ACTIONS_ID_TOKEN_REQUEST_URL"]
             separator = "&" if "?" in url else "?"
             request = urllib.request.Request(url + separator + "audience=" + AUDIENCE,
@@ -44,7 +46,9 @@ class PhotoSource:
     def inventory(self):
         objects, seen, cursors, source_id, cursor = [], set(), set(), None, None
         for _ in range(1000):
-            with self.opener.open(self._request("inventory", {"pageToken": cursor} if cursor else {}), timeout=45) as response:
+            request = self._request("inventory", {"pageToken": cursor} if cursor else {})
+            set_phase("source-inventory")
+            with self.opener.open(request, timeout=45) as response:
                 page = json.load(response)
             if not isinstance(page, dict) or not re.fullmatch(r"[0-9a-f]{64}", page.get("sourceId", "")):
                 raise ValueError("Invalid source inventory")
@@ -69,14 +73,17 @@ class PhotoSource:
 
     def download(self, item, target):
         total = 0
-        with self.opener.open(self._request("download", {
-            "name": item["name"], "generation": item["generation"]}), timeout=120) as response:
+        request = self._request("download", {
+            "name": item["name"], "generation": item["generation"]})
+        set_phase("source-download")
+        with self.opener.open(request, timeout=120) as response:
             with Path(target).open("wb") as output:
                 while chunk := response.read(1024 * 1024):
                     total += len(chunk)
                     if total > item["bytes"]:
                         raise ValueError("Source download exceeded its inventory size")
                     output.write(chunk)
+        set_phase("source-checksum")
         check_file(target, item)
 
 

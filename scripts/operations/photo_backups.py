@@ -9,6 +9,7 @@ import tempfile
 from datetime import datetime, timedelta, timezone
 from azure_photo_store import AzurePhotoStore
 from photo_backup_source import PhotoSource, check_file, file_hashes, validate_object
+from photo_backup_diagnostics import failure_line, set_phase
 
 MAX_RUN_BYTES = 10 * 1024**3
 UTC = timezone.utc
@@ -48,6 +49,7 @@ def validate_snapshot(snapshot, source_id):
 
 def load_snapshots(store, source_id, directory):
     prefix = f"snapshots/{source_id}/"
+    set_phase("snapshot-list")
     rows = store.list(prefix)
     result = []
     for row in rows:
@@ -58,8 +60,10 @@ def load_snapshots(store, source_id, directory):
         if type(size) is not int or not 0 < size <= 32 * 1024**2:
             raise ValueError("Unverifiable snapshot size")
         path = directory / "snapshot.json"
+        set_phase("snapshot-download")
         store.download(name, path)
         try:
+            set_phase("snapshot-validation")
             sha, _ = file_hashes(path)
             if sha != row.get("metadata", {}).get("sha256"):
                 raise ValueError("Snapshot checksum failed")
@@ -80,6 +84,7 @@ def backup(source, store, source_id, objects, directory, now, run_id, attempt):
         raise ValueError("Unexpectedly empty photo source; previous snapshots preserved")
     # Prior manifests prove which previously copied files passed read-back verification.
     proven = {item["blob"]: item for _, snapshot in previous for item in snapshot["objects"]}
+    set_phase("object-list")
     inventory = {row["name"]: row for row in store.list(f"objects/{source_id}/")}
     saved, copied_bytes, copied = [], 0, 0
     for item in objects:
@@ -97,17 +102,24 @@ def backup(source, store, source_id, objects, directory, now, run_id, attempt):
             local = directory / "file"
             if existing:
                 # Retry an interrupted copy only after verifying its actual bytes.
+                set_phase("azure-readback")
                 store.download(key, local)
+                set_phase("azure-checksum")
                 sha = check_file(local, item)
             else:
+                set_phase("source-download")
                 copied_bytes += item["bytes"]
                 if copied_bytes > MAX_RUN_BYTES:
                     raise ValueError("New photo transfer exceeds the 10 GiB run safety limit")
                 source.download(item, local)
+                set_phase("source-checksum")
                 sha = check_file(local, item)
+                set_phase("azure-upload")
                 store.upload(key, local)
                 local.unlink()
+                set_phase("azure-readback")
                 store.download(key, local)
+                set_phase("azure-checksum")
                 check_file(local, {**item, "sha256": sha})
                 copied += 1
             # Existing mismatched metadata cannot silently become a trusted reference.
@@ -115,6 +127,8 @@ def backup(source, store, source_id, objects, directory, now, run_id, attempt):
                 raise ValueError("Azure object metadata failed integrity verification")
             local.unlink(missing_ok=True)
         saved.append({**item, "blob": key, "sha256": sha})
+        if len(saved) % 100 == 0 or len(saved) == len(objects):
+            print(f"Photo copy progress: verified files={len(saved)}; total files={len(objects)}", flush=True)
     snapshot = {"format": "pcc-photo-snapshot-v1", "sourceId": source_id,
         "createdUtc": now.isoformat(), "complete": True, "objects": saved,
         "fileCount": len(saved), "totalBytes": sum(i["bytes"] for i in saved)}
@@ -122,8 +136,10 @@ def backup(source, store, source_id, objects, directory, now, run_id, attempt):
     path = directory / "new-snapshot.json"
     path.write_text(json.dumps(snapshot, separators=(",", ":")))
     sha, _ = file_hashes(path)
+    set_phase("snapshot-publish")
     store.upload(name, path)  # Publish LAST, only after all photo copies are verified.
     downloaded = directory / "snapshot-readback.json"
+    set_phase("snapshot-readback")
     store.download(name, downloaded)
     if file_hashes(downloaded)[0] != sha:
         raise ValueError("Snapshot read-back verification failed")
@@ -144,6 +160,7 @@ def verify(store, source_id, directory, selected=""):
     # Actually recreate every original path in an isolated temporary folder.
     restored = directory / "restored"
     for item in snapshot["objects"]:
+        set_phase("restore")
         target = restored / item["name"]
         target.parent.mkdir(parents=True, exist_ok=True)
         store.download(item["blob"], target)
@@ -162,7 +179,9 @@ def prune(store, source_id, directory, now):
     # Preflight ALL provider lists and timestamps before performing ANY deletion.
     groups = {}
     for prefix in (f"objects/{source_id}/", f"snapshots/{source_id}/"):
+        set_phase("cleanup-list")
         for row in store.list(prefix, versions=True):
+            set_phase("cleanup-validation")
             name = row.get("name", "")
             pattern = (r"objects/" + source_id + r"/[0-9a-f]{64}/\d{1,30}" if prefix.startswith("objects/")
                        else r"snapshots/" + source_id + r"/\d{8}T\d{6}Z-\d+-\d+\.json")
@@ -188,11 +207,13 @@ def prune(store, source_id, directory, now):
     # Remove expired manifests first; partial failures over-retain, never lose retained references.
     candidates.sort(key=lambda pair: (not pair[0].startswith("snapshots/"), pair[0]))
     for name, entries in candidates:
+        set_phase("cleanup-delete")
         store.delete_group(name, entries)
     return len(candidates)
 
 
 def main():
+    set_phase("startup")
     operation = sys.argv[1]
     source = PhotoSource(os.environ["PHOTO_BACKUP_SOURCE_URL"])
     store = AzurePhotoStore(os.environ["AZURE_BACKUP_STORAGE_ACCOUNT"],
@@ -204,6 +225,7 @@ def main():
         if operation in ("inventory", "backup"):
             source_id, objects = source.inventory()
             total = sum(o["bytes"] for o in objects)
+            print(f"Production inventory: files={len(objects)}; bytes={total}", flush=True)
             lines = [f"- Production files: {len(objects)}", f"- Source bytes: {total}",
                      f"- Source fingerprint: `{source_id}`"]
             if operation == "backup":
@@ -228,6 +250,7 @@ def main():
                 lines = [f"- Expired object groups removed: {prune(store, source_id, directory, now)}"]
         else:
             raise ValueError("Unknown photo backup operation")
+        set_phase("summary")
         with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as summary:
             summary.write(f"## Photo backup {operation} passed\n\n" + "\n".join(lines) +
                           "\n- No production files were modified. Temporary files are discarded.\n")
@@ -236,7 +259,7 @@ def main():
 if __name__ == "__main__":
     try:
         main()
-    except Exception:
+    except Exception as error:
         # Provider exceptions/HTTP bodies can include object names, URLs or credentials.
-        print("::error::Photo backup operation failed. No complete new recovery point is claimed; raw errors withheld.")
+        print(failure_line(error))
         sys.exit(1)

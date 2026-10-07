@@ -1,8 +1,10 @@
 """Azure CLI adapter: private OAuth operations, bounded listings, no raw error logs."""
 import json
 from pathlib import Path
+import re
 import subprocess
 from photo_backup_source import file_hashes
+from photo_backup_diagnostics import AzureStorageFailure
 
 
 class AzurePhotoStore:
@@ -17,7 +19,9 @@ class AzurePhotoStore:
             "--output", "json" if json_output else "none"],
             capture_output=True, text=True, timeout=240)
         if result.returncode:
-            raise RuntimeError("Azure photo storage operation failed; raw errors withheld")
+            code = next((code for code in sorted(AzureStorageFailure.CODES - {"unknown"})
+                         if re.search(r"\b" + re.escape(code) + r"\b", result.stderr)), "unknown")
+            raise AzureStorageFailure(operation, code)
         return json.loads(result.stdout) if json_output else None
 
     def list(self, prefix, versions=False):
