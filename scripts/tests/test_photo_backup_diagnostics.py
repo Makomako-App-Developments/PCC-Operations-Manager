@@ -14,6 +14,19 @@ from photo_backup_diagnostics import AzureStorageFailure, category, failure_line
 
 
 class DiagnosticsTests(unittest.TestCase):
+    def test_version_listing_passes_one_combined_include_argument(self):
+        result = SimpleNamespace(returncode=0, stdout="[]", stderr="")
+        with patch("azure_photo_store.subprocess.run", return_value=result) as run:
+            store = AzurePhotoStore("dummy", "photo-backups")
+            self.assertEqual(store.list("objects/dummy/", versions=True), [])
+            arguments = run.call_args.args[0]
+            index = arguments.index("--include")
+            self.assertEqual(arguments[index:index + 3], ["--include", "mvs", "--output"])
+            store.list("objects/dummy/")
+            arguments = run.call_args.args[0]
+            index = arguments.index("--include")
+            self.assertEqual(arguments[index:index + 3], ["--include", "m", "--output"])
+
     def test_private_error_text_is_never_emitted(self):
         private = "uploads/private.jpg bearer-secret https://private.example/signed?token=secret"
         errors = [

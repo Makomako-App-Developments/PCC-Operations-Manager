@@ -27,7 +27,7 @@ class AzurePhotoStore:
     def list(self, prefix, versions=False):
         args = ["--prefix", prefix, "--num-results", "5000"]
         if versions:
-            args += ["--include", "m", "v", "s"]
+            args += ["--include", "mvs"]
         else:
             args += ["--include", "m"]
         result = self._az("list", args, True)
