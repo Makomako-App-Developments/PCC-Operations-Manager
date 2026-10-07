@@ -1,0 +1,177 @@
+name: Production database backup to Azure
+
+# GitHub schedules are best-effort UTC, not a guaranteed recovery deadline.
+# 14:17 UTC = 02:17 NZST / 03:17 NZDT on the following day.
+on:
+  schedule:
+    - cron: "17 14 * * *"
+  workflow_dispatch:
+
+# No repository checkout, application build, deployment, or restore.
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: production-database-backup
+  cancel-in-progress: false
+
+jobs:
+  backup:
+    if: github.ref == 'refs/heads/master'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      PG_BIN: /usr/lib/postgresql/16/bin
+      AZURE_CORE_OUTPUT: none
+      AZURE_BACKUP_CLIENT_ID: ${{ vars.AZURE_BACKUP_CLIENT_ID }}
+      AZURE_BACKUP_TENANT_ID: ${{ vars.AZURE_BACKUP_TENANT_ID }}
+      AZURE_BACKUP_SUBSCRIPTION_ID: ${{ vars.AZURE_BACKUP_SUBSCRIPTION_ID }}
+      AZURE_BACKUP_STORAGE_ACCOUNT: ${{ vars.AZURE_BACKUP_STORAGE_ACCOUNT }}
+      AZURE_BACKUP_CONTAINER: ${{ vars.AZURE_BACKUP_CONTAINER }}
+    steps:
+      - name: Check configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+          for key in AZURE_BACKUP_CLIENT_ID AZURE_BACKUP_TENANT_ID \
+            AZURE_BACKUP_SUBSCRIPTION_ID AZURE_BACKUP_STORAGE_ACCOUNT AZURE_BACKUP_CONTAINER; do
+            if [[ -z "${!key}" ]]; then
+              echo "::error::Missing repository variable: $key"
+              exit 1
+            fi
+          done
+
+      - name: Install PostgreSQL 16 client
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends postgresql-client-16
+          "$PG_BIN/pg_dump" --version
+
+      - name: Sign in to Azure without a password
+        # Azure/login v2; immutable commit pin, verified against its v2 tag.
+        uses: azure/login@7184910d9eb2b1c5e48f7073824a90609bb9b6d6
+        with:
+          client-id: ${{ vars.AZURE_BACKUP_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_BACKUP_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_BACKUP_SUBSCRIPTION_ID }}
+          audience: api://AzureADTokenExchange
+
+      - name: Export, verify and upload database
+        shell: bash
+        env:
+          DATABASE_URL: ${{ secrets.PRODUCTION_BACKUP_DATABASE_URL }}
+          PGCONNECT_TIMEOUT: "30"
+          PGOPTIONS: "-c default_transaction_read_only=on -c statement_timeout=900000"
+        run: |
+          # BEGIN BACKUP SCRIPT (also exercised by the local regression tests)
+          set -euo pipefail
+          umask 077
+          if [[ -z "${DATABASE_URL:-}" ]]; then
+            echo "::error::Missing PRODUCTION_BACKUP_DATABASE_URL repository secret."
+            exit 1
+          fi
+          if [[ "$DATABASE_URL" != postgres://* && "$DATABASE_URL" != postgresql://* ]]; then
+            echo "::error::The database secret must contain only a PostgreSQL connection URI."
+            exit 1
+          fi
+
+          work_dir=$(mktemp -d "$RUNNER_TEMP/pcc-db-backup.XXXXXX")
+          trap 'rm -rf -- "$work_dir"' EXIT
+          timestamp=$(date -u +%Y%m%dT%H%M%SZ)
+          name="pcc-production-${timestamp}-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          archive="$work_dir/$name.dump"
+          blob="postgresql/$name.dump"
+
+          echo "Exporting the database using PostgreSQL 16."
+          # A single pg_dump snapshot. No pipe that could hide pg_dump's exit code.
+          # Suppress raw connection errors: malformed URIs may contain credentials.
+          if ! timeout 20m "$PG_BIN/pg_dump" \
+            --dbname="$DATABASE_URL" --no-password \
+            --format=custom --compress=6 --no-owner --no-privileges \
+            --lock-wait-timeout=60s --file="$archive" \
+            >"$work_dir/dump.log" 2>&1; then
+            echo "::error::Database export failed. Check the production secret, connectivity, SSL and PostgreSQL version. Nothing was uploaded."
+            exit 1
+          fi
+          if [[ ! -s "$archive" ]]; then
+            echo "::error::Database export was empty. Nothing was uploaded."
+            exit 1
+          fi
+          if ! "$PG_BIN/pg_restore" --list "$archive" \
+            >"$work_dir/toc" 2>"$work_dir/restore.log"; then
+            echo "::error::The export is not a readable PostgreSQL archive. Nothing was uploaded."
+            exit 1
+          fi
+          if ! grep -Eq ' TABLE DATA public assets ' "$work_dir/toc"; then
+            echo "::error::The archive does not contain the expected public.assets data entry. Check that the secret targets the correct production database. Nothing was uploaded."
+            exit 1
+          fi
+
+          digest=$(sha256sum "$archive" | cut -d ' ' -f 1)
+          size=$(stat -c %s "$archive")
+          storage_args=(--account-name "$AZURE_BACKUP_STORAGE_ACCOUNT"
+            --container-name "$AZURE_BACKUP_CONTAINER" --auth-mode login
+            --only-show-errors --output none)
+          echo "Uploading the verified archive to private Azure storage."
+          az storage blob upload "${storage_args[@]}" \
+            --file "$archive" --name "$blob" --overwrite false
+
+          # Read back the uploaded bytes, not just a successful upload response.
+          az storage blob download "${storage_args[@]}" \
+            --name "$blob" --file "$work_dir/downloaded.dump" --overwrite false
+          downloaded_digest=$(sha256sum "$work_dir/downloaded.dump" | cut -d ' ' -f 1)
+          if [[ "$downloaded_digest" != "$digest" ]]; then
+            echo "::error::Azure read-back checksum failed. This backup is not verified."
+            exit 1
+          fi
+
+          # Publish the manifest LAST: its presence marks successful verification.
+          export BACKUP_BLOB="$blob" BACKUP_SHA256="$digest" BACKUP_BYTES="$size"
+          export BACKUP_CREATED_UTC="$timestamp"
+          python3 - "$work_dir/$name.json" <<'PY'
+          import json, os, sys
+          manifest = {
+              "format": "postgresql-custom",
+              "postgresql_client_major": 16,
+              "created_utc": os.environ["BACKUP_CREATED_UTC"],
+              "blob": os.environ["BACKUP_BLOB"],
+              "bytes": int(os.environ["BACKUP_BYTES"]),
+              "sha256": os.environ["BACKUP_SHA256"],
+              "azure_readback_verified": True,
+              "restore_tested": False,
+              "github_run_id": os.environ["GITHUB_RUN_ID"],
+              "github_run_attempt": os.environ["GITHUB_RUN_ATTEMPT"],
+          }
+          with open(sys.argv[1], "w") as f:
+              json.dump(manifest, f, indent=2)
+              f.write("\n")
+          PY
+          az storage blob upload "${storage_args[@]}" \
+            --file "$work_dir/$name.json" --name "postgresql/$name.json" --overwrite false
+
+          {
+            echo "## Production database backup uploaded and read-back verified"
+            echo ""
+            echo "- Archive: \`$blob\`"
+            echo "- Size: $size bytes"
+            echo "- SHA-256: \`$digest\`"
+            echo "- The matching JSON manifest marks a verified upload."
+            echo "- Restore test: **not yet performed**."
+            echo "- Photo/file bytes are **not included** in this database backup."
+          } >> "$GITHUB_STEP_SUMMARY"
+          # END BACKUP SCRIPT
+
+      - name: Report a failed backup
+        if: failure()
+        shell: bash
+        run: |
+          {
+            echo "## Production database backup failed"
+            echo ""
+            echo "Do not treat this run as a successful recovery copy."
+            echo "Check the failed step. Earlier backups have not been deleted."
+          } >> "$GITHUB_STEP_SUMMARY"
+
