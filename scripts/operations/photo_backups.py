@@ -246,6 +246,7 @@ def main():
                 name, count, size = verify(store, source_id, directory, os.environ.get("PHOTO_BACKUP_MANIFEST", ""))
                 lines = [f"- Snapshot restored: `{name}`", f"- Files restored and checksum-verified: {count}",
                          f"- Restored bytes: {size}", "- Original paths recreated in a temporary folder."]
+                print(f"Photo restore verified: files={count}; bytes={size}", flush=True)
             else:
                 lines = [f"- Expired object groups removed: {prune(store, source_id, directory, now)}"]
         else:
