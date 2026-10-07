@@ -154,6 +154,13 @@ class AzureBackupTests(unittest.TestCase):
         self.assertNotIn("restore-db.ts", workflow)
         self.assertNotIn("AZURE_STORAGE_CONNECTION_STRING", workflow)
 
+    def test_login_can_read_cli_version_without_disabling_upload_output_suppression(self):
+        workflow = WORKFLOW.read_text()
+        self.assertNotIn("AZURE_CORE_OUTPUT", workflow.split("    steps:", 1)[0])
+        export_step = workflow.split("- name: Export, verify and upload database", 1)[1]
+        self.assertIn("          AZURE_CORE_OUTPUT: none", export_step)
+        self.assertIn("azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906", workflow)
+
 
 if __name__ == "__main__":
     unittest.main()
