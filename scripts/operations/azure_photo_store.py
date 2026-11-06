@@ -5,9 +5,17 @@ from email.utils import format_datetime
 from pathlib import Path
 import re
 import subprocess
+import urllib.error
+import urllib.request
 from urllib.parse import quote, urlencode
+import xml.etree.ElementTree as ET
 from photo_backup_source import file_hashes
 from photo_backup_diagnostics import AzureStorageFailure
+
+
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
 
 
 class AzurePhotoStore:
@@ -16,6 +24,7 @@ class AzurePhotoStore:
             raise ValueError("Use the dedicated private photo-backups container")
         self.read_only = read_only
         self.account = account
+        self.opener = urllib.request.build_opener(_NoRedirect())
         self.args = ["--account-name", account, "--container-name", container,
                      "--auth-mode", "login", "--only-show-errors"]
 
@@ -41,14 +50,37 @@ class AzurePhotoStore:
             raise ValueError("Invalid Azure storage account")
         # --version-id is not supported by core `az storage blob delete`.
         # Use the stable Blob REST API with the existing login identity instead
-        # of installing a preview extension or fetching an account key.
+        # of installing a preview extension or fetching an account key. Keep the
+        # short-lived token inside this process, out of argv and all diagnostics.
         url = (f"https://{self.account}.blob.core.windows.net/photo-backups/"
                + quote(name, safe="/") + "?" + urlencode({"versionid": version_id}))
-        self._run(["az", "rest", "--method", "delete", "--url", url,
-                   "--resource", "https://storage.azure.com/",
-                   "--headers", "x-ms-version=2023-11-03",
-                   "x-ms-date=" + format_datetime(datetime.now(timezone.utc), usegmt=True),
-                   "--only-show-errors", "--output", "none"], "delete")
+        identity = subprocess.run(["az", "account", "get-access-token",
+            "--resource", "https://storage.azure.com/", "--query", "accessToken",
+            "--output", "tsv", "--only-show-errors"],
+            capture_output=True, text=True, timeout=60)
+        token = identity.stdout.strip()
+        if identity.returncode or not re.fullmatch(r"[A-Za-z0-9._-]+", token):
+            raise AzureStorageFailure("delete-version", "AuthenticationFailed")
+        request = urllib.request.Request(url, method="DELETE", headers={
+            "Authorization": "Bearer " + token,
+            "x-ms-version": "2023-11-03",
+            "x-ms-date": format_datetime(datetime.now(timezone.utc), usegmt=True),
+        })
+        try:
+            with self.opener.open(request, timeout=90) as response:
+                if response.status != 202:
+                    raise ValueError("Unexpected Azure version deletion response")
+        except urllib.error.HTTPError as error:
+            # Storage errors are XML. Parse only the fixed allowlisted code;
+            # never print the response (which can contain private object paths).
+            code = f"Http{error.code}"
+            try:
+                provider_code = ET.fromstring(error.read(65536)).findtext("Code")
+                if provider_code in AzureStorageFailure.CODES:
+                    code = provider_code
+            except ET.ParseError:
+                pass
+            raise AzureStorageFailure("delete-version", code) from None
 
     def list(self, prefix, versions=False):
         args = ["--prefix", prefix, "--num-results", "5000"]
