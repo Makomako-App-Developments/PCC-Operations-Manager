@@ -29,8 +29,10 @@ class AzureStorageFailure(RuntimeError):
         "BlobImmutableDueToPolicy", "BlobHasLegalHold", "InvalidHeaderValue",
         "InvalidQueryParameterValue", "InvalidInput", "InvalidOperation",
         "CliArgumentError",
+        "Http400", "Http401", "Http403", "Http404", "Http409", "Http412",
+        "Http429", "Http500", "Http502", "Http503", "Http504",
     ))
-    OPERATIONS = frozenset(("list", "exists", "show", "download", "upload", "delete"))
+    OPERATIONS = frozenset(("list", "exists", "show", "download", "upload", "delete", "delete-version"))
 
     def __init__(self, operation, code):
         super().__init__("Azure photo storage operation failed; raw errors withheld")
