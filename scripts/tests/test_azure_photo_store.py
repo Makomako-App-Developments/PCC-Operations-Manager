@@ -1,9 +1,11 @@
 """Version cleanup uses stable OAuth REST and resolves omitted provider flags."""
 import copy
+import io
 from pathlib import Path
 import sys
 from types import SimpleNamespace
 import unittest
+import urllib.error
 from unittest.mock import patch
 from urllib.parse import parse_qs, urlparse
 
@@ -13,22 +15,59 @@ from photo_backup_diagnostics import AzureStorageFailure, category
 
 
 class AzurePhotoStoreTests(unittest.TestCase):
-    def test_version_delete_uses_core_rest_with_storage_oauth_and_encoded_version(self):
-        result = SimpleNamespace(returncode=0, stdout="", stderr="")
-        with patch("azure_photo_store.subprocess.run", return_value=result) as run:
-            AzurePhotoStore("dummyaccount", "photo-backups")._delete_version(
+    def test_version_delete_uses_storage_oauth_rest_and_encoded_version(self):
+        result = SimpleNamespace(returncode=0, stdout="fixture-token", stderr="")
+        store = AzurePhotoStore("dummyaccount", "photo-backups")
+        with patch("azure_photo_store.subprocess.run", return_value=result) as run, \
+             patch.object(store.opener, "open") as opening:
+            opening.return_value.__enter__.return_value = SimpleNamespace(status=202)
+            store._delete_version(
                 "snapshots/source/private file.json", "2026-10-08T01:02:03.1234567Z")
         args = run.call_args.args[0]
-        self.assertEqual(args[:4], ["az", "rest", "--method", "delete"])
+        self.assertEqual(args[:3], ["az", "account", "get-access-token"])
         self.assertNotIn("--version-id", args)
         self.assertEqual(args[args.index("--resource") + 1], "https://storage.azure.com/")
-        self.assertIn("x-ms-version=2023-11-03", args)
-        self.assertTrue(any(arg.startswith("x-ms-date=") for arg in args))
-        url = urlparse(args[args.index("--url") + 1])
+        self.assertNotIn("fixture-token", args)
+        request = opening.call_args.args[0]
+        self.assertEqual(request.get_method(), "DELETE")
+        headers = {key.lower(): value for key, value in request.header_items()}
+        self.assertEqual(headers["authorization"], "Bearer fixture-token")
+        self.assertEqual(headers["x-ms-version"], "2023-11-03")
+        self.assertIn("x-ms-date", headers)
+        url = urlparse(request.full_url)
         self.assertEqual(url.netloc, "dummyaccount.blob.core.windows.net")
         self.assertEqual(url.path, "/photo-backups/snapshots/source/private%20file.json")
         self.assertEqual(parse_qs(url.query), {"versionid": ["2026-10-08T01:02:03.1234567Z"]})
-        self.assertEqual(run.call_args.kwargs["timeout"], 240)
+        self.assertEqual(run.call_args.kwargs["timeout"], 60)
+        self.assertEqual(opening.call_args.kwargs["timeout"], 90)
+
+    def test_version_http_failures_expose_only_allowlisted_code_or_status(self):
+        for body, expected in (
+            (b"<Error><Code>AuthorizationPermissionMismatch</Code><Message>private-path</Message></Error>",
+             "AuthorizationPermissionMismatch"),
+            (b"<Error><Code>private-secret</Code></Error>", "Http403"),
+            (b"private-path invalid XML", "Http403"),
+        ):
+            with self.subTest(expected=expected):
+                store = AzurePhotoStore("dummyaccount", "photo-backups")
+                error = urllib.error.HTTPError("https://private-path", 403, "secret", {}, io.BytesIO(body))
+                with patch("azure_photo_store.subprocess.run", return_value=SimpleNamespace(
+                    returncode=0, stdout="fixture-token", stderr="")), \
+                     patch.object(store.opener, "open", side_effect=error):
+                    with self.assertRaises(AzureStorageFailure) as caught:
+                        store._delete_version("private", "version")
+                self.assertEqual(category(caught.exception), "azure-delete-version-" + expected)
+                self.assertNotIn("private", str(caught.exception))
+                self.assertNotIn("secret", str(caught.exception))
+
+    def test_token_failure_blocks_http_request_and_does_not_emit_token_or_stderr(self):
+        store = AzurePhotoStore("dummy", "photo-backups")
+        with patch("azure_photo_store.subprocess.run", return_value=SimpleNamespace(
+            returncode=1, stdout="fixture-token", stderr="private-secret")), \
+             patch.object(store.opener, "open", side_effect=AssertionError("HTTP invoked")):
+            with self.assertRaises(AzureStorageFailure) as caught:
+                store._delete_version("private", "version")
+        self.assertEqual(category(caught.exception), "azure-delete-version-AuthenticationFailed")
 
     def test_read_only_and_invalid_account_cannot_send_version_deletes(self):
         with patch("azure_photo_store.subprocess.run", side_effect=AssertionError("Azure invoked")):
