@@ -73,6 +73,27 @@ class DiagnosticsTests(unittest.TestCase):
         self.assertEqual(category(ValueError("New photo transfer exceeds the 10 GiB run safety limit")),
                          "transfer-limit")
 
+    def test_cleanup_validation_reasons_have_fixed_private_safe_categories(self):
+        for message, expected in (
+            ("Unknown provider version state; cleanup blocked", "cleanup-version-state"),
+            ("Unexpected backup object; cleanup blocked", "cleanup-object-name"),
+            ("Invalid provider timestamp; cleanup blocked", "cleanup-timestamp"),
+            ("Retained snapshot references missing files; cleanup blocked", "cleanup-missing-reference"),
+            ("Blob changed during cleanup", "cleanup-blob-changed"),
+        ):
+            with self.subTest(message=message):
+                self.assertEqual(category(ValueError(message)), expected)
+
+    def test_snapshot_delete_provider_error_is_safe_and_specific(self):
+        result = SimpleNamespace(returncode=1, stdout="", stderr=(
+            "ERROR: uploads/private.jpg token=secret\nErrorCode: BlobOperationNotSupported"))
+        with patch("azure_photo_store.subprocess.run", return_value=result):
+            with self.assertRaises(AzureStorageFailure) as caught:
+                AzurePhotoStore("dummy", "photo-backups")._az("delete", ["--name", "private"])
+        self.assertEqual(category(caught.exception), "azure-delete-BlobOperationNotSupported")
+        self.assertNotIn("private", failure_line(caught.exception))
+        self.assertNotIn("secret", failure_line(caught.exception))
+
 
 if __name__ == "__main__":
     unittest.main()
