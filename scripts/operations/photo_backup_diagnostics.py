@@ -25,6 +25,9 @@ class AzureStorageFailure(RuntimeError):
         "ContainerNotFound", "BlobAlreadyExists", "ConditionNotMet",
         "Md5Mismatch", "InvalidMd5", "ServerBusy", "OperationTimedOut",
         "AccountIsDisabled", "InvalidArgument", "unknown",
+        "SnapshotsPresent", "BlobOperationNotSupported", "OperationNotAllowedOnRootBlob",
+        "BlobImmutableDueToPolicy", "BlobHasLegalHold", "InvalidHeaderValue",
+        "InvalidQueryParameterValue", "InvalidInput", "InvalidOperation",
     ))
     OPERATIONS = frozenset(("list", "exists", "show", "download", "upload", "delete"))
 
@@ -58,6 +61,12 @@ def category(error):
             "Snapshot read-back verification failed": "snapshot-readback-mismatch",
             "Production source has not been confirmed and pinned": "source-pin-mismatch",
             "No completed photo snapshots to restore": "no-complete-snapshot",
+            "Unknown provider version state; cleanup blocked": "cleanup-version-state",
+            "Unexpected backup object; cleanup blocked": "cleanup-object-name",
+            "Invalid provider timestamp; cleanup blocked": "cleanup-timestamp",
+            "Retained snapshot references missing files; cleanup blocked": "cleanup-missing-reference",
+            "Cleanup requires a successful photo snapshot within the last day": "cleanup-stale-snapshot",
+            "Blob changed during cleanup": "cleanup-blob-changed",
         }
         return known.get(str(error), "validation")
     if isinstance(error, OSError):
