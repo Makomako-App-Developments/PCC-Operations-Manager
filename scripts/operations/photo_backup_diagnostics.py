@@ -28,6 +28,7 @@ class AzureStorageFailure(RuntimeError):
         "SnapshotsPresent", "BlobOperationNotSupported", "OperationNotAllowedOnRootBlob",
         "BlobImmutableDueToPolicy", "BlobHasLegalHold", "InvalidHeaderValue",
         "InvalidQueryParameterValue", "InvalidInput", "InvalidOperation",
+        "CliArgumentError",
     ))
     OPERATIONS = frozenset(("list", "exists", "show", "download", "upload", "delete"))
 
