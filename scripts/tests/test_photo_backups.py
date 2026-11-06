@@ -190,6 +190,8 @@ class PhotoBackupTests(unittest.TestCase):
             def _az(self, operation, arguments, json_output=False):
                 self.calls.append((operation, arguments))
                 return None
+            def _delete_version(self, name, version_id):
+                self.calls.append(("delete-version", [name, version_id]))
             def list(self, prefix, versions=False):
                 return [{"name": prefix, "versionId": "current", "isCurrentVersion": False}]
         adapter = Adapter()
