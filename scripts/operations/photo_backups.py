@@ -235,7 +235,10 @@ def main():
                 if not re.fullmatch(r"\d+", run_id) or not re.fullmatch(r"\d+", attempt):
                     raise ValueError("Invalid runner identity")
                 name, copied, size = backup(source, store, source_id, objects, directory, now, run_id, attempt)
-                removed = prune(store, source_id, directory, now)
+                # Copying/read-back can take longer than the provider clock-skew
+                # allowance. Cleanup must compare upload times to cleanup time,
+                # not the snapshot's fixed start time.
+                removed = prune(store, source_id, directory, datetime.now(UTC))
                 lines += [f"- Verified snapshot: `{name}`", f"- New files copied: {copied}",
                           f"- New source bytes transferred: {size}", f"- Expired object groups removed: {removed}"]
         elif operation in ("verify", "prune"):

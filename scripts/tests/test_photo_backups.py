@@ -2,14 +2,16 @@
 import base64
 from datetime import datetime, timedelta, timezone
 import hashlib
+import os
 import json
 from pathlib import Path
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "operations"))
-from photo_backups import backup, load_snapshots, object_key, prune, verify
+from photo_backups import main, backup, load_snapshots, object_key, prune, verify
 from photo_backup_source import check_file, file_hashes, validate_object
 from azure_photo_store import AzurePhotoStore
 
@@ -68,6 +70,48 @@ class FakeStore:
 
 
 class PhotoBackupTests(unittest.TestCase):
+    def test_long_backup_uses_cleanup_time_without_changing_snapshot_time(self):
+        with tempfile.TemporaryDirectory() as d:
+            directory, store, source = Path(d), FakeStore(), FakeSource()
+            finished = NOW + timedelta(minutes=9)
+            upload = store.upload
+
+            def delayed_upload(key, path):
+                upload(key, path)
+                store.files[key]["properties"]["lastModified"] = finished.isoformat()
+
+            source.inventory = lambda: (SOURCE, [item()])
+            env = {"PHOTO_BACKUP_SOURCE_ID": SOURCE,
+                   "PHOTO_BACKUP_SOURCE_URL": "https://example.invalid",
+                   "AZURE_BACKUP_STORAGE_ACCOUNT": "dummy",
+                   "AZURE_PHOTO_BACKUP_CONTAINER": "photo-backups",
+                   "GITHUB_RUN_ID": "1", "GITHUB_RUN_ATTEMPT": "1",
+                   "RUNNER_TEMP": d, "GITHUB_STEP_SUMMARY": str(directory / "summary")}
+            with patch.dict(os.environ, env, clear=True), \
+                 patch.object(sys, "argv", ["script", "backup"]), \
+                 patch("photo_backups.AzurePhotoStore", return_value=store), \
+                 patch("photo_backups.PhotoSource", return_value=source), \
+                 patch.object(store, "upload", side_effect=delayed_upload), \
+                 patch("photo_backups.datetime") as clock:
+                clock.now.side_effect = [NOW, finished, finished]
+                clock.fromisoformat.side_effect = datetime.fromisoformat
+                main()
+            self.assertIn("backup passed", (directory / "summary").read_text())
+            manifest = next(row for key, row in store.files.items()
+                            if key.startswith("snapshots/"))
+            self.assertEqual(json.loads(manifest["data"])["createdUtc"], NOW.isoformat())
+            self.assertFalse(store.deleted)
+
+    def test_genuinely_future_provider_timestamp_still_blocks_all_cleanup(self):
+        with tempfile.TemporaryDirectory() as d:
+            directory, store = Path(d), FakeStore()
+            backup(FakeSource(), store, SOURCE, [item()], directory, NOW, "1", "1")
+            store.files[object_key(SOURCE, item())]["properties"]["lastModified"] = (
+                NOW + timedelta(minutes=6)).isoformat()
+            with self.assertRaisesRegex(ValueError, "Invalid provider timestamp"):
+                prune(store, SOURCE, directory, NOW)
+            self.assertFalse(store.deleted)
+
     def test_first_copy_restores_original_paths_and_second_copy_is_incremental(self):
         with tempfile.TemporaryDirectory() as d:
             source, store, directory = FakeSource(), FakeStore(), Path(d)
